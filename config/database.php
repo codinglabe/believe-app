@@ -55,11 +55,21 @@ return [
             'collation' => env('DB_COLLATION', 'utf8mb4_unicode_ci'),
             'prefix' => '',
             'prefix_indexes' => true,
-            'strict' => true,
+            // 'strict' => true,
+            // 'engine' => null,
+            'dump' => [
+                'dump_binary_path' => '/usr/bin',
+            ],
+            // Increase these for large data processing
+            'strict' => false,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
                 PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
+                PDO::ATTR_TIMEOUT => 60,
+                PDO::ATTR_EMULATE_PREPARES => true,
             ]) : [],
+
         ],
 
         'mariadb' => [
