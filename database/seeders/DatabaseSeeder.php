@@ -15,9 +15,22 @@ class DatabaseSeeder extends Seeder
     {
         // User::factory(10)->create();
 
-        User::factory()->create([
-            'name' => 'Test User',
-            'email' => 'test@example.com',
+        // User::factory()->create([
+        //     'name' => 'Test User',
+        //     'email' => 'test@example.com',
+        // ]);
+
+        $this->call([
+            ActivityCodesTableSeeder::class,
+            AffiliationCodesTableSeeder::class,
+            ClassificationCodesTableSeeder::class,
+            DeductibilityCodesTableSeeder::class,
+            FoundationTypesTableSeeder::class,
+            GroupCodesTableSeeder::class,
+            NteeCodesTableSeeder::class,
+            OrganizationStructuresTableSeeder::class,
+            StatusCodesTableSeeder::class,
+            SubsectionCodesTableSeeder::class,
         ]);
     }
 }

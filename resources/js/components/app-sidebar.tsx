@@ -17,6 +17,7 @@ const mainNavItems: NavItem[] = [
         title: 'Upload Data',
         href: '/upload',
         icon: Download,
+
     },
     {
         title: 'Manage Data',
