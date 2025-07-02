@@ -1,15 +1,15 @@
 <?php
-
 namespace App\Http\Controllers;
 
-use App\Jobs\BulkDeleteExcelDataJob;
+use Carbon\Carbon;
+use Inertia\Inertia;
 use App\Models\ExcelData;
-use App\Models\ExcelDataNote;
 use App\Models\UploadedFile;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use App\Models\ExcelDataNote;
+use App\Jobs\BulkDeleteExcelDataJob;
+use App\Services\ExcelDataTransformer;
 use Illuminate\Support\Facades\Response;
-use Inertia\Inertia;
 
 class ManageDatasetController extends Controller
 {
@@ -21,16 +21,16 @@ class ManageDatasetController extends Controller
             return redirect()->route('manage-data')->with('flash', [
                 'success' => false,
                 'message' => 'Dataset is not ready yet. Please wait for processing to complete.',
-                'type' => 'warning'
+                'type'    => 'warning',
             ]);
         }
 
         $perPage = $request->get('per_page', 10);
-        $page = $request->get('page', 1);
-        $search = $request->get('search', '');
+        $page    = $request->get('page', 1);
+        $search  = $request->get('search', '');
 
         $allowedPerPage = [10, 25, 50, 100, 250, 500, 1000];
-        if (!in_array($perPage, $allowedPerPage)) {
+        if (! in_array($perPage, $allowedPerPage)) {
             $perPage = 10;
         }
 
@@ -56,17 +56,27 @@ class ManageDatasetController extends Controller
             $query->where('row_data', 'LIKE', '%' . $search . '%');
         }
 
-        $excelData = $query->paginate($perPage, ['*'], 'page', $page);
+        $excelData = $query->paginate($perPage, ['*'], 'page', $page)->through(function ($item) use ($headers) {
+            $transformed = ExcelDataTransformer::transform($item->row_data);
+
+            return [
+                'id'       => $item->id,
+                'row_data' => $transformed,
+                'status'   => $item->status,
+                'created_at' => Carbon::parse($item->created_at)->format('Y-m-d H:i:s'),
+            ];
+        });
+
 
         return Inertia::render('manage-dataset', [
-            'uploadedFile' => $uploadedFile,
-            'excelData' => $excelData,
-            'headers' => $headers,
-            'headerRowId' => $headerRow->id, // Pass header row ID to frontend
-            'filters' => [
+            'uploadedFile'   => $uploadedFile,
+            'excelData'      => $excelData,
+            'headers'        => $headers,
+            'headerRowId'    => $headerRow->id, // Pass header row ID to frontend
+            'filters'        => [
                 'per_page' => $perPage,
-                'page' => $page,
-                'search' => $search,
+                'page'     => $page,
+                'search'   => $search,
             ],
             'allowedPerPage' => $allowedPerPage,
         ]);
@@ -75,8 +85,8 @@ class ManageDatasetController extends Controller
     public function bulkDelete(Request $request, $fileId)
     {
         $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'integer|exists:excel_data,id'
+            'ids'   => 'required|array',
+            'ids.*' => 'integer|exists:excel_data,id',
         ]);
 
         try {
@@ -88,7 +98,7 @@ class ManageDatasetController extends Controller
             // Verify all IDs belong to this file AND are not the header row
             $validIds = ExcelData::whereIn('id', $request->ids)
                 ->where('file_id', $fileId)
-                // ->where('id', '!=', $headerRow->id) // Prevent header row deletion
+            // ->where('id', '!=', $headerRow->id) // Prevent header row deletion
                 ->pluck('id')
                 ->toArray();
 
@@ -98,13 +108,13 @@ class ManageDatasetController extends Controller
                 return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                     'success' => false,
                     'message' => 'No valid rows found to delete (header row cannot be deleted)',
-                    'type' => 'error'
+                    'type'    => 'error',
                 ]);
             }
 
             // Check if user tried to delete header row
             $attemptedHeaderDeletion = in_array($headerRow->id, $request->ids);
-            $message = 'Selected ' . count($validIds) . ' rows deletion started. They will be removed shortly.';
+            $message                 = 'Selected ' . count($validIds) . ' rows deletion started. They will be removed shortly.';
 
             if ($attemptedHeaderDeletion) {
                 $message .= ' Note: Header row was excluded from deletion.';
@@ -116,7 +126,7 @@ class ManageDatasetController extends Controller
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => true,
                 'message' => $message,
-                'type' => 'success'
+                'type'    => 'success',
             ]);
 
             // return response()->json([
@@ -130,7 +140,7 @@ class ManageDatasetController extends Controller
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => false,
                 'message' => 'Failed to start bulk deletion: ' . $e->getMessage(),
-                'type' => 'error'
+                'type'    => 'error',
             ]);
         }
     }
@@ -138,8 +148,8 @@ class ManageDatasetController extends Controller
     public function bulkDownload(Request $request, $fileId)
     {
         $request->validate([
-            'ids' => 'required|array',
-            'ids.*' => 'integer|exists:excel_data,id'
+            'ids'   => 'required|array',
+            'ids.*' => 'integer|exists:excel_data,id',
         ]);
 
         try {
@@ -161,7 +171,7 @@ class ManageDatasetController extends Controller
                 return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                     'success' => false,
                     'message' => 'No data found to download',
-                    'type' => 'error'
+                    'type'    => 'error',
                 ]);
             }
 
@@ -187,7 +197,7 @@ class ManageDatasetController extends Controller
             $filename = 'selected_data_' . $uploadedFile->original_name . '_' . date('Y-m-d_H-i-s') . '.csv';
 
             return Response::make($csvContent, 200, [
-                'Content-Type' => 'text/csv',
+                'Content-Type'        => 'text/csv',
                 'Content-Disposition' => 'attachment; filename="' . $filename . '"',
             ]);
 
@@ -195,7 +205,7 @@ class ManageDatasetController extends Controller
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => false,
                 'message' => 'Failed to download data: ' . $e->getMessage(),
-                'type' => 'error'
+                'type'    => 'error',
             ]);
         }
     }
@@ -209,7 +219,7 @@ class ManageDatasetController extends Controller
                 return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                     'success' => false,
                     'message' => 'Dataset is not ready for download',
-                    'type' => 'warning'
+                    'type'    => 'warning',
                 ]);
             }
 
@@ -231,7 +241,7 @@ class ManageDatasetController extends Controller
 
                 // Stream data rows in chunks (excluding header)
                 $chunkSize = 1000;
-                $offset = 0;
+                $offset    = 0;
 
                 do {
                     $excelData = ExcelData::where('file_id', $fileId)
@@ -253,18 +263,18 @@ class ManageDatasetController extends Controller
 
                 fclose($handle);
             }, 200, [
-                'Content-Type' => 'text/csv',
+                'Content-Type'        => 'text/csv',
                 'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-                'Cache-Control' => 'no-cache, no-store, must-revalidate',
-                'Pragma' => 'no-cache',
-                'Expires' => '0',
+                'Cache-Control'       => 'no-cache, no-store, must-revalidate',
+                'Pragma'              => 'no-cache',
+                'Expires'             => '0',
             ]);
 
         } catch (\Exception $e) {
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => false,
                 'message' => 'Failed to download dataset: ' . $e->getMessage(),
-                'type' => 'error'
+                'type'    => 'error',
             ]);
         }
     }
@@ -272,7 +282,7 @@ class ManageDatasetController extends Controller
     public function saveNote(Request $request, $fileId, $rowId)
     {
         $request->validate([
-            'note' => 'required|string|max:1000'
+            'note' => 'required|string|max:1000',
         ]);
 
         try {
@@ -286,7 +296,7 @@ class ManageDatasetController extends Controller
                 return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                     'success' => false,
                     'message' => 'Cannot add notes to header row',
-                    'type' => 'error'
+                    'type'    => 'error',
                 ]);
             }
 
@@ -303,14 +313,14 @@ class ManageDatasetController extends Controller
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => true,
                 'message' => 'Note saved successfully',
-                'type' => 'success'
+                'type'    => 'success',
             ]);
 
         } catch (\Exception $e) {
             return redirect()->route('manage-dataset.show', $fileId)->with('flash', [
                 'success' => false,
                 'message' => 'Failed to save note: ' . $e->getMessage(),
-                'type' => 'error'
+                'type'    => 'error',
             ]);
         }
     }
