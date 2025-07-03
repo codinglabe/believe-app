@@ -28,7 +28,17 @@ const mainNavItems: NavItem[] = [
         title: 'Classification Codes',
         href: '/classification-codes',
         icon: FileText,
-    }
+    },
+    {
+        title: 'Status Codes',
+        href: '/status-codes',
+        icon: FileText,
+    },
+    {
+        title: 'Deductibility Codes',
+        href: '/deductibility-codes',
+        icon: FileText,
+    },
 ];
 
 export function AppSidebar() {

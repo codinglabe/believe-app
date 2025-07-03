@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\ChunkedUploadController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\DeductibilityCodeController;
+use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\UploadDataController;
@@ -48,6 +50,12 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Classification Codes Routes
     Route::resource('classification-codes', ClassificationCodeController::class)->except(['show']);
+
+    // Status Codes Routes
+    Route::resource('status-codes', StatusCodeController::class)->except(['show']);
+
+    // Deductibility Codes Routes
+    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
 });
 
 require __DIR__.'/settings.php';
