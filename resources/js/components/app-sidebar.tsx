@@ -23,6 +23,11 @@ const mainNavItems: NavItem[] = [
         title: 'Manage Data',
         href: '/manage-data',
         icon: FileText,
+    },
+    {
+        title: 'Classification Codes',
+        href: '/classification-codes',
+        icon: FileText,
     }
 ];
 

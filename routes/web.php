@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\ChunkedUploadController;
+use App\Http\Controllers\ClassificationCodeController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\UploadDataController;
@@ -44,6 +45,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/manage-dataset/{fileId}/bulk-delete', [ManageDatasetController::class, 'bulkDelete'])->name('manage-dataset.bulk-delete');
     Route::post('/manage-dataset/{fileId}/bulk-download', [ManageDatasetController::class, 'bulkDownload'])->name('manage-dataset.bulk-download');
     Route::post('/manage-dataset/{fileId}/rows/{rowId}/note', [ManageDatasetController::class, 'saveNote'])->name('manage-dataset.save-note');
+
+    // Classification Codes Routes
+    Route::resource('classification-codes', ClassificationCodeController::class)->except(['show']);
 });
 
 require __DIR__.'/settings.php';
