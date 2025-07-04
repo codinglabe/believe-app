@@ -2,12 +2,12 @@ import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
-import { type NavItem } from '@/types';
+import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, Download, LayoutGrid, FileText } from 'lucide-react';
+import { BookOpen, Folder, Download, LayoutGrid, FileText, Code } from 'lucide-react';
 import AppLogo from './app-logo';
 
-const mainNavItems: NavItem[] = [
+const mainNavItems: (NavItem | NavGroup)[] = [
     {
         title: 'Dashboard',
         href: '/dashboard',
@@ -17,7 +17,6 @@ const mainNavItems: NavItem[] = [
         title: 'Upload Data',
         href: '/upload',
         icon: Download,
-
     },
     {
         title: 'Manage Data',
@@ -25,19 +24,24 @@ const mainNavItems: NavItem[] = [
         icon: FileText,
     },
     {
-        title: 'Classification Codes',
-        href: '/classification-codes',
-        icon: FileText,
-    },
-    {
-        title: 'Status Codes',
-        href: '/status-codes',
-        icon: FileText,
-    },
-    {
-        title: 'Deductibility Codes',
-        href: '/deductibility-codes',
-        icon: FileText,
+        title: 'Codes',
+        items: [
+            {
+                title: 'Classification Codes',
+                href: '/classification-codes',
+                icon: FileText,
+            },
+            {
+                title: 'Status Codes',
+                href: '/status-codes',
+                icon: FileText,
+            },
+            {
+                title: 'Deductibility Codes',
+                href: '/deductibility-codes',
+                icon: FileText,
+            },
+        ],
     },
 ];
 
