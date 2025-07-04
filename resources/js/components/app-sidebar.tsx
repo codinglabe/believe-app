@@ -24,6 +24,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: FileText,
     },
     {
+<<<<<<< HEAD
         title: 'Codes',
         items: [
             {
@@ -42,6 +43,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: FileText,
             },
         ],
+=======
+        title: 'Classification Codes',
+        href: '/classification-codes',
+        icon: FileText,
+    },
+    {
+        title: 'Status Codes',
+        href: '/status-codes',
+        icon: FileText,
+    },
+    {
+        title: 'Deductibility Codes',
+        href: '/deductibility-codes',
+        icon: FileText,
+>>>>>>> 85f61b1983c62c5d64a8e828ec098d96561318b8
     },
 ];
 
