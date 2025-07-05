@@ -11,7 +11,7 @@ interface NavMainProps {
 export function NavMain({ items = [] }: NavMainProps) {
     const page = usePage();
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
-    
+
     // Auto-expand groups that contain the current active page
     useEffect(() => {
         const activeGroups = new Set<string>();
@@ -20,17 +20,17 @@ export function NavMain({ items = [] }: NavMainProps) {
                 const hasActiveChild = item.items.some(subItem => {
                     // Check for exact match
                     if (subItem.href === page.url) return true;
-                    
+
                     // Check for create/edit pages
                     const basePath = subItem.href;
                     const currentPath = page.url;
-                    
+
                     // For create pages: /status-codes/create should match /status-codes
                     if (currentPath.startsWith(basePath + '/create')) return true;
-                    
+
                     // For edit pages: /status-codes/123/edit should match /status-codes
                     if (currentPath.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`))) return true;
-                    
+
                     return false;
                 });
                 if (hasActiveChild) {
@@ -40,7 +40,7 @@ export function NavMain({ items = [] }: NavMainProps) {
         });
         setExpandedGroups(activeGroups);
     }, [page.url, items]);
-    
+
     const toggleGroup = (groupTitle: string) => {
         setExpandedGroups(prev => {
             const newSet = new Set(prev);
@@ -52,7 +52,7 @@ export function NavMain({ items = [] }: NavMainProps) {
             return newSet;
         });
     };
-    
+
     return (
         <>
             {items.map((item, index) => {
@@ -60,12 +60,12 @@ export function NavMain({ items = [] }: NavMainProps) {
                     // This is a NavGroup
                     const isExpanded = expandedGroups.has(item.title);
                     const hasActiveChild = item.items.some(subItem => subItem.href === page.url);
-                    
+
                     return (
                         <SidebarGroup key={item.title} className="px-2 py-0">
                             <SidebarMenu>
                                 <SidebarMenuItem>
-                                    <SidebarMenuButton 
+                                    <SidebarMenuButton
                                         onClick={() => toggleGroup(item.title)}
                                         isActive={hasActiveChild}
                                         tooltip={{ children: item.title }}
@@ -74,13 +74,13 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         <span>{item.title}</span>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
-                                
+
                                 {isExpanded && (
                                     <div className="ml-4 space-y-1">
                                         {item.items.map((subItem) => (
                                             <SidebarMenuItem key={subItem.title}>
-                                                <SidebarMenuButton  
-                                                    asChild 
+                                                <SidebarMenuButton
+                                                    asChild
                                                     isActive={subItem.href === page.url}
                                                     tooltip={{ children: subItem.title }}
                                                 >
@@ -102,8 +102,8 @@ export function NavMain({ items = [] }: NavMainProps) {
                         <SidebarGroup key={item.title} className="px-2 py-0">
                             <SidebarMenu>
                                 <SidebarMenuItem>
-                                    <SidebarMenuButton  
-                                        asChild 
+                                    <SidebarMenuButton
+                                        asChild
                                         isActive={item.href === page.url}
                                         tooltip={{ children: item.title }}
                                     >

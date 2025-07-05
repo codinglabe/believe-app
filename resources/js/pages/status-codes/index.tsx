@@ -252,9 +252,9 @@ export default function Index({ statusCodes, filters, allowedPerPage }: Props) {
                                                             Edit
                                                         </Button>
                                                     </Link>
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
                                                         onClick={() => handleDelete(item)}
                                                         className="text-red-600 hover:text-red-700"
                                                     >
@@ -346,4 +346,4 @@ export default function Index({ statusCodes, filters, allowedPerPage }: Props) {
             </div>
         </AppLayout>
     );
-} 
+}

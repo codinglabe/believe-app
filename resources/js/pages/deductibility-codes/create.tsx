@@ -48,7 +48,7 @@ export default function Create() {
             ...prev,
             [field]: value
         }));
-        
+
         // Clear error when user starts typing
         if (errors[field]) {
             setErrors(prev => ({
@@ -128,4 +128,4 @@ export default function Create() {
             </div>
         </AppLayout>
     );
-} 
+}

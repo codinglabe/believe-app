@@ -104,12 +104,12 @@ export default function Index({ deductibilityCodes, filters, allowedPerPage }: P
 
     const handleSearch = (value: string) => {
         setSearchTerm(value);
-        
+
         // Clear existing timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
-        
+
         // Set new timeout for search
         const timeout = setTimeout(() => {
             setLoading(true);
@@ -126,7 +126,7 @@ export default function Index({ deductibilityCodes, filters, allowedPerPage }: P
                 },
             );
         }, 500); // 500ms delay
-        
+
         setSearchTimeout(timeout);
     };
 
@@ -167,7 +167,7 @@ export default function Index({ deductibilityCodes, filters, allowedPerPage }: P
                                 </Button>
                             </Link>
                         </div>
-                        
+
                         {/* Search Bar */}
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
@@ -261,9 +261,9 @@ export default function Index({ deductibilityCodes, filters, allowedPerPage }: P
                                                             Edit
                                                         </Button>
                                                     </Link>
-                                                    <Button 
-                                                        variant="outline" 
-                                                        size="sm" 
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
                                                         onClick={() => handleDelete(item)}
                                                         className="text-red-600 hover:text-red-700"
                                                     >
@@ -362,4 +362,4 @@ export default function Index({ deductibilityCodes, filters, allowedPerPage }: P
             </div>
         </AppLayout>
     );
-} 
+}

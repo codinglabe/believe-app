@@ -9,10 +9,35 @@ use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\UploadDataController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use PhpOffice\PhpSpreadsheet\Worksheet\Row;
 
 Route::get('/', function () {
-    return Inertia::render('welcome');
+    return Inertia::render('frontend/home');
 })->name('home');
+
+Route::get('/about', function () {
+    return Inertia::render('frontend/about');
+})->name('about');
+
+Route::get('/contact', function () {
+    return Inertia::render('frontend/contact');
+})->name('contact');
+
+Route::get('/donate', function () {
+    return Inertia::render('frontend/donate');
+})->name('donate');
+
+Route::get("/organizations", function () {
+    return Inertia::render("frontend/organization/organizations");
+})->name("organizations");
+
+Route::get('/organization/{id}', function () {
+    return Inertia::render('frontend/organization/organization-show');
+})->name('organization.show');
+
+Route::get('/profile', function () {
+    return Inertia::render('frontend/profile');
+})->name('profile');
 
 Route::middleware(['auth', 'verified'])->group(function () {
     Route::get('dashboard', function () {

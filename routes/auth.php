@@ -9,15 +9,34 @@ use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::middleware('guest')->group(function () {
-    Route::get('register', [RegisteredUserController::class, 'create'])
-        ->name('register');
+    Route::get('/register', function () {
+        return Inertia::render('frontend/register');
+    })->name('register');
+
+    Route::get('/register/user', function () {
+        return Inertia::render('frontend/register/user');
+    })->name('register.user');
+
+    Route::get('/register/organization', function () {
+        return Inertia::render('frontend/register/organization');
+    })->name('register.organization');
+
+
+    Route::get('/login', function () {
+        return Inertia::render('frontend/login');
+    })->name('login');
+
+
+    // Route::get('register', [RegisteredUserController::class, 'create'])
+    //     ->name('register');
 
     Route::post('register', [RegisteredUserController::class, 'store']);
 
-    Route::get('login', [AuthenticatedSessionController::class, 'create'])
-        ->name('login');
+    // Route::get('login', [AuthenticatedSessionController::class, 'create'])
+    //     ->name('login');
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 

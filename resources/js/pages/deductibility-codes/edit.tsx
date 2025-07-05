@@ -67,7 +67,7 @@ export default function Edit({ deductibilityCode }: Props) {
             ...prev,
             [field]: value
         }));
-        
+
         // Clear error when user starts typing
         if (errors[field]) {
             setErrors(prev => ({
@@ -147,4 +147,4 @@ export default function Edit({ deductibilityCode }: Props) {
             </div>
         </AppLayout>
     );
-} 
+}
