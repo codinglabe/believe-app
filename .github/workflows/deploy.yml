@@ -1,0 +1,74 @@
+name: CI and Deploy
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: 8.4
+          tools: composer:v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Build assets
+        run: npm run build
+
+      - name: Install PHP dependencies
+        run: composer install --no-interaction --prefer-dist --optimize-autoloader
+
+      - name: Copy environment file
+        run: cp .env.example .env
+
+      - name: Generate app key
+        run: php artisan key:generate
+
+      - name: Run tests
+        run: ./vendor/bin/pest
+
+  deploy:
+    needs: ci
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' # only deploy on main branch
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Start SSH agent and add key
+        uses: webfactory/ssh-agent@v0.8.1
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: Sync files to server
+        run: |
+          rsync -avz --exclude='.git*' --exclude='node_modules' --exclude='vendor' ./ c3ers@160.153.173.24:/home/c3ers/your-laravel-folder/
+
+      - name: Run Laravel deployment commands
+        run: |
+          ssh c3ers@160.153.173.24 << 'EOF'
+            cd /home/c3ers/your-laravel-folder
+            composer install --no-dev --optimize-autoloader
+            php artisan migrate --force
+            php artisan config:cache
+            php artisan route:cache
+            php artisan view:cache
+            npm install
+            npm run production
+          EOF
