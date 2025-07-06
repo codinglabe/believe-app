@@ -1,20 +1,43 @@
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState } from "react"
+import { FormEventHandler, useState } from "react"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, Mail, Lock, Heart } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, Heart, LoaderCircle } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Separator } from "@/components/frontend/ui/separator"
-import { Link } from "@inertiajs/react"
+import { Link, useForm } from "@inertiajs/react"
+import InputError from "@/components/input-error"
 
-export default function LoginPage() {
-  const [showPassword, setShowPassword] = useState(false)
-  const [email, setEmail] = useState("")
-  const [password, setPassword] = useState("")
+type LoginForm = {
+    email: string;
+    password: string;
+    remember: boolean;
+};
+
+interface LoginProps {
+    status?: string;
+    canResetPassword: boolean;
+}
+
+export default function LoginPage({ status, canResetPassword }: LoginProps) {
+    const [showPassword, setShowPassword] = useState(false)
+
+    const { data, setData, post, processing, errors, reset } = useForm<Required<LoginForm>>({
+            email: '',
+            password: '',
+            remember: false,
+        });
+
+    const submit: FormEventHandler = (e) => {
+        e.preventDefault();
+        post(route('login'), {
+            onFinish: () => reset('password'),
+        });
+    };
 
     return (
     <FrontendLayout>
@@ -44,7 +67,7 @@ export default function LoginPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <form className="space-y-4">
+              <form className="space-y-4" onSubmit={submit}>
                 <div>
                   <Label htmlFor="email" className="text-gray-900 dark:text-white">
                     Email Address
@@ -55,11 +78,12 @@ export default function LoginPage() {
                       id="email"
                       type="email"
                       placeholder="Enter your email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      value={data.email}
+                      onChange={(e) => setData('email', e.target.value)}
                       className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                       required
                     />
+                        <InputError message={errors.email} />
                   </div>
                 </div>
 
@@ -73,8 +97,8 @@ export default function LoginPage() {
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      value={data.password}
+                      onChange={(e) => setData('password', e.target.value)}
                       className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                       required
                     />
@@ -84,7 +108,8 @@ export default function LoginPage() {
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
+                                            </button>
+                    <InputError message={errors.password} />
                   </div>
                 </div>
 
@@ -93,6 +118,8 @@ export default function LoginPage() {
                     <input
                       id="remember"
                       type="checkbox"
+                      checked={data.remember}
+                      onClick={() => setData('remember', !data.remember)}
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <Label htmlFor="remember" className="text-sm text-gray-900 dark:text-white">
@@ -104,12 +131,13 @@ export default function LoginPage() {
                   </Link>
                 </div>
 
-                <Button type="submit" className="w-full h-12 bg-blue-600 hover:bg-blue-700">
+                <Button type="submit" className="w-full h-12 bg-blue-600 hover:bg-blue-700" disabled={processing}>
+                  {processing && <LoaderCircle className="h-4 w-4 animate-spin" />}
                   Sign In
                 </Button>
               </form>
 
-              <div className="relative">
+              {/* <div className="relative">
                 <Separator />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="bg-white px-2 text-sm text-gray-500">Or continue with</span>
@@ -150,7 +178,7 @@ export default function LoginPage() {
                   </svg>
                   Facebook
                 </Button>
-              </div>
+              </div> */}
 
               <div className="text-center">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
