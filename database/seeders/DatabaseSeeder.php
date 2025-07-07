@@ -31,6 +31,7 @@ class DatabaseSeeder extends Seeder
             OrganizationStructuresTableSeeder::class,
             StatusCodesTableSeeder::class,
             SubsectionCodesTableSeeder::class,
+            RoleSeeder::class,
         ]);
     }
 }
