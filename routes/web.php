@@ -39,7 +39,7 @@ Route::get('/profile', function () {
     return Inertia::render('frontend/profile');
 })->name('profile');
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
     })->name('dashboard');

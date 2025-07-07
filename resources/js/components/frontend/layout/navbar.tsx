@@ -10,14 +10,17 @@ import {
   DropdownMenuTrigger,
 } from "@/components/frontend/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
-import { Heart, Menu, X, User, Settings, LogOut, Bell } from "lucide-react"
+import { Heart, Menu, X, User, Settings, LogOut, Bell, LayoutGrid } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
-import { Link } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
+import { SharedData } from "@/types"
+import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
 
 export default function Navbar() {
-  const [isOpen, setIsOpen] = useState(false)
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+     const { auth } = usePage<SharedData>().props;
+    const [isOpen, setIsOpen] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
 
   const navItems = [
     { name: "Home", href: "/" },
@@ -25,6 +28,14 @@ export default function Navbar() {
     { name: "Donate", href: "/donate" },
     { name: "Contact", href: "/contact" },
   ]
+
+    const cleanup = useMobileNavigation();
+
+        const handleLogout = () => {
+            cleanup();
+            setIsLoggedIn(false);
+            router.flushAll();
+        };
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -84,14 +95,25 @@ export default function Navbar() {
                         <span>Profile</span>
                       </Link>
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
-                      <Settings className="mr-2 h-4 w-4" />
-                      <span>Settings</span>
+                    <DropdownMenuItem asChild>
+                        <Link href={route('profile.edit')}>
+                            <Settings className="mr-2 h-4 w-4" />
+                            <span>Settings</span>
+                        </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem asChild>
+                      <Link href={route("dashboard")}>
+                        <LayoutGrid className="mr-2 h-4 w-4" />
+                        <span>Dashboard</span>
+                      </Link>
+                    </DropdownMenuItem>
+
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onClick={() => setIsLoggedIn(false)}>
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Log out</span>
+                    <DropdownMenuItem asChild>
+                    <Link method="post" className="w-full" href={route('logout')} onClick={handleLogout}>
+                        <LogOut className="mr-2 h-4 w-4" />
+                        <span>Log out</span>
+                    </Link>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

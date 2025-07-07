@@ -8,6 +8,7 @@ use App\Http\Controllers\Auth\NewPasswordController;
 use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
+use App\Http\Controllers\OrganizationRegisterController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -20,15 +21,12 @@ Route::middleware('guest')->group(function () {
         return Inertia::render('frontend/register/user');
     })->name('register.user');
 
-    Route::get('/register/organization', function () {
-        return Inertia::render('frontend/register/organization');
-    })->name('register.organization');
+    Route::get('/register/organization', [OrganizationRegisterController::class, "create"])->name('register.organization');
 
+    Route::post('/register/organization', [OrganizationRegisterController::class, "register"])->name('register.organization.store');
 
-    Route::get('/login', function () {
-        return Inertia::render('frontend/login');
-    })->name('login');
-
+    Route::post('/register/organization/lookup-ein', [OrganizationRegisterController::class, 'lookupEIN'])
+        ->name('register.organization.lookup-ein');
 
     // Route::get('register', [RegisteredUserController::class, 'create'])
     //     ->name('register');
@@ -37,6 +35,10 @@ Route::middleware('guest')->group(function () {
 
     // Route::get('login-old', [AuthenticatedSessionController::class, 'create'])
     //     ->name('login-old');
+
+    Route::get('/login', function () {
+        return Inertia::render('frontend/login');
+    })->name('login');
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);
 

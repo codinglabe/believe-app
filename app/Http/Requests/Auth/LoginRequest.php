@@ -41,11 +41,30 @@ class LoginRequest extends FormRequest
     {
         $this->ensureIsNotRateLimited();
 
-        if (! Auth::attempt($this->only('email', 'password'), $this->boolean('remember'))) {
+        $credentials = $this->only('email', 'password');
+
+        if (! Auth::attempt($credentials, $this->boolean('remember'))) {
             RateLimiter::hit($this->throttleKey());
 
             throw ValidationException::withMessages([
                 'email' => __('auth.failed'),
+            ]);
+        }
+
+        $user = Auth::user();
+
+        // Fix the logic - assign role if user doesn't have it
+        $desiredRole = $user->role ?? 'user';
+
+        if (!$user->hasRole($desiredRole)) {
+            $user->assignRole($desiredRole);
+        }
+
+        if ($user->login_status != true) {
+            Auth::guard('web')->logout(); // log them out immediately
+
+            throw ValidationException::withMessages([
+                'email' => 'You are not allowed to login. Please contact admin.',
             ]);
         }
 

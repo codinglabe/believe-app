@@ -3,9 +3,10 @@
 import type React from "react"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { FormEventHandler } from 'react';
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, CheckCircle, Send } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, CheckCircle, Send, LoaderCircle } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
@@ -13,85 +14,101 @@ import { Label } from "@/components/frontend/ui/label"
 import { Separator } from "@/components/frontend/ui/separator"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
-import { Link } from "@inertiajs/react"
+import { Link, useForm } from "@inertiajs/react"
+import InputError from "@/components/input-error";
+
+type RegisterForm = {
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    agreeToTerms: boolean;
+};
 
 export default function UserRegisterPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
-  const [isSubmitting, setIsSubmitting] = useState(false)
-  const [isSuccess, setIsSuccess] = useState(false)
-  const [formData, setFormData] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-    agreeToTerms: false,
-    subscribeNewsletter: true,
-  })
+//   const [isSubmitting, setIsSubmitting] = useState(false)
+//   const [isSuccess, setIsSuccess] = useState(false)
 
-  const handleInputChange = (field: string, value: string | boolean) => {
-    setFormData((prev) => ({ ...prev, [field]: value }))
-  }
+    const { data, setData, post, processing, errors, reset } = useForm<Required<RegisterForm>>({
+            name: '',
+            email: '',
+            password: '',
+            password_confirmation: '',
+            agreeToTerms: false,
+    });
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsSubmitting(true)
+    const submit: FormEventHandler = (e) => {
+            e.preventDefault();
+            post(route('register'), {
+                onFinish: () => reset('password', 'password_confirmation'),
+            });
+    };
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    setIsSubmitting(false)
-    setIsSuccess(true)
-  }
+//   const handleInputChange = (field: string, value: string | boolean) => {
+//     setFormData((prev) => ({ ...prev, [field]: value }))
+//   }
 
-  if (isSuccess) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center py-12">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.6 }}
-            className="max-w-md mx-auto"
-          >
-            <Card className="border-0 shadow-xl bg-white dark:bg-gray-800 text-center">
-              <CardContent className="pt-8 pb-8">
-                <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <CheckCircle className="h-8 w-8 text-green-600" />
-                </div>
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Account Created Successfully!</h2>
-                <p className="text-gray-600 dark:text-gray-300 mb-6">
-                  Welcome to CareConnect! We've sent a verification email to{" "}
-                  <span className="font-medium text-blue-600">{formData.email}</span>
-                </p>
-                <Alert className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
-                  <Send className="h-4 w-4 text-blue-600" />
-                  <AlertDescription className="text-blue-700 dark:text-blue-400">
-                    Please check your email and click the verification link to activate your account.
-                  </AlertDescription>
-                </Alert>
-                <div className="space-y-3">
-                  <Link href={route('login')}>
-                    <Button className="w-full bg-blue-600 hover:bg-blue-700">Go to Sign In</Button>
-                  </Link>
-                  <Link href={route('home')}>
-                    <Button variant="outline" className="w-full bg-transparent">
-                      Continue Browsing
-                    </Button>
-                  </Link>
-                </div>
-                <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
-                  Didn't receive the email?{" "}
-                  <button className="text-blue-600 hover:underline">Resend verification</button>
-                </p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        </div>
-      </div>
-    )
-  }
+//   const handleSubmit = async (e: React.FormEvent) => {
+//     e.preventDefault()
+//     setIsSubmitting(true)
+
+//     // Simulate API call
+//     await new Promise((resolve) => setTimeout(resolve, 2000))
+
+//     setIsSubmitting(false)
+//     setIsSuccess(true)
+//   }
+
+//   if (isSuccess) {
+//     return (
+//       <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center py-12">
+//         <div className="container mx-auto px-4">
+//           <motion.div
+//             initial={{ opacity: 0, scale: 0.9 }}
+//             animate={{ opacity: 1, scale: 1 }}
+//             transition={{ duration: 0.6 }}
+//             className="max-w-md mx-auto"
+//           >
+//             <Card className="border-0 shadow-xl bg-white dark:bg-gray-800 text-center">
+//               <CardContent className="pt-8 pb-8">
+//                 <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
+//                   <CheckCircle className="h-8 w-8 text-green-600" />
+//                 </div>
+//                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Account Created Successfully!</h2>
+//                 <p className="text-gray-600 dark:text-gray-300 mb-6">
+//                   Welcome to CareConnect! We've sent a verification email to{" "}
+//                   <span className="font-medium text-blue-600">{formData.email}</span>
+//                 </p>
+//                 <Alert className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
+//                   <Send className="h-4 w-4 text-blue-600" />
+//                   <AlertDescription className="text-blue-700 dark:text-blue-400">
+//                     Please check your email and click the verification link to activate your account.
+//                   </AlertDescription>
+//                 </Alert>
+//                 <div className="space-y-3">
+//                   <Link href={route('login')}>
+//                     <Button className="w-full bg-blue-600 hover:bg-blue-700">Go to Sign In</Button>
+//                   </Link>
+//                   <Link href={route('home')}>
+//                     <Button variant="outline" className="w-full bg-transparent">
+//                       Continue Browsing
+//                     </Button>
+//                   </Link>
+//                 </div>
+//                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
+//                   Didn't receive the email?{" "}
+//                   <button className="text-blue-600 hover:underline">Resend verification</button>
+//                 </p>
+//               </CardContent>
+//             </Card>
+//           </motion.div>
+//         </div>
+//       </div>
+//     )
+//   }
 
     return (
     <FrontendLayout>
@@ -127,11 +144,10 @@ export default function UserRegisterPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+              <form onSubmit={submit} className="space-y-4">
                   <div>
                     <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
-                      First Name
+                     Full Name
                     </Label>
                     <div className="relative">
                       <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
@@ -139,28 +155,15 @@ export default function UserRegisterPage() {
                         id="firstName"
                         type="text"
                         placeholder="John"
-                        value={formData.firstName}
-                        onChange={(e) => handleInputChange("firstName", e.target.value)}
+                        value={data.name}
+                        onChange={(e) => setData('name', e.target.value)}
+                        disabled={processing}
                         className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                         required
-                      />
+                                                />
+                        <InputError message={errors.name} className="mt-2" />
                     </div>
                   </div>
-                  <div>
-                    <Label htmlFor="lastName" className="text-gray-900 dark:text-white">
-                      Last Name
-                    </Label>
-                    <Input
-                      id="lastName"
-                      type="text"
-                      placeholder="Doe"
-                      value={formData.lastName}
-                      onChange={(e) => handleInputChange("lastName", e.target.value)}
-                      className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                      required
-                    />
-                  </div>
-                </div>
 
                 <div>
                   <Label htmlFor="email" className="text-gray-900 dark:text-white">
@@ -172,11 +175,13 @@ export default function UserRegisterPage() {
                       id="email"
                       type="email"
                       placeholder="john@example.com"
-                      value={formData.email}
-                      onChange={(e) => handleInputChange("email", e.target.value)}
+                      value={data.email}
+                        onChange={(e) => setData('email', e.target.value)}
+                        disabled={processing}
                       className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                       required
-                    />
+                                            />
+                                             <InputError message={errors.email} />
                   </div>
                 </div>
 
@@ -190,8 +195,9 @@ export default function UserRegisterPage() {
                       id="password"
                       type={showPassword ? "text" : "password"}
                       placeholder="Create a strong password"
-                      value={formData.password}
-                      onChange={(e) => handleInputChange("password", e.target.value)}
+                      value={data.password}
+                      onChange={(e) => setData('password', e.target.value)}
+                      disabled={processing}
                       className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                       required
                     />
@@ -201,7 +207,8 @@ export default function UserRegisterPage() {
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
+                                            </button>
+                    <InputError message={errors.password} />
                   </div>
                 </div>
 
@@ -215,8 +222,9 @@ export default function UserRegisterPage() {
                       id="confirmPassword"
                       type={showConfirmPassword ? "text" : "password"}
                       placeholder="Confirm your password"
-                      value={formData.confirmPassword}
-                      onChange={(e) => handleInputChange("confirmPassword", e.target.value)}
+                      value={data.password_confirmation}
+                            onChange={(e) => setData('password_confirmation', e.target.value)}
+                            disabled={processing}
                       className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
                       required
                     />
@@ -226,16 +234,18 @@ export default function UserRegisterPage() {
                       className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
                     >
                       {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
+                                            </button>
+                    <InputError message={errors.password_confirmation} />
                   </div>
                 </div>
 
                 <div className="space-y-3">
                   <div className="flex items-center space-x-2">
                     <Checkbox
-                      id="terms"
-                      checked={formData.agreeToTerms}
-                      onCheckedChange={(checked) => handleInputChange("agreeToTerms", checked as boolean)}
+                    id="terms"
+                    required
+                      checked={data.agreeToTerms}
+                      onCheckedChange={(checked) => setData("agreeToTerms", checked as boolean)}
                     />
                     <Label htmlFor="terms" className="text-sm text-gray-900 dark:text-white">
                       I agree to the{" "}
@@ -248,7 +258,7 @@ export default function UserRegisterPage() {
                       </Link>
                     </Label>
                   </div>
-                  <div className="flex items-center space-x-2">
+                  {/* <div className="flex items-center space-x-2">
                     <Checkbox
                       id="newsletter"
                       checked={formData.subscribeNewsletter}
@@ -257,17 +267,17 @@ export default function UserRegisterPage() {
                     <Label htmlFor="newsletter" className="text-sm text-gray-900 dark:text-white">
                       Subscribe to our newsletter for updates and impact stories
                     </Label>
-                  </div>
+                  </div> */}
                 </div>
 
                 <Button
                   type="submit"
                   className="w-full h-12 bg-blue-600 hover:bg-blue-700"
-                  disabled={!formData.agreeToTerms || isSubmitting}
-                >
-                  {isSubmitting ? (
+                  disabled={processing}
+                                    >
+                  {processing ? (
                     <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
                       Creating Account...
                     </>
                   ) : (
@@ -276,7 +286,7 @@ export default function UserRegisterPage() {
                 </Button>
               </form>
 
-              <div className="relative">
+              {/* <div className="relative">
                 <Separator />
                 <div className="absolute inset-0 flex items-center justify-center">
                   <span className="bg-white px-2 text-sm text-gray-500">Or sign up with</span>
@@ -317,7 +327,7 @@ export default function UserRegisterPage() {
                   </svg>
                   Facebook
                 </Button>
-              </div>
+              </div> */}
 
               <div className="text-center">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
