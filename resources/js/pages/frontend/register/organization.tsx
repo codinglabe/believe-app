@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import {
   Building2,
@@ -23,7 +23,7 @@ import { Label } from "@/components/frontend/ui/label"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 
 // Types
@@ -42,6 +42,7 @@ interface RegistrationResponse {
 }
 
 export default function OrganizationRegisterPage() {
+    const { csrf_token } = usePage<PageProps>().props
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [step, setStep] = useState(1)
@@ -49,7 +50,8 @@ export default function OrganizationRegisterPage() {
   const [einError, setEinError] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [registrationSuccess, setRegistrationSuccess] = useState(false)
-  const [successMessage, setSuccessMessage] = useState("")
+    const [successMessage, setSuccessMessage] = useState("")
+    const [csrfToken, setCsrfToken] = useState(csrf_token || "")
 
   // Form data state
   const [einData, setEinData] = useState({ ein: "" })
@@ -87,11 +89,48 @@ export default function OrganizationRegisterPage() {
     has_edited_irs_data: false,
   })
 
-  // Get CSRF token
-  const getCsrfToken = () => {
-    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content")
-    return token || ""
+   // Multiple methods to get CSRF token
+   const getCsrfToken = () => {
+    // Method 1: From Inertia props (most reliable)
+    if (csrf_token) {
+      return csrf_token
+    }
+
+    // Method 2: From state
+    if (csrfToken) {
+      return csrfToken
+    }
+
+    // Method 3: From meta tag (fallback)
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute("content")
+    if (metaToken) {
+      setCsrfToken(metaToken)
+      return metaToken
+    }
+
+    // Method 4: From cookie (if using cookie-based CSRF)
+    const cookieToken = document.cookie
+      .split("; ")
+      .find((row) => row.startsWith("XSRF-TOKEN="))
+      ?.split("=")[1]
+
+    if (cookieToken) {
+      const decodedToken = decodeURIComponent(cookieToken)
+      setCsrfToken(decodedToken)
+      return decodedToken
+    }
+
+    console.error("CSRF token not found!")
+    return ""
   }
+
+  // Ensure CSRF token is available on component mount
+  useEffect(() => {
+    const token = getCsrfToken()
+    if (token && !csrfToken) {
+      setCsrfToken(token)
+    }
+  }, [csrf_token])
 
   const handleInputChange = (field: string, value: string | boolean) => {
     setFormData((prev) => ({
@@ -140,7 +179,14 @@ export default function OrganizationRegisterPage() {
 
     console.log("Starting EIN lookup for:", einData.ein)
     setIsLoading(true)
-    setEinError("")
+      setEinError("")
+
+    const token = getCsrfToken()
+    if (!token) {
+      setEinError("Security token not available. Please refresh the page.")
+      setIsLoading(false)
+      return
+    }
 
     try {
       const response = await fetch(route("register.organization.lookup-ein"), {
@@ -208,7 +254,14 @@ export default function OrganizationRegisterPage() {
     }
 
     setIsLoading(true)
-    setErrors({})
+      setErrors({})
+
+      const token = getCsrfToken()
+    if (!token) {
+      setEinError("Security token not available. Please refresh the page.")
+      setIsLoading(false)
+      return
+    }
 
     try {
       const response = await fetch(route("register.organization.store"), {
