@@ -9,6 +9,7 @@ use App\Http\Controllers\Auth\PasswordResetLinkController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\OrganizationRegisterController;
+use App\Http\Controllers\ProfilePhotoController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -56,6 +57,12 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    // Profile photo routes
+    Route::post('/profile/photo', [ProfilePhotoController::class, 'store'])->name('profile.photo.store');
+    Route::delete('/profile/photo', [ProfilePhotoController::class, 'destroy'])->name('profile.photo.destroy');
+    Route::get('/profile/photo', [ProfilePhotoController::class, 'show'])->name('profile.photo.show');
+
+
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');
 

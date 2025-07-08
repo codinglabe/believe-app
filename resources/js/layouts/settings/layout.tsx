@@ -1,68 +1,170 @@
-import Heading from '@/components/heading';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { cn } from '@/lib/utils';
-import { type NavItem } from '@/types';
-import { Link } from '@inertiajs/react';
-import { type PropsWithChildren } from 'react';
+"use client"
 
-const sidebarNavItems: NavItem[] = [
-    {
-        title: 'Profile',
-        href: '/settings/profile',
-        icon: null,
-    },
-    {
-        title: 'Password',
-        href: '/settings/password',
-        icon: null,
-    },
-    {
-        title: 'Appearance',
-        href: '/settings/appearance',
-        icon: null,
-    },
-];
+import type { BreadcrumbItem, SharedData } from "@/types"
+import { Head, Link, usePage } from "@inertiajs/react"
+import { useState } from "react"
+import { motion } from "framer-motion"
+import AppLayout from "@/layouts/app-layout"
+import { Button } from "@/components/frontend/ui/button"
+import { Card, CardContent } from "@/components/frontend/ui/card"
+import { Tabs, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
+import { Badge } from "@/components/frontend/ui/badge"
+import { Calendar, Camera, Edit3, MapPin, User, Lock, Bell, Shield, CreditCard, Image } from "lucide-react"
+import type { PropsWithChildren } from "react"
 
-export default function SettingsLayout({ children }: PropsWithChildren) {
-    // When server-side rendering, we only render the layout on the client...
-    if (typeof window === 'undefined') {
-        return null;
-    }
+interface SettingsLayoutProps extends PropsWithChildren {
+  activeTab?: string
+}
 
-    const currentPath = window.location.pathname;
+export default function SettingsLayout({ children, activeTab = "profile" }: SettingsLayoutProps) {
+  const { auth } = usePage<SharedData>().props
 
-    return (
-        <div className="px-4 py-6">
-            <Heading title="Settings" description="Manage your profile and account settings" />
+  // Mock profile data - replace with real data from auth.user
+  const profileData = {
+    firstName: auth.user.name?.split(" ")[0] || "John",
+    lastName: auth.user.name?.split(" ")[1] || "Doe",
+    email: auth.user.email,
+    avatar: auth.user.image,
+    phone: "+1 (555) 123-4567",
+    location: "New York, NY",
+    bio: "Passionate about making a difference in the world through charitable giving and community support.",
+    joinDate: "January 2023",
+  }
 
-            <div className="flex flex-col space-y-8 lg:flex-row lg:space-y-0 lg:space-x-12">
-                <aside className="w-full max-w-xl lg:w-48">
-                    <nav className="flex flex-col space-y-1 space-x-0">
-                        {sidebarNavItems.map((item, index) => (
-                            <Button
-                                key={`${item.href}-${index}`}
-                                size="sm"
-                                variant="ghost"
-                                asChild
-                                className={cn('w-full justify-start', {
-                                    'bg-muted': currentPath === item.href,
-                                })}
-                            >
-                                <Link href={item.href} prefetch>
-                                    {item.title}
-                                </Link>
-                            </Button>
-                        ))}
-                    </nav>
-                </aside>
+  return (
+    <AppLayout>
+      <Head title="Profile Settings" />
 
-                <Separator className="my-6 md:hidden" />
+      <div className="min-h-screen bg-gray-50 dark:bg-black">
+        <div className="container mx-auto px-4 py-6 lg:py-8">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6 }}
+            className="max-w-7xl mx-auto"
+          >
+            {/* Profile Header Card */}
+            <Card className="mb-6 lg:mb-8 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+              <CardContent className="p-4 sm:p-6 lg:p-8">
+                <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6">
+                  {/* Avatar Section */}
+                                  <div className="relative flex-shrink-0">
+                        <Avatar className="w-24 h-24 lg:w-32 lg:h-32 border-4 border-white dark:border-gray-700 shadow-lg">
+                      <AvatarImage src={ '/storage/' + profileData.avatar || "/placeholder.svg"} alt="Profile" />
+                      <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-2xl lg:text-3xl font-semibold">
+                        {profileData.firstName[0]}
+                        {profileData.lastName[0]}
+                                          </AvatarFallback>
+                    {/* <Image src={'storage/' + profileData.avatar} alt="" /> */}
+                    </Avatar>
+                    {/* <Button
+                      size="sm"
+                      variant="outline"
+                      className="absolute -bottom-2 -right-2 rounded-full w-10 h-10 p-0 bg-white dark:bg-gray-900 border-2 border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                    >
+                      <Camera className="h-4 w-4" />
+                    </Button> */}
+                  </div>
 
-                <div className="flex-1 md:max-w-2xl">
-                    <section className="max-w-xl space-y-12">{children}</section>
+                  {/* Profile Info */}
+                  <div className="flex-1 text-center lg:text-left min-w-0">
+                    <div className="mb-4">
+                      <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-2">
+                        <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white truncate">
+                          {profileData.firstName} {profileData.lastName}
+                        </h1>
+                        <Badge
+                          variant="secondary"
+                          className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 w-fit mx-auto lg:mx-0"
+                        >
+                          ✓ Verified Account
+                        </Badge>
+                      </div>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm lg:text-base leading-relaxed">
+                        {profileData.bio}
+                      </p>
+                    </div>
+
+                    {/* Profile Stats */}
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-4 text-sm text-gray-600 dark:text-gray-300">
+                      <div className="flex items-center justify-center lg:justify-start gap-2">
+                        <Calendar className="h-4 w-4 text-blue-500" />
+                        <span>Joined {profileData.joinDate}</span>
+                      </div>
+                      <div className="flex items-center justify-center lg:justify-start gap-2">
+                        <MapPin className="h-4 w-4 text-red-500" />
+                        <span>{profileData.location}</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
+              </CardContent>
+            </Card>
+
+            {/* Settings Navigation & Content */}
+            <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 lg:gap-8">
+              {/* Sidebar Navigation - Hidden on mobile, shown as tabs */}
+              <div className="lg:col-span-1">
+                <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+                  <CardContent className="p-0">
+                    {/* Mobile Tabs */}
+                    <div className="lg:hidden">
+                      <Tabs value={activeTab} className="w-full">
+                        <TabsList className="w-full h-auto p-1 bg-gray-100 dark:bg-gray-700 grid grid-cols-2 gap-1">
+                          <TabsTrigger value="profile" asChild>
+                            <Link href={route("profile.edit")} className="flex items-center gap-2 px-3 py-2 text-sm">
+                              <User className="h-4 w-4" />
+                              Profile
+                            </Link>
+                          </TabsTrigger>
+                          <TabsTrigger value="password" asChild>
+                            <Link href={route("password.edit")} className="flex items-center gap-2 px-3 py-2 text-sm">
+                              <Lock className="h-4 w-4" />
+                              Security
+                            </Link>
+                          </TabsTrigger>
+                        </TabsList>
+                      </Tabs>
+                    </div>
+
+                    {/* Desktop Sidebar */}
+                    <nav className="hidden lg:block p-2">
+                      <div className="space-y-1">
+                        <Link
+                          href={route("profile.edit")}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === "profile"
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                              : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          <User className="h-4 w-4" />
+                          Profile Information
+                        </Link>
+                        <Link
+                          href={route("password.edit")}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === "password"
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                              : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          <Lock className="h-4 w-4" />
+                          Password & Security
+                        </Link>
+                      </div>
+                    </nav>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Main Content Area */}
+              <div className="lg:col-span-3">{children}</div>
             </div>
+          </motion.div>
         </div>
-    );
+      </div>
+    </AppLayout>
+  )
 }
