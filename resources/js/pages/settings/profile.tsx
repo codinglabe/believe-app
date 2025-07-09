@@ -41,10 +41,6 @@ type ProfileForm = {
   name: string
   email: string
   phone?: string
-  location?: string
-  bio?: string
-  website?: string
-  birth_date?: string
 }
 
 export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
@@ -60,24 +56,22 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
   const [isUploading, setIsUploading] = useState(false)
   const [photoError, setPhotoError] = useState<string>("")
   const [photoSuccess, setPhotoSuccess] = useState<string>("")
-  const [currentPhotoUrl, setCurrentPhotoUrl] = useState('/storage/' + auth.user.image)
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState( auth.user.image)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, setData, patch, errors, processing, recentlySuccessful } = useForm<ProfileForm>({
     name: auth.user.name || "",
-    contact_title: auth.user.organization.contact_title || "",
     email: auth.user.email || "",
-    phone: auth.user.contact_number || "",
-    bio: auth.user.bio || "",
-    website: auth.user.website || "",
-    birth_date: auth.user.birth_date || "",
+    phone: auth.user.phone || "",
   })
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
     patch(route("profile.update"), {
       preserveScroll: true,
-      onSuccess: () => setIsEditing(false),
+        onSuccess: () => {
+            //
+        },
     })
   }
 
@@ -474,96 +468,10 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                 </div>
                 <InputError message={errors.phone} className="mt-1" />
               </div>
-
-              {/* Location */}
-              <div>
-                <Label htmlFor="location" className="text-gray-900 dark:text-white font-medium">
-                  Location
-                </Label>
-                <div className="relative mt-1">
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="location"
-                    type="text"
-                    value={data.location}
-                    onChange={(e) => setData("location", e.target.value)}
-                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="City, State/Country"
-                  />
-                </div>
-                <InputError message={errors.location} className="mt-1" />
-              </div>
             </CardContent>
           </Card>
 
-          {/* Additional Information */}
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
-                <Globe className="h-5 w-5 text-green-500" />
-                Additional Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Website */}
-              <div>
-                <Label htmlFor="website" className="text-gray-900 dark:text-white font-medium">
-                  Website
-                </Label>
-                <div className="relative mt-1">
-                  <Globe className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="website"
-                    type="url"
-                    value={data.website}
-                    onChange={(e) => setData("website", e.target.value)}
-                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
-                    placeholder="https://yourwebsite.com"
-                  />
-                </div>
-                <InputError message={errors.website} className="mt-1" />
-              </div>
-
-              {/* Birth Date */}
-              <div>
-                <Label htmlFor="birth_date" className="text-gray-900 dark:text-white font-medium">
-                  Birth Date
-                </Label>
-                <div className="relative mt-1">
-                  <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-                  <Input
-                    id="birth_date"
-                    type="date"
-                    value={data.birth_date}
-                    onChange={(e) => setData("birth_date", e.target.value)}
-                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-                <InputError message={errors.birth_date} className="mt-1" />
-              </div>
-
-              {/* Bio */}
-              <div>
-                <Label htmlFor="bio" className="text-gray-900 dark:text-white font-medium">
-                  Bio
-                </Label>
-                <Textarea
-                  id="bio"
-                  value={data.bio}
-                  onChange={(e) => setData("bio", e.target.value)}
-                  className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 min-h-[100px] resize-none"
-                  placeholder="Tell us a bit about yourself..."
-                  maxLength={500}
-                />
-                <div className="flex justify-between items-center mt-1">
-                  <InputError message={errors.bio} />
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{data.bio?.length || 0}/500</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Privacy Settings */}
+          {/* Privacy Settings
           <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white">Privacy Settings</CardTitle>
@@ -587,7 +495,7 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                 <Switch defaultChecked />
               </div>
             </CardContent>
-          </Card>
+          </Card> */}
 
           {/* Save Button */}
           <div className="flex justify-end">

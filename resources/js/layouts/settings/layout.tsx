@@ -26,10 +26,10 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
     lastName: auth.user.name?.split(" ")[1] || "Doe",
     email: auth.user.email,
     avatar: auth.user.image,
-    phone: "+1 (555) 123-4567",
-    location: "New York, NY",
-    bio: "Passionate about making a difference in the world through charitable giving and community support.",
-    joinDate: "January 2023",
+    phone: auth.user.contact_number || "",
+    email_verified_at: auth.user.email_verified_at || "",
+    location: auth.user.organization?.address || "",
+    joinDate: auth.user.organization?.joined || "",
   }
 
   return (
@@ -48,15 +48,14 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
             <Card className="mb-6 lg:mb-8 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
               <CardContent className="p-4 sm:p-6 lg:p-8">
                 <div className="flex flex-col lg:flex-row items-center lg:items-start gap-6">
-                  {/* Avatar Section */}
+                                  {/* Avatar Section */}
                                   <div className="relative flex-shrink-0">
                         <Avatar className="w-24 h-24 lg:w-32 lg:h-32 border-4 border-white dark:border-gray-700 shadow-lg">
-                      <AvatarImage src={ '/storage/' + profileData.avatar || "/placeholder.svg"} alt="Profile" />
+                      <AvatarImage src={ profileData.avatar || "/placeholder.svg"} alt="Profile" />
                       <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-2xl lg:text-3xl font-semibold">
                         {profileData.firstName[0]}
                         {profileData.lastName[0]}
                                           </AvatarFallback>
-                    {/* <Image src={'storage/' + profileData.avatar} alt="" /> */}
                     </Avatar>
                     {/* <Button
                       size="sm"
@@ -73,17 +72,21 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-2">
                         <h1 className="text-2xl lg:text-3xl font-bold text-gray-900 dark:text-white truncate">
                           {profileData.firstName} {profileData.lastName}
-                        </h1>
-                        <Badge
-                          variant="secondary"
-                          className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 w-fit mx-auto lg:mx-0"
-                        >
-                          ✓ Verified Account
-                        </Badge>
+                                              </h1>
+                                              {profileData?.email_verified_at ? (
+  <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
+    ✓ Verified Account
+  </Badge>
+) : (
+  <Badge className="bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300">
+    ✗ Unverified Account
+  </Badge>
+)}
+
                       </div>
-                      <p className="text-gray-600 dark:text-gray-300 text-sm lg:text-base leading-relaxed">
+                      {/* <p className="text-gray-600 dark:text-gray-300 text-sm lg:text-base leading-relaxed">
                         {profileData.bio}
-                      </p>
+                      </p> */}
                     </div>
 
                     {/* Profile Stats */}
