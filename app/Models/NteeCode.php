@@ -13,4 +13,9 @@ class NteeCode extends Model
         'category',
         'description', // Description of the NTEE code
     ];
+
+    public function organizations()
+    {
+        return $this->hasMany(Organization::class, 'ntee_code', 'ntee_codes');
+    }
 }

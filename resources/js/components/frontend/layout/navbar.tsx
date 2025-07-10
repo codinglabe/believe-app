@@ -90,7 +90,7 @@ export default function Navbar() {
                     </div>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                      <Link href={route("profile")}>
+                      <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <User className="mr-2 h-4 w-4" />
                         <span>Profile</span>
                       </Link>
@@ -100,14 +100,17 @@ export default function Navbar() {
                             <Settings className="mr-2 h-4 w-4" />
                             <span>Settings</span>
                         </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href={route("dashboard")}>
-                        <LayoutGrid className="mr-2 h-4 w-4" />
-                        <span>Dashboard</span>
-                      </Link>
-                    </DropdownMenuItem>
-
+                                      </DropdownMenuItem>
+                    {
+                        auth?.user?.role === 'admin' && (
+                            <DropdownMenuItem asChild>
+                            <Link href={route("dashboard")}>
+                              <LayoutGrid className="mr-2 h-4 w-4" />
+                              <span>Dashboard</span>
+                            </Link>
+                          </DropdownMenuItem>
+                        )
+                    }
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                     <Link method="post" className="w-full" href={route('logout')} onClick={handleLogout}>

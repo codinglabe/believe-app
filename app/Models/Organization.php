@@ -52,4 +52,26 @@ class Organization extends Model
     {
         return substr($this->ein, 0, 2) . '-' . substr($this->ein, 2);
     }
+
+    public function nteeCode()
+    {
+        return $this->belongsTo(NteeCode::class, 'ntee_code', 'ntee_codes');
+    }
+
+    // Scope for active organizations
+    public function scopeActive($query)
+    {
+        return $query->where('status', 'Active')
+            ->where('registration_status', 'approved');
+    }
+
+    // Scope for search
+    public function scopeSearch($query, $search)
+    {
+        return $query->where(function ($q) use ($search) {
+            $q->where('name', 'LIKE', "%{$search}%")
+                ->orWhere('description', 'LIKE', "%{$search}%")
+                ->orWhere('mission', 'LIKE', "%{$search}%");
+        });
+    }
 }

@@ -9,55 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/frontend/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import { motion } from "framer-motion"
-import { Link } from "@inertiajs/react"
-
-const featuredOrganizations = [
-  {
-    id: 1,
-    name: "Global Water Foundation",
-    description: "Providing clean water access to communities worldwide through sustainable infrastructure",
-    image: "/placeholder.svg?height=300&width=400&text=Clean+Water+Project",
-    category: "Environment",
-    state: "NY",
-    city: "New York",
-    zipCode: "10001",
-    verified: true,
-    rating: 4.9,
-    supporters: 12500,
-    raised: "$2.4M",
-    impact: "250K+ people served",
-  },
-  {
-    id: 2,
-    name: "Education Without Borders",
-    description: "Building schools and providing educational resources to underserved communities globally",
-    image: "/placeholder.svg?height=300&width=400&text=Education+Initiative",
-    category: "Education",
-    state: "CA",
-    city: "Los Angeles",
-    zipCode: "90210",
-    verified: true,
-    rating: 4.8,
-    supporters: 8900,
-    raised: "$1.8M",
-    impact: "150+ schools built",
-  },
-  {
-    id: 3,
-    name: "Hunger Relief Network",
-    description: "Fighting hunger and food insecurity through local food programs and distribution",
-    image: "/placeholder.svg?height=300&width=400&text=Food+Security",
-    category: "Health",
-    state: "TX",
-    city: "Houston",
-    zipCode: "77001",
-    verified: true,
-    rating: 4.7,
-    supporters: 15600,
-    raised: "$3.2M",
-    impact: "500K+ meals provided",
-  },
-]
+import { Link, router, usePage } from "@inertiajs/react"
+import SearchSection from "@/components/frontend/SearchSection"
+import OrganizationCard from "@/components/frontend/OrganizationCard"
 
 const stats = [
   { label: "Verified Organizations", value: "2,500+", icon: Shield, color: "text-blue-600" },
@@ -84,27 +38,60 @@ const features = [
   },
 ]
 
-const categories = ["All Categories", "Environment", "Education", "Health", "Technology", "Human Rights"]
-const states = ["All States", "NY", "CA", "TX", "FL", "WA"]
-const cities = ["All Cities", "New York", "Los Angeles", "Houston", "Miami", "Seattle"]
+interface PageProps {
+    filters: {
+      search?: string
+      category?: string
+      state?: string
+      city?: string
+      zip?: string
+    }
+    filterOptions: {
+      categories: string[]
+      states: string[]
+      cities: string[]
+    }
+    featuredOrganizations?: any[]
+  }
 
 export default function HomePage() {
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All Categories")
-  const [selectedState, setSelectedState] = useState("All States")
-  const [selectedCity, setSelectedCity] = useState("All Cities")
-  const [zipCode, setZipCode] = useState("")
+    const { filterOptions, filters, featuredOrganizations = [] } = usePage<PageProps>().props
+    const [isLoading, setIsLoading] = useState(false)
 
-  const handleSearch = () => {
-    const params = new URLSearchParams()
-    if (searchQuery) params.set("search", searchQuery)
-    if (selectedCategory !== "All Categories") params.set("category", selectedCategory)
-    if (selectedState !== "All States") params.set("state", selectedState)
-    if (selectedCity !== "All Cities") params.set("city", selectedCity)
-    if (zipCode) params.set("zip", zipCode)
+    // Handle search from SearchSection component
+    const handleSearch = (params: Record<string, string>) => {
+      setIsLoading(true)
+      const searchParams = new URLSearchParams()
 
-    window.location.href = `/organizations?${params.toString()}`
-  }
+      // Add all search parameters
+      Object.entries(params).forEach(([key, value]) => {
+        if (value && value !== "All Categories" && value !== "All States" && value !== "All Cities") {
+          searchParams.set(key, value)
+        }
+      })
+
+      // Navigate to organizations page with search parameters
+      const url = searchParams.toString() ? `/organizations?${searchParams.toString()}` : "/organizations"
+
+      router.visit(url, {
+        preserveState: false, // Don't preserve state when navigating to different page
+        preserveScroll: false,
+        onFinish: () => setIsLoading(false),
+      })
+    }
+
+    // Clear all filters and go to organizations page
+    const clearFilters = () => {
+      router.visit("/organizations", {
+        preserveState: false,
+        preserveScroll: false,
+      })
+    }
+
+    // Handle quick navigation to organizations page
+    const handleViewAllOrganizations = () => {
+      router.visit("/organizations")
+    }
 
     return (
     <FrontendLayout>
@@ -136,111 +123,17 @@ export default function HomePage() {
               create lasting impact in communities worldwide.
             </p>
 
-            {/* Enhanced Search Section */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8, delay: 0.2 }}
-              className="max-w-6xl mx-auto mb-16"
-            >
-              <div className="relative group">
-                <div className="absolute inset-0 bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl blur opacity-25 group-hover:opacity-40 transition duration-300"></div>
-                <div className="relative bg-white dark:bg-gray-800 rounded-2xl shadow-2xl border border-gray-200 dark:border-gray-700 p-6">
-                  {/* Main Search Bar */}
-                  <div className="mb-6">
-                    <div className="relative">
-                      <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        type="text"
-                        placeholder="Search organizations by name, mission, or keywords..."
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        onKeyPress={(e) => e.key === "Enter" && handleSearch()}
-                        className="pl-12 h-14 text-lg border-gray-300 dark:border-gray-600 focus:border-blue-500 dark:focus:border-blue-400 bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Advanced Filters */}
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-                    <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                      <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                        {categories.map((category) => (
-                          <SelectItem key={category} value={category} className="text-gray-900 dark:text-white">
-                            {category}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={selectedState} onValueChange={setSelectedState}>
-                      <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                        <SelectValue placeholder="State" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                        {states.map((state) => (
-                          <SelectItem key={state} value={state} className="text-gray-900 dark:text-white">
-                            {state}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Select value={selectedCity} onValueChange={setSelectedCity}>
-                      <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                        <SelectValue placeholder="City" />
-                      </SelectTrigger>
-                      <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                        {cities.map((city) => (
-                          <SelectItem key={city} value={city} className="text-gray-900 dark:text-white">
-                            {city}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-
-                    <Input
-                      type="text"
-                      placeholder="Zip Code"
-                      value={zipCode}
-                      onChange={(e) => setZipCode(e.target.value)}
-                      className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                    />
-
-                    <Button
-                      onClick={handleSearch}
-                      size="lg"
-                      className="h-12 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold"
-                    >
-                      <Search className="mr-2 h-5 w-5" />
-                      Search
-                    </Button>
-                  </div>
-
-                  {/* Quick Filter Tags */}
-                  <div className="flex flex-wrap gap-2">
-                    <span className="text-sm text-gray-600 dark:text-gray-300 mr-2">Popular:</span>
-                    {["Education", "Environment", "Health", "Emergency Relief"].map((tag) => (
-                      <Button
-                        key={tag}
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setSelectedCategory(tag)
-                          handleSearch()
-                        }}
-                        className="h-8 text-xs bg-transparent hover:bg-blue-50 dark:hover:bg-blue-900/30"
-                      >
-                        {tag}
-                      </Button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </motion.div>
+            {/* Search Section Component */}
+            <SearchSection
+                filters={filters}
+                filterOptions={filterOptions}
+                hasActiveFilters={false}
+                onSearch={handleSearch}
+                onClearFilters={clearFilters}
+                isLoading={isLoading}
+                showQuickFilters={true}
+                quickFilterTags={["Education", "Environment", "Health", "Emergency Relief"]}
+              />
 
             {/* Stats Grid */}
             <motion.div
@@ -283,78 +176,7 @@ export default function HomePage() {
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {featuredOrganizations.map((org, index) => (
-              <motion.div
-                key={org.id}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.6, delay: index * 0.1 }}
-                viewport={{ once: true }}
-                whileHover={{ y: -8 }}
-                className="group"
-              >
-                <Card className="h-full border-0 shadow-xl hover:shadow-2xl transition-all duration-500 bg-white dark:bg-gray-800 overflow-hidden">
-                  <div className="relative overflow-hidden">
-                    <img
-                      src={org.image || "/placeholder.svg"}
-                      alt={org.name}
-                      width={400}
-                      height={300}
-                      className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent"></div>
-                    <div className="absolute top-4 left-4">
-                      <Badge variant="secondary" className="bg-white/90 text-gray-700 font-medium">
-                        {org.category}
-                      </Badge>
-                    </div>
-                    <div className="absolute top-4 right-4">
-                      {org.verified && (
-                        <div className="bg-white/90 rounded-full p-1.5">
-                          <CheckCircle className="h-5 w-5 text-blue-600" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="absolute bottom-4 left-4 right-4">
-                      <div className="flex items-center justify-between text-white text-sm">
-                        <span className="font-semibold">{org.raised} raised</span>
-                        <span>{org.impact}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-xl group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
-                      {org.name}
-                    </CardTitle>
-                    <CardDescription className="text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                      {org.description}
-                    </CardDescription>
-                  </CardHeader>
-
-                  <CardContent className="pt-0">
-                    <div className="flex items-center justify-between mb-6">
-                      <div className="flex items-center gap-2">
-                        <MapPin className="h-4 w-4 text-gray-400" />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          {org.city}, {org.state}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400 fill-current" />
-                        <span className="text-sm font-semibold">{org.rating}</span>
-                      </div>
-                    </div>
-
-                    <Link
-                     href={`/organization/${org.id}`}>
-                      <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold">
-                        Learn More
-                        <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                      </Button>
-                    </Link>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                <OrganizationCard key={org.id} organization={org} index={index} showRating={true} rating={4.8} />
             ))}
           </div>
 

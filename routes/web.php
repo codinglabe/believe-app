@@ -3,17 +3,18 @@
 use App\Http\Controllers\ChunkedUploadController;
 use App\Http\Controllers\ClassificationCodeController;
 use App\Http\Controllers\DeductibilityCodeController;
+use App\Http\Controllers\HomeController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
+use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
+use App\Http\Controllers\UserProfileController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
 
-Route::get('/', function () {
-    return Inertia::render('frontend/home');
-})->name('home');
+Route::get('/', [HomeController::class, "index"])->name('home');
 
 Route::get('/about', function () {
     return Inertia::render('frontend/about');
@@ -27,19 +28,31 @@ Route::get('/donate', function () {
     return Inertia::render('frontend/donate');
 })->name('donate');
 
-Route::get("/organizations", function () {
-    return Inertia::render("frontend/organization/organizations");
-})->name("organizations");
+// Organization routes
+Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
+Route::get('/organizations/{id}', [OrganizationController::class, 'show'])->name('organizations.show');
 
-Route::get('/organization/{id}', function () {
-    return Inertia::render('frontend/organization/organization-show');
-})->name('organization.show');
+// API route for dynamic city loading
+Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
 
-Route::get('/profile', function () {
-    return Inertia::render('frontend/profile');
-})->name('profile');
+// Profile routes
+Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(function () {
+    Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
+    Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('profile.edit');
+    Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
 
-Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->group(function () {
+    Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
+
+    Route::get('/profile/favorites', [UserProfileController::class, 'favorites'])->name('profile.favorites');
+    Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
+    Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+});
+
+// Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
+//     return Inertia::render('frontend/profile');
+// });
+
+Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
     Route::get('dashboard', function () {
         return Inertia::render('dashboard');
     })->name('dashboard');

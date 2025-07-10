@@ -50,7 +50,9 @@ class HandleInertiaRequests extends Middleware
                     'name' => $user->name,
                     'email' => $user->email,
                     'phone' => $user->contact_number,
-                    "image" => '/storage/' . $user->image,
+                    'role' => $user->role,
+                    "image" => $user->image ? '/storage/' . $user->image : null,
+                    'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
                     "organization" => $user->organization ? [
                             'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip ,
