@@ -39,7 +39,13 @@ class HandleInertiaRequests extends Middleware
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
         $user = $request->user()?->load("organization");
-
+        $role = $user?->roles?->first();
+        $permissions = [];
+        if ($role?->permissions) {
+            foreach ($role?->permissions as $permission) {
+                $permissions[] = $permission->name;
+            }
+        }
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -55,12 +61,13 @@ class HandleInertiaRequests extends Middleware
                     'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
                     "organization" => $user->organization ? [
-                            'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip ,
-                            'joined' => $user->created_at->format('F Y'),
-                        ] : null,
+                        'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
+                        'joined' => $user->created_at->format('F Y'),
+                    ] : null,
                 ] : null,
+                'permissions' => $permissions
             ],
-            'ziggy' => fn (): array => [
+            'ziggy' => fn(): array => [
                 ...(new Ziggy)->toArray(),
                 'location' => $request->url(),
             ],

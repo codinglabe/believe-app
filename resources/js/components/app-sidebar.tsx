@@ -1,10 +1,9 @@
-import { NavFooter } from '@/components/nav-footer';
 import { NavMain } from '@/components/nav-main';
 import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { BookOpen, Folder, Download, LayoutGrid, FileText, Code } from 'lucide-react';
+import { Download, LayoutGrid, FileText } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: (NavItem | NavGroup)[] = [
@@ -12,16 +11,19 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: LayoutGrid,
+        permission: "dashbord.management.read"
     },
     {
         title: 'Upload Data',
         href: '/upload',
         icon: Download,
+        permission: "upload.data.read"
     },
     {
         title: 'Manage Data',
         href: '/manage-data',
         icon: FileText,
+        permission: "management.data.read"
     },
     {
         title: 'Codes',
@@ -30,18 +32,22 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Classification Codes',
                 href: '/classification-codes',
                 icon: FileText,
+                permission: "classificaiton.code.read"
             },
             {
                 title: 'Status Codes',
                 href: '/status-codes',
                 icon: FileText,
+                permission: "status.code.read"
             },
             {
                 title: 'Deductibility Codes',
                 href: '/deductibility-codes',
                 icon: FileText,
+                permission: "deductibily.code.read"
             },
         ],
+        permission: "code.management.read"
     },
 ];
 

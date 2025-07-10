@@ -1,7 +1,7 @@
-import { SidebarGroup, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem } from '@/components/ui/sidebar';
+import { SidebarGroup, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronRight } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
 
 interface NavMainProps {
@@ -10,6 +10,7 @@ interface NavMainProps {
 
 export function NavMain({ items = [] }: NavMainProps) {
     const page = usePage();
+    const { permissions } = (page?.props?.auth as { permissions?: string[] }) ?? {};
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
     // Auto-expand groups that contain the current active page
@@ -55,66 +56,74 @@ export function NavMain({ items = [] }: NavMainProps) {
 
     return (
         <>
-            {items.map((item, index) => {
+            {items.map((item) => {
                 if ('items' in item) {
                     // This is a NavGroup
                     const isExpanded = expandedGroups.has(item.title);
                     const hasActiveChild = item.items.some(subItem => subItem.href === page.url);
-
                     return (
-                        <SidebarGroup key={item.title} className="px-2 py-0">
-                            <SidebarMenu>
-                                <SidebarMenuItem>
-                                    <SidebarMenuButton
-                                        onClick={() => toggleGroup(item.title)}
-                                        isActive={hasActiveChild}
-                                        tooltip={{ children: item.title }}
-                                    >
-                                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                        <span>{item.title}</span>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
+                        <>
+                            {
+                                permissions?.includes(item?.permission ?? '') ? <SidebarGroup key={item.title} className="px-2 py-0">
+                                    <SidebarMenu>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton
+                                                onClick={() => toggleGroup(item.title)}
+                                                isActive={hasActiveChild}
+                                                tooltip={{ children: item.title }}
+                                            >
+                                                <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                                <span>{item.title}</span>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
 
-                                {isExpanded && (
-                                    <div className="ml-4 space-y-1">
-                                        {item.items.map((subItem) => (
-                                            <SidebarMenuItem key={subItem.title}>
-                                                <SidebarMenuButton
-                                                    asChild
-                                                    isActive={subItem.href === page.url}
-                                                    tooltip={{ children: subItem.title }}
-                                                >
-                                                    <Link href={subItem.href} prefetch>
-                                                        {subItem.icon && <subItem.icon />}
-                                                        <span>{subItem.title}</span>
-                                                    </Link>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        ))}
-                                    </div>
-                                )}
-                            </SidebarMenu>
-                        </SidebarGroup>
+                                        {isExpanded && (
+                                            <div className="ml-4 space-y-1">
+                                                {item.items.map((subItem) => (
+                                                    permissions?.includes(subItem?.permission ?? '') && <SidebarMenuItem key={subItem.title}>
+                                                        <SidebarMenuButton
+                                                            asChild
+                                                            isActive={subItem.href === page.url}
+                                                            tooltip={{ children: subItem.title }}
+                                                        >
+                                                            <Link href={subItem.href} prefetch>
+                                                                {subItem.icon && <subItem.icon />}
+                                                                <span>{subItem.title}</span>
+                                                            </Link>
+                                                        </SidebarMenuButton>
+                                                    </SidebarMenuItem>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </SidebarMenu>
+                                </SidebarGroup> : <></>
+                            }
+                        </>
                     );
                 } else {
                     // This is a NavItem
                     return (
-                        <SidebarGroup key={item.title} className="px-2 py-0">
-                            <SidebarMenu>
-                                <SidebarMenuItem>
-                                    <SidebarMenuButton
-                                        asChild
-                                        isActive={item.href === page.url}
-                                        tooltip={{ children: item.title }}
-                                    >
-                                        <Link href={item.href} prefetch>
-                                            {item.icon && <item.icon />}
-                                            <span>{item.title}</span>
-                                        </Link>
-                                    </SidebarMenuButton>
-                                </SidebarMenuItem>
-                            </SidebarMenu>
-                        </SidebarGroup>
+                        <>
+                            {
+                                permissions?.includes(item?.permission ?? '') && <SidebarGroup key={item.title} className="px-2 py-0">
+                                    <SidebarMenu>
+                                        <SidebarMenuItem>
+                                            <SidebarMenuButton
+                                                asChild
+                                                isActive={item.href === page.url}
+                                                tooltip={{ children: item.title }}
+                                            >
+                                                <Link href={item.href} prefetch>
+                                                    {item.icon && <item.icon />}
+                                                    <span>{item.title}</span>
+                                                </Link>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    </SidebarMenu>
+                                </SidebarGroup>
+                            }
+                        </>
+
                     );
                 }
             })}
