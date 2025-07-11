@@ -94,22 +94,15 @@ export default function Navbar() {
                         <span>Profile</span>
                       </Link>
                     </DropdownMenuItem>
+                    {(auth?.user?.role === 'admin' || auth?.user?.role === 'organization') && (
                     <DropdownMenuItem asChild>
-                      <Link href={route('profile.edit')}>
-                        <Settings className="mr-2 h-4 w-4" />
-                        <span>Settings</span>
-                      </Link>
+                        <Link href={route("dashboard")}>
+                        <LayoutGrid className="mr-2 h-4 w-4" />
+                        <span>Dashboard</span>
+                        </Link>
                     </DropdownMenuItem>
-                    {
-                      auth?.user?.role === 'admin' && (
-                        <DropdownMenuItem asChild>
-                          <Link href={route("dashboard")}>
-                            <LayoutGrid className="mr-2 h-4 w-4" />
-                            <span>Dashboard</span>
-                          </Link>
-                        </DropdownMenuItem>
-                      )
-                    }
+                    )}
+
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link method="post" className="w-full" href={route('logout')} onClick={handleLogout}>

@@ -47,19 +47,23 @@ export default function ProfileFavorites() {
 
   const { post, delete: destroy } = useForm()
 
-  // Filter available organizations based on search and category
-  const filteredAvailableOrganizations = availableOrganizations
-    .filter((org) => !favoriteOrganizations.find((fav) => fav.id === org.id))
-    .filter((org) => {
-      const matchesSearch =
-        org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        org.description.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesCategory = selectedCategory === "all" || org.category === selectedCategory
-      return matchesSearch && matchesCategory
-    })
+  const safeAvailableOrganizations = availableOrganizations ?? [];
+const safeFavoriteOrganizations = favoriteOrganizations ?? [];
+
+const filteredAvailableOrganizations = safeAvailableOrganizations
+  .filter((org) => !safeFavoriteOrganizations.find((fav) => fav.id === org.id))
+  .filter((org) => {
+    const matchesSearch =
+      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      org.description.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory =
+      selectedCategory === "all" || org.category === selectedCategory;
+    return matchesSearch && matchesCategory;
+  });
+
 
   // Get unique categories for filter
-  const categories = ["all", ...Array.from(new Set(availableOrganizations.map((org) => org.category)))]
+  const categories = ["all", ...Array.from(new Set((availableOrganizations ?? []).map((org) => org.category)))]
 
   const addFavoriteOrganization = (org: Organization) => {
     post(`/profile/favorites/${org.id}`, {

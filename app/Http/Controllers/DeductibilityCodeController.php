@@ -17,19 +17,19 @@ class DeductibilityCodeController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-        
+
         $query = DeductibilityCode::query();
-        
+
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('deductibility_code', 'LIKE', "%{$search}%")
                   ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
-        
+
         $deductibilityCodes = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-        
+
         return Inertia::render('deductibility-codes/index', [
             'deductibilityCodes' => $deductibilityCodes,
             'filters' => [

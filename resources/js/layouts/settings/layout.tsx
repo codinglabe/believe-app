@@ -29,7 +29,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
     phone: auth.user.contact_number || "",
     email_verified_at: auth.user.email_verified_at || "",
     location: auth.user.organization?.address || "",
-    joinDate: auth.user.organization?.joined || "",
+    joinDate: auth.user.joined || "",
   }
 
   return (
@@ -94,11 +94,16 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <div className="flex items-center justify-center lg:justify-start gap-2">
                         <Calendar className="h-4 w-4 text-blue-500" />
                         <span>Joined {profileData.joinDate}</span>
-                      </div>
-                      <div className="flex items-center justify-center lg:justify-start gap-2">
-                        <MapPin className="h-4 w-4 text-red-500" />
-                        <span>{profileData.location}</span>
-                      </div>
+                                          </div>
+                                          {
+                                              auth.user.role === "organization" && (
+                                                <div className="flex items-center justify-center lg:justify-start gap-2">
+                                                <MapPin className="h-4 w-4 text-red-500" />
+                                                <span>{profileData.location}</span>
+                                              </div>
+                                              )
+                                          }
+
                     </div>
                   </div>
                 </div>

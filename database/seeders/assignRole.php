@@ -14,7 +14,7 @@ class assignRole extends Seeder
      */
     public function run(): void
     {
-        $user = User::create([
+        $user = User::updateOrCreate([
             "name"=> "Admin",
             "email" => "admin@501c3ers.com",
             "password" => Hash::make("12345678"),
