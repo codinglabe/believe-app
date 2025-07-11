@@ -3,7 +3,7 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { Download, LayoutGrid, FileText } from 'lucide-react';
+import { Download, LayoutGrid, FileText, Shield } from 'lucide-react';
 import AppLogo from './app-logo';
 
 const mainNavItems: (NavItem | NavGroup)[] = [
@@ -48,6 +48,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "code.management.read"
+    },
+    {
+        title: 'Role & Permissions',
+        href: '/permission-management',
+        icon: Shield,
+        permission: "role.management.read"
     },
 ];
 
