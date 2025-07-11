@@ -6,9 +6,22 @@ use Inertia\Inertia;
 use Inertia\Response;
 use App\Models\DeductibilityCode;
 use Illuminate\Http\Request;
+use Illuminate\Http\RedirectResponse;
 
 class DeductibilityCodeController extends Controller
 {
+    /**
+     * Display a listing of the resource.
+     *
+     * @return \Illuminate\Http\Response
+     */
+    public function __construct()
+    {
+        //$this->middleware('permission:deductibily.code.read', ['only' => ['index', 'show']]);
+        // $this->middleware('permission:product-create', ['only' => ['create', 'store']]);
+        // $this->middleware('permission:product-edit', ['only' => ['edit', 'update']]);
+        // $this->middleware('permission:product-delete', ['only' => ['destroy']]);
+    }
     /**
      * Display a listing of the resource.
      */
@@ -17,19 +30,19 @@ class DeductibilityCodeController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-        
+
         $query = DeductibilityCode::query();
-        
+
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('deductibility_code', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
-        
+
         $deductibilityCodes = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-        
+
         return Inertia::render('deductibility-codes/index', [
             'deductibilityCodes' => $deductibilityCodes,
             'filters' => [
@@ -110,4 +123,3 @@ class DeductibilityCodeController extends Controller
             ->with('success', 'Deductibility code deleted successfully');
     }
 }
-
