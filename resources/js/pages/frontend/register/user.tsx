@@ -134,15 +134,30 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
               </Link>
             </div>
 
-          <Card className="border-0 shadow-xl bg-white dark:bg-gray-800">
-            <CardHeader className="text-center">
-              <CardTitle className="text-2xl text-gray-900 dark:text-white">Create Your Account</CardTitle>
-              <CardDescription className="text-gray-600 dark:text-gray-300">
-                Join thousands of supporters making a difference worldwide
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <form onSubmit={submit} className="space-y-4">
+            <Card className="border-0 shadow-xl bg-white dark:bg-gray-800">
+              <CardHeader className="text-center">
+                <CardTitle className="text-2xl text-gray-900 dark:text-white">Create Your Account</CardTitle>
+                <CardDescription className="text-gray-600 dark:text-gray-300">
+                  Join thousands of supporters making a difference worldwide
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <form onSubmit={submit} className="space-y-4">
+
+                  {referralCode && (
+                    <div className="text-center">
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                        Referral Code Applied
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-400">
+                        <div className="flex items-center justify-center">
+                          <Icon icon="mdi:shield-check" className="h-4 w-4 text-green-600" />
+                          <span className="font-bold text-green-600">{referralCode}</span>
+                        </div>
+                      </p>
+                    </div>
+                  )}
+
                   <div>
                     <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
                       Full Name

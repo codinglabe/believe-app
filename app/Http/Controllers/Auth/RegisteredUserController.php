@@ -37,6 +37,20 @@ class RegisteredUserController extends Controller
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+
+        $referredBy = null;
+        if ($request->has('referralCode')) {
+            $user = User::where('referral_code', $request->referralCode)->first();
+            if ($user) {
+                $referredBy = $user->id;
+            }
+        }
+
+        $slug = Str::slug($request->name);
+        if(User::where('slug', $slug)->exists()) {
+            $slug = $slug . '-' . Str::random(5);
+        }
+
         $user = User::create([
             'name' => $request->name,
             'slug' => $request->slug,
