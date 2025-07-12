@@ -114,17 +114,26 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                     {/* Mobile Tabs */}
                     <div className="lg:hidden">
                       <Tabs value={activeTab} className="w-full">
-                        <TabsList className="w-full h-auto p-1 bg-gray-100 dark:bg-gray-700 grid grid-cols-2 gap-1">
+                        <TabsList className="w-full h-auto p-1 bg-gray-100 dark:bg-gray-700 grid grid-cols-3 gap-1">
                           <TabsTrigger value="profile" asChild>
-                            <Link href={route("profile.edit")} className="flex items-center gap-2 px-3 py-2 text-sm">
+                            <Link href={route("profile.edit")}
+                              className="flex items-center gap-2 px-3 py-2 text-sm">
                               <User className="h-4 w-4" />
                               Profile
                             </Link>
                           </TabsTrigger>
                           <TabsTrigger value="password" asChild>
-                            <Link href={route("password.edit")} className="flex items-center gap-2 px-3 py-2 text-sm">
+                            <Link href={route("password.edit")}
+                              className="flex items-center gap-2 px-3 py-2 text-sm">
                               <Lock className="h-4 w-4" />
                               Security
+                            </Link>
+                          </TabsTrigger>
+                          <TabsTrigger value="referral" asChild>
+                            <Link href={route("referral.edit")}
+                              className="flex items-center gap-2 px-3 py-2 text-sm">
+                              <Shield className="h-4 w-4" />
+                              Referral Link
                             </Link>
                           </TabsTrigger>
                         </TabsList>
@@ -155,6 +164,17 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                         >
                           <Lock className="h-4 w-4" />
                           Password & Security
+                        </Link>
+                        <Link
+                          href={route("referral.edit")}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                            activeTab === "referral"
+                              ? "bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-300"
+                              : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          <Shield className="h-4 w-4" />
+                          Referral Link
                         </Link>
                       </div>
                     </nav>

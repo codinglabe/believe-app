@@ -30,17 +30,29 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
+
+        // dd($request->all());
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
         ]);
 
+
+        $referredBy = null;
+        if ($request->has('referralCode')) {
+            $user = User::where('referral_code', $request->referralCode)->first();
+            if ($user) {
+                $referredBy = $user->id;
+            }
+        }
+
         $user = User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'user',
+            'referred_by' => $referredBy,
         ]);
 
         event(new Registered($user));
