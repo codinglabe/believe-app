@@ -15,12 +15,11 @@ import InputError from "@/components/input-error";
 import { Icon } from '@iconify/react';
 
 type RegisterForm = {
-  name: string;
-  email: string;
-  password: string;
-  password_confirmation: string;
-  agreeToTerms: boolean;
-  referralCode: string;
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    agreeToTerms: boolean;
 };
 
 export default function UserRegisterPage({ referralCode }: { referralCode: string }) {
@@ -111,19 +110,19 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="max-w-md mx-auto"
-          >
-            {/* Back Button */}
-            <Link href={route("register", { ref: referralCode })} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to registration options
-            </Link>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="max-w-md mx-auto"
+        >
+          {/* Back Button */}
+          <Link href={route("register")} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to registration options
+          </Link>
 
             {/* Logo */}
             <div className="text-center mb-8">
@@ -135,30 +134,15 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
               </Link>
             </div>
 
-            <Card className="border-0 shadow-xl bg-white dark:bg-gray-800">
-              <CardHeader className="text-center">
-                <CardTitle className="text-2xl text-gray-900 dark:text-white">Create Your Account</CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300">
-                  Join thousands of supporters making a difference worldwide
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <form onSubmit={submit} className="space-y-4">
-
-                  {referralCode && (
-                    <div className="text-center">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                        Referral Code Applied
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center justify-center">
-                          <Icon icon="mdi:shield-check" className="h-4 w-4 text-green-600" />
-                          <span className="font-bold text-green-600">{referralCode}</span>
-                        </div>
-                      </p>
-                    </div>
-                  )}
-
+          <Card className="border-0 shadow-xl bg-white dark:bg-gray-800">
+            <CardHeader className="text-center">
+              <CardTitle className="text-2xl text-gray-900 dark:text-white">Create Your Account</CardTitle>
+              <CardDescription className="text-gray-600 dark:text-gray-300">
+                Join thousands of supporters making a difference worldwide
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <form onSubmit={submit} className="space-y-4">
                   <div>
                     <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
                       Full Name
