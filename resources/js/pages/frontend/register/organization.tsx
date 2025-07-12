@@ -25,6 +25,7 @@ import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
+import { Icon } from '@iconify/react';
 
 // Types
 interface EINLookupResponse {
@@ -41,8 +42,8 @@ interface RegistrationResponse {
   errors?: Record<string, string[]>
 }
 
-export default function OrganizationRegisterPage() {
-    const { csrf_token } = usePage<PageProps>().props
+export default function OrganizationRegisterPage({ referralCode }: { referralCode: string }) {
+  const { csrf_token } = usePage<PageProps>().props
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [step, setStep] = useState(1)
@@ -50,8 +51,17 @@ export default function OrganizationRegisterPage() {
   const [einError, setEinError] = useState("")
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [registrationSuccess, setRegistrationSuccess] = useState(false)
-    const [successMessage, setSuccessMessage] = useState("")
-    const [csrfToken, setCsrfToken] = useState(csrf_token || "")
+  const [successMessage, setSuccessMessage] = useState("")
+  const [csrfToken, setCsrfToken] = useState(csrf_token || "")
+
+  useEffect(() => {
+    if (referralCode) {
+      setFormData((prev) => ({
+        ...prev,
+        referralCode: referralCode,
+      }))
+    }
+  }, [referralCode])
 
   // Form data state
   const [einData, setEinData] = useState({ ein: "" })
@@ -87,10 +97,11 @@ export default function OrganizationRegisterPage() {
     // Terms
     agree_to_terms: false,
     has_edited_irs_data: false,
+    referralCode: referralCode,
   })
 
-   // Multiple methods to get CSRF token
-   const getCsrfToken = () => {
+  // Multiple methods to get CSRF token
+  const getCsrfToken = () => {
     // Method 1: From Inertia props (most reliable)
     if (csrf_token) {
       return csrf_token
@@ -179,7 +190,7 @@ export default function OrganizationRegisterPage() {
 
     console.log("Starting EIN lookup for:", einData.ein)
     setIsLoading(true)
-      setEinError("")
+    setEinError("")
 
     const token = getCsrfToken()
     if (!token) {
@@ -254,9 +265,9 @@ export default function OrganizationRegisterPage() {
     }
 
     setIsLoading(true)
-      setErrors({})
+    setErrors({})
 
-      const token = getCsrfToken()
+    const token = getCsrfToken()
     if (!token) {
       setEinError("Security token not available. Please refresh the page.")
       setIsLoading(false)
@@ -394,7 +405,7 @@ export default function OrganizationRegisterPage() {
           >
             {/* Back Button */}
             <Link
-              href={route("register")}
+              href={route("register", { ref: referralCode })}
               className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 mb-6 transition-colors"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -421,21 +432,19 @@ export default function OrganizationRegisterPage() {
                     <button
                       onClick={() => goToStep(stepNumber)}
                       disabled={stepNumber > step && !validateStep(step)}
-                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm transition-all duration-200 ${
-                        step >= stepNumber
+                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm transition-all duration-200 ${step >= stepNumber
                           ? "bg-gradient-to-r from-green-600 to-blue-600 text-white shadow-lg"
                           : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
-                      } ${stepNumber <= step ? "cursor-pointer" : "cursor-not-allowed"}`}
+                        } ${stepNumber <= step ? "cursor-pointer" : "cursor-not-allowed"}`}
                     >
                       {step > stepNumber ? <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" /> : stepNumber}
                     </button>
                     {stepNumber < 4 && (
                       <div
-                        className={`w-8 sm:w-16 h-0.5 sm:h-1 mx-1 sm:mx-2 transition-all duration-200 ${
-                          step > stepNumber
+                        className={`w-8 sm:w-16 h-0.5 sm:h-1 mx-1 sm:mx-2 transition-all duration-200 ${step > stepNumber
                             ? "bg-gradient-to-r from-green-600 to-blue-600"
                             : "bg-gray-200 dark:bg-gray-700"
-                        }`}
+                          }`}
                       />
                     )}
                   </div>
@@ -487,6 +496,20 @@ export default function OrganizationRegisterPage() {
                     transition={{ duration: 0.5 }}
                     className="space-y-6"
                   >
+
+                    {referralCode && (
+                      <div className="text-center">
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+                          Referral Code Applied
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-400">
+                          <div className="flex items-center justify-center">
+                            <Icon icon="mdi:shield-check" className="h-4 w-4 text-green-600" />
+                            <span className="font-bold text-green-600">{referralCode}</span>
+                          </div>
+                        </p>
+                      </div>
+                    )}
                     <div className="text-center">
                       <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
                         IRS Employer Identification Number (EIN)

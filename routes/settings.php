@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
+use App\Http\Controllers\Settings\ReferralLinkController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -13,6 +14,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
+    Route::get('/settings/referral', [ReferralLinkController::class, 'edit'])->name('referral.edit');
 
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');

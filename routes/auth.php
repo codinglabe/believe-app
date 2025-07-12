@@ -10,15 +10,29 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\OrganizationRegisterController;
 use App\Http\Controllers\ProfilePhotoController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Models\User;
 
 Route::middleware('guest')->group(function () {
     Route::get('/register', function () {
         return Inertia::render('frontend/register');
     })->name('register');
 
-    Route::get('/register/user', function () {
+    Route::get('/register/user', function (Request $request) {
+
+        if ($request->has('ref')) {
+
+            $user = User::where('referral_code', $request->ref)->first();
+
+            if (!$user) {
+                return redirect()->route('register')->with('error', 'Invalid referral code');
+            }
+            return Inertia::render('frontend/register/user', [
+                'referralCode' => $user->referral_code,
+            ]);
+        }
         return Inertia::render('frontend/register/user');
     })->name('register.user');
 
