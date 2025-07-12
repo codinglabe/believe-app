@@ -30,6 +30,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'contact_number',
         'role',
         'login_status',
+        'referral_code',
+        'referred_by',
     ];
 
     /**
@@ -53,6 +55,20 @@ class User extends Authenticatable implements MustVerifyEmail
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
         ];
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($user) {
+            if (empty($user->referral_code)) {
+                do {
+                    $code = substr(bin2hex(random_bytes(8)), 0, 12);
+                } while (self::where('referral_code', $code)->exists());
+                $user->referral_code = $code;
+            }
+        });
     }
 
     public function organization()

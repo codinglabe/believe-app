@@ -26,8 +26,19 @@ class OrganizationRegisterController extends Controller
         $this->einLookupService = $einLookupService;
     }
 
-    public function create()
+    public function create(Request $request)
     {
+        if ($request->has('ref')) {
+
+            $user = User::where('referral_code', $request->ref)->first();
+
+            if (!$user) {
+                return redirect()->route('register')->with('error', 'Invalid referral code');
+            }
+            return Inertia::render('frontend/register/organization', [
+                'referralCode' => $user->referral_code,
+            ]);
+        }
         return Inertia::render('frontend/register/organization');
     }
 
@@ -154,13 +165,25 @@ class OrganizationRegisterController extends Controller
                 $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
             }
 
+            $referredBy = null;
+            if ($request->has('referralCode')) {
+                $user = User::where('referral_code', $request->referralCode)->first();
+                if ($user) {
+                    $referredBy = $user->id;
+                }
+            }
+
+
             $user = User::create([
                 "name" => $validated['contact_name'],
                 "email" => $validated['email'],
                 "contact_number" => $validated['phone'],
                 "password" => Hash::make($validated['password']),
                 "role" => 'organization',
+                "referred_by" => $referredBy,
             ]);
+
+      
 
             $organization = Organization::create([
                 'user_id' => $user->id,
