@@ -46,13 +46,18 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
     Route::get('/profile/favorites', [UserProfileController::class, 'favorites'])->name('profile.favorites');
+    Route::delete("/profile/favorites/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+
+    // Toggle favorite status
+    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
 });
 
-// Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
-//     return Inertia::render('frontend/profile');
-// });
+Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
+    return Inertia::render('frontend/profile');
+});
 
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
     Route::get('dashboard', function () {

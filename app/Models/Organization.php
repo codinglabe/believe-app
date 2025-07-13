@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class Organization extends Model
 {
@@ -40,7 +42,7 @@ class Organization extends Model
 
     protected $casts = [
         'original_irs_data' => 'array',
-        'has_edited_irs_data' => 'boolean'
+        'has_edited_irs_data' => 'boolean',
     ];
 
     public function user()
@@ -72,5 +74,15 @@ class Organization extends Model
                 ->orWhere('description', 'LIKE', "%{$search}%")
                 ->orWhere('mission', 'LIKE', "%{$search}%");
         });
+    }
+
+    // public function favoritedBy()
+    // {
+    //     return $this->belongsToMany(User::class, 'user_favorite_organizations');
+    // }
+
+    public function isFavoritedByUser(): HasOne
+    {
+        return $this->hasOne(UserFavoriteOrganization::class, 'organization_id');
     }
 }

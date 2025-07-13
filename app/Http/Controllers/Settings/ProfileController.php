@@ -42,11 +42,17 @@ class ProfileController extends Controller
             'contact_number' => $request->input('phone'),
         ]);
 
-        $request->user()->organization()->update([
-            'contact_name' => $request->input('name'),
-            'email' => $request->input('email'),
-            'phone' => $request->input('phone'),
-        ]);
+        if ($request->user()->role === "organization") {
+            $request->user()->organization()->update([
+                'contact_name' => $request->input('name'),
+                'contact_title' => $request->input('contact_title'),
+                'website' => $request->input('website') ?? null,
+                'description' => $request->input('description'),
+                'mission' => $request->input('mission'),
+                'email' => $request->input('email'),
+                'phone' => $request->input('phone') ?? null,
+            ]);
+        }
 
         return to_route('profile.edit');
     }

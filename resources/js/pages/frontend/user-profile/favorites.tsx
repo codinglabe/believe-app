@@ -16,19 +16,25 @@ import {
   DialogTrigger,
 } from "@/components/frontend/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
-import { usePage, useForm } from "@inertiajs/react"
+import { usePage, useForm, router, Link } from "@inertiajs/react"
 import { toast } from "sonner"
 import DonationModal from "@/components/frontend/donation-modal"
 
 interface Organization {
   id: number
   name: string
-  image?: string
   category: string
   rating: number
   description: string
   total_donated?: number
-  last_donation?: string
+    last_donation?: string
+    user?: {
+        image?: string
+    }
+    nteeCode?: {
+        category: string
+        description: string
+    }
 }
 
 interface PageProps {
@@ -39,48 +45,11 @@ interface PageProps {
 export default function ProfileFavorites() {
   const { favoriteOrganizations, availableOrganizations } = usePage<PageProps>().props
 
-  const [isAddingFavorite, setIsAddingFavorite] = useState(false)
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false)
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("all")
-
-  const { post, delete: destroy } = useForm()
-
-  const safeAvailableOrganizations = availableOrganizations ?? [];
-const safeFavoriteOrganizations = favoriteOrganizations ?? [];
-
-const filteredAvailableOrganizations = safeAvailableOrganizations
-  .filter((org) => !safeFavoriteOrganizations.find((fav) => fav.id === org.id))
-  .filter((org) => {
-    const matchesSearch =
-      org.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      org.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory =
-      selectedCategory === "all" || org.category === selectedCategory;
-    return matchesSearch && matchesCategory;
-  });
-
-
-  // Get unique categories for filter
-  const categories = ["all", ...Array.from(new Set((availableOrganizations ?? []).map((org) => org.category)))]
-
-  const addFavoriteOrganization = (org: Organization) => {
-    post(`/profile/favorites/${org.id}`, {
-      onSuccess: () => {
-        toast.success(`${org.name} added to favorites!`)
-        setIsAddingFavorite(false)
-        setSearchQuery("")
-        setSelectedCategory("all")
-      },
-      onError: () => {
-        toast.error("Failed to add to favorites")
-      },
-    })
-  }
 
   const removeFavoriteOrganization = (orgId: number) => {
-    destroy(`/profile/favorites/${orgId}`, {
+    router.delete(`/profile/favorites/${orgId}`, {
       onSuccess: () => {
         toast.success("Organization removed from favorites")
       },
@@ -98,113 +67,18 @@ const filteredAvailableOrganizations = safeAvailableOrganizations
   return (
     <ProfileLayout title="Favorite Organizations" description="Organizations you follow and support regularly">
       <div className="space-y-6">
-        {/* Add Favorite Button */}
-        <div className="flex justify-end">
-          <Dialog open={isAddingFavorite} onOpenChange={setIsAddingFavorite}>
-            <DialogTrigger asChild>
-              <Button className="bg-blue-600 hover:bg-blue-700">
-                <Plus className="h-4 w-4 mr-2" />
-                Add Favorite
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 max-w-2xl mx-4 sm:mx-auto">
-              <DialogHeader>
-                <DialogTitle className="text-gray-900 dark:text-white">Add Favorite Organization</DialogTitle>
-                <DialogDescription className="text-gray-600 dark:text-gray-300">
-                  Search and choose an organization to add to your favorites
-                </DialogDescription>
-              </DialogHeader>
-
-              {/* Search and Filter Controls */}
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row gap-4">
-                  <div className="relative flex-1">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
-                    <Input
-                      placeholder="Search organizations..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                    />
-                  </div>
-                  <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-                    <SelectTrigger className="w-full sm:w-48 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600">
-                      <SelectValue placeholder="Category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {categories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {category === "all" ? "All Categories" : category}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Organizations List */}
-              <div className="space-y-4 max-h-96 overflow-y-auto">
-                {filteredAvailableOrganizations.length > 0 ? (
-                  filteredAvailableOrganizations.map((org) => (
-                    <div
-                      key={org.id}
-                      className="flex items-center gap-4 p-4 rounded-lg border border-gray-200 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      <img
-                        src={org.image || "/placeholder.svg?height=48&width=48"}
-                        alt={org.name}
-                        width={48}
-                        height={48}
-                        className="rounded-full flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-gray-900 dark:text-white truncate">{org.name}</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-1">{org.description}</p>
-                        <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300">
-                          <Badge variant="secondary" className="text-xs">
-                            {org.category}
-                          </Badge>
-                          <div className="flex items-center gap-1">
-                            <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                            <span>{org.rating}</span>
-                          </div>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => addFavoriteOrganization(org)}
-                        className="bg-blue-600 hover:bg-blue-700 flex-shrink-0"
-                      >
-                        Add
-                      </Button>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8">
-                    <Search className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No organizations found</h3>
-                    <p className="text-gray-600 dark:text-gray-300">
-                      Try adjusting your search terms or category filter
-                    </p>
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-        </div>
-
         {/* Favorites List */}
         {favoriteOrganizations.length > 0 ? (
           <div className="grid grid-cols-1 gap-4">
             {favoriteOrganizations.map((org) => (
               <Card
                 key={org.id}
-                className="border border-gray-200 dark:border-gray-600 hover:shadow-md transition-shadow"
+                className="border border-gray-200 dark:border-gray-600 hover:shadow-md dark:bg-gray-900 transition-shadow"
               >
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
                     <img
-                      src={org.image || "/placeholder.svg?height=64&width=64"}
+                      src={org.user?.image ? '/storage/' + org.user?.image : "/placeholder.svg?height=64&width=64"}
                       alt={org.name}
                       width={64}
                       height={64}
@@ -217,10 +91,16 @@ const filteredAvailableOrganizations = safeAvailableOrganizations
                             {org.name}
                           </h4>
                           <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-600 dark:text-gray-300 mb-2">
-                            <span>{org.category}</span>
-                            <div className="flex items-center gap-1">
-                              <Star className="h-3 w-3 text-yellow-400 fill-current" />
-                              <span>{org.rating}</span>
+                            <span>{org.nteeCode?.category}</span>
+                                            <div className="flex items-center gap-1">
+                                                {
+                                                    org.rating && (
+                                                        <>
+                                                            <Star className="h-3 w-3 text-yellow-400 fill-current" />
+                                                            <span>{org.rating}</span>
+                                                        </>
+                                                    )
+                                                }
                             </div>
                           </div>
                           <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2">{org.description}</p>
@@ -266,10 +146,12 @@ const filteredAvailableOrganizations = safeAvailableOrganizations
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No favorites yet</h3>
             <p className="text-gray-600 dark:text-gray-300 mb-8 max-w-md mx-auto">
               Add organizations you care about to keep track of them easily and support their causes.
-            </p>
-            <Button onClick={() => setIsAddingFavorite(true)} className="bg-blue-600 hover:bg-blue-700">
+                          </p>
+            <Button>
+            <Link href={route("organizations")} className="flex items-center">
               <Plus className="h-4 w-4 mr-2" />
               Add Your First Favorite
+            </Link>
             </Button>
           </div>
         )}

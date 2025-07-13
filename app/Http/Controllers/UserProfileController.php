@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Organization;
+use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -35,12 +36,7 @@ class UserProfileController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'contact_title' => [
-                Rule::requiredIf(fn() => $request->user()->role === 'organization'), 'string'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $request->user()->id],
-            'website' => ["nullable", 'string'],
-            'description' => [Rule::requiredIf(fn() => $request->user()->role === 'organization')],
-            'mission' => [Rule::requiredIf(fn() => $request->user()->role === 'organization')],
             'phone' => ['nullable', 'string', 'max:20'],
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
         ]);
@@ -71,18 +67,6 @@ class UserProfileController extends Controller
             ]);
         }
 
-        if ($request->user()->role === "organization") {
-            Organization::where('user_id', $request->user()->id)->update([
-                'contact_name' => $validated['name'],
-                'contact_title' => $validated['contact_title'],
-                'website' => $validated['website'] ?? null,
-                'description' => $validated['description'],
-                'mission' => $validated['mission'],
-                'email' => $validated['email'],
-                'phone' => $validated['phone'] ?? null,
-            ]);
-        }
-
         $request->user()->update([
             "name" => $validated['name'],
             "email" => $validated['email'],
@@ -103,7 +87,7 @@ class UserProfileController extends Controller
     public function favorites()
     {
         // Get user's favorite organizations
-        $favoriteOrganizations = collect([]); // Replace with actual query
+        $favoriteOrganizations = Auth::user()->favoriteOrganizations; // Replace with actual query
 
         return Inertia::render('frontend/user-profile/favorites', [
             'favoriteOrganizations' => $favoriteOrganizations,
@@ -130,13 +114,16 @@ class UserProfileController extends Controller
         ]);
     }
 
-    public function settings()
-    {
-        return Inertia::render('frontend/user-profile/settings');
-    }
 
-    public function security()
+    public function removeFavorite(int $id)
     {
-        return Inertia::render('frontend/user-profile/security');
+        $user = Auth::user();
+        $favorite = UserFavoriteOrganization::where('user_id', $user->id)->where('organization_id', $id)->first();
+
+        if ($favorite) {
+            $favorite->delete();
+        }
+
+        return redirect()->route('user.profile.favorites');
     }
 }
