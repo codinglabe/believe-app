@@ -67,37 +67,42 @@ class RolePermissionController extends Controller
     /**
      * Display the user permission management list.
      */
-    public function userPermission(): Response
+    public function userPermission(Request $request): Response
     {
         $allPermissions = $this->getAllPermissionsForFrontend();
-        $allRoles = Role::all()->map(fn($role) => ['id' => (string) $role->id, 'name' => $role->name])->toArray();
-        $users = User::with('roles', 'permissions')->paginate(9); // Eager load roles and direct permissions
 
-        // Transform users to match frontend structure
+        $allRoles = Role::all()->map(fn($role) => [
+            'id' => (string) $role->id,
+            'name' => $role->name
+        ])->toArray();
+
+        $users = User::with('roles', 'permissions')->paginate(6);
+
+        // Transform the paginator's collection:
         $users->getCollection()->transform(function ($user) {
-            $primaryRole = $user->roles->first(); // Get the first role if multiple
-            $customPermissions = $user->permissions->pluck('name')->toArray(); // Direct permissions
+            $primaryRole = $user->roles->first();
 
             return [
                 'id' => (string) $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
-                'avatar' => $user->avatar ?? '/placeholder.svg?height=40&width=40', // Use actual avatar or mock
+                'avatar' => $user->avatar ?? '/placeholder.svg?height=40&width=40',
                 'role' => $primaryRole ? $primaryRole->name : 'No Role',
                 'roleId' => $primaryRole ? (string) $primaryRole->id : null,
-                'status' => $user->status ?? 'active', // Assuming 'status' column exists, default to 'active'
-                'lastLogin' => $user->last_login_at ? $user->last_login_at->toDateString() : 'N/A', // Use actual last_login_at
-                'customPermissions' => $customPermissions,
-                'joinedDate' => $user->created_at->toDateString(), // Using created_at for joined date
+                'status' => $user->status ?? 'active',
+                'lastLogin' => $user->last_login_at ? $user->last_login_at->toDateString() : 'N/A',
+                'customPermissions' => $user->permissions->pluck('name')->toArray(),
+                'joinedDate' => $user->created_at->toDateString(),
             ];
         });
 
         return Inertia::render('permission/users/users-list', [
-            "users" => $users,
-            "allRoles" => $allRoles, // Pass all available roles
-            "allPermissions" => $allPermissions, // Pass all available permissions
+            'users' => $users->withQueryString(),
+            'allRoles' => $allRoles,
+            'allPermissions' => $allPermissions,
         ]);
     }
+
 
     /**
      * Display the create role page.
@@ -236,7 +241,7 @@ class RolePermissionController extends Controller
             $user->givePermissionTo($request->customPermissions);
         });
 
-        return redirect()->route('users.list')->with('success', 'User created successfully.');
+        return to_route('users.index')->with('success', 'User created successfully.');
     }
 
     /**

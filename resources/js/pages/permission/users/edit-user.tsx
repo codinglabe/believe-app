@@ -63,7 +63,7 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
     }
 
     const handleCancel = () => {
-        //onNavigate("users-list")
+        router.visit(route('users.list'))
     }
 
     if (loading) {

@@ -1,88 +1,97 @@
-import toast from "react-hot-toast"
+import toast from 'react-hot-toast';
 
 interface ToastData {
-    success: boolean
-    message: string
-    type?: "success" | "error" | "info" | "warning"
+    success: boolean;
+    message: string;
+    type?: 'success' | 'error' | 'info' | 'warning';
 }
 
 export const showToast = (toastData: ToastData) => {
-    const { success, message, type } = toastData
+    const { success, message, type } = toastData;
 
     if (success) {
         switch (type) {
-            case "success":
+            case 'success':
                 toast.success(message, {
                     duration: 4000,
-                    position: "top-right",
-                })
-                break
-            case "info":
+                    position: 'top-right',
+                });
+                break;
+            case 'info':
                 toast(message, {
                     duration: 4000,
-                    position: "top-right",
-                    icon: "ℹ️",
-                })
-                break
+                    position: 'top-right',
+                    icon: 'ℹ️',
+                });
+                break;
             default:
                 toast.success(message, {
                     duration: 4000,
-                    position: "top-right",
-                })
+                    position: 'top-right',
+                });
         }
     } else {
         switch (type) {
-            case "warning":
+            case 'warning':
                 toast(message, {
                     duration: 5000,
-                    position: "top-right",
-                    icon: "⚠️",
+                    position: 'top-right',
+                    icon: '⚠️',
                     style: {
-                        background: "#f59e0b",
-                        color: "#fff",
+                        background: '#f59e0b',
+                        color: '#fff',
                     },
-                })
-                break
-            case "error":
+                });
+                break;
+            case 'error':
             default:
                 toast.error(message, {
                     duration: 5000,
-                    position: "top-right",
-                })
+                    position: 'top-right',
+                });
         }
     }
-}
+};
 
 export const showSuccessToast = (message: string) => {
     toast.success(message, {
         duration: 4000,
-        position: "top-right",
-    })
-}
+        position: 'top-right',
+        style: {
+            background: '#4CAF50',
+            color: '#fff',
+            fontWeight: 'bold',
+        },
+        iconTheme: {
+            primary: '#fff',
+            secondary: '#4CAF50',
+        },
+    });
+};
 
 export const showErrorToast = (message: string) => {
     toast.error(message, {
         duration: 5000,
-        position: "top-right",
-    })
-}
+        position: 'top-right',
+    });
+};
 
 export const showInfoToast = (message: string) => {
     toast(message, {
         duration: 4000,
-        position: "top-right",
-        icon: "ℹ️",
-    })
-}
+        position: 'top-right',
+        icon: 'ℹ️',
+    });
+};
 
 export const showWarningToast = (message: string) => {
     toast(message, {
         duration: 5000,
-        position: "top-right",
-        icon: "⚠️",
+        position: 'top-right',
+        icon: '⚠️',
         style: {
-            background: "#f59e0b",
-            color: "#fff",
+            background: '#f59e0b',
+            color: '#fff',
         },
-    })
-}
+    });
+};

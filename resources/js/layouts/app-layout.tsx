@@ -18,7 +18,6 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     
     // Handle Laravel session flash messages
     const { props: pageProps } = usePage();
-    
         useEffect(() => {        // Handle success messages from Laravel session
         if (pageProps.success && typeof pageProps.success === 'string') {
             showSuccessToast(pageProps.success);

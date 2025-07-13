@@ -1,19 +1,15 @@
-"use client"
-
 import type React from "react"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { FormEventHandler } from 'react';
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, CheckCircle, Send, LoaderCircle } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, LoaderCircle } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { Separator } from "@/components/frontend/ui/separator"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
-import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, useForm } from "@inertiajs/react"
 import InputError from "@/components/input-error";
 import { Icon } from '@iconify/react';
@@ -24,6 +20,7 @@ type RegisterForm = {
   password: string;
   password_confirmation: string;
   agreeToTerms: boolean;
+  referralCode: string;
 };
 
 export default function UserRegisterPage({ referralCode }: { referralCode: string }) {
@@ -123,7 +120,7 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
             className="max-w-md mx-auto"
           >
             {/* Back Button */}
-            <Link href={route("register",{ ref: referralCode })} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+            <Link href={route("register", { ref: referralCode })} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to registration options
             </Link>
@@ -161,6 +158,7 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
                       </p>
                     </div>
                   )}
+
                   <div>
                     <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
                       Full Name
