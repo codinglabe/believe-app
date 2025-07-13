@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import { useState } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import { UserIcon, Heart, CreditCard, Package, Settings, Shield, Camera, Calendar, MapPin, Edit3 } from "lucide-react"
@@ -9,7 +9,8 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Badge } from "@/components/frontend/ui/badge"
-import { Link, usePage } from "@inertiajs/react"
+import { Link, usePage, Head } from "@inertiajs/react"
+
 
 interface ProfileLayoutProps {
   children: React.ReactNode
@@ -66,7 +67,14 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   const { auth } = usePage<PageProps>().props
   const user = auth.user
 
+  const [copied, setCopied] = useState(false);
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(user?.referral_link);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
 
   return (
     <FrontendLayout>
@@ -105,12 +113,28 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     <p className="text-gray-600 dark:text-gray-300 mb-3 sm:mb-4 text-sm sm:text-base">
                       {user.email || "example@example.com"}
                     </p>
-                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 dark:text-gray-300">
+                    <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 dark:text-gray-500">
                       <div className="flex items-center justify-center sm:justify-start gap-1">
                         <Calendar className="h-4 w-4" />
                         Joined{" "}{user.joined}
                       </div>
                     </div>
+                    <div >
+                      <small className="mb-2 mt-5">Share Your Referral Link</small>
+                      <div className="flex items-center mb-4">
+                        <input
+                          type="text"
+                          value={user?.referral_link}
+                          readOnly
+                          className="flex-1 px-3 py-2 border rounded bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200 "
+                        />
+                        <Button onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</Button>
+                      </div>
+                      <p className="text-gray-600 dark:text-gray-300 text-sm">
+                        Invite friends using your referral link. When they register, you'll both receive rewards!
+                      </p>
+                    </div>
+
                   </div>
 
                   <div className="flex justify-center items-center text-center gap-2 w-full sm:w-auto">
@@ -122,6 +146,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     </Link>
                   </div>
                 </div>
+
               </CardContent>
             </Card>
 
@@ -201,18 +226,16 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     return (
                       <Link key={item.name} href={item.href}>
                         <div
-                          className={`p-3 rounded-lg border-2 transition-all duration-200 hover:shadow-md ${
-                            isActive
-                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                              : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-                          }`}
+                          className={`p-3 rounded-lg border-2 transition-all duration-200 hover:shadow-md ${isActive
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+                            }`}
                         >
                           <div className="flex flex-col items-center text-center gap-2">
                             <div>
                               <h3
-                                className={`font-medium text-sm ${
-                                  isActive ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"
-                                }`}
+                                className={`font-medium text-sm ${isActive ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"
+                                  }`}
                               >
                                 {item.name}
                               </h3>

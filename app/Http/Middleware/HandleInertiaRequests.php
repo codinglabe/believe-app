@@ -61,6 +61,7 @@ class HandleInertiaRequests extends Middleware
                     "cover_img" => $user->cover_img ? '/storage/' . $user->cover_img : null,
                     'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
+                    'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
                     "organization" => $user->organization ? [
                         'contact_title' => $user->organization->contact_title,
                         'website' => $user->organization->website,
