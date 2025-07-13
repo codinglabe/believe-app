@@ -19,12 +19,19 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface Product {
     id: number;
     name: string;
+<<<<<<< HEAD
     sku: string;
     quantity : number;
     unit_price : number;
     status: string;
     description: string;
     type : string;
+=======
+    image: string;
+    price: number;
+    status: string;
+    description: string;
+>>>>>>> cd0ed44 (Add new product module)
     created_at: string;
     updated_at: string;
 }
@@ -213,12 +220,18 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
+<<<<<<< HEAD
                                        
                                         <th className="px-4 py-3 font-medium min-w-32">Name</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Sku</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Unit Price</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Type</th>
+=======
+                                        <th className="px-4 py-3 font-medium min-w-32">Image</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Name</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Price</th>
+>>>>>>> cd0ed44 (Add new product module)
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
                                         {/* <th className="px-4 py-3 font-medium min-w-64">Description</th> */}
                                         {/* <th className="px-4 py-3 font-medium min-w-32">Created</th> */}
@@ -229,12 +242,21 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                 <tbody>
                                     {products.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
+<<<<<<< HEAD
                                            
+=======
+                                            <td className="px-4 py-3 min-w-32">
+                                                <div className="flex items-center gap-2">
+                                                    <img src={item.image} alt={item.name} className="w-10 h-10 rounded-md" />
+                                                </div>
+                                            </td>
+>>>>>>> cd0ed44 (Add new product module)
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.name}>
                                                     {item.name}
                                                 </span>
                                             </td>
+<<<<<<< HEAD
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.sku}>
                                                     {item.sku}
@@ -251,17 +273,27 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                 </span>
                                             </td>
                                            
+=======
+                                            <td className="px-4 py-3 min-w-32">
+                                                <div className="text-sm">
+                                                    <div>{item.price}</div>
+                                                </div>
+                                            </td>
+>>>>>>> cd0ed44 (Add new product module)
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.status}
                                                 </Badge>
                                             </td>
+<<<<<<< HEAD
 
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.type}
                                                 </Badge>
                                             </td>
+=======
+>>>>>>> cd0ed44 (Add new product module)
                                             {/* <td className="px-4 py-3 min-w-32">
                                                 <div className="text-sm">
                                                     <div>{new Date(item.created_at).toLocaleDateString()}</div>

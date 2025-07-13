@@ -12,8 +12,11 @@ use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
+<<<<<<< HEAD
 use App\Http\Controllers\CategoryController;
 use Illuminate\Http\Request;
+=======
+>>>>>>> cd0ed44 (Add new product module)
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -135,6 +138,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+
+    /* Product Routes */
+    Route::resource('products', ProductController::class)->except(['show']);
 });
 
 // route for donation

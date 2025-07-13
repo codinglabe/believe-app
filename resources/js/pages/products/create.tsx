@@ -6,8 +6,13 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+<<<<<<< HEAD
 import { Save } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
+=======
+import { ArrowLeft, Save } from 'lucide-react';
+import { showSuccessToast, showErrorToast } from '@/lib/toast';
+>>>>>>> cd0ed44 (Add new product module)
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 
@@ -20,6 +25,7 @@ const breadcrumbs: BreadcrumbItem[] = [
         title: "Create",
         href: "/products/create",
     },
+<<<<<<< HEAD
 ];
 
 interface Category {
@@ -46,6 +52,17 @@ export default function Create({ categories, organizations = [] }: Props) {
         type: 'physical',
         tags: '',
         categories: [] as number[],
+=======
+]
+
+export default function Create() {
+    const [formData, setFormData] = useState({
+        name: '',
+        description: '',
+        price: '',
+        image: null as File | null,
+        status: 'active'
+>>>>>>> cd0ed44 (Add new product module)
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,6 +72,7 @@ export default function Create({ categories, organizations = [] }: Props) {
         setIsSubmitting(true);
         setErrors({});
 
+<<<<<<< HEAD
         const submitData: Record<string, any> = { ...formData };
         submitData.categories = formData.categories;
         // Convert booleans and numbers
@@ -62,6 +80,17 @@ export default function Create({ categories, organizations = [] }: Props) {
         submitData.quantity = formData.quantity ? Number(formData.quantity) : 0;
         submitData.unit_price = formData.unit_price ? Number(formData.unit_price) : 0;
         if (!submitData.organization_id) delete submitData.organization_id;
+=======
+        // Create FormData for file upload
+        const submitData = new FormData();
+        submitData.append('name', formData.name);
+        submitData.append('description', formData.description);
+        submitData.append('price', formData.price);
+        submitData.append('status', formData.status);
+        if (formData.image) {
+            submitData.append('image', formData.image);
+        }
+>>>>>>> cd0ed44 (Add new product module)
 
         router.post(route('products.store'), submitData, {
             onError: (errors) => {
@@ -70,16 +99,29 @@ export default function Create({ categories, organizations = [] }: Props) {
                 setIsSubmitting(false);
             },
             onSuccess: () => {
+<<<<<<< HEAD
+=======
+                // showSuccessToast('Product created successfully');
+>>>>>>> cd0ed44 (Add new product module)
                 setIsSubmitting(false);
             }
         });
     };
 
+<<<<<<< HEAD
     const handleChange = (field: string, value: string | number | boolean) => {
+=======
+    const handleChange = (field: string, value: string) => {
+>>>>>>> cd0ed44 (Add new product module)
         setFormData(prev => ({
             ...prev,
             [field]: value
         }));
+<<<<<<< HEAD
+=======
+
+        // Clear error when user starts typing
+>>>>>>> cd0ed44 (Add new product module)
         if (errors[field]) {
             setErrors(prev => ({
                 ...prev,
@@ -88,6 +130,7 @@ export default function Create({ categories, organizations = [] }: Props) {
         }
     };
 
+<<<<<<< HEAD
     const handleCategoryChange = (id: number) => {
         setFormData(prev => {
             const exists = prev.categories.includes(id);
@@ -98,6 +141,22 @@ export default function Create({ categories, organizations = [] }: Props) {
                     : [...prev.categories, id],
             };
         });
+=======
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        setFormData(prev => ({
+            ...prev,
+            image: file
+        }));
+
+        // Clear error when user selects a file
+        if (errors.image) {
+            setErrors(prev => ({
+                ...prev,
+                image: ''
+            }));
+        }
+>>>>>>> cd0ed44 (Add new product module)
     };
 
     return (
@@ -107,6 +166,15 @@ export default function Create({ categories, organizations = [] }: Props) {
                 <Card className="px-0">
                     <CardHeader className="px-4 md:px-6">
                         <div className="flex items-center gap-4">
+<<<<<<< HEAD
+=======
+                            {/* <Link href={route('products.index')}>
+                                <Button variant="outline" size="sm">
+                                    <ArrowLeft className="mr-2 h-4 w-4" />
+                                    Back to List
+                                </Button>
+                            </Link> */}
+>>>>>>> cd0ed44 (Add new product module)
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight">Create Product</h1>
                                 <p className="text-muted-foreground">
@@ -127,8 +195,16 @@ export default function Create({ categories, organizations = [] }: Props) {
                                     placeholder="Enter product name"
                                     className={errors.name ? 'border-red-500' : ''}
                                 />
+<<<<<<< HEAD
                                 {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
                             </div>
+=======
+                                {errors.name && (
+                                    <p className="text-sm text-red-500">{errors.name}</p>
+                                )}
+                            </div>
+
+>>>>>>> cd0ed44 (Add new product module)
                             <div className="space-y-2">
                                 <Label htmlFor="description">Description</Label>
                                 <TextArea
@@ -139,6 +215,7 @@ export default function Create({ categories, organizations = [] }: Props) {
                                     rows={4}
                                     className={errors.description ? 'border-red-500' : ''}
                                 />
+<<<<<<< HEAD
                                 {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
                             </div>
                             <div className="space-y-2">
@@ -196,12 +273,57 @@ export default function Create({ categories, organizations = [] }: Props) {
                             <div className="space-y-2">
                                 <Label htmlFor="status">Status</Label>
                                 <Select value={formData.status} onValueChange={(value) => handleChange('status', value)}>
+=======
+                                {errors.description && (
+                                    <p className="text-sm text-red-500">{errors.description}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="price">Price</Label>
+                                <Input
+                                    id="price"
+                                    type="number"
+                                    step="0.01"
+                                    min="0"
+                                    value={formData.price}
+                                    onChange={(e) => handleChange('price', e.target.value)}
+                                    placeholder="Enter product price"
+                                    className={errors.price ? 'border-red-500' : ''}
+                                />
+                                {errors.price && (
+                                    <p className="text-sm text-red-500">{errors.price}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="image">Product Image</Label>
+                                <Input
+                                    id="image"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className={errors.image ? 'border-red-500' : ''}
+                                />
+                                {errors.image && (
+                                    <p className="text-sm text-red-500">{errors.image}</p>
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="status">Status</Label>
+                                <Select
+                                    value={formData.status}
+                                    onValueChange={(value) => handleChange('status', value)}
+                                >
+>>>>>>> cd0ed44 (Add new product module)
                                     <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
                                         <SelectValue placeholder="Select status" />
                                     </SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="active">Active</SelectItem>
                                         <SelectItem value="inactive">Inactive</SelectItem>
+<<<<<<< HEAD
                                         <SelectItem value="archived">Archived</SelectItem>
                                     </SelectContent>
                                 </Select>
@@ -286,6 +408,15 @@ export default function Create({ categories, organizations = [] }: Props) {
                                 />
                                 {errors.tags && <p className="text-sm text-red-500">{errors.tags}</p>}
                             </div>
+=======
+                                    </SelectContent>
+                                </Select>
+                                {errors.status && (
+                                    <p className="text-sm text-red-500">{errors.status}</p>
+                                )}
+                            </div>
+
+>>>>>>> cd0ed44 (Add new product module)
                             <div className="flex gap-4">
                                 <Button type="submit" disabled={isSubmitting}>
                                     <Save className="mr-2 h-4 w-4" />
