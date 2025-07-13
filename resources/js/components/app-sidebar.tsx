@@ -3,8 +3,9 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { Download, LayoutGrid, FileText } from 'lucide-react';
+import { Download, LayoutGrid, FileText,ShoppingCart } from 'lucide-react';
 import AppLogo from './app-logo';
+
 
 const mainNavItems: (NavItem | NavGroup)[] = [
     {
@@ -23,6 +24,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Manage Data',
         href: '/manage-data',
         icon: FileText,
+        permission: "management.data.read"
+    },
+    {
+        title: 'Products',
+        href: '/products',
+        icon: ShoppingCart,
         permission: "management.data.read"
     },
     {

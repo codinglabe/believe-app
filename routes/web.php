@@ -10,6 +10,7 @@ use App\Http\Controllers\ManageDatasetController;
 use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
+use App\Http\Controllers\ProductController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -94,6 +95,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
     // Deductibility Codes Routes
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+
+    /* Product Routes */
+    Route::resource('products', ProductController::class)->except(['show']);
 });
 
 require __DIR__.'/settings.php';
