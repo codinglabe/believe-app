@@ -102,6 +102,10 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     // Deductibility Codes Routes
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware('permission:deductibily.code.read');
 
+    /* Product Routes */
+    Route::resource('products', ProductController::class)->except(['show']);
+
+
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);
     Route::get('/role-management', [RolePermissionController::class, 'roleManagement']);

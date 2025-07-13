@@ -189,7 +189,6 @@ class OrganizationRegisterController extends Controller
                 "referred_by" => $referredBy,
             ]);
 
-      
 
             $organization = Organization::create([
                 'user_id' => $user->id,
