@@ -16,6 +16,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
+use Illuminate\Support\Str;
 
 class OrganizationRegisterController extends Controller
 {
@@ -173,17 +174,20 @@ class OrganizationRegisterController extends Controller
                 }
             }
 
+            $slug = Str::slug($validated['name']);
+            if (User::where('slug', $slug)->exists()) {
+                $slug = $slug . '-' . Str::random(5);
+            }
 
             $user = User::create([
                 "name" => $validated['contact_name'],
+                "slug" => $slug,
                 "email" => $validated['email'],
                 "contact_number" => $validated['phone'],
                 "password" => Hash::make($validated['password']),
                 "role" => 'organization',
                 "referred_by" => $referredBy,
             ]);
-
-      
 
             $organization = Organization::create([
                 'user_id' => $user->id,

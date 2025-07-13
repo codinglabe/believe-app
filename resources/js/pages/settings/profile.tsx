@@ -10,7 +10,6 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { Textarea } from "@/components/frontend/ui/textarea"
 import { Switch } from "@/components/frontend/ui/switch"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Separator } from "@/components/frontend/ui/separator"
@@ -36,11 +35,17 @@ import {
 import InputError from "@/components/input-error"
 import Cropper from "react-easy-crop"
 import type { Area, Point } from "react-easy-crop/types"
+import { TextArea } from "@/components/ui/textarea"
+// import { TextArea } from "@/components/ui/textarea"
 
 type ProfileForm = {
   name: string
   email: string
-  phone?: string
+    contact_title: string
+    website: string
+    phone?: string
+    description?: string
+    mission?: string
 }
 
 export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
@@ -76,6 +81,10 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     name: auth.user.name || "",
     email: auth.user.email || "",
     phone: auth.user.phone || "",
+      contact_title: auth.user?.organization?.contact_title || "",
+      website: auth.user?.organization?.website || "",
+      description: auth.user?.organization?.description || "",
+      mission: auth.user?.organization?.mission || "",
   })
 
   const submit: FormEventHandler = (e) => {
@@ -749,7 +758,27 @@ const getCroppedImage = async (
                   />
                   <InputError message={errors.name} className="mt-1" />
                 </div>
+                          </div>
+
+                          {auth.user.role === "organization" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
+                    Contact Title *
+                  </Label>
+                  <Input
+                    id="contact_title"
+                    type="text"
+                    value={data.contact_title}
+                    onChange={(e) => setData("contact_title", e.target.value)}
+                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Excutive Director, Ceo, Manager, etc.."
+                    required
+                  />
+                  <InputError message={errors.contact_title} className="mt-1" />
+                </div>
               </div>
+                        )}
 
               {/* Email */}
               <div>
@@ -769,7 +798,8 @@ const getCroppedImage = async (
                   />
                 </div>
                 <InputError message={errors.email} className="mt-1" />
-              </div>
+                          </div>
+
 
               {/* Phone */}
               <div>
@@ -790,7 +820,79 @@ const getCroppedImage = async (
                 <InputError message={errors.phone} className="mt-1" />
               </div>
             </CardContent>
-          </Card>
+                  </Card>
+
+                  {auth.user.role === "organization" && (
+          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
+                <User className="h-5 w-5 text-blue-500" />
+                Additional Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Website */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
+                    Website (Optional)
+                  </Label>
+                  <Input
+                    id="website"
+                    type="text"
+                    value={data.website}
+                    onChange={(e) => setData("website", e.target.value)}
+                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="example.com"
+                    required
+                  />
+                  <InputError message={errors.website} className="mt-1" />
+                </div>
+                          </div>
+
+
+              {/* Description */}
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <Label htmlFor="description" className="text-gray-900 dark:text-white font-medium">
+            Description *
+          </Label>
+          <TextArea
+            id="description"
+            value={data.description}
+            onChange={(e) => setData("description", e.target.value)}
+            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            rows={4}
+            placeholder="Briefly describe your organization..."
+            required
+          />
+          <InputError message={errors.description} className="mt-1" />
+        </div>
+      </div>
+
+      {/* Mission */}
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <Label htmlFor="mission" className="text-gray-900 dark:text-white font-medium">
+            Mission Statement *
+          </Label>
+          <TextArea
+            id="mission"
+            value={data.mission}
+            onChange={(e) => setData("mission", e.target.value)}
+            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            rows={4}
+            placeholder="What is your organization's mission?"
+            required
+          />
+          <InputError message={errors.mission} className="mt-1" />
+        </div>
+      </div>
+
+            </CardContent>
+                      </Card>
+
+                    )}
 
           {/* Save Button */}
           <div className="flex justify-end">

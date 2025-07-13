@@ -108,10 +108,12 @@ class OrganizationController extends Controller
         ]);
     }
 
-    public function show($id)
+    public function show(string $slug)
     {
-        $organization = Organization::with(['nteeCode'])
-            ->where('id', $id)
+        $organization = Organization::with(['nteeCode', 'user'])
+            ->whereHas('user', function ($query) use ($slug) {
+                $query->where('slug', $slug);
+            })
             ->where('registration_status', 'approved')
             ->firstOrFail();
 
@@ -119,6 +121,7 @@ class OrganizationController extends Controller
             'organization' => $organization,
         ]);
     }
+
 
     // API endpoint for dynamic city loading based on state
     public function getCitiesByState(Request $request)

@@ -62,6 +62,10 @@ class HandleInertiaRequests extends Middleware
                     'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
                     "organization" => $user->organization ? [
+                        'contact_title' => $user->organization->contact_title,
+                        'website' => $user->organization->website,
+                        'description' => $user->organization->description,
+                        'mission' => $user->organization->mission,
                         'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
                         'joined' => $user->created_at->format('F Y'),
                     ] : null,

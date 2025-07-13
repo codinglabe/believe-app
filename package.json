@@ -12,6 +12,7 @@
     },
     "devDependencies": {
         "@eslint/js": "^9.19.0",
+        "@iconify/react": "^6.0.0",
         "@types/node": "^22.13.5",
         "autoprefixer": "^10.4.21",
         "eslint": "^9.17.0",
@@ -27,7 +28,6 @@
     "dependencies": {
         "@headlessui/react": "^2.2.0",
         "@hookform/resolvers": "^5.1.1",
-        "@iconify/react": "^6.0.0",
         "@inertiajs/react": "^2.0.0",
         "@radix-ui/react-alert-dialog": "^1.1.14",
         "@radix-ui/react-avatar": "^1.1.3",

@@ -14,13 +14,17 @@ class assignRole extends Seeder
      */
     public function run(): void
     {
-        $user = User::updateOrCreate([
+        $user = User::updateOrCreate(
+            ["email" => "admin@501c3ers.com"],
+            [
             "name"=> "Admin",
-            "email" => "admin@501c3ers.com",
+            "slug"=> "admin",
             "password" => Hash::make("12345678"),
             "email_verified_at" => now(),
             "role" => "admin"
-        ]);
+            ]
+        );
+
         $user->assignRole('admin');
     }
 }

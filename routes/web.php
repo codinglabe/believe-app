@@ -31,7 +31,7 @@ Route::get('/donate', function () {
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
-Route::get('/organizations/{id}', [OrganizationController::class, 'show'])->name('organizations.show');
+Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);

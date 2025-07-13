@@ -36,6 +36,7 @@ class DatabaseSeeder extends Seeder
             permissionsSeeder::class,
             assignRole::class,
             AssignRolePermissionToUsersSeeder::class,
+            UsernameSeeder::class,
         ]);
     }
 }

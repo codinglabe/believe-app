@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 
@@ -33,7 +35,12 @@ class UserProfileController extends Controller
     {
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
+            'contact_title' => [
+                Rule::requiredIf(fn() => $request->user()->role === 'organization'), 'string'],
             'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $request->user()->id],
+            'website' => ["nullable", 'string'],
+            'description' => [Rule::requiredIf(fn() => $request->user()->role === 'organization')],
+            'mission' => [Rule::requiredIf(fn() => $request->user()->role === 'organization')],
             'phone' => ['nullable', 'string', 'max:20'],
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
         ]);
@@ -42,10 +49,10 @@ class UserProfileController extends Controller
         if ($request->user()->email !== $validated['email']) {
             $validated['email_verified_at'] = null;
 
-            $request->user()->update([
-                "email_verified_at" => $validated['email_verified_at'],
-            ]);
+            $request->user()->sendEmailVerificationNotification();
         }
+
+
 
         // Handle image upload
         if ($request->hasFile('image')) {
@@ -64,11 +71,24 @@ class UserProfileController extends Controller
             ]);
         }
 
+        if ($request->user()->role === "organization") {
+            Organization::where('user_id', $request->user()->id)->update([
+                'contact_name' => $validated['name'],
+                'contact_title' => $validated['contact_title'],
+                'website' => $validated['website'] ?? null,
+                'description' => $validated['description'],
+                'mission' => $validated['mission'],
+                'email' => $validated['email'],
+                'phone' => $validated['phone'] ?? null,
+            ]);
+        }
+
         $request->user()->update([
             "name" => $validated['name'],
             "email" => $validated['email'],
             "contact_number" => $validated['phone'] ?? null,
         ]);
+
 
         return to_route('user.profile.edit');
     }

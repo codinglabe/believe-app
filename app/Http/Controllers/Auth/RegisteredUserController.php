@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Inertia\Response;
+use Illuminate\Support\Str;
 
 class RegisteredUserController extends Controller
 {
@@ -30,7 +31,6 @@ class RegisteredUserController extends Controller
      */
     public function store(Request $request): RedirectResponse
     {
-
         // dd($request->all());
         $request->validate([
             'name' => 'required|string|max:255',
@@ -47,8 +47,14 @@ class RegisteredUserController extends Controller
             }
         }
 
+        $slug = Str::slug($request->name);
+        if(User::where('slug', $slug)->exists()) {
+            $slug = $slug . '-' . Str::random(5);
+        }
+
         $user = User::create([
             'name' => $request->name,
+            'slug' => $request->slug,
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'user',
