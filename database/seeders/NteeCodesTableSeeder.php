@@ -47,9 +47,9 @@ class NteeCodesTableSeeder extends Seeder
 
         foreach ($data as $item) {
             \App\Models\NteeCode::updateOrCreate(
+                ['ntee_codes' => $item['ntee_codes']],  // WHERE
                 [
-                    'ntee_codes' => $item['ntee_codes'],
-                    'category' => $item['category'],
+                    'category' => $item['category'],    // UPDATE or SET
                     'description' => $item['description']
                 ]
             );
