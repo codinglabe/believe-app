@@ -3,14 +3,14 @@ import { type NavItem, type NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-
+import { useCan as can } from '@/lib/can';
 interface NavMainProps {
     items?: (NavItem | NavGroup)[];
 }
 
 export function NavMain({ items = [] }: NavMainProps) {
     const page = usePage();
-    const { permissions } = (page?.props?.auth as { permissions?: string[] }) ?? {};
+    //const { permissions } = (page?.props?.auth as { permissions?: string[] }) ?? {};
     const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
 
     // Auto-expand groups that contain the current active page
@@ -64,7 +64,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                     return (
                         <>
                             {
-                                permissions?.includes(item?.permission ?? '') ? <SidebarGroup key={item.title} className="px-2 py-0">
+                                can(item?.permission ?? '') ? <SidebarGroup key={item.title} className="px-2 py-0">
                                     <SidebarMenu>
                                         <SidebarMenuItem>
                                             <SidebarMenuButton
@@ -80,7 +80,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         {isExpanded && (
                                             <div className="ml-4 space-y-1">
                                                 {item.items.map((subItem) => (
-                                                    permissions?.includes(subItem?.permission ?? '') && <SidebarMenuItem key={subItem.title}>
+                                                    can(subItem?.permission ?? '') && <SidebarMenuItem key={subItem.title}>
                                                         <SidebarMenuButton
                                                             asChild
                                                             isActive={subItem.href === page.url}
@@ -105,7 +105,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                     return (
                         <>
                             {
-                                permissions?.includes(item?.permission ?? '') && <SidebarGroup key={item.title} className="px-2 py-0">
+                                can(item?.permission ?? '') && <SidebarGroup key={item.title} className="px-2 py-0">
                                     <SidebarMenu>
                                         <SidebarMenuItem>
                                             <SidebarMenuButton

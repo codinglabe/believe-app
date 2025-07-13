@@ -61,8 +61,7 @@ class Organization extends Model
     // Scope for active organizations
     public function scopeActive($query)
     {
-        return $query->where('status', 'Active')
-            ->where('registration_status', 'approved');
+        return $query->where('registration_status', 'approved');
     }
 
     // Scope for search

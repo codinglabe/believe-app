@@ -23,12 +23,13 @@ class StatusCodesTableSeeder extends Seeder
 
         foreach ($data as $item) {
             \App\Models\StatusCode::updateOrCreate(
+                ['status_code' => $item['status_code']], // lookup key
                 [
-                    'status_code' => $item['status_code'],
                     'status' => $item['status'],
                     'description' => $item['description']
-                ]
+                ] // values to update or insert
             );
+
         }
     }
 }

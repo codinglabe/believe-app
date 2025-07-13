@@ -24,7 +24,8 @@ interface Organization {
   ntee_code_relation?: {
     category: string
   }
-  user?: {
+    user?: {
+    slug: string
     image?: string
     email_verified_at?: string
   }
@@ -47,7 +48,7 @@ export default function OrganizationCard({
   linkUrl,
   customButton,
 }: OrganizationCardProps) {
-  const defaultLinkUrl = linkUrl || `/organizations/${organization.id}`
+  const defaultLinkUrl = linkUrl || `/organizations/${organization.user?.slug}`
 
   return (
     <motion.div

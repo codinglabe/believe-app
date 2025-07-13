@@ -4,6 +4,7 @@ use App\Http\Controllers\ChunkedUploadController;
 use App\Http\Controllers\ClassificationCodeController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\ManageDatasetController;
@@ -31,7 +32,7 @@ Route::get('/donate', function () {
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
-Route::get('/organizations/{id}', [OrganizationController::class, 'show'])->name('organizations.show');
+Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -94,11 +95,37 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::resource('status-codes', StatusCodeController::class)->except(['show']);
 
     // Deductibility Codes Routes
-    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware('permission:deductibily.code.read');
 
     /* Product Routes */
     Route::resource('products', ProductController::class)->except(['show']);
+
+
+    //role and permission routes
+    Route::get('/permission-management', [RolePermissionController::class, 'index']);
+    Route::get('/role-management', [RolePermissionController::class, 'roleManagement']);
+    Route::get('/user-permission', [RolePermissionController::class, 'userPermission']);
+
+    Route::prefix('permissions')->group(function () {
+        Route::get('/', [RolePermissionController::class, 'index'])->name('permissions.overview');
+
+        // Role Management
+        Route::get('/roles', [RolePermissionController::class, 'roleManagement'])->name('roles.list');
+        Route::get('/roles/create', [RolePermissionController::class, 'createRole'])->name('roles.create');
+        Route::post('/roles', [RolePermissionController::class, 'storeRole'])->name('roles.store');
+        Route::get('/roles/{role}/edit', [RolePermissionController::class, 'editRole'])->name('roles.edit');
+        Route::put('/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('roles.update');
+        Route::delete('/roles/{role}', [RolePermissionController::class, 'destroyRole'])->name('roles.destroy');
+
+        // User Management
+        Route::get('/users', [RolePermissionController::class, 'userPermission'])->name('users.list');
+        Route::get('/users/create', [RolePermissionController::class, 'createUser'])->name('users.create');
+        Route::post('/users', [RolePermissionController::class, 'storeUser'])->name('users.store');
+        Route::get('/users/{user}/edit', [RolePermissionController::class, 'editUser'])->name('users.edit');
+        Route::put('/users/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
+        Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
+    });
 });
 
-require __DIR__.'/settings.php';
-require __DIR__.'/auth.php';
+require __DIR__ . '/settings.php';
+require __DIR__ . '/auth.php';

@@ -76,6 +76,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/profile/photo', [ProfilePhotoController::class, 'destroy'])->name('profile.photo.destroy');
     Route::get('/profile/photo', [ProfilePhotoController::class, 'show'])->name('profile.photo.show');
 
+    Route::post('/profile/cover', [ProfilePhotoController::class, 'updateCover'])->middleware("role:organization")->name('profile.cover');
+
 
     Route::get('verify-email', EmailVerificationPromptController::class)
         ->name('verification.notice');

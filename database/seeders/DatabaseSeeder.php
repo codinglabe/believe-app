@@ -32,6 +32,11 @@ class DatabaseSeeder extends Seeder
             StatusCodesTableSeeder::class,
             SubsectionCodesTableSeeder::class,
             RoleSeeder::class,
+            AdminPermissionsSeeder::class,
+            permissionsSeeder::class,
+            assignRole::class,
+            AssignRolePermissionToUsersSeeder::class,
+            UsernameSeeder::class,
         ]);
     }
 }

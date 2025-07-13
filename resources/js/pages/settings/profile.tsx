@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import type { SharedData } from "@/types"
 import { Transition } from "@headlessui/react"
 import { router, useForm, usePage } from "@inertiajs/react"
@@ -11,7 +10,6 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
-import { Textarea } from "@/components/frontend/ui/textarea"
 import { Switch } from "@/components/frontend/ui/switch"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Separator } from "@/components/frontend/ui/separator"
@@ -32,15 +30,22 @@ import {
   Trash2,
   RotateCcw,
   Check,
+  Image as ImageIcon,
 } from "lucide-react"
 import InputError from "@/components/input-error"
 import Cropper from "react-easy-crop"
 import type { Area, Point } from "react-easy-crop/types"
+import { TextArea } from "@/components/ui/textarea"
+// import { TextArea } from "@/components/ui/textarea"
 
 type ProfileForm = {
   name: string
   email: string
-  phone?: string
+    contact_title: string
+    website: string
+    phone?: string
+    description?: string
+    mission?: string
 }
 
 export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEmail: boolean; status?: string }) {
@@ -56,28 +61,49 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
   const [isUploading, setIsUploading] = useState(false)
   const [photoError, setPhotoError] = useState<string>("")
   const [photoSuccess, setPhotoSuccess] = useState<string>("")
-  const [currentPhotoUrl, setCurrentPhotoUrl] = useState( auth.user.image)
+  const [currentPhotoUrl, setCurrentPhotoUrl] = useState(auth.user.image)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Cover photo upload states
+  const [isCoverDialogOpen, setIsCoverDialogOpen] = useState(false)
+  const [selectedCoverFile, setSelectedCoverFile] = useState<File | null>(null)
+  const [coverPreviewUrl, setCoverPreviewUrl] = useState<string>("")
+  const [coverCrop, setCoverCrop] = useState<Point>({ x: 0, y: 0 })
+  const [coverZoom, setCoverZoom] = useState(1)
+  const [croppedCoverAreaPixels, setCroppedCoverAreaPixels] = useState<Area | null>(null)
+  const [isCoverUploading, setIsCoverUploading] = useState(false)
+  const [coverError, setCoverError] = useState<string>("")
+  const [coverSuccess, setCoverSuccess] = useState<string>("")
+  const [currentCoverUrl, setCurrentCoverUrl] = useState(auth.user.cover_img)
+  const coverFileInputRef = useRef<HTMLInputElement>(null)
 
   const { data, setData, patch, errors, processing, recentlySuccessful } = useForm<ProfileForm>({
     name: auth.user.name || "",
     email: auth.user.email || "",
     phone: auth.user.phone || "",
+      contact_title: auth.user?.organization?.contact_title || "",
+      website: auth.user?.organization?.website || "",
+      description: auth.user?.organization?.description || "",
+      mission: auth.user?.organization?.mission || "",
   })
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
     patch(route("profile.update"), {
       preserveScroll: true,
-        onSuccess: () => {
-            //
-        },
+      onSuccess: () => {
+        //
+      },
     })
   }
 
   // Photo upload functions
   const onCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
     setCroppedAreaPixels(croppedAreaPixels)
+  }, [])
+
+  const onCoverCropComplete = useCallback((croppedArea: Area, croppedAreaPixels: Area) => {
+    setCroppedCoverAreaPixels(croppedAreaPixels)
   }, [])
 
   const handleFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -103,6 +129,56 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     setZoom(1)
   }
 
+  const handleCoverFileSelect = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Validate file type
+    if (!file.type.startsWith("image/")) {
+      setCoverError("Please select a valid image file.")
+      return
+    }
+
+    // Validate file size (5MB max)
+    if (file.size > 5 * 1024 * 1024) {
+      setCoverError("Image size must be less than 5MB.")
+      return
+    }
+
+    setSelectedCoverFile(file)
+    setCoverPreviewUrl(URL.createObjectURL(file))
+    setCoverError("")
+    setCoverCrop({ x: 0, y: 0 })
+    setCoverZoom(1)
+  }
+
+    // This helper turns crop data into a cropped image preview URL
+const getCroppedImage = async (
+    file: File,
+    crop: { x: number; y: number; width: number; height: number }
+  ): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image()
+      img.src = URL.createObjectURL(file)
+
+      img.onload = () => {
+        const canvas = document.createElement("canvas")
+        canvas.width = crop.width
+        canvas.height = crop.height
+        const ctx = canvas.getContext("2d")
+        if (!ctx) return reject("No canvas context")
+
+        ctx.drawImage(img, crop.x, crop.y, crop.width, crop.height, 0, 0, crop.width, crop.height)
+        canvas.toBlob((blob) => {
+          if (!blob) return reject("Canvas blob is null")
+          resolve(URL.createObjectURL(blob))
+        }, "image/jpeg")
+      }
+
+      img.onerror = () => reject("Failed to load image")
+    })
+  }
+
   const handlePhotoUpload = async () => {
     if (!selectedFile || !croppedAreaPixels) return
 
@@ -117,32 +193,63 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
       formData.append("width", croppedAreaPixels.width.toString())
       formData.append("height", croppedAreaPixels.height.toString())
 
-      const response = await fetch("/profile/photo", {
-        method: "POST",
-        headers: {
-          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
-          "X-Requested-With": "XMLHttpRequest",
+      router.post(route('profile.photo.store'), formData, {
+          onSuccess: async () => {
+              setPhotoSuccess("Profile photo updated successfully!")
+              const previewUrl = await getCroppedImage(selectedFile, croppedAreaPixels)
+                setCurrentPhotoUrl(previewUrl)
+          setTimeout(() => {
+            setIsPhotoDialogOpen(false)
+            resetPhotoState()
+            router.reload()
+          }, 1500)
         },
-        body: formData,
+        onError: (errors) => {
+          setPhotoError(errors.photo || "Failed to upload photo")
+        },
+        preserveScroll: true,
       })
-
-      const data = await response.json()
-
-      if (data.success) {
-        setPhotoSuccess(data.message)
-        setCurrentPhotoUrl(data.photo_url)
-        setTimeout(() => {
-          setIsPhotoDialogOpen(false)
-          resetPhotoState()
-        }, 1500)
-          router.reload();
-      } else {
-        setPhotoError(data.message || "Failed to upload photo")
-      }
     } catch (error) {
       setPhotoError("Network error. Please try again.")
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  const handleCoverUpload = async () => {
+    if (!selectedCoverFile || !croppedCoverAreaPixels) return
+
+    setIsCoverUploading(true)
+    setCoverError("")
+
+    try {
+      const formData = new FormData()
+      formData.append("cover", selectedCoverFile)
+      formData.append("x", croppedCoverAreaPixels.x.toString())
+      formData.append("y", croppedCoverAreaPixels.y.toString())
+      formData.append("width", croppedCoverAreaPixels.width.toString())
+      formData.append("height", croppedCoverAreaPixels.height.toString())
+
+      router.post(route('profile.cover'), formData, {
+        onSuccess: async () => {
+              setCoverSuccess("Cover photo updated successfully!")
+              const previewUrl = await getCroppedImage(selectedCoverFile, croppedCoverAreaPixels)
+              setCurrentCoverUrl(previewUrl)
+          setTimeout(() => {
+            setIsCoverDialogOpen(false)
+            resetCoverState()
+            router.reload()
+          }, 1500)
+        },
+        onError: (errors) => {
+          setCoverError(errors.cover || "Failed to upload cover photo")
+        },
+        preserveScroll: true,
+      })
+    } catch (error) {
+      setCoverError("Network error. Please try again.")
+    } finally {
+      setIsCoverUploading(false)
     }
   }
 
@@ -151,30 +258,52 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     setPhotoError("")
 
     try {
-      const response = await fetch("/profile/photo", {
-        method: "DELETE",
-        headers: {
-          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
-          "X-Requested-With": "XMLHttpRequest",
+      router.delete(route('profile.photo.destroy'), {
+          onSuccess: (resp) => {
+              console.log(resp);
+              setPhotoSuccess("Profile photo removed successfully!")
+              setCurrentPhotoUrl("");
+          setTimeout(() => {
+            setIsPhotoDialogOpen(false)
+              resetPhotoState()
+            router.reload()
+          }, 1500)
         },
+        onError: () => {
+          setPhotoError("Failed to delete photo")
+        },
+        preserveScroll: true,
       })
-
-      const data = await response.json()
-
-      if (data.success) {
-        setPhotoSuccess(data.message)
-        setCurrentPhotoUrl(data.photo_url)
-        setTimeout(() => {
-          setIsPhotoDialogOpen(false)
-          resetPhotoState()
-        }, 1500)
-      } else {
-        setPhotoError(data.message || "Failed to delete photo")
-      }
     } catch (error) {
       setPhotoError("Network error. Please try again.")
     } finally {
       setIsUploading(false)
+    }
+  }
+
+  const handleCoverDelete = async () => {
+    setIsCoverUploading(true)
+    setCoverError("")
+
+    try {
+      router.delete(route('profile.cover'), {
+        onSuccess: () => {
+          setCoverSuccess("Cover photo removed successfully!")
+          setTimeout(() => {
+            setIsCoverDialogOpen(false)
+            resetCoverState()
+            router.reload()
+          }, 1500)
+        },
+        onError: () => {
+          setCoverError("Failed to delete cover photo")
+        },
+        preserveScroll: true,
+      })
+    } catch (error) {
+      setCoverError("Network error. Please try again.")
+    } finally {
+      setIsCoverUploading(false)
     }
   }
 
@@ -191,8 +320,25 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     }
   }
 
+  const resetCoverState = () => {
+    setSelectedCoverFile(null)
+    setCoverPreviewUrl("")
+    setCoverError("")
+    setCoverSuccess("")
+    setCoverCrop({ x: 0, y: 0 })
+    setCoverZoom(1)
+    setCroppedCoverAreaPixels(null)
+    if (coverFileInputRef.current) {
+      coverFileInputRef.current.value = ""
+    }
+  }
+
   const triggerFileInput = () => {
     fileInputRef.current?.click()
+  }
+
+  const triggerCoverFileInput = () => {
+    coverFileInputRef.current?.click()
   }
 
   return (
@@ -224,7 +370,191 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
           </Alert>
         )}
 
-        <form onSubmit={submit} className="space-y-6">
+              <form onSubmit={submit} className="space-y-6">
+
+        {auth.user.role === "organization" && (
+
+          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
+                <ImageIcon className="h-5 w-5 text-blue-500" />
+                Cover Photo
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col sm:flex-row items-center gap-6">
+                {/* Current Cover Preview */}
+                <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+                  {currentCoverUrl ? (
+                    <img
+                      src={currentCoverUrl}
+                      alt="Cover"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      No cover photo uploaded
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload Controls */}
+                <div className="flex-1 text-center sm:text-left">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">Update your cover photo</h3>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
+                    Upload a new cover photo. Recommended size: 1500x500px.
+                  </p>
+
+                  <div className="flex gap-3">
+                    <Dialog open={isCoverDialogOpen} onOpenChange={setIsCoverDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="flex items-center gap-2 bg-transparent">
+                          <Upload className="h-4 w-4" />
+                          Upload New Cover
+                        </Button>
+                      </DialogTrigger>
+
+                      <DialogContent className="sm:max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Update Cover Photo</DialogTitle>
+                        </DialogHeader>
+
+                        <div className="space-y-4">
+                          {/* Error/Success Messages */}
+                          {coverError && (
+                            <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
+                              <AlertDescription className="text-red-700 dark:text-red-400">
+                                {coverError}
+                              </AlertDescription>
+                            </Alert>
+                          )}
+
+                          {coverSuccess && (
+                            <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                              <Check className="h-4 w-4 text-green-600" />
+                              <AlertDescription className="text-green-700 dark:text-green-400">
+                                {coverSuccess}
+                              </AlertDescription>
+                            </Alert>
+                          )}
+
+                          {/* File Input */}
+                          <input
+                            ref={coverFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleCoverFileSelect}
+                            className="hidden"
+                          />
+
+                          {/* Image Cropper */}
+                          {selectedCoverFile && coverPreviewUrl ? (
+                            <div className="space-y-4">
+                              <div className="relative w-full h-64 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
+                                <Cropper
+                                  image={coverPreviewUrl}
+                                  crop={coverCrop}
+                                  zoom={coverZoom}
+                                  aspect={3}
+                                  onCropChange={setCoverCrop}
+                                  onCropComplete={onCoverCropComplete}
+                                  onZoomChange={setCoverZoom}
+                                  cropShape="rect"
+                                  showGrid={false}
+                                />
+                              </div>
+
+                              {/* Zoom Control */}
+                              <div className="space-y-2">
+                                <label className="text-sm font-medium">Zoom</label>
+                                <input
+                                  type="range"
+                                  value={coverZoom}
+                                  min={1}
+                                  max={3}
+                                  step={0.1}
+                                  onChange={(e) => setCoverZoom(Number(e.target.value))}
+                                  className="w-full"
+                                />
+                              </div>
+
+                              {/* Action Buttons */}
+                              <div className="flex gap-2">
+                                <Button onClick={handleCoverUpload} disabled={isCoverUploading} className="flex-1">
+                                  {isCoverUploading ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                      Uploading...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Upload className="h-4 w-4 mr-2" />
+                                      Upload Cover
+                                    </>
+                                  )}
+                                </Button>
+                                <Button onClick={resetCoverState} variant="outline" disabled={isCoverUploading}>
+                                  <RotateCcw className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          ) : (
+                            /* Upload Options */
+                            <div className="space-y-4">
+                              <Button
+                                onClick={triggerCoverFileInput}
+                                variant="outline"
+                                className="w-full h-32 border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-gray-400 dark:hover:border-gray-500 bg-transparent"
+                                disabled={isCoverUploading}
+                              >
+                                <div className="text-center">
+                                  <Upload className="h-8 w-8 mx-auto mb-2 text-gray-400" />
+                                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                                    Click to upload a new cover photo
+                                  </p>
+                                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">JPG, PNG up to 5MB</p>
+                                </div>
+                              </Button>
+
+                              {/* Delete Option */}
+                              {auth.user.cover_image && (
+                                <Button
+                                  onClick={handleCoverDelete}
+                                  variant="destructive"
+                                  className="w-full"
+                                  disabled={isCoverUploading}
+                                >
+                                  {isCoverUploading ? (
+                                    <>
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                      Deleting...
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Trash2 className="h-4 w-4 mr-2" />
+                                      Remove Current Cover
+                                    </>
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+
+                    {auth.user.cover_image && (
+                      <Button onClick={handleCoverDelete} variant="destructive" size="sm" disabled={isCoverUploading}>
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
           {/* Profile Photo Section */}
           <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
             <CardHeader className="pb-4">
@@ -364,7 +694,7 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                               </Button>
 
                               {/* Delete Option */}
-                              {auth.user.profile_photo_path && (
+                              {auth.user.image && (
                                 <Button
                                   onClick={handlePhotoDelete}
                                   variant="destructive"
@@ -390,12 +720,12 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                       </DialogContent>
                     </Dialog>
 
-                    {auth.user.profile_photo_path && (
+                    {/* {auth.user.image && (
                       <Button onClick={handlePhotoDelete} variant="destructive" size="sm" disabled={isUploading}>
                         <Trash2 className="h-4 w-4 mr-2" />
                         Remove
                       </Button>
-                    )}
+                    )} */}
                   </div>
                 </div>
               </div>
@@ -428,7 +758,27 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                   />
                   <InputError message={errors.name} className="mt-1" />
                 </div>
+                          </div>
+
+                          {auth.user.role === "organization" && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
+                    Contact Title *
+                  </Label>
+                  <Input
+                    id="contact_title"
+                    type="text"
+                    value={data.contact_title}
+                    onChange={(e) => setData("contact_title", e.target.value)}
+                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="Excutive Director, Ceo, Manager, etc.."
+                    required
+                  />
+                  <InputError message={errors.contact_title} className="mt-1" />
+                </div>
               </div>
+                        )}
 
               {/* Email */}
               <div>
@@ -448,7 +798,8 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                   />
                 </div>
                 <InputError message={errors.email} className="mt-1" />
-              </div>
+                          </div>
+
 
               {/* Phone */}
               <div>
@@ -469,33 +820,79 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
                 <InputError message={errors.phone} className="mt-1" />
               </div>
             </CardContent>
-          </Card>
+                  </Card>
 
-          {/* Privacy Settings
+                  {auth.user.role === "organization" && (
           <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
             <CardHeader className="pb-4">
-              <CardTitle className="text-gray-900 dark:text-white">Privacy Settings</CardTitle>
+              <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
+                <User className="h-5 w-5 text-blue-500" />
+                Additional Information
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-gray-900 dark:text-white font-medium">Public Profile</Label>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Allow others to see your profile information
-                  </p>
+            <CardContent className="space-y-6">
+              {/* Website */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
+                    Website (Optional)
+                  </Label>
+                  <Input
+                    id="website"
+                    type="text"
+                    value={data.website}
+                    onChange={(e) => setData("website", e.target.value)}
+                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="example.com"
+                    required
+                  />
+                  <InputError message={errors.website} className="mt-1" />
                 </div>
-                <Switch />
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                <div className="space-y-0.5">
-                  <Label className="text-gray-900 dark:text-white font-medium">Email Notifications</Label>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Receive email updates about your account</p>
-                </div>
-                <Switch defaultChecked />
-              </div>
+                          </div>
+
+
+              {/* Description */}
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <Label htmlFor="description" className="text-gray-900 dark:text-white font-medium">
+            Description *
+          </Label>
+          <TextArea
+            id="description"
+            value={data.description}
+            onChange={(e) => setData("description", e.target.value)}
+            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            rows={4}
+            placeholder="Briefly describe your organization..."
+            required
+          />
+          <InputError message={errors.description} className="mt-1" />
+        </div>
+      </div>
+
+      {/* Mission */}
+      <div className="grid grid-cols-1 gap-4">
+        <div>
+          <Label htmlFor="mission" className="text-gray-900 dark:text-white font-medium">
+            Mission Statement *
+          </Label>
+          <TextArea
+            id="mission"
+            value={data.mission}
+            onChange={(e) => setData("mission", e.target.value)}
+            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            rows={4}
+            placeholder="What is your organization's mission?"
+            required
+          />
+          <InputError message={errors.mission} className="mt-1" />
+        </div>
+      </div>
+
             </CardContent>
-          </Card> */}
+                      </Card>
+
+                    )}
 
           {/* Save Button */}
           <div className="flex justify-end">
