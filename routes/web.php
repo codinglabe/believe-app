@@ -12,6 +12,7 @@ use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CategoryController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -102,6 +103,12 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     // Deductibility Codes Routes
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware('permission:deductibily.code.read');
 
+    /* Product Routes */
+    Route::resource('products', ProductController::class)->except(['show']);
+
+    /* Category Routes */
+    Route::resource('categories', CategoryController::class)->except(['show']);
+
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);
     Route::get('/role-management', [RolePermissionController::class, 'roleManagement']);
@@ -127,9 +134,6 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
-
-    /* Product Routes */
-    Route::resource('products', ProductController::class)->except(['show']);
 });
 
 require __DIR__ . '/settings.php';
