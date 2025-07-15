@@ -13,6 +13,7 @@ use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -135,6 +136,15 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
 });
+
+// route for donation
+Route::middleware(['auth', 'verified'])->group(function () {
+    Route::post('/donate', [\App\Http\Controllers\DonationController::class, 'store'])->name('donations.store');
+    Route::get('/donations/success', [\App\Http\Controllers\DonationController::class, 'success'])->name('donations.success');
+    Route::get('/donations/cancel', [\App\Http\Controllers\DonationController::class, 'cancel'])->name('donations.cancel');
+});
+
+
 
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';

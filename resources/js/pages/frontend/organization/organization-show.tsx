@@ -28,9 +28,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Badge } from "@/components/frontend/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import DonationModal from "@/components/frontend/donation-modal"
-import { Link, useForm } from "@inertiajs/react"
+import { Link, router, useForm } from "@inertiajs/react"
 
-export default function OrganizationPage({ organization, isFav }: { organization: any, isFav: boolean }) {
+export default function OrganizationPage({ auth, organization, isFav }: { organization: any, isFav: boolean }) {
   const [isFavorite, setIsFavorite] = useState(isFav || false)
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [currentProductPage, setCurrentProductPage] = useState(1)
@@ -45,18 +45,18 @@ export default function OrganizationPage({ organization, isFav }: { organization
   const endProductIndex = Math.min(startProductIndex + productsPerPage, totalProducts)
   const currentProducts = organization.products?.slice(startProductIndex, endProductIndex) || []
 
-    const { post, processing } = useForm();
+  const { post, processing } = useForm();
 
-    const toggleFavorite = () => {
-        post(route('user.organizations.toggle-favorite', { id: organization.id }), {
-            preserveScroll: true,
-            preserveState: true,
-            onSuccess: () => setIsFavorite(!isFavorite),
-            onError: (errors) => {
-                console.error('Error toggling favorite:', errors);
-            },
-        });
-    };
+  const toggleFavorite = () => {
+    post(route('user.organizations.toggle-favorite', { id: organization.id }), {
+      preserveScroll: true,
+      preserveState: true,
+      onSuccess: () => setIsFavorite(!isFavorite),
+      onError: (errors) => {
+        console.error('Error toggling favorite:', errors);
+      },
+    });
+  };
 
   const handleProductPageChange = (page: number) => {
     setCurrentProductPage(page)
@@ -96,32 +96,42 @@ export default function OrganizationPage({ organization, isFav }: { organization
     return cart.reduce((total, item) => total + item.quantity, 0)
   }
 
-//   useEffect(() => {
-//     Inertia.get(route(route().current()), query, {
-//         preserveState: true,
-//         replace: true,
-//     });
-// }, [query]);
+  const handleDonateNow = () => {
+    if (!auth?.user) {
 
-//   useEffect(() => {
-//     // Check if organization is in user's favorites
-//     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-//     setIsFavorite(favorites.includes(organization.id))
-//   }, [organization.id])
+      router.visit(route('login', { redirect: route('organizations.show', { slug: organization?.user?.slug }) }), { replace: true })
+    } else {
+      setShowDonationModal(true)
+    }
 
-//   const toggleFavorite = () => {
-//     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-//     let updatedFavorites
+  }
 
-//     if (isFavorite) {
-//       updatedFavorites = favorites.filter((id: number) => id !== organization.id)
-//     } else {
-//       updatedFavorites = [...favorites, organization.id]
-//     }
+  //   useEffect(() => {
+  //     Inertia.get(route(route().current()), query, {
+  //         preserveState: true,
+  //         replace: true,
+  //     });
+  // }, [query]);
 
-//     localStorage.setItem("favoriteOrganizations", JSON.stringify(updatedFavorites))
-//     setIsFavorite(!isFavorite)
-//   }
+  //   useEffect(() => {
+  //     // Check if organization is in user's favorites
+  //     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
+  //     setIsFavorite(favorites.includes(organization.id))
+  //   }, [organization.id])
+
+  //   const toggleFavorite = () => {
+  //     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
+  //     let updatedFavorites
+
+  //     if (isFavorite) {
+  //       updatedFavorites = favorites.filter((id: number) => id !== organization.id)
+  //     } else {
+  //       updatedFavorites = [...favorites, organization.id]
+  //     }
+
+  //     localStorage.setItem("favoriteOrganizations", JSON.stringify(updatedFavorites))
+  //     setIsFavorite(!isFavorite)
+  //   }
 
   // Format address
   const fullAddress = `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}`
@@ -139,8 +149,8 @@ export default function OrganizationPage({ organization, isFav }: { organization
           />
           <div className="absolute inset-0 bg-black bg-opacity-50" />
           <div className="absolute inset-0 flex items-end" style={{
-                      backgroundImage: `url(${organization.user?.cover_img ? '/storage/' + organization.user.cover_img : "/placeholder.svg"})`, backgroundColor: '#101828', backgroundBlendMode: 'soft-light'
-    }}>
+            backgroundImage: `url(${organization.user?.cover_img ? '/storage/' + organization.user.cover_img : "/placeholder.svg"})`, backgroundColor: '#101828', backgroundBlendMode: 'soft-light'
+          }}>
             <div className="container mx-auto px-4 pb-8">
               <motion.div
                 initial={{ opacity: 0, y: 30 }}
@@ -194,7 +204,7 @@ export default function OrganizationPage({ organization, isFav }: { organization
                 {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
                   <Button
-                    onClick={() => setShowDonationModal(true)}
+                    onClick={handleDonateNow}
                     size="lg"
                     className="bg-blue-600 hover:bg-blue-700 text-white px-6 sm:px-8 w-full sm:w-auto"
                   >
@@ -525,9 +535,8 @@ export default function OrganizationPage({ organization, isFav }: { organization
                                   {[...Array(5)].map((_, i) => (
                                     <Star
                                       key={i}
-                                      className={`h-3 w-3 sm:h-4 sm:w-4 ${
-                                        i < Math.floor(product.rating) ? "text-yellow-400 fill-current" : "text-gray-300"
-                                      }`}
+                                      className={`h-3 w-3 sm:h-4 sm:w-4 ${i < Math.floor(product.rating) ? "text-yellow-400 fill-current" : "text-gray-300"
+                                        }`}
                                     />
                                   ))}
                                 </div>

@@ -12,7 +12,7 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
-import { usePage } from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -41,6 +41,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
   const [donorInfo, setDonorInfo] = useState({
+    organization_id: organization.id,
     name: user?.name || "",
     email: user?.email || "",
     phone: user?.phone || "",
@@ -63,28 +64,37 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
     return selectedAmount || Number.parseFloat(customAmount) || 0
   }
 
-  const handleDonate = async () => {
+  const handleDonate = () => {
     setIsProcessing(true)
     // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-    setIsProcessing(false)
-    setIsSuccess(true)
+    router.post(route("donations.store"), {
+      organization_id: organization.id,
+      amount: getCurrentAmount(),
+      frequency: donationType,
+      message: donorInfo.message,
+    }, {
+      onSuccess: () => {
+        setIsProcessing(false)
+        setIsSuccess(false)
+        onClose()
+        // Reset form
+        setSelectedAmount(null)
+        setCustomAmount("")
+        setDonationType("one-time")
+        setDonorInfo({
+          organization_id: organization.id,
+          name: "",
+          email: "",
+          phone: "",
+          message: "",
+        })
+      },
+      onError: () => {
+        setIsProcessing(false)
+        // Handle error (e.g., show notification)
+      }
+    })
 
-    // Reset form after 3 seconds
-    setTimeout(() => {
-      setIsSuccess(false)
-      onClose()
-      // Reset form
-      setSelectedAmount(null)
-      setCustomAmount("")
-      setDonationType("one-time")
-      setDonorInfo({
-        name: "",
-        email: "",
-        phone: "",
-        message: "",
-      })
-    }, 3000)
   }
 
   const getFrequencyText = () => {
