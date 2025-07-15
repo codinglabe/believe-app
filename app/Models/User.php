@@ -128,4 +128,10 @@ class User extends Authenticatable implements MustVerifyEmail
             'image' => $photoPath,
         ])->save();
     }
+
+    public function favoriteOrganizations()
+    {
+        return $this->belongsToMany(Organization::class, 'user_favorite_organizations')
+            ->withTimestamps()->with(['user', 'nteeCode']);
+    }
 }

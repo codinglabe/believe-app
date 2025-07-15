@@ -28,10 +28,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Badge } from "@/components/frontend/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import DonationModal from "@/components/frontend/donation-modal"
-import { Link } from "@inertiajs/react"
+import { Link, useForm } from "@inertiajs/react"
 
-export default function OrganizationPage({ organization }: { organization: any }) {
-  const [isFavorite, setIsFavorite] = useState(false)
+export default function OrganizationPage({ organization, isFav }: { organization: any, isFav: boolean }) {
+  const [isFavorite, setIsFavorite] = useState(isFav || false)
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [currentProductPage, setCurrentProductPage] = useState(1)
   const [cart, setCart] = useState<any[]>([])
@@ -44,6 +44,19 @@ export default function OrganizationPage({ organization }: { organization: any }
   const startProductIndex = (currentProductPage - 1) * productsPerPage
   const endProductIndex = Math.min(startProductIndex + productsPerPage, totalProducts)
   const currentProducts = organization.products?.slice(startProductIndex, endProductIndex) || []
+
+    const { post, processing } = useForm();
+
+    const toggleFavorite = () => {
+        post(route('user.organizations.toggle-favorite', { id: organization.id }), {
+            preserveScroll: true,
+            preserveState: true,
+            onSuccess: () => setIsFavorite(!isFavorite),
+            onError: (errors) => {
+                console.error('Error toggling favorite:', errors);
+            },
+        });
+    };
 
   const handleProductPageChange = (page: number) => {
     setCurrentProductPage(page)
@@ -83,25 +96,32 @@ export default function OrganizationPage({ organization }: { organization: any }
     return cart.reduce((total, item) => total + item.quantity, 0)
   }
 
-  useEffect(() => {
-    // Check if organization is in user's favorites
-    const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-    setIsFavorite(favorites.includes(organization.id))
-  }, [organization.id])
+//   useEffect(() => {
+//     Inertia.get(route(route().current()), query, {
+//         preserveState: true,
+//         replace: true,
+//     });
+// }, [query]);
 
-  const toggleFavorite = () => {
-    const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-    let updatedFavorites
+//   useEffect(() => {
+//     // Check if organization is in user's favorites
+//     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
+//     setIsFavorite(favorites.includes(organization.id))
+//   }, [organization.id])
 
-    if (isFavorite) {
-      updatedFavorites = favorites.filter((id: number) => id !== organization.id)
-    } else {
-      updatedFavorites = [...favorites, organization.id]
-    }
+//   const toggleFavorite = () => {
+//     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
+//     let updatedFavorites
 
-    localStorage.setItem("favoriteOrganizations", JSON.stringify(updatedFavorites))
-    setIsFavorite(!isFavorite)
-  }
+//     if (isFavorite) {
+//       updatedFavorites = favorites.filter((id: number) => id !== organization.id)
+//     } else {
+//       updatedFavorites = [...favorites, organization.id]
+//     }
+
+//     localStorage.setItem("favoriteOrganizations", JSON.stringify(updatedFavorites))
+//     setIsFavorite(!isFavorite)
+//   }
 
   // Format address
   const fullAddress = `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}`

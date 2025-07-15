@@ -42,7 +42,7 @@ type ProfileForm = {
   name: string
   email: string
     contact_title: string
-    website: string
+    website?: string
     phone?: string
     description?: string
     mission?: string
@@ -81,10 +81,10 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     name: auth.user.name || "",
     email: auth.user.email || "",
     phone: auth.user.phone || "",
-      contact_title: auth.user?.organization?.contact_title || "",
-      website: auth.user?.organization?.website || "",
-      description: auth.user?.organization?.description || "",
-      mission: auth.user?.organization?.mission || "",
+    contact_title: auth.user?.organization?.contact_title || "",
+    website: auth.user?.organization?.website || "",
+    description: auth.user?.organization?.description || "",
+    mission: auth.user?.organization?.mission || "",
   })
 
   const submit: FormEventHandler = (e) => {

@@ -190,7 +190,6 @@ class OrganizationRegisterController extends Controller
             ]);
 
 
-
             $organization = Organization::create([
                 'user_id' => $user->id,
                 'ein' => $validated['ein'],

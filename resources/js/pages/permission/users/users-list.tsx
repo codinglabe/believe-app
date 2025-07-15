@@ -8,57 +8,82 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Pagination } from "@/components/ui/pagination"
 import { Search, Plus, Edit, Trash2, Mail, Calendar, Shield, ArrowLeft } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
-import { Link } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
+import { ConfirmationModal } from "@/components/confirmation-modal"
+
+interface User {
+  id: string
+  name: string
+  email: string
+  avatar: string
+  role: string
+  roleId: string | null
+  status: "active" | "inactive"
+  lastLogin: string
+  customPermissions: string[]
+  joinedDate: string
+}
+
+interface UsersPaginator {
+  data: User[]
+  current_page: number
+  last_page: number
+  total: number
+  per_page: number
+}
 
 interface UsersListProps {
-  users: {
-    data: {
-      id: string
-      name: string
-      email: string
-      avatar: string
-      role: string
-      roleId: string | null
-      status: "active" | "inactive"
-      lastLogin: string
-      customPermissions: string[]
-      joinedDate: string
-    }[]
-    current_page: number
-    last_page: number
-    total: number
-    per_page: number
-  }
+  users: UsersPaginator
   allRoles: { id: string; name: string }[]
   allPermissions: { id: string; name: string; category: string }[]
   onNavigate: (page: string, id?: string) => void
 }
 
-export default function UsersList({ users: initialUsersData, allRoles, allPermissions, onNavigate }: UsersListProps) {
-  const [users, setUsers] = useState(initialUsersData.data)
+export default function UsersList({ allRoles, allPermissions, onNavigate }: UsersListProps) {
+  const { users } = usePage<{ users: UsersPaginator }>().props
+
   const [searchTerm, setSearchTerm] = useState("")
   const [filterRole, setFilterRole] = useState("all")
   const [filterStatus, setFilterStatus] = useState("all")
-  const [currentPage, setCurrentPage] = useState(initialUsersData.current_page)
-  const itemsPerPage = initialUsersData.per_page
-  const totalPages = initialUsersData.last_page
-  const totalItems = initialUsersData.total
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
 
-  const filteredUsers = users.filter((user) => {
-    const matchesSearch =
-      user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      user.email.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesRole = filterRole === "all" || user.roleId === filterRole
-    const matchesStatus = filterStatus === "all" || user.status === filterStatus
+  const handleFilterChange = () => {
+    router.get(route('users.list'), {
+      page: 1,
+      search: searchTerm,
+      role: filterRole,
+      status: filterStatus
+    }, { preserveState: true, replace: true })
+  }
 
-    return matchesSearch && matchesRole && matchesStatus
-  })
-
-  const startIndex = (currentPage - 1) * itemsPerPage
-  const paginatedUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage)
+  const handlePageChange = (page: number) => {
+    router.get(route('users.list'), {
+      page,
+      search: searchTerm,
+      role: filterRole,
+      status: filterStatus
+    }, { preserveState: true, replace: true })
+  }
 
   const handleDeleteUser = (userId: string) => {
-    setUsers(users.filter((user) => user.id !== userId))
+    setDeleteDialogOpen(true)
+    setSelectedUserId(userId)
+  }
+
+  const confirmDeleteUser = () => {
+    if (selectedUserId) {
+      router.delete(route('users.destroy', selectedUserId), {
+        onSuccess: () => {
+          setDeleteDialogOpen(false)
+          setSelectedUserId(null)
+          router.get(route('users.list'), { search: searchTerm }, { preserveState: true, replace: true })
+        },
+        onError: (errors) => {
+          console.error("Error deleting user:", errors)
+        },
+      })
+    }
   }
 
   return (
@@ -105,10 +130,8 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
             <Input
               placeholder="Search users..."
               value={searchTerm}
-              onChange={(e) => {
-                setSearchTerm(e.target.value)
-                setCurrentPage(1)
-              }}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
               className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -117,7 +140,7 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
               value={filterRole}
               onValueChange={(value) => {
                 setFilterRole(value)
-                setCurrentPage(1)
+                handleFilterChange()
               }}
             >
               <SelectTrigger className="w-full sm:w-[180px]">
@@ -136,7 +159,7 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
               value={filterStatus}
               onValueChange={(value) => {
                 setFilterStatus(value)
-                setCurrentPage(1)
+                handleFilterChange()
               }}
             >
               <SelectTrigger className="w-full sm:w-[180px]">
@@ -153,7 +176,7 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
 
         {/* Users Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
-          {paginatedUsers.map((user, index) => (
+          {users.data.map((user, index) => (
             <Card
               key={user.id}
               className="relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 animate-in fade-in-0 slide-in-from-bottom-4"
@@ -229,9 +252,6 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
                           </Badge>
                         )
                       })}
-                      {/* <Badge variant="outline" className="text-xs">
-                      +{user.customPermissions.length} custom
-                    </Badge> */}
                     </div>
                   </div>
                 )}
@@ -242,13 +262,22 @@ export default function UsersList({ users: initialUsersData, allRoles, allPermis
 
         {/* Pagination */}
         <Pagination
-          currentPage={currentPage}
-          totalPages={totalPages}
-          totalItems={totalItems}
-          itemsPerPage={itemsPerPage}
-          onPageChange={setCurrentPage}
+          currentPage={users.current_page}
+          totalPages={users.last_page}
+          totalItems={users.total}
+          itemsPerPage={users.per_page}
+          onPageChange={handlePageChange}
         />
       </div>
+      <ConfirmationModal
+        isOpen={deleteDialogOpen}
+        onChange={setDeleteDialogOpen}
+        title="Confirm Delete"
+        description="Are you sure you want to delete this user & permissions?"
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        onConfirm={() => confirmDeleteUser()}
+      />
     </AppLayout>
   )
 }

@@ -4,7 +4,9 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Models\NteeCode;
+use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
@@ -30,8 +32,8 @@ class OrganizationController extends Controller
         if ($search) {
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%")
-                  ->orWhere('mission', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%")
+                    ->orWhere('mission', 'LIKE', "%{$search}%");
             });
         }
 
@@ -103,14 +105,14 @@ class OrganizationController extends Controller
                 'cities' => $cities,
             ],
             'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
-                                ($state && $state !== 'All States') ||
-                                ($city && $city !== 'All Cities') || $zip,
+                ($state && $state !== 'All States') ||
+                ($city && $city !== 'All Cities') || $zip,
         ]);
     }
 
     public function show(string $slug)
     {
-        $organization = Organization::with(['nteeCode', 'user'])
+        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser'])
             ->whereHas('user', function ($query) use ($slug) {
                 $query->where('slug', $slug);
             })
@@ -119,6 +121,7 @@ class OrganizationController extends Controller
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organization,
+            'isFav' => $organization->isFavoritedByUser,
         ]);
     }
 
@@ -140,5 +143,29 @@ class OrganizationController extends Controller
             ->prepend('All Cities');
 
         return response()->json($cities);
+    }
+
+    public function toggleFavorite(Request $request, int $id)
+    {
+        $user = Auth::user();
+        $org =  Organization::findOrFail($id);
+        $fav = UserFavoriteOrganization::where('user_id', $user->id)->where('organization_id', $id)->first();
+
+        if ($fav) {
+            $fav->delete();
+        } else {
+            UserFavoriteOrganization::create([
+                'user_id' => $user->id,
+                'organization_id' => $id,
+            ]);
+        }
+
+        // $organization =  Organization::find($organization->id);
+
+        // Redirect back to the organization's show page with its slug
+        // return Inertia::render('frontend/organization/organization-show', ['slug' => $organization->slug, 'organization' => $organization]);
+
+        return redirect()->route('organizations.show', ['slug' => $org->user->slug]);
+
     }
 }

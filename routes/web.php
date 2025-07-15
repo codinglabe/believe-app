@@ -12,6 +12,7 @@ use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
+use App\Http\Controllers\CategoryController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -46,13 +47,18 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
     Route::get('/profile/favorites', [UserProfileController::class, 'favorites'])->name('profile.favorites');
+    Route::delete("/profile/favorites/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+
+    // Toggle favorite status
+    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
 });
 
-// Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
-//     return Inertia::render('frontend/profile');
-// });
+Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
+    return Inertia::render('frontend/profile');
+});
 
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
     Route::get('dashboard', function () {
@@ -100,6 +106,8 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     /* Product Routes */
     Route::resource('products', ProductController::class)->except(['show']);
 
+    /* Category Routes */
+    Route::resource('categories', CategoryController::class)->except(['show']);
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);
@@ -125,6 +133,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::put('/users/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
+    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+
+  
 });
 
 require __DIR__ . '/settings.php';

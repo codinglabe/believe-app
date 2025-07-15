@@ -12,6 +12,7 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
+import { usePage } from "@inertiajs/react"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -23,20 +24,26 @@ interface DonationModalProps {
     description: string
     category: string
     rating: number
+    user: {
+      image: string
+      name: string
+      email: string
+      phone: string
+    }
   }
 }
 
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
+  const { user } = usePage().props.auth
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
   const [donorInfo, setDonorInfo] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
     message: "",
   })
   const [isProcessing, setIsProcessing] = useState(false)
@@ -72,8 +79,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
       setCustomAmount("")
       setDonationType("one-time")
       setDonorInfo({
-        firstName: "",
-        lastName: "",
+        name: "",
         email: "",
         phone: "",
         message: "",
@@ -146,7 +152,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
             <CardContent className="pt-4">
               <div className="flex items-center gap-4">
                 <img
-                  src={organization.image || "/placeholder.svg"}
+                  src={organization?.user?.image ? "/" + organization?.user?.image : "/placeholder.svg"}
                   alt={organization.name}
                   width={64}
                   height={64}
@@ -264,21 +270,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                 <Input
                   id="firstName"
                   placeholder="John"
-                  value={donorInfo.firstName}
-                  onChange={(e) => setDonorInfo({ ...donorInfo, firstName: e.target.value })}
-                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                  required
-                />
-              </div>
-              <div>
-                <Label htmlFor="lastName" className="text-gray-900 dark:text-white">
-                  Last Name *
-                </Label>
-                <Input
-                  id="lastName"
-                  placeholder="Doe"
-                  value={donorInfo.lastName}
-                  onChange={(e) => setDonorInfo({ ...donorInfo, lastName: e.target.value })}
+                  value={donorInfo.name}
+                  onChange={(e) => setDonorInfo({ ...donorInfo, name: e.target.value })}
                   className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                   required
                 />
@@ -297,19 +290,20 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                   required
                 />
               </div>
-              <div>
-                <Label htmlFor="phone" className="text-gray-900 dark:text-white">
-                  Phone (Optional)
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="+1 (555) 123-4567"
-                  value={donorInfo.phone}
-                  onChange={(e) => setDonorInfo({ ...donorInfo, phone: e.target.value })}
-                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                />
-              </div>
+
+            </div>
+            <div>
+              <Label htmlFor="phone" className="text-gray-900 dark:text-white">
+                Phone (Optional)
+              </Label>
+              <Input
+                id="phone"
+                type="tel"
+                placeholder="+1 (555) 123-4567"
+                value={donorInfo.phone}
+                onChange={(e) => setDonorInfo({ ...donorInfo, phone: e.target.value })}
+                className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+              />
             </div>
           </div>
 
@@ -367,8 +361,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
               className="flex-1 bg-blue-600 hover:bg-blue-700"
               disabled={
                 getCurrentAmount() === 0 ||
-                !donorInfo.firstName ||
-                !donorInfo.lastName ||
+                !donorInfo.name ||
                 !donorInfo.email ||
                 isProcessing
               }

@@ -5,6 +5,7 @@ namespace App\Http\Requests\Settings;
 use App\Models\User;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Request;
 use Illuminate\Validation\Rule;
 
 class ProfileUpdateRequest extends FormRequest
@@ -18,7 +19,10 @@ class ProfileUpdateRequest extends FormRequest
     {
         return [
             'name' => ['required', 'string', 'max:255'],
-
+            'contact_title' => [
+                Rule::requiredIf(fn() => $this->user()->role === 'organization'),
+                'string'
+            ],
             'email' => [
                 'required',
                 'string',
@@ -28,6 +32,9 @@ class ProfileUpdateRequest extends FormRequest
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
             'phone' => ['nullable', 'string'],
+            'website' => ["nullable", 'string'],
+            'description' => [Rule::requiredIf(fn() => $this->user()->role === 'organization')],
+            'mission' => [Rule::requiredIf(fn() => $this->user()->role === 'organization')],
         ];
     }
 }

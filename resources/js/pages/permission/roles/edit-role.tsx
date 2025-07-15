@@ -9,7 +9,7 @@ import { ArrowLeft, Save, X } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
 import { TextArea } from "@/components/ui/textarea"
 import PermissionSelector from "@/components/ui/permission-selector"
-import { Link } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 
 interface EditRoleProps {
     role: {
@@ -43,13 +43,18 @@ export default function EditRole({ role: initialRoleData, allPermissions, onNavi
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        // Here you would typically update the role in your backend
-        console.log("Updating role:", formData)
-        onNavigate("roles-list")
+        router.put(route("roles.update", initialRoleData.id), formData, {
+            onSuccess: () => {
+                router.visit(route('roles.list'))
+            },
+            onError: (errors) => {
+                console.error("Error updating user:", errors)
+            },
+        })
     }
 
     const handleCancel = () => {
-        onNavigate("roles-list")
+        router.visit(route('roles.list'))
     }
 
     if (loading) {

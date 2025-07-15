@@ -9,7 +9,7 @@ import { ArrowLeft, Save, X } from "lucide-react"
 import { TextArea } from "@/components/ui/textarea"
 import AppLayout from "@/layouts/app-layout"
 import PermissionSelector from "@/components/ui/permission-selector"
-import { Link } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 
 interface CreateRoleProps {
     allPermissions: { id: string; name: string; category: string }[]
@@ -25,9 +25,14 @@ export default function CreateRole({ allPermissions, onNavigate }: CreateRolePro
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        // Here you would typically save the role to your backend
-        console.log("Creating role:", formData)
-        onNavigate("roles-list")
+        router.post(route("roles.store"), formData, {
+            onSuccess: () => {
+                router.visit(route('roles.list'))
+            },
+            onError: (errors) => {
+                console.error("Form submission errors:", errors)
+            },
+        })
     }
 
     const handleCancel = () => {

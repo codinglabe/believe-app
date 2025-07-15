@@ -12,7 +12,6 @@ class OrganizationStructuresTableSeeder extends Seeder
      */
     public function run(): void
     {
-
         $data = [
             ['organization_code' => 1, 'organization_structure' => 'Corporation', 'description' => 'A legal entity incorporated under state law (most common structure for nonprofits).'],
             ['organization_code' => 2, 'organization_structure' => 'Trust', 'description' => 'A fiduciary arrangement where assets are held and managed for charitable purposes.'],
