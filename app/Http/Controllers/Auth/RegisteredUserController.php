@@ -51,7 +51,6 @@ class RegisteredUserController extends Controller
         if(User::where('slug', $slug)->exists()) {
             $slug = $slug . '-' . Str::random(5);
         }
-
         $user = User::create([
             'name' => $request->name,
             'slug' => $request->slug,
