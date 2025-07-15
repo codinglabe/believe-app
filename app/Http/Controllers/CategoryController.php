@@ -53,6 +53,7 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'status' => 'required|in:active,inactive',
         ]);
         Category::create($validated);
         return redirect()->route('categories.index')->with('success', 'Category created successfully.');
@@ -83,6 +84,7 @@ class CategoryController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
+            'status' => 'required|in:active,inactive',
         ]);
         $category->update($validated);
         return redirect()->route('categories.index')->with('success', 'Category updated successfully.');
