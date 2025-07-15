@@ -12,9 +12,15 @@ class Product extends Model
         'user_id',
         'name',
         'description',
-        'price',
-        'image',
+        'quantity',
+        'unit_price',
+        'admin_owned',
+        'owned_by',
+        'organization_id',
         'status',
+        'sku',
+        'type',
+        'tags',
     ];
 
     /**
@@ -25,26 +31,35 @@ class Product extends Model
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Get the image URL.
-     */
-    protected function image(): Attribute
+    public function categories()
     {
-        return Attribute::make(
-            get: function ($value) {
-                if (!$value) {
-                    return null;
-                }
-                
-                // If it's already a full URL, return as is
-                if (filter_var($value, FILTER_VALIDATE_URL)) {
-                    return $value;
-                }
-                
-                // Return the full URL for stored images
-                return asset('storage/' . $value);
+        return $this->belongsToMany(Category::class, 'product_associated_categories');
+    }
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($product) {
+            $product->slug = static::generateUniqueSlug($product->name, $product->user_id);
+        });
+        static::updating(function ($product) {
+            if ($product->isDirty('name')) {
+                $product->slug = static::generateUniqueSlug($product->name, $product->user_id, $product->id);
             }
-        );
+        });
+    }
+
+    protected static function generateUniqueSlug($name, $userId, $ignoreId = null)
+    {
+        $slug = \Str::slug($name);
+        $baseSlug = $slug;
+        $i = 1;
+        while (static::where('slug', $slug)->where('user_id', $userId)->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+            $slug = $baseSlug . '-' . $i;
+            $i++;
+        }
+        return $slug;
     }
 }
 
