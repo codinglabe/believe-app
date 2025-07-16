@@ -26,4 +26,20 @@ class Donation extends Model
     {
         return number_format($this->amount / 100, 2);
     }
+
+    /**
+     * Get the user that made the donation.
+     */
+    public function user()
+    {
+        return $this->belongsTo(User::class);  
+    }
+
+    /**
+     * Get the organization that received the donation.
+     */
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class);
+    }
 }

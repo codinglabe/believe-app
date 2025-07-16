@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { Heart, CreditCard, DollarSign, Info, Check } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -13,6 +13,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
 import { router, usePage } from "@inertiajs/react"
+import { useNotification } from "./notification-provider"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -37,6 +38,8 @@ const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
   const { user } = usePage().props.auth
+    const flash = usePage().props
+    const { showNotification } = useNotification()
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
@@ -63,6 +66,16 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const getCurrentAmount = () => {
     return selectedAmount || Number.parseFloat(customAmount) || 0
   }
+
+  useEffect(() => {
+    if (flash?.warning) {
+      // Show warning notification
+      showNotification({
+        type: "warning",
+        message: typeof flash?.warning === "string" ? flash.warning : "Warning",
+      })
+    }
+  }, [flash, showNotification])
 
   const handleDonate = () => {
     setIsProcessing(true)
