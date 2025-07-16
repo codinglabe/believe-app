@@ -14,8 +14,8 @@ return new class extends Migration
         Schema::create('job_posts', function (Blueprint $table) {
             $table->id();
             // Relationships
-            $table->foreign('position_id')->references('id')->on('job_positions')->onDelete('cascade');
-            $table->foreign('organization_id')->references('id')->on('organizations')->onDelete('cascade');
+            $table->foreignId('position_id')->references('id')->on('job_positions')->onDelete('cascade');
+            $table->foreignId('organization_id')->references('id')->on('organizations')->onDelete('cascade');
 
             $table->string('title')->nullable(); // Can override position title
             $table->text('description')->nullable();
