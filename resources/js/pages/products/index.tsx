@@ -213,7 +213,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-                                       
+
                                         <th className="px-4 py-3 font-medium min-w-32">Name</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Sku</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity</th>
@@ -229,7 +229,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                 <tbody>
                                     {products.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
-                                           
+
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.name}>
                                                     {item.name}
@@ -250,18 +250,18 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                     {item.unit_price}
                                                 </span>
                                             </td>
-                                           
+                                            <td className="px-4 py-3 min-w-32">
+                                                <Badge variant="secondary" className="font-medium">
+                                                    {item.type}
+                                                </Badge>
+                                            </td>
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.status}
                                                 </Badge>
                                             </td>
 
-                                            <td className="px-4 py-3 min-w-32">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {item.type}
-                                                </Badge>
-                                            </td>
+
                                             {/* <td className="px-4 py-3 min-w-32">
                                                 <div className="text-sm">
                                                     <div>{new Date(item.created_at).toLocaleDateString()}</div>

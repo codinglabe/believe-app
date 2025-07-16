@@ -39,6 +39,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "management.data.read"
     },
     {
+        title: 'Categories',
+        href: '/categories',
+        icon: LayoutGrid,
+        permission: "management.data.read"
+    },
+    {
         title: 'Codes',
         items: [
             {

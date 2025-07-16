@@ -114,7 +114,7 @@ export default function Edit({ category }: Props) {
                                     <SelectContent>
                                         <SelectItem value="active">Active</SelectItem>
                                         <SelectItem value="inactive">Inactive</SelectItem>
-                                        
+
                                     </SelectContent>
                                 </Select>
                                 {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
