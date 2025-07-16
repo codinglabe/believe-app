@@ -773,7 +773,7 @@ const getCroppedImage = async (
                     onChange={(e) => setData("contact_title", e.target.value)}
                     className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Excutive Director, Ceo, Manager, etc.."
-                    required
+                    required={auth.user.role === "organization"}
                   />
                   <InputError message={errors.contact_title} className="mt-1" />
                 </div>
@@ -844,7 +844,6 @@ const getCroppedImage = async (
                     onChange={(e) => setData("website", e.target.value)}
                     className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="example.com"
-                    required
                   />
                   <InputError message={errors.website} className="mt-1" />
                 </div>
@@ -864,7 +863,7 @@ const getCroppedImage = async (
             className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
             placeholder="Briefly describe your organization..."
-            required
+            required={auth.user.role === "organization"}
           />
           <InputError message={errors.description} className="mt-1" />
         </div>
@@ -883,7 +882,7 @@ const getCroppedImage = async (
             className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
             placeholder="What is your organization's mission?"
-            required
+            required={auth.user.role === "organization"}
           />
           <InputError message={errors.mission} className="mt-1" />
         </div>
