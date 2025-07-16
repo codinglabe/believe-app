@@ -105,20 +105,6 @@ export default function Edit({ category }: Props) {
                                     <p className="text-sm text-red-500">{errors.name}</p>
                                 )}
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="status">Status</Label>
-                                <Select value={formData.status} onValueChange={(value) => handleChange('status', value)}>
-                                    <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="inactive">Inactive</SelectItem>
-                                        
-                                    </SelectContent>
-                                </Select>
-                                {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
-                            </div>
                             <div className="flex gap-4">
                                 <Button type="submit" disabled={isSubmitting}>
                                     <Save className="mr-2 h-4 w-4" />

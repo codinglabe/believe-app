@@ -91,4 +91,9 @@ class Organization extends Model
     {
         return $this->hasMany(Donation::class, 'organization_id');
     }
+
+    public function products()
+    {
+        return $this->hasMany(Product::class, 'organization_id');
+    }
 }

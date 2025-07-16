@@ -112,12 +112,15 @@ class OrganizationController extends Controller
 
     public function show(string $slug)
     {
-        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser'])
+        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products'])
             ->whereHas('user', function ($query) use ($slug) {
                 $query->where('slug', $slug);
             })
             ->where('registration_status', 'approved')
             ->firstOrFail();
+
+
+            // dd($organization);
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organization,

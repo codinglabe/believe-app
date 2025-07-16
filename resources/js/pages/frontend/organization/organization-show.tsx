@@ -89,7 +89,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   }
 
   const getCartTotal = () => {
-    return cart.reduce((total, item) => total + item.price * item.quantity, 0)
+    return cart.reduce((total, item) => total + item.unit_price * item.quantity, 0)
   }
 
   const getCartItemCount = () => {
@@ -523,7 +523,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                                 <h4 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 transition-colors">
                                   {product.name}
                                 </h4>
-                                <span className="text-xl sm:text-2xl font-bold text-blue-600">${product.price}</span>
+                                <span className="text-xl sm:text-2xl font-bold text-blue-600">${product.unit_price}</span>
                               </div>
 
                               <p className="text-gray-600 dark:text-gray-300 mb-3 sm:mb-4 text-sm leading-relaxed">
@@ -774,7 +774,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             <h4 className="font-medium text-gray-900 dark:text-white text-sm sm:text-base">
                               {item.name}
                             </h4>
-                            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">${item.price} each</p>
+                            <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-300">${item.unit_price} each</p>
                             <div className="flex items-center gap-2 mt-2">
                               <Button
                                 size="sm"
@@ -799,7 +799,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           </div>
                           <div className="text-right w-full sm:w-auto flex justify-between sm:block">
                             <div className="font-medium text-gray-900 dark:text-white text-sm sm:text-base">
-                              ${(item.price * item.quantity).toFixed(2)}
+                              ${(item.unit_price * item.quantity).toFixed(2)}
                             </div>
                             <Button
                               size="sm"
