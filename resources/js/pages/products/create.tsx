@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import type { SharedData } from "@/types"
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -33,6 +34,9 @@ interface Props {
 }
 
 export default function Create({ categories, organizations = [] }: Props) {
+
+    const { auth } = usePage<SharedData>().props
+
     const [formData, setFormData] = useState({
         name: '',
         description: '',
@@ -46,6 +50,7 @@ export default function Create({ categories, organizations = [] }: Props) {
         type: 'physical',
         tags: '',
         categories: [] as number[],
+        image: null as File | null,
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -55,15 +60,36 @@ export default function Create({ categories, organizations = [] }: Props) {
         setIsSubmitting(true);
         setErrors({});
 
-        const submitData: Record<string, any> = { ...formData };
-        submitData.categories = formData.categories;
-        // Convert booleans and numbers
-        submitData.admin_owned = formData.admin_owned === 'yes';
-        submitData.quantity = formData.quantity ? Number(formData.quantity) : 0;
-        submitData.unit_price = formData.unit_price ? Number(formData.unit_price) : 0;
-        if (!submitData.organization_id) delete submitData.organization_id;
+        const formDataToSubmit = new FormData();
 
-        router.post(route('products.store'), submitData, {
+        for (const key in formData) {
+            const value = formData[key as keyof typeof formData];
+
+            if (value !== undefined && value !== null) {
+                if (key === 'image' && value instanceof File) {
+                    formDataToSubmit.append('image', value);
+                } else if (Array.isArray(value)) {
+                    // Append each category item (e.g. categories[] = 1, 2, 3)
+                    value.forEach((v, i) => {
+                        formDataToSubmit.append(`${key}[${i}]`, String(v));
+                    });
+                } else {
+                    formDataToSubmit.append(key, String(value));
+                }
+            }
+        }
+
+        // Overwrite or set values that require type conversion
+        formDataToSubmit.set('admin_owned', formData.admin_owned === 'yes' ? 'true' : 'false');
+        formDataToSubmit.set('quantity', String(Number(formData.quantity) || 0));
+        formDataToSubmit.set('unit_price', String(Number(formData.unit_price) || 0));
+
+        if (!formData.organization_id) {
+            formDataToSubmit.delete('organization_id');
+        }
+
+        // ✅ USE THE CORRECT VARIABLE HERE
+        router.post(route('products.store'), formDataToSubmit, {
             onError: (errors) => {
                 setErrors(errors);
                 showErrorToast('Failed to create product');
@@ -74,6 +100,7 @@ export default function Create({ categories, organizations = [] }: Props) {
             }
         });
     };
+
 
     const handleChange = (field: string, value: string | number | boolean) => {
         setFormData(prev => ({
@@ -98,6 +125,22 @@ export default function Create({ categories, organizations = [] }: Props) {
                     : [...prev.categories, id],
             };
         });
+    };
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        setFormData(prev => ({
+            ...prev,
+            image: file
+        }));
+
+        // Clear error when user selects a file
+        if (errors.image) {
+            setErrors(prev => ({
+                ...prev,
+                image: ''
+            }));
+        }
     };
 
     return (
@@ -140,6 +183,19 @@ export default function Create({ categories, organizations = [] }: Props) {
                                     className={errors.description ? 'border-red-500' : ''}
                                 />
                                 {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="image">Product Image</Label>
+                                <Input
+                                    id="image"
+                                    type="file"
+                                    accept="image/*"
+                                    onChange={handleFileChange}
+                                    className={errors.image ? 'border-red-500' : ''}
+                                />
+                                {errors.image && (
+                                    <p className="text-sm text-red-500">{errors.image}</p>
+                                )}
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="quantity">Quantity</Label>
@@ -207,57 +263,63 @@ export default function Create({ categories, organizations = [] }: Props) {
                                 </Select>
                                 {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
                             </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="admin_owned">Admin Owned</Label>
-                                <Select value={formData.admin_owned} onValueChange={(value) => handleChange('admin_owned', value)}>
-                                    <SelectTrigger className={errors.admin_owned ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="yes">Yes</SelectItem>
-                                        <SelectItem value="no">No</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.admin_owned && <p className="text-sm text-red-500">{errors.admin_owned}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="owned_by">Owned By</Label>
-                                <Select value={formData.owned_by} onValueChange={(value) => handleChange('owned_by', value)}>
-                                    <SelectTrigger className={errors.owned_by ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select owner" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="admin">Admin</SelectItem>
-                                        <SelectItem value="organization">Organization</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.owned_by && <p className="text-sm text-red-500">{errors.owned_by}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="organization_id">Organization</Label>
-                                {organizations.length > 0 ? (
-                                    <Select value={formData.organization_id} onValueChange={(value) => handleChange('organization_id', value)}>
-                                        <SelectTrigger className={errors.organization_id ? 'border-red-500' : ''}>
-                                            <SelectValue placeholder="Select organization" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {organizations.map(org => (
-                                                <SelectItem key={org.id} value={String(org.id)}>{org.name}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                ) : (
-                                    <Input
-                                        id="organization_id"
-                                        type="number"
-                                        value={formData.organization_id}
-                                        onChange={(e) => handleChange('organization_id', e.target.value)}
-                                        placeholder="Enter organization ID"
-                                        className={errors.organization_id ? 'border-red-500' : ''}
-                                    />
-                                )}
-                                {errors.organization_id && <p className="text-sm text-red-500">{errors.organization_id}</p>}
-                            </div>
+                            {auth.user.role === "admin" && (
+                                <>
+                                    {/* <div className="space-y-2">
+                                        <Label htmlFor="admin_owned">Admin Owned</Label>
+                                        <Select value={formData.admin_owned} onValueChange={(value) => handleChange('admin_owned', value)}>
+                                            <SelectTrigger className={errors.admin_owned ? 'border-red-500' : ''}>
+                                                <SelectValue placeholder="Select" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="yes">Yes</SelectItem>
+                                                <SelectItem value="no">No</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        {errors.admin_owned && <p className="text-sm text-red-500">{errors.admin_owned}</p>}
+                                    </div> */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="owned_by">Owned By</Label>
+                                        <Select value={formData.owned_by} onValueChange={(value) => handleChange('owned_by', value)}>
+                                            <SelectTrigger className={errors.owned_by ? 'border-red-500' : ''}>
+                                                <SelectValue placeholder="Select owner" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="admin">Admin</SelectItem>
+                                                <SelectItem value="organization">Organization</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        {errors.owned_by && <p className="text-sm text-red-500">{errors.owned_by}</p>}
+                                    </div>
+                                    {formData.owned_by === 'organization' && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="organization_id">Organization</Label>
+                                            {organizations.length > 0 ? (
+                                                <Select value={formData.organization_id} onValueChange={(value) => handleChange('organization_id', value)}>
+                                                    <SelectTrigger className={errors.organization_id ? 'border-red-500' : ''}>
+                                                        <SelectValue placeholder="Select organization" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {organizations.map(org => (
+                                                            <SelectItem key={org.id} value={String(org.id)}>{org.name}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                            ) : (
+                                                <Input
+                                                    id="organization_id"
+                                                    type="number"
+                                                    value={formData.organization_id}
+                                                    onChange={(e) => handleChange('organization_id', e.target.value)}
+                                                    placeholder="Enter organization ID"
+                                                    className={errors.organization_id ? 'border-red-500' : ''}
+                                                />
+                                            )}
+                                            {errors.organization_id && <p className="text-sm text-red-500">{errors.organization_id}</p>}
+                                        </div>
+                                    )}
+                                </>
+                            )}
                             <div className="space-y-2">
                                 <Label>Categories</Label>
                                 <div className="flex flex-wrap gap-2">

@@ -3,7 +3,7 @@ import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { Download, LayoutGrid, FileText, ShoppingCart, Shield } from 'lucide-react';
+import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings } from 'lucide-react';
 import AppLogo from './app-logo';
 
 
@@ -30,12 +30,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Products',
         href: '/products',
         icon: ShoppingCart,
-        permission: "management.data.read"
-    },
-    {
-        title: 'Categories',
-        href: '/categories',
-        icon: LayoutGrid,
         permission: "management.data.read"
     },
     {
@@ -73,6 +67,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         href: '/permission-management',
         icon: Shield,
         permission: "role.management.read"
+    },
+    {
+        title: 'Settings',
+        href: '/settings/profile',
+        icon: Settings,
+        permission: "profile.read"
     },
 ];
 

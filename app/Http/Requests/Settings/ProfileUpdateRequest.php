@@ -17,12 +17,8 @@ class ProfileUpdateRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
+        $rules = [
             'name' => ['required', 'string', 'max:255'],
-            'contact_title' => [
-                Rule::requiredIf(fn() => $this->user()->role === 'organization'),
-                'string'
-            ],
             'email' => [
                 'required',
                 'string',
@@ -32,9 +28,17 @@ class ProfileUpdateRequest extends FormRequest
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
             'phone' => ['nullable', 'string'],
-            'website' => ["nullable", 'string'],
-            'description' => [Rule::requiredIf(fn() => $this->user()->role === 'organization')],
-            'mission' => [Rule::requiredIf(fn() => $this->user()->role === 'organization')],
         ];
+
+        if ($this->user()->role === 'organization') {
+            $rules = array_merge($rules, [
+                'contact_title' => ['required', 'string'],
+                'website' => ['nullable', 'string', 'url'],
+                'description' => ['required', 'string'],
+                'mission' => ['required', 'string'],
+            ]);
+        }
+
+        return $rules;
     }
 }

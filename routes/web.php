@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ChunkedUploadController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\HomeController;
 use App\Http\Controllers\RolePermissionController;
@@ -61,9 +62,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
 });
 
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
-    Route::get('dashboard', function () {
-        return Inertia::render('dashboard');
-    })->name('dashboard');
+    Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
     // Chunked Upload Routes
     Route::prefix('upload')->group(function () {

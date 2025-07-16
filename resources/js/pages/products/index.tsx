@@ -21,7 +21,10 @@ interface Product {
     name: string;
     sku: string;
     quantity : number;
+    quantity_available : number;
+    quantity_ordered : number;
     unit_price : number;
+    image: string;
     status: string;
     description: string;
     type : string;
@@ -213,27 +216,25 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-
-                                        <th className="px-4 py-3 font-medium min-w-32">Name</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Image</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Sku</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Quantity</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Name</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Hand</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Ordered</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Available</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Unit Price</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Type</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
-                                        {/* <th className="px-4 py-3 font-medium min-w-64">Description</th> */}
-                                        {/* <th className="px-4 py-3 font-medium min-w-32">Created</th> */}
-                                        {/* <th className="px-4 py-3 font-medium min-w-32">Updated</th> */}
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
                                     {products.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
-
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.name}>
-                                                    {item.name}
-                                                </span>
+                                            <td className="px-4 py-3 min-w-32">
+                                                <div className="flex items-center gap-2">
+                                                    <img src={item.image} alt={item.name} className="w-10 h-10 rounded-md" />
+                                                </div>
                                             </td>
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.sku}>
@@ -241,8 +242,23 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.name}>
+                                                    {item.name}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.quantity}>
                                                     {item.quantity}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.quantity_ordered}>
+                                                    {item.quantity_ordered}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.quantity_available}>
+                                                    {item.quantity_available}
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 min-w-64">

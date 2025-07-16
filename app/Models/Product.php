@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Casts\Attribute;
 class Product extends Model
 {
     protected $fillable = [
-        'user_id',
         'name',
         'description',
         'quantity',
@@ -21,6 +20,7 @@ class Product extends Model
         'sku',
         'type',
         'tags',
+        'image',
     ];
 
     /**
@@ -41,25 +41,48 @@ class Product extends Model
         parent::boot();
 
         static::creating(function ($product) {
-            $product->slug = static::generateUniqueSlug($product->name, $product->user_id);
+            $product->slug = static::generateUniqueSlug($product->name);
         });
         static::updating(function ($product) {
             if ($product->isDirty('name')) {
-                $product->slug = static::generateUniqueSlug($product->name, $product->user_id, $product->id);
+                $product->slug = static::generateUniqueSlug($product->name,$product->id);
             }
         });
     }
 
-    protected static function generateUniqueSlug($name, $userId, $ignoreId = null)
+    protected static function generateUniqueSlug($name,$ignoreId = null)
     {
         $slug = \Str::slug($name);
         $baseSlug = $slug;
         $i = 1;
-        while (static::where('slug', $slug)->where('user_id', $userId)->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))->exists()) {
+        while (static::where('slug', $slug)->when($ignoreId, fn($q) => $q->where('id', '!=', $ignoreId))->exists()) {
             $slug = $baseSlug . '-' . $i;
             $i++;
         }
         return $slug;
+    }
+
+
+    /**
+     * Get the image URL.
+     */
+    protected function image(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+
+                // If it's already a full URL, return as is
+                if (filter_var($value, FILTER_VALIDATE_URL)) {
+                    return $value;
+                }
+
+                // Return the full URL for stored images
+                return asset('storage/' . $value);
+            }
+        );
     }
 }
 
