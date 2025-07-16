@@ -13,7 +13,6 @@ use App\Http\Controllers\OrganizationController;
 use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
-<<<<<<< HEAD
 use App\Http\Controllers\CategoryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
