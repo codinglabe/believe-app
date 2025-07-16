@@ -15,6 +15,7 @@ class Organization extends Model
         'user_id',
         'ein',
         'name',
+        'stripe_product_id',
         'ico',
         'street',
         'city',
@@ -84,5 +85,10 @@ class Organization extends Model
     public function isFavoritedByUser(): HasOne
     {
         return $this->hasOne(UserFavoriteOrganization::class, 'organization_id');
+    }
+
+    public function donations()
+    {
+        return $this->hasMany(Donation::class, 'organization_id');
     }
 }

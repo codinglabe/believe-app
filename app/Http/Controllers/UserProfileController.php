@@ -84,10 +84,17 @@ class UserProfileController extends Controller
         return Inertia::render('frontend/user-profile/change-password');
     }
 
-    public function favorites()
+    public function favorites(Request $request)
     {
-        // Get user's favorite organizations
-        $favoriteOrganizations = Auth::user()->favoriteOrganizations; // Replace with actual query
+        $user = $request->user();
+
+        // Eager-load donations sum for this user on each favorite org
+        $favoriteOrganizations = $user->favoriteOrganizations()
+            ->withSum(['donations as total_donated' => function ($query) use ($user) {
+                $query->where('user_id', $user->id)
+                ->where('status', 'completed');
+            }], 'amount')
+            ->get();
 
         return Inertia::render('frontend/user-profile/favorites', [
             'favoriteOrganizations' => $favoriteOrganizations,

@@ -8,6 +8,7 @@ use App\Models\Product;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use App\Models\Category;
 
 class ProductController extends Controller
 {
@@ -51,7 +52,13 @@ class ProductController extends Controller
      */
     public function create(): Response
     {
-        return Inertia::render('products/create');
+        $categories = Category::all();
+        // If you want to pass organizations, fetch them here
+        // $organizations = Organization::all(['id', 'name']);
+        return Inertia::render('products/create', [
+            'categories' => $categories,
+            // 'organizations' => $organizations,
+        ]);
     }
 
     /**
@@ -59,34 +66,27 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
-            'price' => 'required|numeric|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'status' => 'required|string|in:active,inactive',
+            'quantity' => 'required|integer|min:0',
+            'unit_price' => 'required|numeric|min:0',
+            'admin_owned' => 'required|boolean',
+            'owned_by' => 'required|in:admin,organization',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'status' => 'required|in:active,inactive,archived',
+            'sku' => 'required|string|max:255|unique:products,sku',
+            'type' => 'required|in:digital,physical',
+            'tags' => 'nullable|string',
+            'categories' => 'array',
+            'categories.*' => 'integer|exists:categories,id',
         ]);
-
-        $imagePath = null;
-        if ($request->hasFile('image')) {
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $imagePath = $image->storeAs('products', $imageName, 'public');
-        }
-
-        
-
-        Product::create([
-            'user_id' => Auth::id(),
-            'name' => $request->name,
-            'description' => $request->description,
-            'price' => $request->price,
-            'image' => $imagePath,
-            'status' => $request->status,
-        ]);
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product created successfully');
+        $validated['user_id'] = \Auth::id();
+        $categories = $validated['categories'] ?? [];
+        unset($validated['categories']);
+        $product = Product::create($validated);
+        $product->categories()->sync($categories);
+        return redirect()->route('products.index')->with('success', 'Product created successfully');
     }
 
     /**
@@ -94,14 +94,17 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        // Ensure user can only edit their own products
-        if ($product->user_id !== Auth::id()) {
+        if ($product->user_id !== \Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
-        
-
+        $categories = Category::all();
+        // $organizations = Organization::all(['id', 'name']);
+        $selectedCategories = $product->categories()->pluck('categories.id')->toArray();
         return Inertia::render('products/edit', [
-            'product' => $product
+            'product' => $product,
+            'categories' => $categories,
+            'selectedCategories' => $selectedCategories,
+            // 'organizations' => $organizations,
         ]);
     }
 
@@ -110,50 +113,29 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-        // Ensure user can only update their own products
-        if ($product->user_id !== Auth::id()) {
+        if ($product->user_id !== \Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
-
-       
-        // dd($request->all());
-        $request->validate([
+        $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
-            'price' => 'required|numeric|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'status' => 'required|string|in:active,inactive',
+            'quantity' => 'required|integer|min:0',
+            'unit_price' => 'required|numeric|min:0',
+            'admin_owned' => 'required|boolean',
+            'owned_by' => 'required|in:admin,organization',
+            'organization_id' => 'nullable|integer|exists:organizations,id',
+            'status' => 'required|in:active,inactive,archived',
+            'sku' => 'required|string|max:255|unique:products,sku,' . $product->id,
+            'type' => 'required|in:digital,physical',
+            'tags' => 'nullable|string',
+            'categories' => 'array',
+            'categories.*' => 'integer|exists:categories,id',
         ]);
-
-       
-        
-        if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($product->image && Storage::disk('public')->exists($product->image)) {
-                Storage::disk('public')->delete($product->image);
-            }
-            
-            // Store new image
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $imagePath = $image->storeAs('products', $imageName, 'public');
-
-            $product->update([
-                'image' => $imagePath,
-            ]);
-    
-        }
-
-        
-        $product->update([
-            'name' => $request->name,
-            'description' => $request->description,
-            'price' => $request->price,
-            'status' => $request->status,
-        ]);
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product updated successfully');
+        $categories = $validated['categories'] ?? [];
+        unset($validated['categories']);
+        $product->update($validated);
+        $product->categories()->sync($categories);
+        return redirect()->route('products.index')->with('success', 'Product updated successfully');
     }
 
     /**
@@ -161,20 +143,12 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        // Ensure user can only delete their own products
-        if ($product->user_id !== Auth::id()) {
+        if ($product->user_id !== \Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
-
-        // Delete image file if exists
-        if ($product->image && Storage::disk('public')->exists($product->image)) {
-            Storage::disk('public')->delete($product->image);
-        }
-
+        $product->categories()->detach();
         $product->delete();
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product deleted successfully');
+        return redirect()->route('products.index')->with('success', 'Product deleted successfully');
     }
 }
 

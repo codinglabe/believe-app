@@ -2,36 +2,29 @@ import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, Eye, FileText, Search, X } from 'lucide-react';
-import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X } from 'lucide-react';
+import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: "Products",
-        href: "/products",
+        title: "Categories",
+        href: "/categories",
     },
 ]
 
-interface Product {
+interface Category {
     id: number;
     name: string;
-    sku: string;
-    quantity : number;
-    unit_price : number;
-    status: string;
-    description: string;
-    type : string;
     created_at: string;
     updated_at: string;
 }
 
 interface Props {
-    products: {
-        data: Product[];
+    categories: {
+        data: Category[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -49,23 +42,23 @@ interface Props {
     allowedPerPage: number[];
 }
 
-export default function Index({ products, filters, allowedPerPage }: Props) {
+export default function Index({ categories, filters, allowedPerPage }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<Product | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
-    const handleDelete = (item: Product) => {
+    const handleDelete = (item: Category) => {
         setItemToDelete(item);
         setDeleteDialogOpen(true);
     };
 
     const confirmDelete = () => {
         if (itemToDelete) {
-            router.delete(route('products.destroy', itemToDelete.id), {
-                onError: (errors) => {
-                    showErrorToast("Failed to delete product");
+            router.delete(route('categories.destroy', itemToDelete.id), {
+                onError: () => {
+                    showErrorToast("Failed to delete category");
                 },
             });
             setDeleteDialogOpen(false);
@@ -76,7 +69,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
     const handlePerPageChange = (newPerPage: number) => {
         setLoading(true);
         router.get(
-            "/products",
+            "/categories",
             {
                 per_page: newPerPage,
                 page: 1,
@@ -90,11 +83,10 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
     };
 
     const handlePageChange = (page: number) => {
-        if (page < 1 || page > products.last_page) return;
-
+        if (page < 1 || page > categories.last_page) return;
         setLoading(true);
         router.get(
-            "/products",
+            "/categories",
             {
                 per_page: filters.per_page,
                 page: page,
@@ -109,20 +101,16 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
 
     const handleSearch = (value: string) => {
         setSearchTerm(value);
-
-        // Clear existing timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
-
-        // Set new timeout for search
         const timeout = setTimeout(() => {
             setLoading(true);
             router.get(
-                "/products",
+                "/categories",
                 {
                     per_page: filters.per_page,
-                    page: 1, // Reset to first page when searching
+                    page: 1,
                     search: value,
                 },
                 {
@@ -130,8 +118,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                     onFinish: () => setLoading(false),
                 },
             );
-        }, 500); // 500ms delay
-
+        }, 500);
         setSearchTimeout(timeout);
     };
 
@@ -139,7 +126,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
         setSearchTerm('');
         setLoading(true);
         router.get(
-            "/products",
+            "/categories",
             {
                 per_page: filters.per_page,
                 page: 1,
@@ -154,32 +141,30 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Deductibility Codes" />
+            <Head title="Categories" />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
                 <Card className="px-0">
                     <CardHeader className="px-4 md:px-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle>Products</CardTitle>
+                                <CardTitle>Categories</CardTitle>
                                 <CardDescription>
-                                    Manage products for your organization. Total: {products.total.toLocaleString()} products
+                                    Manage categories for your organization. Total: {categories.total.toLocaleString()} categories
                                 </CardDescription>
                             </div>
-                            <Link href={route('products.create')}>
+                            <Link href={route('categories.create')}>
                                 <Button>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    Add Product
+                                    Add Category
                                 </Button>
                             </Link>
                         </div>
-
-                        {/* Search Bar */}
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                                 <input
                                     type="text"
-                                    placeholder="Search by name or description..."
+                                    placeholder="Search by category name..."
                                     value={searchTerm}
                                     onChange={(e) => handleSearch(e.target.value)}
                                     className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -200,93 +185,33 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             )}
                         </div>
                     </CardHeader>
-
                     <CardContent className="px-4 md:px-6">
                         {loading && (
                             <div className="flex items-center justify-center py-8">
                                 <div className="w-6 h-6 animate-spin mr-2 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                                Loading products...
+                                Loading categories...
                             </div>
                         )}
-
                         <div className="w-full overflow-x-auto">
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-                                       
                                         <th className="px-4 py-3 font-medium min-w-32">Name</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Sku</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Quantity</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Unit Price</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Type</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Status</th>
-                                        {/* <th className="px-4 py-3 font-medium min-w-64">Description</th> */}
-                                        {/* <th className="px-4 py-3 font-medium min-w-32">Created</th> */}
-                                        {/* <th className="px-4 py-3 font-medium min-w-32">Updated</th> */}
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {products.data.map((item) => (
+                                    {categories.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
-                                           
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.name}>
-                                                    {item.name}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.sku}>
-                                                    {item.sku}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.quantity}>
-                                                    {item.quantity}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.unit_price}>
-                                                    {item.unit_price}
-                                                </span>
-                                            </td>
-                                           
                                             <td className="px-4 py-3 min-w-32">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {item.status}
-                                                </Badge>
-                                            </td>
-
-                                            <td className="px-4 py-3 min-w-32">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {item.type}
-                                                </Badge>
-                                            </td>
-                                            {/* <td className="px-4 py-3 min-w-32">
-                                                <div className="text-sm">
-                                                    <div>{new Date(item.created_at).toLocaleDateString()}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {new Date(item.created_at).toLocaleTimeString()}
-                                                    </div>
+                                                <div className="flex items-center gap-2">
+                                                    <LayoutGrid className="w-4 h-4 text-blue-500" />
+                                                    <span className="font-medium">{item.name}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3 min-w-32">
-                                                <div className="text-sm">
-                                                    <div>{new Date(item.updated_at).toLocaleDateString()}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {new Date(item.updated_at).toLocaleTimeString()}
-                                                    </div>
-                                                </div>
-                                            </td> */}
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    {/* <Link href={route('classification-codes.show', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Eye className="mr-2 h-4 w-4" />
-                                                            View
-                                                        </Button>
-                                                    </Link> */}
-                                                    <Link href={route('products.edit', item.id)}>
+                                                    <Link href={route('categories.edit', item.id)}>
                                                         <Button variant="outline" size="sm">
                                                             <Edit className="mr-2 h-4 w-4" />
                                                             Edit
@@ -307,23 +232,20 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                     ))}
                                 </tbody>
                             </table>
-
-                            {products.data.length === 0 && (
+                            {categories.data.length === 0 && (
                                 <div className="text-center py-12">
-                                    <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                                    <h3 className="text-lg font-medium text-foreground mb-2">No products found</h3>
-                                    <p className="text-muted-foreground">Create your first product to get started.</p>
+                                    <LayoutGrid className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                    <h3 className="text-lg font-medium text-foreground mb-2">No categories found</h3>
+                                    <p className="text-muted-foreground">Create your first category to get started.</p>
                                 </div>
                             )}
-
                             {/* Pagination Controls */}
-                            {products.total > 0 && (
+                            {categories.total > 0 && (
                                 <div className="flex items-center justify-between mt-6 px-4 mb-6 text-sm text-muted-foreground flex-wrap gap-4">
                                     <div>
-                                        Showing {products.from?.toLocaleString() || 0} to {products.to?.toLocaleString() || 0} of{" "}
-                                        {products.total.toLocaleString()} product(s).
+                                        Showing {categories.from?.toLocaleString() || 0} to {categories.to?.toLocaleString() || 0} of{" "}
+                                        {categories.total.toLocaleString()} category(ies).
                                     </div>
-
                                     <div className="flex items-center gap-4">
                                         {/* Per Page Selector */}
                                         <div className="flex items-center gap-2">
@@ -341,25 +263,22 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                 ))}
                                             </select>
                                         </div>
-
                                         {/* Pagination Buttons */}
                                         <div className="flex items-center gap-2">
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(products.current_page - 1)}
-                                                disabled={!products.prev_page_url || loading}
+                                                onClick={() => handlePageChange(categories.current_page - 1)}
+                                                disabled={!categories.prev_page_url || loading}
                                             >
                                                 Prev
                                             </button>
-
                                             <span className="px-2">
-                                                Page {products.current_page} of {products.last_page}
+                                                Page {categories.current_page} of {categories.last_page}
                                             </span>
-
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(products.current_page + 1)}
-                                                disabled={!products.next_page_url || loading}
+                                                onClick={() => handlePageChange(categories.current_page + 1)}
+                                                disabled={!categories.next_page_url || loading}
                                             >
                                                 Next
                                             </button>
@@ -370,14 +289,13 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                         </div>
                     </CardContent>
                 </Card>
-
                 {/* Delete Confirmation Dialog */}
                 <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Confirm Delete</DialogTitle>
                             <DialogDescription>
-                                Are you sure you want to delete product "{itemToDelete?.name}"? This action cannot be undone.
+                                Are you sure you want to delete category "{itemToDelete?.name}"? This action cannot be undone.
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
