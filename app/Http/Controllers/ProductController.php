@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use Inertia\Inertia;
 use Inertia\Response;
 use App\Models\Product;
+use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Category;
+
 
 class ProductController extends Controller
 {
@@ -17,14 +19,21 @@ class ProductController extends Controller
      */
     public function index(Request $request): Response
     {
+
+        $organization = Organization::where('user_id',Auth::id())->first();
+
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);   
         $search = $request->get('search', '');
         
         $query = Product::query();
         
+        
         // Only show products for current user
-        $query->where('user_id', Auth::id());
+        if(Auth::user()->role == "organization"){
+            $query->where('organization_id', $organization->id);
+        }
+       
         
         if ($search) {
             $query->where(function($q) use ($search) {
@@ -54,10 +63,10 @@ class ProductController extends Controller
     {
         $categories = Category::all();
         // If you want to pass organizations, fetch them here
-        // $organizations = Organization::all(['id', 'name']);
+        $organizations = Organization::all(['id', 'name']);
         return Inertia::render('products/create', [
             'categories' => $categories,
-            // 'organizations' => $organizations,
+            'organizations' => $organizations,
         ]);
     }
 
@@ -66,12 +75,14 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+
+        // dd($request->all());
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
             'unit_price' => 'required|numeric|min:0',
-            'admin_owned' => 'required|boolean',
+            // 'admin_owned' => 'required|boolean',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
@@ -80,12 +91,34 @@ class ProductController extends Controller
             'tags' => 'nullable|string',
             'categories' => 'array',
             'categories.*' => 'integer|exists:categories,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg',
         ]);
-        $validated['user_id'] = \Auth::id();
+        
+        $imagePath = null;
+        if ($request->hasFile('image')) {
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $imagePath = $image->storeAs('products', $imageName, 'public');
+        }
+
         $categories = $validated['categories'] ?? [];
         unset($validated['categories']);
         $product = Product::create($validated);
         $product->categories()->sync($categories);
+
+
+        $product->update([
+            'image' => $imagePath,
+        ]);
+
+        if(Auth::user()->role == "organization"){
+            $organization = Organization::where('user_id',Auth::id())->first();
+            $product->update([
+                'owned_by' => 'organization',
+                'organization_id' => $organization->id,
+            ]);
+        }
+
         return redirect()->route('products.index')->with('success', 'Product created successfully');
     }
 
@@ -94,17 +127,18 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        if ($product->user_id !== \Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $categories = Category::all();
-        // $organizations = Organization::all(['id', 'name']);
+        $organizations = Organization::all(['id', 'name']);
+
+
+        // dd($organizations);
         $selectedCategories = $product->categories()->pluck('categories.id')->toArray();
         return Inertia::render('products/edit', [
             'product' => $product,
             'categories' => $categories,
             'selectedCategories' => $selectedCategories,
-            // 'organizations' => $organizations,
+            'organizations' => $organizations,
         ]);
     }
 
@@ -113,15 +147,13 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-        if ($product->user_id !== \Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        // dd($request->all());
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
             'unit_price' => 'required|numeric|min:0',
-            'admin_owned' => 'required|boolean',
+            // 'admin_owned' => 'required|boolean',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
@@ -130,10 +162,40 @@ class ProductController extends Controller
             'tags' => 'nullable|string',
             'categories' => 'array',
             'categories.*' => 'integer|exists:categories,id',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ]);
         $categories = $validated['categories'] ?? [];
         unset($validated['categories']);
         $product->update($validated);
+
+        
+
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image && Storage::disk('public')->exists($product->image)) {
+                Storage::disk('public')->delete($product->image);
+            }
+            
+            // Store new image
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $imagePath = $image->storeAs('products', $imageName, 'public');
+
+            $product->update([
+                'image' => $imagePath,
+            ]);
+    
+        }
+
+        if(Auth::user()->role == "organization"){
+            $organization = Organization::where('user_id',Auth::id())->first();
+            $product->update([
+                'owned_by' => 'organization',
+                'organization_id' => $organization->id,
+            ]);
+        }
+
+
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
     }
@@ -143,9 +205,7 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ($product->user_id !== \Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
