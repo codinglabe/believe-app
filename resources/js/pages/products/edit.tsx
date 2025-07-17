@@ -1,6 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import type { SharedData } from "@/types"
-import { Head, Link, router, usePage } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -41,7 +41,6 @@ interface Product {
     sku: string;
     type: string;
     tags: string;
-    image?: string;
 }
 
 interface Props {
@@ -94,37 +93,13 @@ export default function Edit({ product, categories, selectedCategories, organiza
         setIsSubmitting(true);
         setErrors({});
 
-    
-        const formDataToSubmit = new FormData();
-
-        for (const key in formData) {
-            const value = formData[key as keyof typeof formData];
-
-            if (value !== undefined && value !== null) {
-                if (key === 'image' && value instanceof File) {
-                    formDataToSubmit.append('image', value);
-                } else if (Array.isArray(value)) {
-                    // Append each category item (e.g. categories[] = 1, 2, 3)
-                    value.forEach((v, i) => {
-                        formDataToSubmit.append(`${key}[${i}]`, String(v));
-                    });
-                } else {
-                    formDataToSubmit.append(key, String(value));
-                }
-            }
-        }
-
-        // Overwrite or set values that require type conversion
-        formDataToSubmit.set('admin_owned', formData.admin_owned === 'yes' ? 'true' : 'false');
-        formDataToSubmit.set('quantity', String(Number(formData.quantity) || 0));
-        formDataToSubmit.set('unit_price', String(Number(formData.unit_price) || 0));
-
-        if (!formData.organization_id) {
-            formDataToSubmit.delete('organization_id');
-        }
-        
-
-        formDataToSubmit.append("_method","PUT");
+        const submitData: Record<string, any> = { ...formData };
+        submitData.categories = formData.categories;
+        submitData.admin_owned = formData.admin_owned === 'yes';
+        submitData.quantity = formData.quantity ? Number(formData.quantity) : 0;
+        submitData.unit_price = formData.unit_price ? Number(formData.unit_price) : 0;
+        if (!submitData.organization_id) delete submitData.organization_id;
+        submitData._method = 'PUT';
 
         router.post(route('products.update', product.id), formDataToSubmit, {
             onError: (errors) => {
@@ -225,9 +200,9 @@ export default function Edit({ product, categories, selectedCategories, organiza
                                 {product.image && (
                                     <div className="mb-2">
                                         <p className="text-sm text-muted-foreground">Current image:</p>
-                                        <img 
-                                            src={product.image} 
-                                            alt="Current product image" 
+                                        <img
+                                            src={product.image}
+                                            alt="Current product image"
                                             className="w-32 h-32 object-cover rounded border"
                                         />
                                     </div>
@@ -309,8 +284,8 @@ export default function Edit({ product, categories, selectedCategories, organiza
                                 </Select>
                                 {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
                             </div>
-                           
-                          
+
+
                             {auth.user.role === "admin" && (
                                 <>
                                     {/* <div className="space-y-2">
