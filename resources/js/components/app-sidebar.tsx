@@ -30,7 +30,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Products',
         href: '/products',
         icon: ShoppingCart,
-        permission: "management.data.read"
+        permission: "products.read"
     },
     {
         title: 'Codes',
