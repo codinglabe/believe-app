@@ -134,11 +134,6 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
-<<<<<<< HEAD
-
-    
-=======
->>>>>>> a0aabc1 (Add new CategorySeeder)
 });
 
 // route for donation
