@@ -38,7 +38,7 @@ class ManageDatasetController extends Controller
         $headerRow = ExcelData::where('file_id', $fileId)
             ->orderBy('id')
             ->where("status", "complete")
-            ->first();
+            ->firstOrFail();
 
         $headers = [];
         if ($headerRow && is_array($headerRow->row_data)) {

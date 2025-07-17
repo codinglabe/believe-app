@@ -3,6 +3,11 @@
 namespace App\Services;
 
 use App\Models\ExcelData;
+use App\Models\ClassificationCode;
+use App\Models\DeductibilityCode;
+use App\Models\OrganizationTypeCode;
+use App\Models\StatusCode;
+use App\Models\NteeCode;
 use Illuminate\Support\Facades\Log;
 
 class EINLookupService
@@ -27,7 +32,10 @@ class EINLookupService
             // Get header to map data correctly
             $header = ExcelData::getHeaderForFile($data->file_id);
 
-            return $this->mapDataToOrganization($rowData, $header);
+            $organizationData = $this->mapDataToOrganization($rowData, $header);
+
+            // Enhance with descriptive data from code tables
+            return $this->enhanceWithCodeDescriptions($organizationData);
 
         } catch (\Exception $e) {
             Log::error('EIN Lookup Error: ' . $e->getMessage());
@@ -64,7 +72,7 @@ class EINLookupService
             'STATUS' => 'status',
             'TAX_PERIOD' => 'tax_period',
             'FILING_REQ' => 'filing_req',
-            'NTEE_CODE' => 'ntee_code'
+            'NTEE_CD' => 'ntee_code'
         ];
 
         $result = [];
@@ -85,5 +93,57 @@ class EINLookupService
         }
 
         return $result;
+    }
+
+    private function enhanceWithCodeDescriptions($organizationData)
+    {
+        if (empty($organizationData)) {
+            return $organizationData;
+        }
+
+        // Add classification description
+        if (!empty($organizationData['classification'])) {
+            $classification = ClassificationCode::where('classification_code', $organizationData['classification'])
+                ->first();
+
+            $organizationData['classification'] = $classification->description ?? $organizationData['classification'];
+        }
+
+        // Add deductibility description
+        if (!empty($organizationData['deductibility'])) {
+            $deductibility = DeductibilityCode::where('deductibility_code', $organizationData['deductibility'])
+                ->first();
+
+            $organizationData['deductibility'] = $deductibility->description ?? $organizationData['deductibility'];
+        }
+
+        // Add organization type structure and description
+        if (!empty($organizationData['organization'])) {
+            $orgType = OrganizationTypeCode::where('organization_code', $organizationData['organization'])
+                ->first();
+
+            $organizationData['organization'] = $orgType->organization_structure ?? $organizationData['organization'];
+            $organizationData['organization_description'] = $orgType->description ?? null;
+        }
+
+        // Add status description
+        if (!empty($organizationData['status'])) {
+            $status = StatusCode::where('status_code', $organizationData['status'])
+                ->first();
+
+            $organizationData['status'] = $status->status ?? $organizationData['status'];
+            $organizationData['status_full_description'] = $status->description ?? null;
+        }
+
+        // Add NTEE code category and description
+        if (!empty($organizationData['ntee_code'])) {
+            $ntee = NteeCode::where('ntee_codes', $organizationData['ntee_code'])
+                ->first();
+
+            $organizationData['ntee_code'] = $ntee->category ?? $organizationData['ntee_code'];
+            $organizationData['ntee_description'] = $ntee->description ?? null;
+        }
+
+        return $organizationData;
     }
 }

@@ -23,28 +23,28 @@ class ProductController extends Controller
         $organization = Organization::where('user_id',Auth::id())->first();
 
         $perPage = $request->get('per_page', 10);
-        $page = $request->get('page', 1);   
+        $page = $request->get('page', 1);
         $search = $request->get('search', '');
-        
+
         $query = Product::query();
-        
-        
+
+
         // Only show products for current user
         if(Auth::user()->role == "organization"){
             $query->where('organization_id', $organization->id);
         }
-       
-        
+
+
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
                   ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
-        
+
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-        
+
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -93,7 +93,7 @@ class ProductController extends Controller
             'categories.*' => 'integer|exists:categories,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg',
         ]);
-        
+
         $imagePath = null;
         if ($request->hasFile('image')) {
             $image = $request->file('image');
@@ -127,7 +127,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        
+
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -168,14 +168,14 @@ class ProductController extends Controller
         unset($validated['categories']);
         $product->update($validated);
 
-        
+
 
         if ($request->hasFile('image')) {
             // Delete old image if exists
             if ($product->image && Storage::disk('public')->exists($product->image)) {
                 Storage::disk('public')->delete($product->image);
             }
-            
+
             // Store new image
             $image = $request->file('image');
             $imageName = time() . '_' . $image->getClientOriginalName();
@@ -184,7 +184,7 @@ class ProductController extends Controller
             $product->update([
                 'image' => $imagePath,
             ]);
-    
+
         }
 
         if(Auth::user()->role == "organization"){
@@ -205,7 +205,7 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        
+
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');

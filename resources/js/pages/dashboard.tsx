@@ -1,7 +1,11 @@
-import { Head, usePage } from '@inertiajs/react';
+import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Activity, Calendar, DollarSign, User } from 'lucide-react';
+import { Activity, Building, Calendar, Check, ChevronLeft, ChevronRight, DollarSign, ExternalLink, FileText, Globe, Heart, Mail, MapPin, Phone, Plus, Share2, ShoppingCart, Star, User } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/frontend/ui/tabs';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/frontend/ui/button';
 // import { IconActivity, IconDonation, IconUsers, IconCalendarStats } from '@/components/icons';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -75,8 +79,9 @@ const RecentActivityItem = ({ activity }: { activity: ActivityItem }) => {
     );
 };
 
-export default function Dashboard({totalOrg}: {totalOrg: number}) {
+export default function Dashboard({totalOrg, orgInfo, totalFav}: {totalOrg: number, orgInfo: any, totalFav: number}) {
     const { auth } = usePage().props;
+    const organization = orgInfo;
     const userRole = auth.user?.role; // 'admin' or 'organization'
 
     // Common stats for all roles
@@ -100,7 +105,7 @@ export default function Dashboard({totalOrg}: {totalOrg: number}) {
         ...commonStats,
         myVolunteers: 15,
         myUpcomingEvents: 2,
-        pendingDonations: 3,
+        totalFav: totalFav,
     };
 
     const stats = userRole === 'admin' ? adminStats : organizationStats;
@@ -216,15 +221,314 @@ return (
                                 icon={<User className="h-6 w-6" />}
                             />
                             <StatCard
-                                title="Pending Donations"
-                                value={stats.pendingDonations}
-                                icon={<DollarSign className="h-6 w-6" />}
+                                title="Total Favorites"
+                                value={stats.totalFav}
+                                icon={<Heart className="h-6 w-6" />}
                             />
                         </>
                     )}
-                </div>
+            </div>
+            {userRole === 'organization' && (
+            <div className="mx-auto w-full px-0 py-8">
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    {/* Main Content */}
+                    <div className="lg:col-span-3">
+                    <Tabs defaultValue="about" className="w-full">
+                        <TabsList className="grid w-full grid-cols-5 mb-8">
+                        <TabsTrigger value="about" className="text-xs sm:text-sm cursor-pointer">
+                            About
+                        </TabsTrigger>
+                        <TabsTrigger value="impact" className="text-xs sm:text-sm cursor-pointer">
+                            Impact
+                        </TabsTrigger>
+                        <TabsTrigger value="details" className="text-xs sm:text-sm cursor-pointer">
+                            Details
+                                    </TabsTrigger>
+                                    <TabsTrigger value="product" className="text-xs sm:text-sm cursor-pointer">
+                                        <Link href={route("products.index")} className='w-full'>
+                                            Products
+                                        </Link>
+                                    </TabsTrigger>
+                        <TabsTrigger value="contact" className="text-xs sm:text-sm cursor-pointer">
+                            Contact
+                        </TabsTrigger>
+                        </TabsList>
 
-                {/* Recent Activity and Quick Actions */}
+                        <TabsContent value="about" className="space-y-6">
+                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <CardHeader>
+                            <CardTitle className="text-gray-900 dark:text-white text-xl">About Our Mission</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                            <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
+                                {organization.description}
+                            </p>
+
+                            <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 rounded-r-lg">
+                                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Our Mission</h3>
+                                <p className="text-gray-700 dark:text-gray-300">{organization.mission}</p>
+                            </div>
+                            </CardContent>
+                        </Card>
+                        </TabsContent>
+
+                        <TabsContent value="impact" className="space-y-6">
+                        {/* Impact Statistics - You can customize these with your actual data */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <CardContent className="pt-6">
+                                <div className="text-3xl font-bold text-blue-600 mb-2">
+                                250,000+
+                                </div>
+                                <div className="text-gray-600 dark:text-gray-300">People Served</div>
+                            </CardContent>
+                            </Card>
+
+                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <CardContent className="pt-6">
+                                <div className="text-3xl font-bold text-green-600 mb-2">150+</div>
+                                <div className="text-gray-600 dark:text-gray-300">Projects Completed</div>
+                            </CardContent>
+                            </Card>
+
+                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <CardContent className="pt-6">
+                                <div className="text-3xl font-bold text-purple-600 mb-2">25+</div>
+                                <div className="text-gray-600 dark:text-gray-300">Countries Active</div>
+                            </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Recent Projects - You can customize these with your actual data */}
+                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <CardHeader>
+                            <CardTitle className="text-gray-900 dark:text-white text-xl">Recent Projects</CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                            <div className="flex items-start gap-4">
+                                <div className="w-1 h-16 rounded-full bg-blue-500" />
+                                <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">Water Well Construction</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">
+                                    Completed March 2024 • Serving 2,500 people
+                                </p>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-4">
+                                <div className="w-1 h-16 rounded-full bg-green-500" />
+                                <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">Community Training Program</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">
+                                    Completed February 2024 • 150 families trained
+                                </p>
+                                </div>
+                            </div>
+                            <div className="flex items-start gap-4">
+                                <div className="w-1 h-16 rounded-full bg-purple-500" />
+                                <div className="flex-1">
+                                <h4 className="font-semibold text-gray-900 dark:text-white mb-1">School Water System</h4>
+                                <p className="text-sm text-gray-600 dark:text-gray-300">
+                                    Completed January 2024 • 800 students benefited
+                                </p>
+                                </div>
+                            </div>
+                            </CardContent>
+                        </Card>
+                        </TabsContent>
+
+                        <TabsContent value="details" className="space-y-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                            {/* IRS Information */}
+                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <CardHeader>
+                                <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                                <FileText className="mr-2 h-5 w-5" />
+                                IRS Information
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">EIN</span>
+                                    <div className="font-mono text-gray-900 dark:text-white">{organization.ein}</div>
+                                </div>
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Classification</span>
+                                    <div className="text-gray-900 dark:text-white">{organization.classification}</div>
+                                </div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Legal Name</span>
+                                <div className="text-gray-900 dark:text-white">{organization.name}</div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">In Care Of</span>
+                                <div className="text-gray-900 dark:text-white">{organization.ico || "N/A"}</div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Address</span>
+                                <div className="text-gray-900 dark:text-white">{organization.street}</div>
+                                <div className="text-gray-900 dark:text-white">{organization.city}, {organization.state} {organization.zip}</div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Ruling Year</span>
+                                    <div className="text-gray-900 dark:text-white">{organization.ruling}</div>
+                                </div>
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Tax Deductible</span>
+                                    <div className="text-gray-900 dark:text-white">
+                                        {organization.deductibility || 'Yes'}
+                                    </div>
+                                </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Organization Type</span>
+                                    <div className="text-gray-900 dark:text-white">{organization.organization}</div>
+                                </div>
+                                <div>
+                                                        <span className="text-sm text-gray-600 dark:text-gray-300">Status</span>
+                                                        <br />
+                                    <Badge
+                                    variant="secondary"
+                                    className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                    >
+                                    {organization.status}
+                                    </Badge>
+                                </div>
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">NTEE Code</span>
+                                    <div className="text-gray-900 dark:text-white">{organization.ntee_code || 'N/A'}</div>
+                                </div>
+                                {/* <div>
+                                    <span className="text-sm text-gray-600 dark:text-gray-300">Filing Requirement</span>
+                                    <div className="text-gray-900 dark:text-white">{organization.filing_req}</div>
+                                </div> */}
+                                </div>
+                            </CardContent>
+                            </Card>
+
+                            {/* Organization Details */}
+                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <CardHeader>
+                                <CardTitle className="text-gray-900 dark:text-white flex items-center">
+                                <Building className="mr-2 h-5 w-5" />
+                                Organization Details
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Primary Contact</span>
+                                <div className="text-gray-900 dark:text-white">{organization.contact_name}</div>
+                                <div className="text-sm text-gray-600 dark:text-gray-300">{organization.contact_title}</div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Email</span>
+                                <div className="text-blue-600 hover:underline">
+                                    <a href={`mailto:${organization.email}`}>{organization.email}</a>
+                                </div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Phone</span>
+                                <div className="text-gray-900 dark:text-white">{organization.phone}</div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Website</span>
+                                <div className="text-blue-600 hover:underline">
+                                    <a href={organization.website} target="_blank" className="flex items-center gap-1">
+                                    {organization.website}
+                                    <ExternalLink className="h-3 w-3" />
+                                    </a>
+                                </div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Founded</span>
+                                <div className="text-gray-900 dark:text-white">{organization.ruling}</div>
+                                </div>
+
+                                <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Verification Status</span>
+                                <div className="flex items-center gap-2 text-green-600">
+                                    <Check className="h-4 w-4" />
+                                    <span>Verified Organization</span>
+                                </div>
+                                </div>
+                            </CardContent>
+                            </Card>
+                        </div>
+                        </TabsContent>
+
+                        <TabsContent value="contact" className="space-y-6">
+                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <CardHeader>
+                            <CardTitle className="text-gray-900 dark:text-white text-xl">Contact Information</CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                                {/* Contact Information */}
+                                <div className="space-y-6">
+                                <div>
+                                    <div className="space-y-3">
+                                    <div className="flex items-center gap-3">
+                                        <Mail className="h-4 w-4 text-gray-500" />
+                                        <a href={`mailto:${organization.email}`} className="text-blue-600 hover:underline">
+                                        {organization.email}
+                                        </a>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <Phone className="h-4 w-4 text-gray-500" />
+                                        <span className="text-gray-600 dark:text-gray-300">{organization.phone}</span>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <Globe className="h-4 w-4 text-gray-500" />
+                                        <a
+                                        href={organization.website}
+                                        target="_blank"
+                                        className="text-blue-600 hover:underline"
+                                        >
+                                        {organization.website}
+                                        </a>
+                                    </div>
+                                    <div className="flex items-start gap-3">
+                                        <MapPin className="h-4 w-4 text-gray-500 mt-1" />
+                                        <div>
+                                        <div className="text-gray-600 dark:text-gray-300">{organization.street}</div>
+                                        <div className="text-gray-600 dark:text-gray-300">{organization.city}, {organization.state} {organization.zip}</div>
+                                        </div>
+                                    </div>
+                                    </div>
+                                </div>
+
+                                <div>
+                                    <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Primary Contact</h4>
+                                    <div className="text-gray-600 dark:text-gray-300">{organization.contact_name}</div>
+                                    <div className="text-sm text-gray-500 dark:text-gray-400">{organization.contact_title}</div>
+                                </div>
+                                </div>
+                            </div>
+                            </CardContent>
+                        </Card>
+                        </TabsContent>
+                    </Tabs>
+                    </div>
+                </div>
+            </div>
+                    )}
+
+            {userRole === 'admin' && (
                 <div className="grid gap-6 lg:grid-cols-3">
                     {/* Recent Activity - can be role-specific if needed */}
                     <div className="bg-card border-border rounded-lg border p-6 shadow-sm lg:col-span-2">
@@ -277,6 +581,7 @@ return (
                         </div>
                     </div>
                 </div>
+            )}
             </div>
         </AppLayout>
     );
