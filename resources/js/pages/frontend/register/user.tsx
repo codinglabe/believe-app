@@ -15,12 +15,11 @@ import InputError from "@/components/input-error";
 import { Icon } from '@iconify/react';
 
 type RegisterForm = {
-  name: string;
-  email: string;
-  password: string;
-  password_confirmation: string;
-  agreeToTerms: boolean;
-  referralCode: string;
+    name: string;
+    email: string;
+    password: string;
+    password_confirmation: string;
+    agreeToTerms: boolean;
 };
 
 export default function UserRegisterPage({ referralCode }: { referralCode: string }) {
@@ -111,19 +110,19 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
-        <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="max-w-md mx-auto"
-          >
-            {/* Back Button */}
-            <Link href={route("register", { ref: referralCode })} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to registration options
-            </Link>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
+      <div className="container mx-auto px-4">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.8 }}
+          className="max-w-md mx-auto"
+        >
+          {/* Back Button */}
+          <Link href={route("register")} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to registration options
+          </Link>
 
             {/* Logo */}
             <div className="text-center mb-8">
