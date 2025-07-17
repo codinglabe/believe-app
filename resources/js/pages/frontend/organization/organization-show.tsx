@@ -29,6 +29,8 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import DonationModal from "@/components/frontend/donation-modal"
 import { Link, router, useForm } from "@inertiajs/react"
+import axios from "axios"
+import { showErrorToast } from '@/lib/toast';
 
 export default function OrganizationPage({ auth, organization, isFav }: { organization: any, isFav: boolean }) {
   const [isFavorite, setIsFavorite] = useState(isFav || false)
@@ -133,8 +135,58 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   //     setIsFavorite(!isFavorite)
   //   }
 
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleCompletePurchase = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setErrors({});
+
+
+    const orderData = {
+      first_name: firstName,
+      last_name: lastName,
+      email,
+      shipping_address: shippingAddress,
+      city,
+      zip,
+      phone,
+      products: cart.map(item => ({
+        id: item.id,
+        quantity: item.quantity,
+      })),
+      // Add payment info as needed
+    };
+    try {
+      const response = await axios.post(route('purchase.order'), orderData);
+      if (response.data.url) {
+        window.location.href = response.data.url; 
+      } else {
+        setIsSubmitting(false);
+        showErrorToast("Stripe URL not received.");
+      }
+    } catch (error: any) {
+      setIsSubmitting(false);
+      if (error.response && error.response.data && error.response.data.errors) {
+        setErrors(error.response.data.errors);
+      } else {
+        showErrorToast("Order failed. Please try again.");
+      }
+    }
+  };
+
   // Format address
   const fullAddress = `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}`
+
+  // Form state for checkout
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [email, setEmail] = useState("");
+  const [shippingAddress, setShippingAddress] = useState("");
+  const [city, setCity] = useState("");
+  const [zip, setZip] = useState("");
+  const [phone, setPhone] = useState("");
 
   return (
     <FrontendLayout>
@@ -548,7 +600,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                               <div className="flex flex-col sm:flex-row gap-2">
                                 <Button
                                   onClick={() => addToCart(product)}
-                                  disabled={!product.inStock}
+                                  disabled={product.quantity_available <= 0}
                                   variant="outline"
                                   className="flex-1 bg-transparent disabled:bg-gray-400 disabled:cursor-not-allowed text-sm sm:text-base"
                                 >
@@ -557,7 +609,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                                 </Button>
                                 <Button
                                   onClick={() => buyNow(product)}
-                                  disabled={!product.inStock}
+                                  disabled={product.quantity_available <= 0}
                                   className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-sm sm:text-base"
                                 >
                                   <ShoppingCart className="mr-2 h-4 w-4" />
@@ -823,7 +875,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                     </div>
 
                     {/* Checkout Form */}
-                    <form className="space-y-3 sm:space-y-4">
+                    <form className="space-y-3 sm:space-y-4" onSubmit={handleCompletePurchase}>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -833,7 +885,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             type="text"
                             className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                             placeholder="Enter your first name"
+                            value={firstName}
+                            onChange={e => setFirstName(e.target.value)}
                           />
+                           {errors.first_name && <p className="text-sm text-red-500">{errors.first_name}</p>}
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -843,7 +898,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             type="text"
                             className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                             placeholder="Enter your last name"
+                            value={lastName}
+                            onChange={e => setLastName(e.target.value)}
                           />
+                           {errors.last_name && <p className="text-sm text-red-500">{errors.last_name}</p>}
                         </div>
                       </div>
 
@@ -853,7 +911,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           type="email"
                           className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                           placeholder="Enter your email"
+                          value={email}
+                          onChange={e => setEmail(e.target.value)}
                         />
+                         {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
                       </div>
 
                       <div>
@@ -864,7 +925,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           type="text"
                           className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                           placeholder="Street address"
+                          value={shippingAddress}
+                          onChange={e => setShippingAddress(e.target.value)}
                         />
+                         {errors.shipping_address && <p className="text-sm text-red-500">{errors.shipping_address}</p>}
                       </div>
 
                       <div className="grid grid-cols-2 gap-3 sm:gap-4">
@@ -874,7 +938,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             type="text"
                             className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                             placeholder="City"
+                            value={city}
+                            onChange={e => setCity(e.target.value)}
                           />
+                           {errors.city && <p className="text-sm text-red-500">{errors.city}</p>}
                         </div>
                         <div>
                           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -884,7 +951,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             type="text"
                             className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                             placeholder="ZIP"
+                            value={zip}
+                            onChange={e => setZip(e.target.value)}
                           />
+                           {errors.zip && <p className="text-sm text-red-500">{errors.zip}</p>}
                         </div>
                       </div>
 
@@ -896,10 +966,13 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           type="tel"
                           className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 dark:bg-gray-700 dark:text-white"
                           placeholder="Phone number"
+                          value={phone}
+                          onChange={e => setPhone(e.target.value)}
                         />
+                         {errors.phone && <p className="text-sm text-red-500">{errors.phone}</p>}
                       </div>
 
-                      <div className="border-t border-gray-200 dark:border-gray-600 pt-3 sm:pt-4">
+                      {/* <div className="border-t border-gray-200 dark:border-gray-600 pt-3 sm:pt-4">
                         <h4 className="font-medium text-gray-900 dark:text-white mb-3 text-sm sm:text-base">
                           Payment Information
                         </h4>
@@ -937,7 +1010,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </div> */}
 
                       <div className="flex flex-col sm:flex-row gap-3 pt-4">
                         <Button

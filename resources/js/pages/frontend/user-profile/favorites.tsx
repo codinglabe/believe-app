@@ -34,7 +34,6 @@ interface PageProps {
 
 export default function ProfileFavorites() {
   const { favoriteOrganizations, availableOrganizations } = usePage<PageProps>().props
-
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false)
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null)
 

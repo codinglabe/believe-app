@@ -14,6 +14,8 @@ use App\Http\Controllers\UploadDataController;
 use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DonationController;
+use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -29,9 +31,17 @@ Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
 
-Route::get('/donate', function () {
-    return Inertia::render('frontend/donate');
-})->name('donate');
+Route::get('/nodeboss', function () {
+    return Inertia::render('frontend/nodeboss/nodeboss');
+})->name('nodeboss');
+
+Route::get('/nodeboss/{id}/buy', function () {
+    return Inertia::render('frontend/nodeboss/buy-nodeboss',[
+        'id' => request()->route('id')
+    ]);
+})->name('buy.nodeboss');
+
+Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
@@ -138,9 +148,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
 // route for donation
 Route::middleware(['auth', 'verified'])->group(function () {
-    Route::post('/donate', [\App\Http\Controllers\DonationController::class, 'store'])->name('donations.store');
-    Route::get('/donations/success', [\App\Http\Controllers\DonationController::class, 'success'])->name('donations.success');
-    Route::get('/donations/cancel', [\App\Http\Controllers\DonationController::class, 'cancel'])->name('donations.cancel');
+    Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
+    Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
+    Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
 
 

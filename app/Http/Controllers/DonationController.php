@@ -15,6 +15,39 @@ use Stripe\Exception\ApiErrorException;
 class DonationController extends Controller
 {
     /**
+     * Display a listing of the donations.
+     */
+    // In your DonationController.php
+    public function index(Request $request)
+    {
+        $query = Organization::whereHas('user', function ($query) {
+            $query->where('role', 'organization')
+                ->where('login_status', 1);
+        });
+
+        // Apply search filter if a search query is present
+        if ($request->has('search') && $request->input('search') !== '') {
+            $search = $request->input('search');
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%')
+                    ->orWhere('description', 'like', '%' . $search . '%');
+            });
+        }
+
+        $organizations = $query->get(); // Get filtered organizations
+
+        return Inertia::render('frontend/donate', [
+            'organizations' => $organizations, // This will now be the filtered list
+            'message' => 'Please log in to view your donations.',
+            'user' => $request->user() ? [
+                'name' => $request->user()->name,
+                'email' => $request->user()->email,
+            ] : null,
+            'searchQuery' => $request->input('search', ''), // Pass back the current search query
+        ]);
+    }
+
+    /**
      * Show the donation form
      */
     public function create(Request $request, Organization $organization)
@@ -44,7 +77,9 @@ class DonationController extends Controller
         $user = $request->user();
         $amountInCents = (int) ($validated['amount'] * 100);
         $organizationName = Organization::find($validated['organization_id'])->name;
-
+        if ($user->hasRole(['organization', 'admin'])) {
+            return redirect()->back()->with('warning', 'Please log in with a supporter account to make a donation.');
+        }
         // Create donation record
         $donation = Donation::create([
             'user_id' => $user->id,
@@ -112,7 +147,7 @@ class DonationController extends Controller
         }
         try {
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            $donation = Donation::findOrFail($session->metadata->donation_id);
+            $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
             if ($session->payment_intent) {
                 // One-time payment
                 $donation->update([
@@ -161,7 +196,7 @@ class DonationController extends Controller
             }
         }
 
-        return Inertia::render('frontend/donation/cancel');
+        return Inertia::render('frontend/organization/donation/cancel');
     }
 
     /**
