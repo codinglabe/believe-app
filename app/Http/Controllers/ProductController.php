@@ -126,9 +126,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+      
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -148,9 +146,7 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+      
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -202,9 +198,7 @@ class ProductController extends Controller
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
         // Ensure user can only update their own products
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+      
 
 
         // dd($request->all());
@@ -252,16 +246,12 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
         // Ensure user can only delete their own products
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+       
 
         // Delete image file if exists
         if ($product->image && Storage::disk('public')->exists($product->image)) {

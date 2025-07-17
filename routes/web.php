@@ -15,6 +15,7 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -133,6 +134,8 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+
+    
 });
 
 // route for donation
