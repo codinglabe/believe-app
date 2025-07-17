@@ -62,6 +62,7 @@ class Product extends Model
         return $slug;
     }
 
+
     /**
      * Get the image URL.
      */
@@ -83,6 +84,5 @@ class Product extends Model
             }
         );
     }
-
 }
 
