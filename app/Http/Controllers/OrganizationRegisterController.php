@@ -166,6 +166,19 @@ class OrganizationRegisterController extends Controller
                 $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
             }
 
+            $referredBy = null;
+            if ($request->has('referralCode')) {
+                $user = User::where('referral_code', $request->referralCode)->first();
+                if ($user) {
+                    $referredBy = $user->id;
+                }
+            }
+
+            $slug = Str::slug($validated['name']);
+            if (User::where('slug', $slug)->exists()) {
+                $slug = $slug . '-' . Str::random(5);
+            }
+
             $user = User::create([
                 "name" => $validated['contact_name'],
                 "slug" => $slug,

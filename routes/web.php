@@ -31,6 +31,16 @@ Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
 
+Route::get('/nodeboss', function () {
+    return Inertia::render('frontend/nodeboss/nodeboss');
+})->name('nodeboss');
+
+Route::get('/nodeboss/{id}/buy', function () {
+    return Inertia::render('frontend/nodeboss/buy-nodeboss',[
+        'id' => request()->route('id')
+    ]);
+})->name('buy.nodeboss');
+
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 // Organization routes
