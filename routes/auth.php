@@ -10,6 +10,7 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\OrganizationRegisterController;
 use App\Http\Controllers\ProfilePhotoController;
+use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -71,6 +72,11 @@ Route::middleware('guest')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    Route::post('/purchase-order', [PurchaseOrderController::class, 'purchaseOrder'])->name('purchase.order');
+    Route::get('/purchase-success', [PurchaseOrderController::class, 'purchaseSuccess'])->name('purchase.success');
+    Route::get('/order-success', [PurchaseOrderController::class, 'orderSuccess'])->name('order.success');
+    Route::get('/order-cancel', [PurchaseOrderController::class, 'purchaseCancel'])->name('purchase.cancel');
+    
     // Profile photo routes
     Route::post('/profile/photo', [ProfilePhotoController::class, 'store'])->name('profile.photo.store');
     Route::delete('/profile/photo', [ProfilePhotoController::class, 'destroy'])->name('profile.photo.destroy');
