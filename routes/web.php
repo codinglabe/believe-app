@@ -5,6 +5,7 @@ use App\Http\Controllers\ClassificationCodeController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\OrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\StatusCodeController;
 use App\Http\Controllers\ManageDataController;
@@ -135,7 +136,10 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
 
-    
+
+
+     /* orders Routes */
+    Route::resource('orders', OrderController::class);
 });
 
 // route for donation
