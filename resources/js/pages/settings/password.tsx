@@ -67,7 +67,7 @@ export default function UpdatePasswordForm() {
 
         <form onSubmit={updatePassword} className="space-y-6">
           {/* Password Security */}
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <Lock className="h-5 w-5 text-red-500" />
@@ -91,7 +91,7 @@ export default function UpdatePasswordForm() {
                     value={data.current_password}
                     onChange={(e) => setData("current_password", e.target.value)}
                     type={showCurrentPassword ? "text" : "password"}
-                    className="pl-10 pr-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="pl-10 pr-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-800 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter your current password"
                     autoComplete="current-password"
                   />
@@ -119,7 +119,7 @@ export default function UpdatePasswordForm() {
                     value={data.password}
                     onChange={(e) => setData("password", e.target.value)}
                     type={showNewPassword ? "text" : "password"}
-                    className="pl-10 pr-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="pl-10 pr-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-800 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter your new password"
                     autoComplete="new-password"
                   />
@@ -149,7 +149,7 @@ export default function UpdatePasswordForm() {
                     value={data.password_confirmation}
                     onChange={(e) => setData("password_confirmation", e.target.value)}
                     type={showConfirmPassword ? "text" : "password"}
-                    className="pl-10 pr-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="pl-10 pr-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-800 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Confirm your new password"
                     autoComplete="new-password"
                   />

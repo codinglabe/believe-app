@@ -113,7 +113,7 @@ export default function Dashboard({totalOrg, orgInfo, totalFav}: {totalOrg: numb
     // Role-specific welcome messages
     const welcomeMessages = {
         admin: `Welcome back, Administrator ${auth.user?.name}!`,
-        organization: `Welcome, ${auth.user?.name}! Ready to manage your organization?`,
+        organization: `Welcome, ${organization?.name}!`,
     };
 
     // Role-specific quick actions
@@ -176,7 +176,7 @@ return (
                     <p className="text-muted-foreground mt-2">
                         {userRole === 'admin'
                             ? 'System overview and management tools'
-                            : 'Your organization dashboard'}
+                            : 'EIN: ' + organization.ein}
                     </p>
                 </div>
 
@@ -255,7 +255,7 @@ return (
                         </TabsList>
 
                         <TabsContent value="about" className="space-y-6">
-                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                        <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                             <CardHeader>
                             <CardTitle className="text-gray-900 dark:text-white text-xl">About Our Mission</CardTitle>
                             </CardHeader>
@@ -275,7 +275,7 @@ return (
                         <TabsContent value="impact" className="space-y-6">
                         {/* Impact Statistics - You can customize these with your actual data */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-center">
                             <CardContent className="pt-6">
                                 <div className="text-3xl font-bold text-blue-600 mb-2">
                                 250,000+
@@ -284,14 +284,14 @@ return (
                             </CardContent>
                             </Card>
 
-                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-center">
                             <CardContent className="pt-6">
                                 <div className="text-3xl font-bold text-green-600 mb-2">150+</div>
                                 <div className="text-gray-600 dark:text-gray-300">Projects Completed</div>
                             </CardContent>
                             </Card>
 
-                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-center">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 text-center">
                             <CardContent className="pt-6">
                                 <div className="text-3xl font-bold text-purple-600 mb-2">25+</div>
                                 <div className="text-gray-600 dark:text-gray-300">Countries Active</div>
@@ -300,7 +300,7 @@ return (
                         </div>
 
                         {/* Recent Projects - You can customize these with your actual data */}
-                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                        <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                             <CardHeader>
                             <CardTitle className="text-gray-900 dark:text-white text-xl">Recent Projects</CardTitle>
                             </CardHeader>
@@ -339,7 +339,7 @@ return (
                         <TabsContent value="details" className="space-y-6">
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {/* IRS Information */}
-                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                             <CardHeader>
                                 <CardTitle className="text-gray-900 dark:text-white flex items-center">
                                 <FileText className="mr-2 h-5 w-5" />
@@ -418,7 +418,7 @@ return (
                             </Card>
 
                             {/* Organization Details */}
-                            <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                             <CardHeader>
                                 <CardTitle className="text-gray-900 dark:text-white flex items-center">
                                 <Building className="mr-2 h-5 w-5" />
@@ -472,7 +472,7 @@ return (
                         </TabsContent>
 
                         <TabsContent value="contact" className="space-y-6">
-                        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                        <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                             <CardHeader>
                             <CardTitle className="text-gray-900 dark:text-white text-xl">Contact Information</CardTitle>
                             </CardHeader>

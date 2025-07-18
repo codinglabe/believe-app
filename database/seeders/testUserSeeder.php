@@ -16,6 +16,7 @@ class testUserSeeder extends Seeder
         $data = [
             [
                 'name' => 'Organization',
+                'slug' => 'organization-' . time(),
                 'email' => 'organization@501c3ers.com',
                 'password' => Hash::make('12345678'),
                 'role' => 'organization',
@@ -23,6 +24,7 @@ class testUserSeeder extends Seeder
             ],
             [
                 'name' => 'Supporter',
+                'slug' => 'supporter-' . time(),
                 'email' => 'supporter@501c3ers.com',
                 'password' => Hash::make('12345678'),
                 'role' => 'user',
