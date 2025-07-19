@@ -1,6 +1,3 @@
-// components/nodebox-card.tsx
-"use client"
-
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +5,7 @@ import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { DollarSign, CheckCircle, CalendarDays } from "lucide-react"
 import type { NodeBox } from "@/lib/nodebox-data"
+import { Link } from "@inertiajs/react"
 
 interface NodeBoxCardProps {
   nodebox: NodeBox
@@ -27,18 +25,17 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
       className="h-full"
     >
       <Card className="flex flex-col h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-shadow duration-300">
-        <div className="relative w-full h-48 overflow-hidden rounded-t-lg">
+        <div className="relative w-full overflow-hidden h-48 rounded-t-lg">
           <img
-            src={nodebox.image || "/placeholder.svg"}
+            src={"https://placehold.co/436x196"}
             alt={nodebox.name}
-            className="object-cover transition-transform duration-300 hover:scale-105"
+            className=" transition-transform duration-300 hover:scale-105 h-full w-full object-cover"
           />
           <Badge
-            className={`absolute top-3 left-3 text-xs px-2 py-1 ${
-              isClosed
-                ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
-                : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-            }`}
+            className={`absolute top-3 left-3 text-xs px-2 py-1 ${isClosed
+              ? "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200"
+              : "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+              }`}
           >
             {isClosed ? "Closed" : "Open"}
           </Badge>
@@ -70,7 +67,7 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
           </p>
         </CardContent>
         <CardFooter className="pt-4 border-t border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between w-full text-xs text-gray-500 dark:text-gray-400 mb-3">
+          {/* <div className="flex items-center justify-between w-full text-xs text-gray-500 dark:text-gray-400 mb-3">
             <div className="flex items-center gap-1">
               <CalendarDays className="h-3 w-3" />
               <span>Starts: {nodebox.startDate}</span>
@@ -79,14 +76,16 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
               <CalendarDays className="h-3 w-3" />
               <span>Ends: {nodebox.endDate}</span>
             </div>
-          </div>
-          <Button
-            onClick={() => onBuyShare(nodebox)}
-            disabled={isClosed}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-          >
-            {isClosed ? "Fully Funded" : "Buy Share"}
-          </Button>
+          </div> */}
+          <Link href={route('buy.nodeboss', nodebox?.id)} className="w-full">
+            <Button
+              onClick={() => onBuyShare(nodebox)}
+              disabled={isClosed}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isClosed ? "Fully Funded" : "Buy Share"}
+            </Button>
+          </Link>
         </CardFooter>
       </Card>
     </motion.div>

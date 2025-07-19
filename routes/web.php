@@ -15,6 +15,8 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\NodeBossController;
+use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -36,7 +38,7 @@ Route::get('/nodeboss', function () {
 })->name('nodeboss');
 
 Route::get('/nodeboss/{id}/buy', function () {
-    return Inertia::render('frontend/nodeboss/buy-nodeboss',[
+    return Inertia::render('frontend/nodeboss/buy-nodeboss', [
         'id' => request()->route('id')
     ]);
 })->name('buy.nodeboss');
@@ -144,6 +146,23 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+
+    // Purchase Order Routes
+    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
+    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');
+    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store');
+    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit');
+    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update');
+    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy');
+
+    // Node Boss Routes
+    Route::get('/node-boss/create', [NodeBossController::class, 'create'])->name('node-boss.create');
+    Route::post('/node-boss/store', [NodeBossController::class, 'store'])->name('node-boss.store');
+    Route::get('/node-boss/{id}/edit', [NodeBossController::class, 'edit'])->name('node-boss.edit');
+    Route::put('/node-boss/{id}', [NodeBossController::class, 'update'])->name('node-boss.update');
+    Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy');
+    Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index');
+    Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show');
 });
 
 // route for donation
