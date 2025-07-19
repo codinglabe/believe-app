@@ -84,5 +84,12 @@ class Product extends Model
         );
     }
 
+     /**
+     * Get the organization that owns the product.
+     */
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
 }
 

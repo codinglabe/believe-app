@@ -25,7 +25,7 @@ class ProductController extends Controller
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
 
-        $query = Product::query();
+        $query = Product::with('organization');
 
 
 
@@ -45,6 +45,9 @@ class ProductController extends Controller
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
+
+
+            // dd($products );
 
         return Inertia::render('products/index', [
             'products' => $products,
@@ -126,7 +129,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-      
+
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -146,7 +149,7 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-      
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -198,7 +201,7 @@ class ProductController extends Controller
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
         // Ensure user can only update their own products
-      
+
 
 
         // dd($request->all());
@@ -246,12 +249,12 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        
+
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
         // Ensure user can only delete their own products
-       
+
 
         // Delete image file if exists
         if ($product->image && Storage::disk('public')->exists($product->image)) {

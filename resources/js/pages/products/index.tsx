@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router,usePage } from '@inertiajs/react';
+import type { SharedData } from "@/types"
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -16,21 +17,34 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ]
 
+interface Organization {
+    id: number;
+    name: string;
+    ein: string;
+    email: string;
+    city: string;
+    state: string;
+    zip: string;
+}
+
 interface Product {
     id: number;
     name: string;
     sku: string;
-    quantity : number;
-    quantity_available : number;
-    quantity_ordered : number;
-    unit_price : number;
+    quantity: number;
+    quantity_available: number;
+    quantity_ordered: number;
+    unit_price: number;
     image: string;
     status: string;
     description: string;
-    type : string;
+    type: string;
     created_at: string;
     updated_at: string;
+    organization: Organization;
 }
+
+
 
 interface Props {
     products: {
@@ -53,6 +67,9 @@ interface Props {
 }
 
 export default function Index({ products, filters, allowedPerPage }: Props) {
+
+    const { auth } = usePage<SharedData>().props
+
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Product | null>(null);
     const [loading, setLoading] = useState(false);
@@ -223,6 +240,9 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity On Ordered</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity On Available</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Unit Price</th>
+                                        {auth.user.role === "admin" && (
+                                        <th className="px-4 py-3 font-medium min-w-32">Organization</th>
+                                        )}
                                         <th className="px-4 py-3 font-medium min-w-32">Type</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
@@ -266,6 +286,14 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                     {item.unit_price}
                                                 </span>
                                             </td>
+                                            {auth.user.role === "admin" && (
+                                            <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.organization?.name}>
+                                                    {item.organization?.name ?? "-"}
+                                                </span>
+                                            </td>
+                                              )}
+
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.type}
