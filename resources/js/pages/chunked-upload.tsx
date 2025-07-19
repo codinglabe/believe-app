@@ -284,7 +284,7 @@ function ChunkedUpload() {
                   accept=".csv,.xlsx,.xls"
                   onChange={handleFileSelect}
                   disabled={uploading}
-                  className="border w-full border-gray-300 rounded p-2 disabled:opacity-50"
+                  className="border w-full border-gray-700 rounded p-2 disabled:opacity-50"
                 />
               </div>
 

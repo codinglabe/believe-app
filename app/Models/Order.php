@@ -5,7 +5,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
-
     protected $guarded = [];
 
     public function services()
@@ -13,8 +12,10 @@ class Order extends Model
         return $this->morphMany(Service::class, 'serviceable');
     }
 
-    public function user()
-    {
+     /**
+     * User who made the payment (buyer)
+     */
+    public function user(){
         return $this->belongsTo(User::class, 'user_id');
     }
 

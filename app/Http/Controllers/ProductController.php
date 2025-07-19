@@ -24,12 +24,10 @@ class ProductController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-
-        $query = Product::with('organization');
-
-
-
-
+        
+        $query = Product::query();
+        
+        
         // Only show products for current user
         if(Auth::user()->role == "organization"){
             $query->where('organization_id', @$organization->id);
@@ -45,10 +43,7 @@ class ProductController extends Controller
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-
-
-            // dd($products );
-
+        
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -129,7 +124,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-
+        
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -149,7 +144,7 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-
+        // dd($request->all());
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -200,48 +195,6 @@ class ProductController extends Controller
 
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
-        // Ensure user can only update their own products
-
-
-
-        // dd($request->all());
-        $request->validate([
-            'name' => 'required|string|max:255',
-            'description' => 'required|string|max:1000',
-            'price' => 'required|numeric|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
-            'status' => 'required|string|in:active,inactive',
-        ]);
-
-
-
-        if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($product->image && Storage::disk('public')->exists($product->image)) {
-                Storage::disk('public')->delete($product->image);
-            }
-
-            // Store new image
-            $image = $request->file('image');
-            $imageName = time() . '_' . $image->getClientOriginalName();
-            $imagePath = $image->storeAs('products', $imageName, 'public');
-
-            $product->update([
-                'image' => $imagePath,
-            ]);
-
-        }
-
-
-        $product->update([
-            'name' => $request->name,
-            'description' => $request->description,
-            'price' => $request->price,
-            'status' => $request->status,
-        ]);
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product updated successfully');
     }
 
     /**
@@ -249,22 +202,10 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-
+        
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
-        // Ensure user can only delete their own products
-
-
-        // Delete image file if exists
-        if ($product->image && Storage::disk('public')->exists($product->image)) {
-            Storage::disk('public')->delete($product->image);
-        }
-
-        $product->delete();
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product deleted successfully');
     }
 }
 

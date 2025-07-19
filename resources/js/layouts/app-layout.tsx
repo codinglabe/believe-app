@@ -15,24 +15,24 @@ interface AppLayoutProps {
 export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     // Handle flash messages
     useFlashMessage();
-    
+
     // Handle Laravel session flash messages
     const { props: pageProps } = usePage();
         useEffect(() => {        // Handle success messages from Laravel session
         if (pageProps.success && typeof pageProps.success === 'string') {
             showSuccessToast(pageProps.success);
         }
-        
+
         // Handle error messages from Laravel session
         if (pageProps.error && typeof pageProps.error === 'string') {
             showErrorToast(pageProps.error);
         }
-        
+
         // Handle info messages from Laravel session
         if (pageProps.info && typeof pageProps.info === 'string') {
             showSuccessToast(pageProps.info);
         }
-        
+
         // Handle warning messages from Laravel session
         if (pageProps.warning && typeof pageProps.warning === 'string') {
             showErrorToast(pageProps.warning);

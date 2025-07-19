@@ -63,6 +63,7 @@ class HandleInertiaRequests extends Middleware
                     "email_verified_at" => $user->email_verified_at,
                     'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
                     "organization" => $user->organization ? [
+                        'name' => $user->organization->name,
                         'contact_title' => $user->organization->contact_title,
                         'website' => $user->organization->website,
                         'description' => $user->organization->description,

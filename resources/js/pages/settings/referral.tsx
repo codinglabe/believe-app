@@ -2,6 +2,7 @@ import { Head, usePage } from '@inertiajs/react';
 import { Button } from '@/components/frontend/ui/button';
 import SettingsLayout from '@/layouts/settings/layout';
 import { useState } from 'react';
+import { Input } from '@/components/ui/input';
 
 export default function ReferralLinkPage() {
   const { referral_code } = usePage().props as { referral_code: string };
@@ -17,14 +18,14 @@ export default function ReferralLinkPage() {
   return (
     <SettingsLayout activeTab="referral">
       <Head title="Referral Link" />
-      <div className="max-w-xl mx-auto bg-white dark:bg-gray-900 rounded-lg shadow p-6">
+      <div className="max-w-xl mx-auto bg-white dark:bg-transparent rounded-lg shadow p-6 border-1 border-gray-800">
         <h2 className="text-2xl font-bold mb-4">Share Your Referral Link</h2>
         <div className="flex items-center gap-2 mb-4">
-          <input
+          <Input
             type="text"
             value={referralUrl}
             readOnly
-            className="flex-1 px-3 py-2 border rounded bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"
+            className="flex-1 px-3 py-2 border rounded bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200"
           />
           <Button onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</Button>
         </div>
@@ -34,4 +35,4 @@ export default function ReferralLinkPage() {
       </div>
     </SettingsLayout>
   );
-} 
+}
