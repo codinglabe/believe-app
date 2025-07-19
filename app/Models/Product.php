@@ -61,7 +61,6 @@ class Product extends Model
         }
         return $slug;
     }
-<<<<<<< HEAD
 
     /**
      * Get the image URL.
@@ -92,7 +91,5 @@ class Product extends Model
     {
         return $this->belongsTo(Organization::class);
     }
-=======
->>>>>>> origin/main
 }
 
