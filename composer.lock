@@ -9946,11 +9946,6 @@
     "platform": {
         "php": "^8.2"
     },
-<<<<<<< HEAD
     "platform-dev": {},
     "plugin-api-version": "2.6.0"
-=======
-    "platform-dev": [],
-    "plugin-api-version": "2.2.0"
->>>>>>> 8071e7c (Add new Marketplace)
 }

@@ -5,10 +5,6 @@ use Illuminate\Database\Eloquent\Model;
 
 class Order extends Model
 {
-<<<<<<< HEAD
-    //
-=======
->>>>>>> 8071e7c (Add new Marketplace)
     protected $guarded = [];
 
     public function services()
@@ -19,12 +15,8 @@ class Order extends Model
      /**
      * User who made the payment (buyer)
      */
-<<<<<<< HEAD
     public function user()
     {
-=======
-    public function user(){
->>>>>>> 8071e7c (Add new Marketplace)
         return $this->belongsTo(User::class, 'user_id');
     }
 
