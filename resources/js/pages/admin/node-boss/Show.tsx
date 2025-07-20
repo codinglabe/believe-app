@@ -1,125 +1,264 @@
-import AppLayout from "@/layouts/app-layout"
 import { Head, Link } from "@inertiajs/react"
+import AppLayout from "@/layouts/app-layout"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Badge } from "@/components/ui/badge"
+import { ArrowLeft, Edit, Calendar, DollarSign, Users, TrendingUp, Eye, Share2 } from "lucide-react"
+import type { NodeBoss } from "@/types/nodeboss"
+import { ReactElement, JSXElementConstructor, ReactNode, ReactPortal, Key } from "react"
 
-export default function Show({ auth, nodeBoss }) {
+interface Props {
+  auth: any
+  nodeBoss: NodeBoss
+}
+
+export default function Show({ auth, nodeBoss }: Props) {
+  // JSON.parse from here nodeBoss.suggested_amounts
+  const suggestedAmounts = typeof nodeBoss.suggested_amounts === "string"
+    ? JSON.parse(nodeBoss.suggested_amounts)
+    : nodeBoss.suggested_amounts || [10, 25, 50, 100]
   return (
     <AppLayout>
       <Head title={`NodeBoss - ${nodeBoss.name}`} />
 
-      <div className="py-12">
-        <div className="max-w-4xl mx-auto sm:px-6 lg:px-8">
-          <div className="bg-white overflow-hidden shadow-sm sm:rounded-lg">
-            <div className="p-6 text-gray-900">
-              {/* Header */}
-              <div className="flex justify-between items-center mb-6">
-                <h1 className="text-3xl font-bold text-gray-900">{nodeBoss.name}</h1>
-                <div className="flex space-x-2">
-                  <Link
-                    href={route("node-boss.edit", nodeBoss.id)}
-                    className="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700"
+      <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
+        {/* Header */}
+        <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-start sm:justify-between gap-4 animate-in slide-in-from-top duration-700">
+          <div className="flex items-start gap-3 sm:gap-4 flex-1">
+            <Link href={route("node-boss.index")}>
+              <Button
+                variant="outline"
+                size="sm"
+                className="hover:scale-105 transition-transform duration-200 bg-transparent"
+              >
+                <ArrowLeft className="mr-2 h-3 w-3 sm:h-4 sm:w-4" />
+                <span className="hidden sm:inline">Back</span>
+              </Button>
+            </Link>
+            <div className="flex items-start gap-3 flex-1">
+              <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl animate-pulse">
+                <Eye className="h-5 w-5 sm:h-7 sm:w-7 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white break-words">
+                  {nodeBoss.name}
+                </h1>
+                <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-3">
+                  <Badge
+                    variant={
+                      nodeBoss.status === "active"
+                        ? "default"
+                        : nodeBoss.status === "inactive"
+                          ? "secondary"
+                          : "outline"
+                    }
+                    className="animate-in zoom-in duration-300"
                   >
-                    Edit
-                  </Link>
-                  <Link
-                    href={route("node-boss.index")}
-                    className="inline-flex items-center px-4 py-2 bg-gray-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-gray-700"
+                    {nodeBoss.status === "active" ? "🟢" : nodeBoss.status === "inactive" ? "🟡" : "📝"}{" "}
+                    {nodeBoss.status}
+                  </Badge>
+                  <Badge
+                    variant={nodeBoss.is_closed ? "destructive" : "default"}
+                    className="animate-in zoom-in duration-500"
                   >
-                    Back to List
-                  </Link>
+                    {nodeBoss.is_closed ? "🔒 Closed" : "🟢 Open"}
+                  </Badge>
                 </div>
-              </div>
-
-              {/* Image */}
-              <div className="mb-6">
-                {nodeBoss.image_url ? (
-                  <div className="flex justify-center">
-                    <img
-                      src={nodeBoss.image_url || "/placeholder.svg"}
-                      alt={nodeBoss.name}
-                      className="rounded-lg shadow-lg"
-                      style={{ width: "436px", height: "196px", objectFit: "cover" }}
-                    />
-                  </div>
-                ) : (
-                  <div className="flex justify-center">
-                    <div className="w-96 h-48 bg-gray-200 rounded-lg flex items-center justify-center">
-                      <svg className="h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* Details Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Basic Information */}
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-700 mb-4">Basic Information</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600">Name</label>
-                      <p className="text-gray-900">{nodeBoss.name}</p>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600">Status</label>
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          nodeBoss.status === "active"
-                            ? "bg-green-100 text-green-800"
-                            : nodeBoss.status === "inactive"
-                              ? "bg-yellow-100 text-yellow-800"
-                              : "bg-gray-100 text-gray-800"
-                        }`}
-                      >
-                        {nodeBoss.status}
-                      </span>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600">Investment Status</label>
-                      <span
-                        className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          nodeBoss.is_closed ? "bg-red-100 text-red-800" : "bg-green-100 text-green-800"
-                        }`}
-                      >
-                        {nodeBoss.is_closed ? "Closed for Investment" : "Open for Investment"}
-                      </span>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-600">Created</label>
-                      <p className="text-gray-900">{new Date(nodeBoss.created_at).toLocaleDateString()}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Suggested Amounts */}
-                <div className="bg-gray-50 p-6 rounded-lg">
-                  <h3 className="text-lg font-semibold text-gray-700 mb-4">Suggested Investment Amounts</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {JSON.parse(nodeBoss.suggested_amounts)?.map((amount, index) => (
-                      <span
-                        key={index}
-                        className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-blue-100 text-blue-800"
-                      >
-                        ${amount}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Description */}
-              <div className="mt-6 bg-gray-50 p-6 rounded-lg">
-                <h3 className="text-lg font-semibold text-gray-700 mb-4">Description</h3>
-                <p className="text-gray-900 whitespace-pre-wrap">{nodeBoss.description}</p>
               </div>
             </div>
           </div>
+          <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 animate-in slide-in-from-right duration-700">
+            <Button variant="outline" size="sm" className="hover:scale-105 transition-all duration-200 bg-transparent">
+              <Share2 className="mr-2 h-4 w-4" />
+              <span className="hidden sm:inline">Share</span>
+            </Button>
+            <Link href={route("node-boss.edit", nodeBoss.id)}>
+              <Button className="w-full sm:w-auto hover:scale-105 transition-all duration-200 shadow-lg">
+                <Edit className="mr-2 h-4 w-4" />
+                <span className="hidden sm:inline">Edit NodeBoss</span>
+                <span className="sm:hidden">Edit</span>
+              </Button>
+            </Link>
+          </div>
+        </div>
+
+        {/* Image */}
+        <Card className=" shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-top duration-500">
+          <CardContent className="p-4 sm:p-6">
+            {nodeBoss.image ? (
+              <div className="flex justify-center">
+                <div className="relative group">
+                  <img
+                    src={"/" + nodeBoss.image || "/placeholder.svg"}
+                    alt={nodeBoss.name}
+                    className="rounded-lg shadow-lg border border-gray-200 dark:border-gray-600 transition-transform duration-300 group-hover:scale-105 max-w-full h-auto"
+                    style={{ maxWidth: "436px", maxHeight: "196px", objectFit: "cover" }}
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-all duration-300 rounded-lg"></div>
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <div className="w-full max-w-md h-32 sm:h-48 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-600 dark:to-gray-700 rounded-lg flex items-center justify-center border border-gray-300 dark:border-gray-500 animate-pulse">
+                  <div className="text-center text-gray-400 dark:text-gray-500">
+                    <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-2 rounded-full bg-gray-300 dark:bg-gray-500 flex items-center justify-center">
+                      <span className="text-2xl sm:text-3xl">📊</span>
+                    </div>
+                    <p className="text-sm font-medium">No Image Available</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Details Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+          {/* Basic Information */}
+          <Card className=" shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left duration-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                <TrendingUp className="h-5 w-5 text-blue-600 animate-pulse" />
+                Basic Information
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 sm:space-y-6">
+              <div className="space-y-2 animate-in fade-in duration-500">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Name</label>
+                <p className="text-gray-900 dark:text-white font-medium text-sm sm:text-base break-words">
+                  {nodeBoss.name}
+                </p>
+              </div>
+              <div className="space-y-2 animate-in fade-in duration-700">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Status</label>
+                <Badge
+                  variant={
+                    nodeBoss.status === "active" ? "default" : nodeBoss.status === "inactive" ? "secondary" : "outline"
+                  }
+                  className="hover:scale-105 transition-transform duration-200"
+                >
+                  {nodeBoss.status === "active" ? "🟢" : nodeBoss.status === "inactive" ? "🟡" : "📝"} {nodeBoss.status}
+                </Badge>
+              </div>
+              <div className="space-y-2 animate-in fade-in duration-900">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Investment Status</label>
+                <Badge
+                  variant={nodeBoss.is_closed ? "destructive" : "default"}
+                  className="hover:scale-105 transition-transform duration-200"
+                >
+                  {nodeBoss.is_closed ? "🔒 Closed for Investment" : "🟢 Open for Investment"}
+                </Badge>
+              </div>
+              <div className="space-y-2 animate-in fade-in duration-1000">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Created</label>
+                <div className="flex items-center gap-2 text-gray-900 dark:text-white text-sm sm:text-base">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  {new Date(nodeBoss.created_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </div>
+              </div>
+              <div className="space-y-2 animate-in fade-in duration-1100">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Last Updated</label>
+                <div className="flex items-center gap-2 text-gray-900 dark:text-white text-sm sm:text-base">
+                  <Calendar className="h-4 w-4 text-gray-500" />
+                  {new Date(nodeBoss.updated_at).toLocaleDateString("en-US", {
+                    year: "numeric",
+                    month: "long",
+                    day: "numeric",
+                  })}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Investment Options */}
+          <Card className=" shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-right duration-700">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                <DollarSign className="h-5 w-5 text-green-600 animate-pulse" />
+                Investment Options
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 sm:space-y-6">
+              <div className="space-y-3">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Suggested Amounts</label>
+                <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                  {suggestedAmounts.map((amount: number, index: number) => (
+                    <div
+                      key={index}
+                      className="flex items-center justify-center p-3 sm:p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-lg hover:scale-105 transition-all duration-200 animate-in zoom-in"
+                      style={{ animationDelay: `${index * 100}ms` }}
+                    >
+                      <span className="text-base sm:text-lg font-semibold text-green-600 dark:text-green-400">
+                        ${amount}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-gray-200 dark:border-gray-600 space-y-2 animate-in fade-in duration-1000">
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Total Price:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{"$" + nodeBoss.price}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Total Sell:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{suggestedAmounts.length}</span>
+                </div>
+                <div className="flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-400">Total Options:</span>
+                  <span className="font-medium text-gray-900 dark:text-white">{suggestedAmounts.length}</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Description */}
+        <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-bottom duration-700">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+              <Users className="h-5 w-5 text-purple-600 animate-pulse" />
+              Description
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="prose prose-sm sm:prose max-w-none dark:prose-invert">
+              <p className="text-gray-900 dark:text-white whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
+                {nodeBoss.description}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Action Bar */}
+        <div className="flex flex-col justify-end sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-gray-200 dark:border-gray-600 animate-in slide-in-from-bottom duration-500">
+          <Link href={route("node-boss.edit", nodeBoss.id)} className="flex-1 sm:flex-none">
+            <Button className="w-full sm:w-auto hover:scale-105 transition-all duration-200 shadow-lg cursor-pointer">
+              <Edit className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+          </Link>
+          <Button
+            variant="outline"
+            className="flex-1 sm:flex-none hover:scale-105 transition-all duration-200 bg-transparent cursor-pointer"
+          >
+            <Share2 className="mr-2 h-4 w-4" />
+            Share
+          </Button>
+          <Link href={route("node-boss.index")} className="flex-1 sm:flex-none">
+            <Button
+              variant="outline"
+              className="w-full sm:w-auto hover:scale-105 transition-all duration-200 bg-transparent cursor-pointer"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to List
+            </Button>
+          </Link>
         </div>
       </div>
     </AppLayout>

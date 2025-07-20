@@ -19,31 +19,38 @@ class ProductController extends Controller
     public function index(Request $request): Response
     {
 
-        $organization = Organization::where('user_id',Auth::id())->first();
+        $organization = Organization::where('user_id', Auth::id())->first();
 
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
         
         $query = Product::query();
+<<<<<<< HEAD
         
         
+=======
+
+>>>>>>> origin/main
         // Only show products for current user
-        if(Auth::user()->role == "organization"){
+        if (Auth::user()->role == "organization") {
             $query->where('organization_id', @$organization->id);
         }
 
 
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
+<<<<<<< HEAD
         
+=======
+>>>>>>> origin/main
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -108,8 +115,8 @@ class ProductController extends Controller
             'image' => $imagePath,
         ]);
 
-        if(Auth::user()->role == "organization"){
-            $organization = Organization::where('user_id',Auth::id())->first();
+        if (Auth::user()->role == "organization") {
+            $organization = Organization::where('user_id', Auth::id())->first();
             $product->update([
                 'owned_by' => 'organization',
                 'organization_id' => $organization->id,
@@ -144,7 +151,14 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+<<<<<<< HEAD
         // dd($request->all());
+=======
+
+        if ($product->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action.');
+        }
+>>>>>>> origin/main
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -181,11 +195,10 @@ class ProductController extends Controller
             $product->update([
                 'image' => $imagePath,
             ]);
-
         }
 
-        if(Auth::user()->role == "organization"){
-            $organization = Organization::where('user_id',Auth::id())->first();
+        if (Auth::user()->role == "organization") {
+            $organization = Organization::where('user_id', Auth::id())->first();
             $product->update([
                 'owned_by' => 'organization',
                 'organization_id' => $organization->id,
@@ -195,6 +208,52 @@ class ProductController extends Controller
 
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
+<<<<<<< HEAD
+=======
+        // Ensure user can only update their own products
+        if ($product->user_id !== Auth::id()) {
+            abort(403, 'Unauthorized action.');
+        }
+
+
+        // dd($request->all());
+        $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'required|string|max:1000',
+            'price' => 'required|numeric|min:0',
+            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
+            'status' => 'required|string|in:active,inactive',
+        ]);
+
+
+
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($product->image && Storage::disk('public')->exists($product->image)) {
+                Storage::disk('public')->delete($product->image);
+            }
+
+            // Store new image
+            $image = $request->file('image');
+            $imageName = time() . '_' . $image->getClientOriginalName();
+            $imagePath = $image->storeAs('products', $imageName, 'public');
+
+            $product->update([
+                'image' => $imagePath,
+            ]);
+        }
+
+
+        $product->update([
+            'name' => $request->name,
+            'description' => $request->description,
+            'price' => $request->price,
+            'status' => $request->status,
+        ]);
+
+        return redirect()->route('products.index')
+            ->with('success', 'Product updated successfully');
+>>>>>>> origin/main
     }
 
     /**
@@ -208,4 +267,3 @@ class ProductController extends Controller
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
     }
 }
-

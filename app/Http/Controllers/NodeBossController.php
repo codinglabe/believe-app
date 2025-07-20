@@ -14,7 +14,6 @@ class NodeBossController extends Controller
     public function index(Request $request)
     {
         $query = NodeBoss::query();
-
         // Search functionality
         if ($request->has('search') && $request->search) {
             $query->where('name', 'like', '%' . $request->search . '%')
@@ -24,6 +23,10 @@ class NodeBossController extends Controller
         // Status filter
         if ($request->has('status') && $request->status) {
             $query->where('status', $request->status);
+        }
+
+        if ($request->has('is_closed') && $request->is_closed) {
+            $query->where('is_closed', $request->is_closed === "false" ? false:true);
         }
 
         // Sort functionality
@@ -39,6 +42,27 @@ class NodeBossController extends Controller
         ]);
     }
 
+    public function frontendIndex(Request $request)
+    {
+        $nodeBosses = NodeBoss::where('status', 'active')->latest()->get();
+
+        return Inertia::render('frontend/nodeboss/nodeboss', [
+            'nodeBosses' => $nodeBosses,
+        ]);
+    }
+
+    public function frontendShow($slug)
+    {
+        $nodeBoss = NodeBoss::where('slug', $slug)->firstOrFail();
+
+        return Inertia::render('frontend/nodeboss/buy-nodeboss', [
+            'nodeBoss' => $nodeBoss,
+        ]);
+    }
+
+    //buy sahres with stripe laravel cashier payment method
+    public function shareBuy(Request $request) {}
+
     public function create()
     {
         return Inertia::render('admin/node-boss/create');
@@ -48,6 +72,7 @@ class NodeBossController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
+            'price' => 'required|decimal:0,2|min:0.01',
             'description' => 'required|string',
             'suggested_amounts' => 'required|array|min:1',
             'suggested_amounts.*' => 'numeric|min:1',
@@ -93,17 +118,19 @@ class NodeBossController extends Controller
     {
         $nodeBoss = NodeBoss::findOrFail($id);
 
-        return Inertia::render('NodeBoss/Edit', [
+        return Inertia::render('admin/node-boss/edit', [
             'nodeBoss' => $nodeBoss,
         ]);
     }
 
     public function update(Request $request, $id)
     {
+        //dd($request->all());
         $nodeBoss = NodeBoss::findOrFail($id);
 
         $validator = Validator::make($request->all(), [
             'name' => 'required|string|max:255',
+            'price' => 'required|decimal:0,2|min:0.01',
             'description' => 'required|string',
             'suggested_amounts' => 'required|array|min:1',
             'suggested_amounts.*' => 'numeric|min:1',
@@ -116,7 +143,14 @@ class NodeBossController extends Controller
             return back()->withErrors($validator)->withInput();
         }
 
-        $data = $request->all();
+        $data = $request->only([
+            'name',
+            'price',
+            'description',
+            'suggested_amounts',
+            'is_closed',
+            'status',
+        ]);
 
         // Handle image upload
         if ($request->hasFile('image')) {
@@ -132,7 +166,7 @@ class NodeBossController extends Controller
         }
 
         // Convert suggested amounts to JSON
-        $data['suggested_amounts'] = json_encode($request->suggested_amounts);
+        $data['suggested_amounts'] = json_encode($data['suggested_amounts']);
 
         $nodeBoss->update($data);
 

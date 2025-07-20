@@ -1,5 +1,6 @@
 export interface NodeBoss {
   id: number
+  uuid: string
   name: string
   description: string
   slug: string
@@ -24,6 +25,7 @@ export interface NodeBossFilters {
   search?: string
   status?: string
   sort_by?: string
+  is_closed?: boolean
   sort_order?: "asc" | "desc"
 }
 
