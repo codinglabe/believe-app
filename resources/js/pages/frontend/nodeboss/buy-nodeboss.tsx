@@ -7,41 +7,30 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { type NodeBox, generateUniqueId } from "@/lib/nodebox-data"
 import { ShareCertificate } from "@/components/share-certificate"
 import { Textarea } from "@/components/frontend/ui/textarea"
+import { NodeBoss } from "@/types/nodeboss"
+import { Auth } from "@/types"
 
 const suggestedAmounts = [10, 25, 50, 100, 250]
 
-// Mock NodeBox data for demonstration on a page
-const mockNodebox: NodeBox = {
-  id: "nodebox-123",
-  name: "Community Wi-Fi Project",
-  description: "Providing free internet access to underserved communities in rural areas.",
-  image: "/placeholder.svg?height=64&width=64",
-  category: "Technology",
-  targetAmount: 10000,
-  currentSoldAmount: 7500,
-  status: "open", // or another valid status value
-  startDate: "2024-01-01", // use a valid date string
-  endDate: "2024-12-31",   // use a valid date string
-}
-
-export default function BuySharePage() {
-  const nodebox = mockNodebox // Use the mock data for the page
+export default function BuySharePage({ nodeBoss, auth }: { nodeBoss: NodeBoss, auth: Auth }) {
+  const suggestedAmounts = typeof nodeBoss.suggested_amounts === "string"
+    ? JSON.parse(nodeBoss.suggested_amounts)
+    : nodeBoss.suggested_amounts || [10, 25, 50, 100]
+  const currentSoldAmount = 1950 // Mock current sold amount
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donorInfo, setDonorInfo] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
+    name: auth?.user?.name || "",
+    email: auth?.user?.email || "",
     message: "",
   })
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
   const [certificateDetails, setCertificateDetails] = useState<any>(null)
 
-  const remainingAmount = nodebox.targetAmount - nodebox.currentSoldAmount
+  const remainingAmount = nodeBoss.price - currentSoldAmount
 
   const handleAmountSelect = (amount: number) => {
     setSelectedAmount(amount)
@@ -54,7 +43,7 @@ export default function BuySharePage() {
   }
 
   const getCurrentAmount = () => {
-    return selectedAmount || Number.parseFloat(customAmount) || 0
+    return Number(selectedAmount) || Number.parseFloat(customAmount) || 0
   }
 
   const handlePurchase = async () => {
@@ -64,17 +53,13 @@ export default function BuySharePage() {
       return
     }
 
-    // Basic validation for required fields
-    if (!donorInfo.firstName || !donorInfo.lastName || !donorInfo.email) {
-      alert("Please fill in all required donor information fields.")
-      return
-    }
+    // Basic validation for required field
 
     setIsProcessing(true)
     // Simulate API call
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
-    const certId = generateUniqueId()
+    const certId = nodeBoss?.uuid
     const purchaseDate = new Date().toLocaleDateString("en-US", {
       year: "numeric",
       month: "long",
@@ -83,10 +68,10 @@ export default function BuySharePage() {
 
     setCertificateDetails({
       certificateId: certId,
-      nodeboxName: nodebox.name,
-      nodeboxId: nodebox.id,
+      nodeboxName: nodeBoss.name,
+      nodeboxId: nodeBoss.id,
       amount: amountToPurchase,
-      buyerName: `${donorInfo.firstName} ${donorInfo.lastName}`,
+      buyerName: donorInfo.name,
       purchaseDate: purchaseDate,
     })
 
@@ -110,7 +95,7 @@ export default function BuySharePage() {
     setIsSuccess(false)
     setSelectedAmount(null)
     setCustomAmount("")
-    setDonorInfo({ firstName: "", lastName: "", email: "", message: "" })
+    setDonorInfo({ name: "", email: "", message: "" })
     setCertificateDetails(null)
   }
 
@@ -125,7 +110,7 @@ export default function BuySharePage() {
               <div className="mb-6">
                 <h1 className="text-gray-900 dark:text-white text-3xl font-bold flex items-center gap-3 mb-2">
                   <DollarSign className="h-6 w-6 text-green-500" />
-                  Buy Share for {nodebox.name}
+                  Buy Share for {nodeBoss.name}
                 </h1>
                 <p className="text-gray-600 dark:text-gray-300 text-lg">
                   Contribute to this NodeBox and help us reach our funding goal.
@@ -136,22 +121,22 @@ export default function BuySharePage() {
                 <Card className="bg-gray-50 dark:bg-gray-700 border-gray-200 dark:border-gray-600">
                   <CardContent className="pt-4">
                     <div className="flex items-center gap-4">
-                      <img
-                        src={nodebox.image || "/placeholder.svg?height=64&width=64&query=nodebox image"}
-                        alt={nodebox.name}
+                      {/* <img
+                        src={"/" + nodeBoss.image || "/placeholder.svg?height=64&width=64&query=nodebox image"}
+                        alt={nodeBoss.name}
                         width={64}
                         height={64}
                         className="rounded-lg object-cover"
-                      />
+                      /> */}
                       <div className="flex-1">
-                        <h4 className="font-semibold text-gray-900 dark:text-white">{nodebox.name}</h4>
-                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{nodebox.description}</p>
+                        <h4 className="font-semibold text-gray-900 dark:text-white">{nodeBoss.name}</h4>
+                        <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{nodeBoss.description}</p>
                         <div className="flex items-center gap-2">
                           <Badge variant="secondary" className="text-xs">
-                            {nodebox.category}
+                            {nodeBoss.is_closed ? "Closed" : "Open"}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
-                            ID: {nodebox.id}
+                            ID: {nodeBoss.uuid}
                           </Badge>
                         </div>
                       </div>
@@ -161,13 +146,13 @@ export default function BuySharePage() {
                       <div>
                         <p className="text-gray-600 dark:text-gray-300">Target Amount:</p>
                         <p className="font-medium text-gray-900 dark:text-white">
-                          ${nodebox.targetAmount.toLocaleString()}
+                          ${nodeBoss.price.toLocaleString()}
                         </p>
                       </div>
                       <div>
                         <p className="text-gray-600 dark:text-gray-300">Currently Sold:</p>
                         <p className="font-medium text-gray-900 dark:text-white">
-                          ${nodebox.currentSoldAmount.toLocaleString()}
+                          ${currentSoldAmount.toLocaleString()}
                         </p>
                       </div>
                       <div className="col-span-2">
@@ -185,7 +170,7 @@ export default function BuySharePage() {
                     Select Share Amount
                   </Label>
                   <div className="grid grid-cols-3 gap-3 mb-4">
-                    {suggestedAmounts.map((amount) => (
+                    {suggestedAmounts.map((amount: number) => (
                       <Button
                         key={amount}
                         variant={selectedAmount === amount ? "default" : "outline"}
@@ -240,32 +225,19 @@ export default function BuySharePage() {
                   <Label className="text-base font-semibold text-gray-900 dark:text-white">Your Information</Label>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div>
-                      <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
-                        First Name *
+                      <Label htmlFor="name" className="text-gray-900 dark:text-white">
+                        Name *
                       </Label>
                       <Input
-                        id="firstName"
+                        id="name"
                         placeholder="John"
-                        value={donorInfo.firstName}
-                        onChange={(e) => setDonorInfo({ ...donorInfo, firstName: e.target.value })}
+                        value={donorInfo.name}
+                        onChange={(e) => setDonorInfo({ ...donorInfo, name: e.target.value })}
                         className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                         required
                       />
                     </div>
                     <div>
-                      <Label htmlFor="lastName" className="text-gray-900 dark:text-white">
-                        Last Name *
-                      </Label>
-                      <Input
-                        id="lastName"
-                        placeholder="Doe"
-                        value={donorInfo.lastName}
-                        onChange={(e) => setDonorInfo({ ...donorInfo, lastName: e.target.value })}
-                        className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                        required
-                      />
-                    </div>
-                    <div className="md:col-span-2">
                       <Label htmlFor="email" className="text-gray-900 dark:text-white">
                         Email *
                       </Label>
@@ -334,8 +306,7 @@ export default function BuySharePage() {
                     disabled={
                       getCurrentAmount() <= 0 ||
                       getCurrentAmount() > remainingAmount ||
-                      !donorInfo.firstName ||
-                      !donorInfo.lastName ||
+                      !donorInfo.name ||
                       !donorInfo.email ||
                       isProcessing
                     }
