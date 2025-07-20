@@ -44,12 +44,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "node.boss.read"
     },
     {
-        title: 'Node Boss',
-        href: '/node-boss',
-        icon: AlignEndHorizontal,
-        permission: "node.boss.read"
-    },
-    {
         title: 'Codes',
         items: [
             {

@@ -24,6 +24,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected $fillable = [
         'name',
+        'user_id',
         'slug',
         'email',
         'password',
@@ -71,6 +72,11 @@ class User extends Authenticatable implements MustVerifyEmail
                 $user->referral_code = $code;
             }
         });
+    }
+
+    public function user()
+    {
+        return $this->hasOne(User::class);
     }
 
     public function organization()
