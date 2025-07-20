@@ -26,12 +26,7 @@ class ProductController extends Controller
         $search = $request->get('search', '');
         
         $query = Product::query();
-<<<<<<< HEAD
-        
-        
-=======
 
->>>>>>> origin/main
         // Only show products for current user
         if (Auth::user()->role == "organization") {
             $query->where('organization_id', @$organization->id);
@@ -47,10 +42,6 @@ class ProductController extends Controller
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-<<<<<<< HEAD
-        
-=======
->>>>>>> origin/main
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -151,14 +142,10 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
-<<<<<<< HEAD
-        // dd($request->all());
-=======
 
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
->>>>>>> origin/main
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -208,8 +195,6 @@ class ProductController extends Controller
 
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
-<<<<<<< HEAD
-=======
         // Ensure user can only update their own products
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
@@ -253,7 +238,6 @@ class ProductController extends Controller
 
         return redirect()->route('products.index')
             ->with('success', 'Product updated successfully');
->>>>>>> origin/main
     }
 
     /**
