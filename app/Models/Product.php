@@ -61,5 +61,40 @@ class Product extends Model
         }
         return $slug;
     }
+
+    /**
+     * Get the image URL.
+     */
+    protected function image(): Attribute
+    {
+        return Attribute::make(
+            get: function ($value) {
+                if (!$value) {
+                    return null;
+                }
+
+                // If it's already a full URL, return as is
+                if (filter_var($value, FILTER_VALIDATE_URL)) {
+                    return $value;
+                }
+
+                // Return the full URL for stored images
+                return asset('storage/' . $value);
+            }
+        );
+    }
+
+     /**
+     * Get the organization that owns the product.
+     */
+    public function organization(): BelongsTo
+    {
+        return $this->belongsTo(Organization::class);
+    }
+
+    public function productCategory()
+    {
+        return $this->hasMany(ProductAssociatedCategory::class, 'product_id');
+    }
 }
 
