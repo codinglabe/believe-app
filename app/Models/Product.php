@@ -91,5 +91,10 @@ class Product extends Model
     {
         return $this->belongsTo(Organization::class);
     }
+
+    public function productCategory()
+    {
+        return $this->hasMany(ProductAssociatedCategory::class, 'product_id');
+    }
 }
 

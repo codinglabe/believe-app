@@ -8,7 +8,6 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -24,7 +23,6 @@ const breadcrumbs: BreadcrumbItem[] = [
 export default function Create() {
     const [formData, setFormData] = useState({
         name: '',
-        status: 'active',
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -85,19 +83,6 @@ export default function Create() {
                                 {errors.name && (
                                     <p className="text-sm text-red-500">{errors.name}</p>
                                 )}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="status">Status</Label>
-                                <Select value={formData.status} onValueChange={(value) => handleChange('status', value)}>
-                                    <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="inactive">Inactive</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
                             </div>
                             <div className="flex gap-4">
                                 <Button type="submit" disabled={isSubmitting}>

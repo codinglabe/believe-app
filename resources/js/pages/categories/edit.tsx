@@ -8,7 +8,6 @@ import { ArrowLeft, Save } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -24,7 +23,6 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface Category {
     id: number;
     name: string;
-    status: string;
     created_at: string;
     updated_at: string;
 }
@@ -36,7 +34,6 @@ interface Props {
 export default function Edit({ category }: Props) {
     const [formData, setFormData] = useState({
         name: '',
-        status: 'active',
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -44,7 +41,6 @@ export default function Edit({ category }: Props) {
     useEffect(() => {
         setFormData({
             name: category.name,
-            status: category.status,
         });
     }, [category]);
 
