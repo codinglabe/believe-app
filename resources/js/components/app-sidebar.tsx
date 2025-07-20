@@ -2,7 +2,11 @@ import { NavMain } from '@/components/nav-main';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
+<<<<<<< HEAD
 import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, AlignEndHorizontal } from 'lucide-react';
+=======
+import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal } from 'lucide-react';
+>>>>>>> 8071e7c (Add new Marketplace)
 import AppLogo from './app-logo';
 
 
@@ -36,6 +40,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         href: '/categories',
         icon: LayoutGrid,
         permission: "products.read"
+    },
+    {
+        title: 'Node Boss',
+        href: '/node-boss',
+        icon: AlignEndHorizontal,
+        permission: "node.boss.read"
     },
     {
         title: 'Node Boss',

@@ -24,10 +24,17 @@ class ProductController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
+<<<<<<< HEAD
 
         $query = Product::query();
 
 
+=======
+        
+        $query = Product::query();
+        
+        
+>>>>>>> 8071e7c (Add new Marketplace)
         // Only show products for current user
         if(Auth::user()->role == "organization"){
             $query->where('organization_id', @$organization->id);
@@ -43,7 +50,11 @@ class ProductController extends Controller
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
+<<<<<<< HEAD
 
+=======
+        
+>>>>>>> 8071e7c (Add new Marketplace)
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -124,9 +135,13 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
+<<<<<<< HEAD
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
+=======
+        
+>>>>>>> 8071e7c (Add new Marketplace)
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -146,9 +161,13 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+<<<<<<< HEAD
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
+=======
+        // dd($request->all());
+>>>>>>> 8071e7c (Add new Marketplace)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -199,6 +218,7 @@ class ProductController extends Controller
 
         $product->categories()->sync($categories);
         return redirect()->route('products.index')->with('success', 'Product updated successfully');
+<<<<<<< HEAD
         // Ensure user can only update their own products
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
@@ -243,6 +263,8 @@ class ProductController extends Controller
 
         return redirect()->route('products.index')
             ->with('success', 'Product updated successfully');
+=======
+>>>>>>> 8071e7c (Add new Marketplace)
     }
 
     /**
@@ -250,6 +272,7 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
+<<<<<<< HEAD
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
@@ -270,6 +293,12 @@ class ProductController extends Controller
 
         return redirect()->route('products.index')
             ->with('success', 'Product deleted successfully');
+=======
+        
+        $product->categories()->detach();
+        $product->delete();
+        return redirect()->route('products.index')->with('success', 'Product deleted successfully');
+>>>>>>> 8071e7c (Add new Marketplace)
     }
 }
 
