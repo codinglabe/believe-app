@@ -374,7 +374,7 @@ const getCroppedImage = async (
 
         {auth.user.role === "organization" && (
 
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <ImageIcon className="h-5 w-5 text-blue-500" />
@@ -384,7 +384,7 @@ const getCroppedImage = async (
             <CardContent>
               <div className="flex flex-col sm:flex-row items-center gap-6">
                 {/* Current Cover Preview */}
-                <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+                <div className="relative w-full h-40 rounded-lg overflow-hidden bg-gray-100 dark:bg-tra">
                   {currentCoverUrl ? (
                     <img
                       src={currentCoverUrl}
@@ -408,7 +408,7 @@ const getCroppedImage = async (
                   <div className="flex gap-3">
                     <Dialog open={isCoverDialogOpen} onOpenChange={setIsCoverDialogOpen}>
                       <DialogTrigger asChild>
-                        <Button variant="outline" className="flex items-center gap-2 bg-transparent">
+                        <Button variant="outline" className="flex items-center gap-2 bg-gray-500 dark:bg-gray-900">
                           <Upload className="h-4 w-4" />
                           Upload New Cover
                         </Button>
@@ -450,7 +450,7 @@ const getCroppedImage = async (
                           {/* Image Cropper */}
                           {selectedCoverFile && coverPreviewUrl ? (
                             <div className="space-y-4">
-                              <div className="relative w-full h-64 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
+                              <div className="relative w-full h-64 bg-gray-100 dark:bg-tra rounded-lg overflow-hidden">
                                 <Cropper
                                   image={coverPreviewUrl}
                                   crop={coverCrop}
@@ -556,7 +556,7 @@ const getCroppedImage = async (
           </Card>
         )}
           {/* Profile Photo Section */}
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <Camera className="h-5 w-5 text-purple-500" />
@@ -616,7 +616,7 @@ const getCroppedImage = async (
                           )}
 
                           {/* File Input */}
-                          <input
+                          <Input
                             ref={fileInputRef}
                             type="file"
                             accept="image/*"
@@ -627,7 +627,7 @@ const getCroppedImage = async (
                           {/* Image Cropper */}
                           {selectedFile && previewUrl ? (
                             <div className="space-y-4">
-                              <div className="relative w-full h-64 bg-gray-100 dark:bg-gray-800 rounded-lg overflow-hidden">
+                              <div className="relative w-full h-64 bg-gray-100 dark:bg-tra rounded-lg overflow-hidden">
                                 <Cropper
                                   image={previewUrl}
                                   crop={crop}
@@ -733,7 +733,7 @@ const getCroppedImage = async (
           </Card>
 
           {/* Personal Information */}
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <User className="h-5 w-5 text-blue-500" />
@@ -752,7 +752,7 @@ const getCroppedImage = async (
                     type="text"
                     value={data.name}
                     onChange={(e) => setData("name", e.target.value)}
-                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Enter your full name"
                     required
                   />
@@ -771,7 +771,7 @@ const getCroppedImage = async (
                     type="text"
                     value={data.contact_title}
                     onChange={(e) => setData("contact_title", e.target.value)}
-                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="Excutive Director, Ceo, Manager, etc.."
                     required={auth.user.role === "organization"}
                   />
@@ -792,7 +792,7 @@ const getCroppedImage = async (
                     type="email"
                     value={data.email}
                     onChange={(e) => setData("email", e.target.value)}
-                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="pl-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="your.email@example.com"
                     required
                   />
@@ -813,7 +813,7 @@ const getCroppedImage = async (
                     type="tel"
                     value={data.phone}
                     onChange={(e) => setData("phone", e.target.value)}
-                    className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="pl-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="+1 (555) 123-4567"
                   />
                 </div>
@@ -823,7 +823,7 @@ const getCroppedImage = async (
                   </Card>
 
                   {auth.user.role === "organization" && (
-          <Card className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 shadow-sm">
+          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
             <CardHeader className="pb-4">
               <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
                 <User className="h-5 w-5 text-blue-500" />
@@ -842,7 +842,7 @@ const getCroppedImage = async (
                     type="text"
                     value={data.website}
                     onChange={(e) => setData("website", e.target.value)}
-                    className="mt-1 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
                     placeholder="example.com"
                   />
                   <InputError message={errors.website} className="mt-1" />
@@ -860,7 +860,7 @@ const getCroppedImage = async (
             id="description"
             value={data.description}
             onChange={(e) => setData("description", e.target.value)}
-            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            className="mt-1 w-full bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
             placeholder="Briefly describe your organization..."
             required={auth.user.role === "organization"}
@@ -879,7 +879,7 @@ const getCroppedImage = async (
             id="mission"
             value={data.mission}
             onChange={(e) => setData("mission", e.target.value)}
-            className="mt-1 w-full bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
+            className="mt-1 w-full bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500 rounded-md shadow-sm"
             rows={4}
             placeholder="What is your organization's mission?"
             required={auth.user.role === "organization"}

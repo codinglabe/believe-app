@@ -1,9 +1,8 @@
 import { NavMain } from '@/components/nav-main';
-import { NavUser } from '@/components/nav-user';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package } from 'lucide-react';
+import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal } from 'lucide-react';
 import AppLogo from './app-logo';
 
 
@@ -45,6 +44,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "management.data.read"
     },
     {
+        title: 'Node Boss',
+        href: '/node-boss',
+        icon: AlignEndHorizontal,
+        permission: "node.boss.read"
+    },
+    {
         title: 'Codes',
         items: [
             {
@@ -84,7 +89,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
 export function AppSidebar() {
     return (
-        <Sidebar collapsible="icon" variant="inset">
+        <Sidebar collapsible="icon" variant="inset" className='z-30'>
             <SidebarHeader>
                 <SidebarMenu>
                     <SidebarMenuItem>
@@ -101,9 +106,9 @@ export function AppSidebar() {
                 <NavMain items={mainNavItems} />
             </SidebarContent>
 
-            <SidebarFooter>
+            {/* <SidebarFooter>
                 <NavUser />
-            </SidebarFooter>
+            </SidebarFooter> */}
         </Sidebar>
     );
 }

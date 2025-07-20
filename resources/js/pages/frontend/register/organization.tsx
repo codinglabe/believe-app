@@ -15,6 +15,7 @@ import {
   Send,
   EyeOff,
   Eye,
+  ShieldCheck,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -25,7 +26,6 @@ import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
-import { Icon } from '@iconify/react';
 
 // Types
 interface EINLookupResponse {
@@ -504,7 +504,7 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                         </h3>
                         <p className="text-gray-600 dark:text-gray-400">
                           <div className="flex items-center justify-center">
-                            <Icon icon="mdi:shield-check" className="h-4 w-4 text-green-600" />
+                            <ShieldCheck className="h-4 w-4 text-green-600" />
                             <span className="font-bold text-green-600">{referralCode}</span>
                           </div>
                         </p>

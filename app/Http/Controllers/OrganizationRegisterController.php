@@ -76,6 +76,8 @@ class OrganizationRegisterController extends Controller
             // Lookup in Excel data
             $orgData = $this->einLookupService->lookupEIN($ein);
 
+            // dd($orgData);
+
             if (!$orgData) {
                 return back()->withErrors([
                     'message' => 'EIN not found in IRS database. Please verify the number and try again.'
@@ -121,21 +123,21 @@ class OrganizationRegisterController extends Controller
                 'name' => 'nullable|string|max:255',
                 'ico' => 'nullable|string|max:255',
                 'street' => 'nullable|string|max:255',
-                'city' => 'nullable|string|max:100',
-                'state' => 'nullable|string|max:50',
-                'zip' => 'nullable|string|max:20',
-                'classification' => 'nullable|string|max:100',
-                'ruling' => 'nullable|string|max:50',
-                'deductibility' => 'nullable|string|max:50',
-                'organization' => 'nullable|string|max:100',
-                'status' => 'nullable|string|max:50',
-                'tax_period' => 'nullable|string|max:50',
-                'filing_req' => 'nullable|string|max:50',
-                'ntee_code' => 'nullable|string|max:20',
+                'city' => 'nullable|string|max:255',
+                'state' => 'nullable|string|max:255',
+                'zip' => 'nullable|string|max:255',
+                'classification' => 'nullable|string|max:255',
+                'ruling' => 'nullable|string|max:255',
+                'deductibility' => 'nullable|string|max:255',
+                'organization' => 'nullable|string|max:255',
+                'status' => 'nullable|string|max:255',
+                'tax_period' => 'nullable|string|max:255',
+                'filing_req' => 'nullable|string|max:255',
+                'ntee_code' => 'nullable|string|max:255',
                 'email' => 'required|email|max:255',
-                'phone' => 'required|string|max:20',
+                'phone' => 'required|string|max:255',
                 'contact_name' => 'required|string|max:255',
-                'contact_title' => 'required|string|max:100',
+                'contact_title' => 'required|string|max:255',
                 'password' => 'required|string|confirmed|min:8',
                 'password_confirmation' => 'required|string',
                 'website' => 'nullable|url|max:255',

@@ -160,7 +160,7 @@ export default function ManageData() {
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Manage Data" />
-      <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
+      <div className="flex flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
         <Card className="px-0">
           <CardHeader className="px-4 md:px-6">
             <div className="flex items-center justify-between">
@@ -188,8 +188,8 @@ export default function ManageData() {
               </div>
             )}
 
-            <div className="w-full overflow-x-auto">
-              <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
+            <div className="w-full min-h-max relative overflow-x-auto overflow-visible pb-24">
+              <table className="min-w-full relative rounded-md border border-muted w-full overflow-x-auto overflow-visible table-responsive text-sm text-left text-foreground">
                 <thead className="bg-muted text-muted-foreground">
                   <tr>
                     <th className="px-4 py-3 font-medium min-w-48">Name</th>
@@ -256,9 +256,9 @@ export default function ManageData() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
+                      <td className="relative px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap overflow-visible">
                         <DatasetActionDropdown datasetId={dataset.id.toString()} status={dataset.status} />
-                      </td>
+                        </td>
                     </tr>
                   ))}
                 </tbody>

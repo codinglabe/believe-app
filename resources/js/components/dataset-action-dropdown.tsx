@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { router } from "@inertiajs/react"
-import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react"
+import { Menu, MenuButton, MenuItem, MenuItems, Portal } from "@headlessui/react"
 import { BookOpen, Download, Folder, Trash2, EllipsisIcon } from "lucide-react"
 import { showInfoToast, showWarningToast } from "@/lib/toast"
 
@@ -45,12 +45,13 @@ export default function DatasetActionDropdown({ datasetId, status }: DatasetActi
   }
 
   return (
-    <Menu as="div" className="relative inline-block text-left cursor-pointer">
+    <Menu>
       <MenuButton className="p-1 rounded-md hover:bg-gray-100 cursor-pointer dark:hover:bg-gray-800 focus:outline-none">
         <EllipsisIcon className="w-5 h-5 text-gray-500 cursor-pointer" />
       </MenuButton>
 
-      <MenuItems className="absolute right-0 z-[99999] mt-2 w-56 origin-top-right rounded-xl bg-white dark:bg-zinc-900 shadow-lg ring-1 ring-black/5 focus:outline-none">
+      <MenuItems className="absolute right-0 z-50 mt-2 w-56 origin-top-right rounded-xl bg-white dark:bg-zinc-900 shadow-lg ring-1 ring-black/5 focus:outline-none"
+        style={{ position: "absolute" }}>
         <div className="py-1 text-sm text-gray-700 dark:text-gray-200">
           <MenuItem>
             {({ active }) => (
@@ -110,7 +111,7 @@ export default function DatasetActionDropdown({ datasetId, status }: DatasetActi
             )}
           </MenuItem>
         </div>
-      </MenuItems>
+              </MenuItems>
     </Menu>
   )
 }

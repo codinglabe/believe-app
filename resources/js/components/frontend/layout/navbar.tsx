@@ -26,6 +26,7 @@ export default function Navbar() {
     { name: "About", href: "/about" },
     { name: "Marketplace", href: "/marketplace" },
     { name: "Donate", href: "/donate" },
+    { name: "Node Boss", href: "/nodeboss" },
     { name: "Contact", href: "/contact" },
   ]
 
@@ -55,7 +56,7 @@ export default function Navbar() {
           <div className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => (
               <Link key={item.name} href={item.href}>
-                <Button variant="ghost" className="text-sm font-medium hover:bg-accent">
+                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
                   {item.name}
                 </Button>
               </Link>
@@ -157,7 +158,7 @@ export default function Navbar() {
                   <Link
                     key={item.name}
                     href={item.href}
-                    className="block px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md"
+                    className="block px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
                     onClick={() => setIsOpen(false)}
                   >
                     {item.name}

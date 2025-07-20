@@ -4,7 +4,7 @@ import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { FormEventHandler } from 'react';
 import { useState } from "react"
 import { motion } from "framer-motion"
-import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, LoaderCircle } from "lucide-react"
+import { Eye, EyeOff, Mail, Lock, User, Heart, ArrowLeft, LoaderCircle, ShieldCheck } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
@@ -12,7 +12,6 @@ import { Label } from "@/components/frontend/ui/label"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Link, useForm } from "@inertiajs/react"
 import InputError from "@/components/input-error";
-import { Icon } from '@iconify/react';
 
 type RegisterForm = {
     name: string;
@@ -20,6 +19,7 @@ type RegisterForm = {
     password: string;
     password_confirmation: string;
     agreeToTerms: boolean;
+    referralCode: string;
 };
 
 export default function UserRegisterPage({ referralCode }: { referralCode: string }) {
@@ -151,7 +151,7 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
                       </h3>
                       <p className="text-gray-600 dark:text-gray-400">
                         <div className="flex items-center justify-center">
-                          <Icon icon="mdi:shield-check" className="h-4 w-4 text-green-600" />
+                          <ShieldCheck className="h-4 w-4 text-green-600" />
                           <span className="font-bold text-green-600">{referralCode}</span>
                         </div>
                       </p>
