@@ -24,7 +24,7 @@ class ProductController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-
+        
         $query = Product::query();
 
         // Only show products for current user
@@ -122,9 +122,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -247,25 +245,9 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
-        // Ensure user can only delete their own products
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        // Delete image file if exists
-        if ($product->image && Storage::disk('public')->exists($product->image)) {
-            Storage::disk('public')->delete($product->image);
-        }
-
-        $product->delete();
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product deleted successfully');
     }
 }

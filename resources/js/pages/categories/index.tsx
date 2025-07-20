@@ -7,6 +7,7 @@ import { Plus, Edit, Trash2, LayoutGrid, Search, X } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { Badge } from '@/components/ui/badge';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -197,6 +198,7 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
                                         <th className="px-4 py-3 font-medium min-w-32">Name</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Status</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -208,6 +210,11 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                     <LayoutGrid className="w-4 h-4 text-blue-500" />
                                                     <span className="font-medium">{item.name}</span>
                                                 </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
+                                                <Badge variant="secondary" className="font-medium">
+                                                    {item.status}
+                                                </Badge>
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">

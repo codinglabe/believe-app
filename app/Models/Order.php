@@ -15,12 +15,17 @@ class Order extends Model
      /**
      * User who made the payment (buyer)
      */
-    public function user()
-    {
+    public function user(){
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function orderShippingInfo()
+    {
+        return $this->hasOne(OrderShippingInfo::class);
+    }
 
-
-
+    public function orderProduct()
+    {
+        return $this->hasMany(OrderProduct::class, 'order_id');
+    }
 }

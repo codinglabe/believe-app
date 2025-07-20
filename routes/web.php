@@ -147,6 +147,10 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
 
+
+
+     /* orders Routes */
+    Route::resource('orders', OrderController::class);
     // Purchase Order Routes
     Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
     Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');

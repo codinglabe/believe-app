@@ -38,6 +38,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "products.read"
     },
     {
+        title: 'Orders',
+        href: '/orders',
+        icon: Package,
+        permission: "management.data.read"
+    },
+    {
         title: 'Node Boss',
         href: '/node-boss',
         icon: AlignEndHorizontal,

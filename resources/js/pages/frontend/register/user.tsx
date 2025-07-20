@@ -157,7 +157,6 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
                       </p>
                     </div>
                   )}
-
                   <div>
                     <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
                       Full Name
