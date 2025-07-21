@@ -15,7 +15,9 @@ use App\Http\Controllers\UserProfileController;
 use App\Http\Controllers\ProductController;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\NodeBossController;
+use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\PurchaseOrderController;
 use Illuminate\Http\Request;
@@ -120,6 +122,10 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
     /* Category Routes */
     Route::resource('categories', CategoryController::class)->except(['show']);
+
+    Route::resource("position-categories", PositionCategoryController::class)->except(['show']);
+
+    Route::resource("job-positions", JobPositionController::class)->except(['show']);
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);

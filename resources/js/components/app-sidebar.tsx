@@ -38,6 +38,18 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "products.read"
     },
     {
+        title: 'Job Position Categories',
+        href: '/position-categories',
+        icon: LayoutGrid,
+        permission: "products.read"
+    },
+    {
+        title: 'Job Positions',
+        href: '/job-positions',
+        icon: LayoutGrid,
+        permission: "products.read"
+    },
+    {
         title: 'Node Boss',
         href: '/node-boss',
         icon: AlignEndHorizontal,
