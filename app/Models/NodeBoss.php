@@ -3,12 +3,14 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Str;
 
 class NodeBoss extends Model
 {
     // Remove explicit property declaration for is_closed; Eloquent manages this dynamically.
 
     protected $fillable = [
+        'uuid',
         'user_id',
         'organization_id',
         'name',
@@ -34,6 +36,32 @@ class NodeBoss extends Model
         'shares_available' => 'integer',
         'price' => 'decimal:2',
     ];
+
+    // create slug from name
+    public static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($model) {
+            // Generate unique slug
+            do {
+                $slug = Str::slug($model->name);
+                $randomSuffix = '-' . Str::random(6);
+                $fullSlug = $slug . $randomSuffix;
+            } while (self::where('slug', $fullSlug)->exists());
+
+            $model->slug = $fullSlug;
+
+            // Generate unique NB- prefix
+            do {
+                $prefix = 'NB-' . mt_rand(100000, 999999);
+            } while (self::where('uuid', $prefix)->exists());
+
+            $model->uuid = $prefix;
+        });
+    }
+
+
 
     public function user()
     {

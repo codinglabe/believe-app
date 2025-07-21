@@ -161,7 +161,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
     try {
       const response = await axios.post(route('purchase.order'), orderData);
       if (response.data.url) {
-        window.location.href = response.data.url; 
+        window.location.href = response.data.url;
       } else {
         setIsSubmitting(false);
         showErrorToast("Stripe URL not received.");
@@ -561,7 +561,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                                 height={200}
                                 className="w-full h-40 sm:h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                               />
-                              {!product.inStock && (
+                              {product.quantity_available <= 0 && (
                                 <div className="absolute top-2 right-2 bg-red-500 text-white px-2 py-1 rounded text-xs">
                                   Out of Stock
                                 </div>

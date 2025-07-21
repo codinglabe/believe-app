@@ -19,31 +19,29 @@ class ProductController extends Controller
     public function index(Request $request): Response
     {
 
-        $organization = Organization::where('user_id',Auth::id())->first();
+        $organization = Organization::where('user_id', Auth::id())->first();
 
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-
+        
         $query = Product::query();
 
-
         // Only show products for current user
-        if(Auth::user()->role == "organization"){
+        if (Auth::user()->role == "organization") {
             $query->where('organization_id', @$organization->id);
         }
 
 
         if ($search) {
-            $query->where(function($q) use ($search) {
+            $query->where(function ($q) use ($search) {
                 $q->where('name', 'LIKE', "%{$search}%")
-                  ->orWhere('description', 'LIKE', "%{$search}%");
+                    ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
 
         $products = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-
         return Inertia::render('products/index', [
             'products' => $products,
             'filters' => [
@@ -108,8 +106,8 @@ class ProductController extends Controller
             'image' => $imagePath,
         ]);
 
-        if(Auth::user()->role == "organization"){
-            $organization = Organization::where('user_id',Auth::id())->first();
+        if (Auth::user()->role == "organization") {
+            $organization = Organization::where('user_id', Auth::id())->first();
             $product->update([
                 'owned_by' => 'organization',
                 'organization_id' => $organization->id,
@@ -124,9 +122,7 @@ class ProductController extends Controller
      */
     public function edit(Product $product): Response
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -146,6 +142,7 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
@@ -185,11 +182,10 @@ class ProductController extends Controller
             $product->update([
                 'image' => $imagePath,
             ]);
-
         }
 
-        if(Auth::user()->role == "organization"){
-            $organization = Organization::where('user_id',Auth::id())->first();
+        if (Auth::user()->role == "organization") {
+            $organization = Organization::where('user_id', Auth::id())->first();
             $product->update([
                 'owned_by' => 'organization',
                 'organization_id' => $organization->id,
@@ -230,7 +226,6 @@ class ProductController extends Controller
             $product->update([
                 'image' => $imagePath,
             ]);
-
         }
 
 
@@ -250,26 +245,9 @@ class ProductController extends Controller
      */
     public function destroy(Product $product)
     {
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
+        
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');
-        // Ensure user can only delete their own products
-        if ($product->user_id !== Auth::id()) {
-            abort(403, 'Unauthorized action.');
-        }
-
-        // Delete image file if exists
-        if ($product->image && Storage::disk('public')->exists($product->image)) {
-            Storage::disk('public')->delete($product->image);
-        }
-
-        $product->delete();
-
-        return redirect()->route('products.index')
-            ->with('success', 'Product deleted successfully');
     }
 }
-

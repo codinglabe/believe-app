@@ -1,29 +1,31 @@
 <?php
 
-use App\Http\Controllers\ChunkedUploadController;
-use App\Http\Controllers\ClassificationCodeController;
-use App\Http\Controllers\DashboardController;
-use App\Http\Controllers\DeductibilityCodeController;
-use App\Http\Controllers\HomeController;
-use App\Http\Controllers\RolePermissionController;
-use App\Http\Controllers\StatusCodeController;
-use App\Http\Controllers\ManageDataController;
-use App\Http\Controllers\ManageDatasetController;
-use App\Http\Controllers\OrganizationController;
-use App\Http\Controllers\UploadDataController;
-use App\Http\Controllers\UserProfileController;
-use App\Http\Controllers\ProductController;
-use App\Http\Controllers\CategoryController;
-use App\Http\Controllers\DonationController;
 use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
-use App\Http\Controllers\PurchaseOrderController;
+use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
+use App\Http\Controllers\HomeController;
+use App\Http\Controllers\OrderController;
+use App\Http\Controllers\ProductController;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
+use App\Http\Controllers\CategoryController;
+use App\Http\Controllers\DonationController;
+use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\ManageDataController;
+use App\Http\Controllers\StatusCodeController;
+use App\Http\Controllers\UploadDataController;
+use App\Http\Controllers\MarketplaceController;
+use App\Http\Controllers\UserProfileController;
+use App\Http\Controllers\OrganizationController;
+use App\Http\Controllers\ChunkedUploadController;
+use App\Http\Controllers\ManageDatasetController;
+use App\Http\Controllers\PurchaseOrderController;
+use App\Http\Controllers\RolePermissionController;
+use App\Http\Controllers\DeductibilityCodeController;
+use App\Http\Controllers\ClassificationCodeController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -35,17 +37,15 @@ Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
 
-Route::get('/nodeboss', function () {
-    return Inertia::render('frontend/nodeboss/nodeboss');
-})->name('nodeboss');
+Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nodeboss');
 
-Route::get('/nodeboss/{id}/buy', function () {
-    return Inertia::render('frontend/nodeboss/buy-nodeboss', [
-        'id' => request()->route('id')
-    ]);
-})->name('buy.nodeboss');
+Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+
+/* marketplace */
+Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
+
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
@@ -153,6 +153,21 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
 
+
+
+     /* orders Routes */
+    Route::resource('orders', OrderController::class);
+    // Purchase Order Routes
+    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
+    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');
+    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store');
+    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit');
+    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update');
+    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy');
+
+
+     /* orders Routes */
+    Route::resource('orders', OrderController::class);
     // Purchase Order Routes
     Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
     Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');

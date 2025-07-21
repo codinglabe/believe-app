@@ -7,46 +7,40 @@ import { mockNodeBoxes, type NodeBox } from "@/lib/nodebox-data"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Search } from "lucide-react"
+import { NodeBoss } from "@/types/nodeboss"
 
-export default function NodeBoxesPage() {
-  const [nodeboxes, setNodeboxes] = useState<NodeBox[]>(mockNodeBoxes)
+export default function NodeBoxesPage({nodeBosses}: { nodeBosses: NodeBoss[] }) {
+  const [nodeboxes, setNodeboxes] = useState<NodeBoss[]>(nodeBosses)
   const [isBuyShareModalOpen, setIsBuyShareModalOpen] = useState(false)
-  const [selectedNodeBox, setSelectedNodeBox] = useState<NodeBox | null>(null)
+  const [selectedNodeBox, setSelectedNodeBox] = useState<NodeBoss | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedStatus, setSelectedStatus] = useState("all")
 
-  const handleBuyShare = (nodebox: NodeBox) => {
+  const handleBuyShare = (nodebox: NodeBoss) => {
     setSelectedNodeBox(nodebox)
     setIsBuyShareModalOpen(true)
   }
 
   const handlePurchaseSuccess = (nodeboxId: string, amount: number) => {
-    setNodeboxes((prevNodeboxes) =>
-      prevNodeboxes.map((nb) =>
-        nb.id === nodeboxId
-          ? {
-            ...nb,
-            currentSoldAmount: nb.currentSoldAmount + amount,
-            status: nb.currentSoldAmount + amount >= nb.targetAmount ? "closed" : "open",
-          }
-          : nb,
-      ),
-    )
+    // setNodeboxes((prevNodeboxes) =>
+    //   prevNodeboxes.map((nb) =>
+    //     nb.id === nodeboxId
+    //       ? {
+    //         ...nb,
+    //         currentSoldAmount: nb.currentSoldAmount + amount,
+    //         status: nb.currentSoldAmount + amount >= nb.targetAmount ? "closed" : "open",
+    //       }
+    //       : nb,
+    //   ),
+    // )
   }
 
   // Get unique categories and statuses for filters
   const categories = ["all", ...Array.from(new Set(mockNodeBoxes.map((nb) => nb.category)))]
   const statuses = ["all", "open", "closed"]
 
-  const filteredNodeBoxes = nodeboxes.filter((nodebox) => {
-    const matchesSearch =
-      nodebox.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      nodebox.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === "all" || nodebox.category === selectedCategory
-    const matchesStatus = selectedStatus === "all" || nodebox.status === selectedStatus
-    return matchesSearch && matchesCategory && matchesStatus
-  })
+
 
   return (
     <FrontendLayout>
@@ -97,15 +91,15 @@ export default function NodeBoxesPage() {
               </Select>
             </div> */}
 
-            {filteredNodeBoxes.length === 0 ? (
+            {nodeBosses.length === 0 ? (
               <div className="text-center py-12">
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">No NodeBoxes Found</h2>
                 <p className="text-gray-600 dark:text-gray-300">Try adjusting your search or filter criteria.</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredNodeBoxes.map((nodebox) => (
-                  <NodeBoxCard key={nodebox.id} nodebox={nodebox} onBuyShare={handleBuyShare} />
+                {nodeBosses.map((nodeboxs) => (
+                  <NodeBoxCard key={nodeboxs.id} nodebox={nodeboxs} onBuyShare={handleBuyShare} />
                 ))}
               </div>
             )}

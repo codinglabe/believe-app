@@ -25,6 +25,7 @@ import {
   RefreshCw,
   ArrowLeft,
 } from "lucide-react"
+import { Switch } from "@/components/admin/ui/switch"
 
 interface CropperState {
   scale: number
@@ -36,8 +37,9 @@ interface CropperState {
 export default function Create() {
   const { data, setData, post, processing, errors } = useForm({
     name: "",
+    price: "",
     description: "",
-    suggested_amounts: ["10", "25", "50", "100"],
+    suggested_amounts: [],
     is_closed: false,
     image: null as File | null,
     status: "active",
@@ -411,389 +413,403 @@ export default function Create() {
     <AppLayout>
       <Head title="Create NodeBoss" />
 
-      <Card>
-        <CardContent>
-          <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-center gap-4">
-              <Link href={route("node-boss.index")}>
-                <Button variant="outline" size="sm">
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back
-                </Button>
-              </Link>
-              <div className="flex items-center gap-3">
-                <div className="p-3 bg-primary/10 rounded-xl">
-                  <TrendingUp className="h-7 w-7 text-primary" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground">Create NodeBoss</h1>
-                  <p className="text-muted-foreground">Launch a new investment opportunity</p>
+      <div className="space-y-6 m-10">
+        {/* Header */}
+        <div className="flex items-center gap-4">
+          <Link href={route("node-boss.index")}>
+            <Button variant="outline" size="sm">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Button>
+          </Link>
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-primary/10 rounded-xl">
+              <TrendingUp className="h-7 w-7 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">Create NodeBoss</h1>
+              <p className="text-muted-foreground">Launch a new investment opportunity</p>
+            </div>
+          </div>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-xl">NodeBoss Details</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-8">
+              {/* Basic Information */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">Basic Information</h3>
+
+                <div className="grid grid-cols-1 gap-6">
+                  <div className="space-y-2">
+                    <label htmlFor="name" className="text-sm font-semibold text-foreground">
+                      NodeBoss Name *
+                    </label>
+                    <Input
+                      id="name"
+                      type="text"
+                      value={data.name}
+                      onChange={(e) => setData("name", e.target.value)}
+                      placeholder="Enter NodeBoss name"
+                      className={errors.name ? "border-destructive" : ""}
+                    />
+                    {errors.name && (
+                      <p className="text-sm text-destructive flex items-center gap-1">
+                        <X className="h-3 w-3" />
+                        {errors.name}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="price" className="text-sm font-semibold text-foreground">
+                      Price *
+                    </label>
+                    <Input
+                      id="price"
+                      type="text"
+                      value={data.price}
+                      onChange={(e) => setData("price", e.target.value)}
+                      placeholder="Enter NodeBoss price"
+                      className={errors.price ? "border-destructive" : ""}
+                    />
+                    {errors.price && (
+                      <p className="text-sm text-destructive flex items-center gap-1">
+                        <X className="h-3 w-3" />
+                        {errors.name}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="description" className="text-sm font-semibold text-foreground">
+                      Description *
+                    </label>
+                    <Textarea
+                      id="description"
+                      value={data.description}
+                      onChange={(e) => setData("description", e.target.value)}
+                      placeholder="Describe your NodeBoss investment opportunity..."
+                      rows={5}
+                      className={errors.description ? "border-destructive" : ""}
+                    />
+                    {errors.description && (
+                      <p className="text-sm text-destructive flex items-center gap-1">
+                        <X className="h-3 w-3" />
+                        {errors.description}
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-xl">NodeBoss Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-8">
-                  {/* Basic Information */}
-                  <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">Basic Information</h3>
+              {/* Suggested Amounts */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
+                  Suggested Investment Amounts
+                </h3>
 
-                    <div className="grid grid-cols-1 gap-6">
-                      <div className="space-y-2">
-                        <label htmlFor="name" className="text-sm font-semibold text-foreground">
-                          NodeBoss Name *
-                        </label>
-                        <Input
-                          id="name"
-                          type="text"
-                          value={data.name}
-                          onChange={(e) => setData("name", e.target.value)}
-                          placeholder="Enter NodeBoss name"
-                          className={errors.name ? "border-destructive" : ""}
-                        />
-                        {errors.name && (
-                          <p className="text-sm text-destructive flex items-center gap-1">
-                            <X className="h-3 w-3" />
-                            {errors.name}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="space-y-2">
-                        <label htmlFor="description" className="text-sm font-semibold text-foreground">
-                          Description *
-                        </label>
-                        <Textarea
-                          id="description"
-                          value={data.description}
-                          onChange={(e) => setData("description", e.target.value)}
-                          placeholder="Describe your NodeBoss investment opportunity..."
-                          rows={5}
-                          className={errors.description ? "border-destructive" : ""}
-                        />
-                        {errors.description && (
-                          <p className="text-sm text-destructive flex items-center gap-1">
-                            <X className="h-3 w-3" />
-                            {errors.description}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Suggested Amounts */}
-                  <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
-                      Suggested Investment Amounts
-                    </h3>
-
-                    <div className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        {data.suggested_amounts.map((amount) => (
-                          <Badge key={amount} variant="secondary" className="px-3 py-2 text-sm flex items-center gap-2">
-                            ${amount}
-                            <button
-                              type="button"
-                              onClick={() => removeSuggestedAmount(amount)}
-                              className="text-muted-foreground hover:text-foreground"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </Badge>
-                        ))}
-                      </div>
-
-                      <div className="flex gap-2 max-w-md">
-                        <Input
-                          type="number"
-                          min="1"
-                          value={newSuggestedAmount}
-                          onChange={(e) => setNewSuggestedAmount(e.target.value)}
-                          placeholder="Add amount"
-                        />
-                        <Button type="button" onClick={addSuggestedAmount} variant="outline" size="sm">
-                          <Plus className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                    {errors.suggested_amounts && <p className="text-sm text-destructive">{errors.suggested_amounts}</p>}
-                  </div>
-
-                  {/* Image Upload */}
-                  <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
-                      NodeBoss Image (436x196 pixels) *
-                    </h3>
-
-                    <div className="space-y-4">
-                      {!data.image ? (
-                        <div
-                          className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 ${dragActive ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"
-                            }`}
-                          onDragEnter={handleDrag}
-                          onDragLeave={handleDrag}
-                          onDragOver={handleDrag}
-                          onDrop={handleDrop}
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {data.suggested_amounts.map((amount) => (
+                      <Badge key={amount} variant="secondary" className="px-3 py-2 text-sm flex items-center gap-2">
+                        ${amount}
+                        <button
+                          type="button"
+                          onClick={() => removeSuggestedAmount(amount)}
+                          className="text-muted-foreground hover:text-foreground"
                         >
-                          <input
-                            ref={fileInputRef}
-                            type="file"
-                            accept="image/*"
-                            onChange={handleFileChange}
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          />
-                          <div className="space-y-4">
-                            <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
-                              <Upload className="h-8 w-8 text-primary" />
-                            </div>
-                            <div>
-                              <p className="text-lg font-medium text-foreground">
-                                Drop your image here, or <span className="text-primary">browse</span>
-                              </p>
-                              <p className="text-sm text-muted-foreground mt-2">
-                                PNG, JPG, GIF - Professional cropper will resize to 436x196 pixels
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="flex justify-center">
-                            <div
-                              className="relative bg-muted rounded-xl overflow-hidden border-2 border-border shadow-lg"
-                              style={{ width: "436px", height: "196px" }}
-                            >
-                              {croppedImage && (
-                                <img
-                                  src={croppedImage || "/placeholder.svg"}
-                                  alt="Cropped preview"
-                                  className="w-full h-full object-cover"
-                                />
-                              )}
-                              <button
-                                type="button"
-                                onClick={removeImage}
-                                className="absolute top-2 right-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-full w-8 h-8 flex items-center justify-center"
-                              >
-                                <X className="h-4 w-4" />
-                              </button>
-                            </div>
-                          </div>
-
-                          <div className="flex justify-center">
-                            <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
-                              <div className="w-12 h-12 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center">
-                                <ImageIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium text-green-800 dark:text-green-200">Image ready!</p>
-                                <p className="text-xs text-green-600 dark:text-green-400">436×196 pixels ✓</p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {errors.image && (
-                        <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
-                          <p className="text-sm text-destructive flex items-center gap-2">
-                            <X className="h-4 w-4" />
-                            {errors.image}
-                          </p>
-                        </div>
-                      )}
-                    </div>
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
                   </div>
 
-                  {/* Settings */}
-                  <div className="space-y-6">
-                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">Settings</h3>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <label htmlFor="status" className="text-sm font-semibold text-foreground">
-                          Status
-                        </label>
-                        <Select id="status" value={data.status} onChange={(e) => setData("status", e.target.value)}>
-                          <option value="active">🟢 Active</option>
-                          <option value="inactive">🟡 Inactive</option>
-                          <option value="draft">📝 Draft</option>
-                        </Select>
-                        {errors.status && <div className="text-sm text-destructive">{errors.status}</div>}
-                      </div>
-
-                      <div className="flex items-center justify-between p-6 bg-muted/50 rounded-xl border">
-                        <div className="space-y-1">
-                          <label htmlFor="is_closed" className="text-sm font-semibold text-foreground">
-                            Closed for Investment
-                          </label>
-                          <p className="text-xs text-muted-foreground">Prevent new investments</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          id="is_closed"
-                          checked={data.is_closed}
-                          onChange={(e) => setData("is_closed", e.target.checked)}
-                          className="rounded border-input text-primary shadow-sm focus:border-primary focus:ring focus:ring-primary/20"
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Form Actions */}
-                  <div className="pt-6 border-t border-border">
-                    <div className="flex flex-col sm:flex-row gap-4 justify-end">
-                      <Link href={route("node-boss.index")}>
-                        <Button type="button" variant="outline" className="w-full sm:w-auto bg-transparent">
-                          Cancel
-                        </Button>
-                      </Link>
-                      <Button type="submit" disabled={processing} className="w-full sm:w-auto min-w-[160px] cursor-pointer">
-                        {processing ? (
-                          <>
-                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current mr-2"></div>
-                            Creating...
-                          </>
-                        ) : (
-                          <>
-                            <Save className="mr-2 h-5 w-5" />
-                            Create NodeBoss
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </form>
-
-            {/* Mobile-Optimized Image Cropper */}
-            <Dialog open={showCropper} onOpenChange={setShowCropper}>
-              <DialogContent className="w-[95vw] sm:w-[600px] max-w-2xl h-[85vh] sm:h-auto max-h-[85vh] p-0 overflow-hidden flex flex-col">
-                <DialogHeader className="p-3 pb-2 border-b flex-shrink-0">
-                  <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
-                    <Crop className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
-                    Image Cropper
-                    <span className="text-xs sm:text-sm font-normal text-muted-foreground">436×196px</span>
-                  </DialogTitle>
-                </DialogHeader>
-
-                <div className="flex-1 flex flex-col p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden">
-                  {/* Compact Controls */}
-                  <div className="grid grid-cols-3 gap-2 sm:gap-3 p-2 sm:p-3 bg-muted/50 rounded-lg flex-shrink-0">
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Scale</label>
-                      <input
-                        type="range"
-                        min="0.1"
-                        max="3"
-                        step="0.1"
-                        value={cropperState.scale}
-                        onChange={(e) => updateScale(Number.parseFloat(e.target.value))}
-                        className="w-full"
-                      />
-                      <div className="text-xs text-center text-muted-foreground">{cropperState.scale.toFixed(1)}x</div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Rotate</label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={rotateImage}
-                        className="w-full h-6 sm:h-7 text-xs bg-transparent"
-                      >
-                        <RotateCw className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                        90°
-                      </Button>
-                      <div className="text-xs text-center text-muted-foreground">{cropperState.rotation}°</div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <label className="text-xs font-medium text-muted-foreground">Reset</label>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={resetCropper}
-                        className="w-full h-6 sm:h-7 text-xs bg-transparent"
-                      >
-                        <RefreshCw className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
-                        Reset
-                      </Button>
-                      <div className="text-xs text-center text-muted-foreground">
-                        {cropperState.x.toFixed(0)}, {cropperState.y.toFixed(0)}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Responsive Canvas Container */}
-                  <div
-                    className="flex-1 flex justify-center bg-background rounded-lg border p-1 sm:p-2 overflow-hidden"
-                    ref={containerRef}
-                    style={{ minHeight: "200px", maxHeight: "400px" }}
-                  >
-                    <div className="relative w-full h-full flex justify-center items-center">
-                      <canvas
-                        ref={canvasRef}
-                        className="max-w-full max-h-full cursor-move shadow-sm rounded"
-                        onMouseDown={handleCanvasMouseDown}
-                        onMouseMove={handleCanvasMouseMove}
-                        onMouseUp={handleCanvasMouseUp}
-                        onMouseLeave={handleCanvasMouseUp}
-                        onWheel={handleCanvasWheel}
-                      />
-
-                      {/* Hidden image for loading */}
-                      {originalImage && (
-                        <img
-                          ref={imageRef}
-                          src={originalImage || "/placeholder.svg"}
-                          onLoad={handleImageLoad}
-                          className="hidden"
-                          alt="Original"
-                        />
-                      )}
-
-                      {!imageLoaded && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-muted rounded">
-                          <div className="text-center">
-                            <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-primary mx-auto mb-2"></div>
-                            <p className="text-xs text-muted-foreground">Loading...</p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Compact Instructions */}
-                  <div className="text-center text-xs text-muted-foreground bg-primary/5 p-2 rounded flex-shrink-0">
-                    <Move3D className="h-3 w-3 inline mr-1" />
-                    Drag • Scroll to zoom • Use controls above
-                  </div>
-
-                  {/* Always Visible Action Buttons */}
-                  <div className="flex justify-end gap-2 pt-2 border-t border-border flex-shrink-0">
-                    <Button type="button" variant="outline" size="sm" onClick={() => setShowCropper(false)}>
-                      Cancel
-                    </Button>
-                    <Button type="button" size="sm" onClick={cropImage} disabled={!imageLoaded}>
-                      <Check className="mr-1 h-3 w-3" />
-                      Apply
+                  <div className="flex gap-2 max-w-md">
+                    <Input
+                      type="number"
+                      min="1"
+                      value={newSuggestedAmount}
+                      onChange={(e) => setNewSuggestedAmount(e.target.value)}
+                      placeholder="Add amount"
+                    />
+                    <Button type="button" onClick={addSuggestedAmount} variant="outline" size="sm">
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardContent>
-      </Card>
+                {errors.suggested_amounts && <p className="text-sm text-destructive">{errors.suggested_amounts}</p>}
+              </div>
+
+              {/* Image Upload */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
+                  NodeBoss Image (436x196 pixels) *
+                </h3>
+
+                <div className="space-y-4">
+                  {!data.image ? (
+                    <div
+                      className={`relative border-2 border-dashed rounded-xl p-12 text-center transition-all duration-200 ${dragActive ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground"
+                        }`}
+                      onDragEnter={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDragOver={handleDrag}
+                      onDrop={handleDrop}
+                    >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                      />
+                      <div className="space-y-4">
+                        <div className="mx-auto w-16 h-16 bg-primary/10 rounded-full flex items-center justify-center">
+                          <Upload className="h-8 w-8 text-primary" />
+                        </div>
+                        <div>
+                          <p className="text-lg font-medium text-foreground">
+                            Drop your image here, or <span className="text-primary">browse</span>
+                          </p>
+                          <p className="text-sm text-muted-foreground mt-2">
+                            PNG, JPG, GIF - Professional cropper will resize to 436x196 pixels
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex justify-center">
+                        <div
+                          className="relative bg-muted rounded-xl overflow-hidden border-2 border-border shadow-lg"
+                          style={{ width: "436px", height: "196px" }}
+                        >
+                          {croppedImage && (
+                            <img
+                              src={croppedImage || "/placeholder.svg"}
+                              alt="Cropped preview"
+                              className="w-full h-full object-cover"
+                            />
+                          )}
+                          <button
+                            type="button"
+                            onClick={removeImage}
+                            className="absolute top-2 right-2 bg-destructive hover:bg-destructive/90 text-destructive-foreground rounded-full w-8 h-8 flex items-center justify-center"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-center">
+                        <div className="flex items-center gap-4 p-4 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                          <div className="w-12 h-12 bg-green-100 dark:bg-green-900/50 rounded-lg flex items-center justify-center">
+                            <ImageIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-green-800 dark:text-green-200">Image ready!</p>
+                            <p className="text-xs text-green-600 dark:text-green-400">436×196 pixels ✓</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {errors.image && (
+                    <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg">
+                      <p className="text-sm text-destructive flex items-center gap-2">
+                        <X className="h-4 w-4" />
+                        {errors.image}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Settings */}
+              <div className="space-y-6">
+                <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">Settings</h3>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label htmlFor="status" className="text-sm font-semibold text-foreground">
+                      Status
+                    </label>
+                    <Select id="status" value={data.status} onChange={(e) => setData("status", e.target.value)}>
+                      <option value="active">🟢 Active</option>
+                      <option value="inactive">🟡 Inactive</option>
+                      <option value="draft">📝 Draft</option>
+                    </Select>
+                    {errors.status && <div className="text-sm text-destructive">{errors.status}</div>}
+                  </div>
+
+                  <div className="flex items-center justify-between px-6 bg-muted/50 rounded-xl border">
+                    <div className="space-y-1">
+                      <label htmlFor="is_closed" className="text-sm font-semibold text-foreground">
+                        Closed for Investment
+                      </label>
+                      <p className="text-xs text-muted-foreground">Prevent new investments</p>
+                    </div>
+                    <Switch
+                      id="is_closed"
+                      checked={data.is_closed}
+                      onCheckedChange={(checked) => setData("is_closed", checked)}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div className="pt-6 border-t border-border">
+                <div className="flex flex-col sm:flex-row gap-4 justify-end">
+                  <Link href={route("node-boss.index")}>
+                    <Button type="button" variant="outline" className="w-full sm:w-auto bg-transparent">
+                      Cancel
+                    </Button>
+                  </Link>
+                  <Button type="submit" disabled={processing} className="w-full sm:w-auto min-w-[160px] cursor-pointer">
+                    {processing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-current mr-2"></div>
+                        Creating...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="mr-2 h-5 w-5" />
+                        Create NodeBoss
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </form>
+
+        {/* Mobile-Optimized Image Cropper */}
+        <Dialog open={showCropper} onOpenChange={setShowCropper}>
+          <DialogContent className="w-[95vw] sm:w-[600px] max-w-2xl h-[85vh] sm:h-auto max-h-[85vh] p-0 overflow-hidden flex flex-col">
+            <DialogHeader className="p-3 pb-2 border-b flex-shrink-0">
+              <DialogTitle className="flex items-center gap-2 text-base sm:text-lg">
+                <Crop className="h-4 w-4 sm:h-5 sm:w-5 text-primary" />
+                Image Cropper
+                <span className="text-xs sm:text-sm font-normal text-muted-foreground">436×196px</span>
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="flex-1 flex flex-col p-3 sm:p-4 space-y-3 sm:space-y-4 overflow-hidden">
+              {/* Compact Controls */}
+              <div className="grid grid-cols-3 gap-2 sm:gap-3 p-2 sm:p-3 bg-muted/50 rounded-lg flex-shrink-0">
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Scale</label>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="3"
+                    step="0.1"
+                    value={cropperState.scale}
+                    onChange={(e) => updateScale(Number.parseFloat(e.target.value))}
+                    className="w-full"
+                  />
+                  <div className="text-xs text-center text-muted-foreground">{cropperState.scale.toFixed(1)}x</div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Rotate</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={rotateImage}
+                    className="w-full h-6 sm:h-7 text-xs bg-transparent"
+                  >
+                    <RotateCw className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
+                    90°
+                  </Button>
+                  <div className="text-xs text-center text-muted-foreground">{cropperState.rotation}°</div>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-xs font-medium text-muted-foreground">Reset</label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={resetCropper}
+                    className="w-full h-6 sm:h-7 text-xs bg-transparent"
+                  >
+                    <RefreshCw className="h-2 w-2 sm:h-3 sm:w-3 mr-1" />
+                    Reset
+                  </Button>
+                  <div className="text-xs text-center text-muted-foreground">
+                    {cropperState.x.toFixed(0)}, {cropperState.y.toFixed(0)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Responsive Canvas Container */}
+              <div
+                className="flex-1 flex justify-center bg-background rounded-lg border p-1 sm:p-2 overflow-hidden"
+                ref={containerRef}
+                style={{ minHeight: "200px", maxHeight: "400px" }}
+              >
+                <div className="relative w-full h-full flex justify-center items-center">
+                  <canvas
+                    ref={canvasRef}
+                    className="max-w-full max-h-full cursor-move shadow-sm rounded"
+                    onMouseDown={handleCanvasMouseDown}
+                    onMouseMove={handleCanvasMouseMove}
+                    onMouseUp={handleCanvasMouseUp}
+                    onMouseLeave={handleCanvasMouseUp}
+                    onWheel={handleCanvasWheel}
+                  />
+
+                  {/* Hidden image for loading */}
+                  {originalImage && (
+                    <img
+                      ref={imageRef}
+                      src={originalImage || "/placeholder.svg"}
+                      onLoad={handleImageLoad}
+                      className="hidden"
+                      alt="Original"
+                    />
+                  )}
+
+                  {!imageLoaded && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-muted rounded">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-5 w-5 sm:h-6 sm:w-6 border-b-2 border-primary mx-auto mb-2"></div>
+                        <p className="text-xs text-muted-foreground">Loading...</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Compact Instructions */}
+              <div className="text-center text-xs text-muted-foreground bg-primary/5 p-2 rounded flex-shrink-0">
+                <Move3D className="h-3 w-3 inline mr-1" />
+                Drag • Scroll to zoom • Use controls above
+              </div>
+
+              {/* Always Visible Action Buttons */}
+              <div className="flex justify-end gap-2 pt-2 border-t border-border flex-shrink-0">
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowCropper(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" size="sm" onClick={cropImage} disabled={!imageLoaded}>
+                  <Check className="mr-1 h-3 w-3" />
+                  Apply
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      </div>
     </AppLayout>
   )
 }

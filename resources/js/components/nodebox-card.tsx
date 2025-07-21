@@ -6,16 +6,18 @@ import { Badge } from "@/components/ui/badge"
 import { DollarSign, CheckCircle, CalendarDays } from "lucide-react"
 import type { NodeBox } from "@/lib/nodebox-data"
 import { Link } from "@inertiajs/react"
+import { NodeBoss } from "@/types/nodeboss"
 
 interface NodeBoxCardProps {
-  nodebox: NodeBox
-  onBuyShare: (nodebox: NodeBox) => void
+  nodebox: NodeBoss
+  onBuyShare: (nodebox: NodeBoss) => void
 }
 
 export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
-  const progress = (nodebox.currentSoldAmount / nodebox.targetAmount) * 100
-  const remainingAmount = nodebox.targetAmount - nodebox.currentSoldAmount
-  const isClosed = nodebox.status === "closed" || remainingAmount <= 0
+  const currentSoldAmount = 50
+  const progress = (currentSoldAmount / nodebox.price) * 100
+  const remainingAmount = nodebox.price - currentSoldAmount
+  const isClosed = nodebox.is_closed || remainingAmount <= 0
 
   return (
     <motion.div
@@ -27,7 +29,7 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
       <Card className="flex flex-col h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-shadow duration-300">
         <div className="relative w-full overflow-hidden h-48 rounded-t-lg">
           <img
-            src={"https://placehold.co/436x196"}
+            src={"/"+nodebox?.image || "https://placehold.co/436x196"}
             alt={nodebox.name}
             className=" transition-transform duration-300 hover:scale-105 h-full w-full object-cover"
           />
@@ -40,7 +42,7 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
             {isClosed ? "Closed" : "Open"}
           </Badge>
           <Badge className="absolute top-3 right-3 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs px-2 py-1">
-            {nodebox.category}
+            {nodebox.uuid}
           </Badge>
         </div>
         <CardHeader className="flex-grow pb-3">
@@ -53,16 +55,16 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
           <div className="flex items-center justify-between text-sm text-gray-700 dark:text-gray-200">
             <div className="flex items-center gap-1">
               <DollarSign className="h-4 w-4 text-green-500" />
-              <span>Target: ${nodebox.targetAmount.toLocaleString()}</span>
+              <span>Target: ${nodebox.price}</span>
             </div>
             <div className="flex items-center gap-1">
               <CheckCircle className="h-4 w-4 text-blue-500" />
-              <span>Sold: ${nodebox.currentSoldAmount.toLocaleString()}</span>
+              <span>Sold: ${currentSoldAmount}</span>
             </div>
           </div>
           <Progress value={progress} className="h-2 bg-gray-200 dark:bg-gray-700" />
           <p className="text-sm text-gray-600 dark:text-gray-300">
-            <span className="font-medium text-gray-900 dark:text-white">${remainingAmount.toLocaleString()}</span>{" "}
+            <span className="font-medium text-gray-900 dark:text-white">${remainingAmount}</span>{" "}
             remaining
           </p>
         </CardContent>
@@ -77,7 +79,7 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
               <span>Ends: {nodebox.endDate}</span>
             </div>
           </div> */}
-          <Link href={route('buy.nodeboss', nodebox?.id)} className="w-full">
+          <Link href={route('buy.nodeboss', nodebox.slug)} className="w-full">
             <Button
               onClick={() => onBuyShare(nodebox)}
               disabled={isClosed}

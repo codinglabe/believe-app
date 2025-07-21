@@ -1,54 +1,33 @@
 import React, { useState } from 'react';
-import { Head, Link, router,usePage } from '@inertiajs/react';
-import type { SharedData } from "@/types"
+import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, Eye, FileText, Search, X } from 'lucide-react';
-import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye } from 'lucide-react';
+import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { Badge } from '@/components/ui/badge';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
-        title: "Products",
-        href: "/products",
+        title: "Orders",
+        href: "/orders",
     },
 ]
 
-interface Organization {
+interface Category {
     id: number;
-    name: string;
-    ein: string;
-    email: string;
-    city: string;
-    state: string;
-    zip: string;
-}
-
-interface Product {
-    id: number;
-    name: string;
-    sku: string;
-    quantity: number;
-    quantity_available: number;
-    quantity_ordered: number;
-    unit_price: number;
-    image: string;
+    reference_number: string;
+    total_amount: string;
     status: string;
-    description: string;
-    type: string;
     created_at: string;
     updated_at: string;
-    organization: Organization;
 }
 
-
-
 interface Props {
-    products: {
-        data: Product[];
+    orders: {
+        data: Category[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -66,26 +45,23 @@ interface Props {
     allowedPerPage: number[];
 }
 
-export default function Index({ products, filters, allowedPerPage }: Props) {
-
-    const { auth } = usePage<SharedData>().props
-
+export default function Index({ orders, filters, allowedPerPage }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<Product | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
-    const handleDelete = (item: Product) => {
+    const handleDelete = (item: Category) => {
         setItemToDelete(item);
         setDeleteDialogOpen(true);
     };
 
     const confirmDelete = () => {
         if (itemToDelete) {
-            router.delete(route('products.destroy', itemToDelete.id), {
-                onError: (errors) => {
-                    showErrorToast("Failed to delete product");
+            router.delete(route('orders.destroy', itemToDelete.id), {
+                onError: () => {
+                    showErrorToast("Failed to delete category");
                 },
             });
             setDeleteDialogOpen(false);
@@ -96,7 +72,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
     const handlePerPageChange = (newPerPage: number) => {
         setLoading(true);
         router.get(
-            "/products",
+            "/orders",
             {
                 per_page: newPerPage,
                 page: 1,
@@ -110,11 +86,10 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
     };
 
     const handlePageChange = (page: number) => {
-        if (page < 1 || page > products.last_page) return;
-
+        if (page < 1 || page > orders.last_page) return;
         setLoading(true);
         router.get(
-            "/products",
+            "/orders",
             {
                 per_page: filters.per_page,
                 page: page,
@@ -129,20 +104,16 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
 
     const handleSearch = (value: string) => {
         setSearchTerm(value);
-
-        // Clear existing timeout
         if (searchTimeout) {
             clearTimeout(searchTimeout);
         }
-
-        // Set new timeout for search
         const timeout = setTimeout(() => {
             setLoading(true);
             router.get(
-                "/products",
+                "/orders",
                 {
                     per_page: filters.per_page,
-                    page: 1, // Reset to first page when searching
+                    page: 1,
                     search: value,
                 },
                 {
@@ -150,8 +121,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                     onFinish: () => setLoading(false),
                 },
             );
-        }, 500); // 500ms delay
-
+        }, 500);
         setSearchTimeout(timeout);
     };
 
@@ -159,7 +129,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
         setSearchTerm('');
         setLoading(true);
         router.get(
-            "/products",
+            "/orders",
             {
                 per_page: filters.per_page,
                 page: 1,
@@ -174,32 +144,25 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Deductibility Codes" />
+            <Head title="orders" />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
                 <Card className="px-0">
                     <CardHeader className="px-4 md:px-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle>Products</CardTitle>
+                                <CardTitle>Orders</CardTitle>
                                 <CardDescription>
-                                    Manage products for your organization. Total: {products.total.toLocaleString()} products
+                                    Manage orders for your organization. Total: {orders.total.toLocaleString()} orders
                                 </CardDescription>
                             </div>
-                            <Link href={route('products.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Product
-                                </Button>
-                            </Link>
-                        </div>
 
-                        {/* Search Bar */}
+                        </div>
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                                 <input
                                     type="text"
-                                    placeholder="Search by name or description..."
+                                    placeholder="Search by reference number..."
                                     value={searchTerm}
                                     onChange={(e) => handleSearch(e.target.value)}
                                     className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -220,123 +183,57 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             )}
                         </div>
                     </CardHeader>
-
                     <CardContent className="px-4 md:px-6">
                         {loading && (
                             <div className="flex items-center justify-center py-8">
                                 <div className="w-6 h-6 animate-spin mr-2 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                                Loading products...
+                                Loading orders...
                             </div>
                         )}
-
                         <div className="w-full overflow-x-auto">
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-                                        <th className="px-4 py-3 font-medium min-w-32">Image</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Sku</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Name</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Hand</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Ordered</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Quantity On Available</th>
-                                        <th className="px-4 py-3 font-medium min-w-32">Unit Price</th>
-                                        {auth.user.role === "admin" && (
-                                        <th className="px-4 py-3 font-medium min-w-32">Organization</th>
-                                        )}
-                                        <th className="px-4 py-3 font-medium min-w-32">Type</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Reference Number</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Amount</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Date</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {products.data.map((item) => (
+                                    {orders.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
                                             <td className="px-4 py-3 min-w-32">
                                                 <div className="flex items-center gap-2">
-                                                    <img src={item.image} alt={item.name} className="w-10 h-10 rounded-md" />
+                                                    <span className="font-medium">{item.reference_number}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.sku}>
-                                                    {item.sku}
+                                                <span className="truncate block max-w-md" title={item.total_amount}>
+                                                    ${item.total_amount}
                                                 </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.name}>
-                                                    {item.name}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.quantity}>
-                                                    {item.quantity}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.quantity_ordered}>
-                                                    {item.quantity_ordered}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.quantity_available}>
-                                                    {item.quantity_available}
-                                                </span>
-                                            </td>
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.unit_price}>
-                                                    {item.unit_price}
-                                                </span>
-                                            </td>
-                                            {auth.user.role === "admin" && (
-                                            <td className="px-4 py-3 min-w-64">
-                                                <span className="truncate block max-w-md" title={item.organization?.name}>
-                                                    {item.organization?.name ?? "-"}
-                                                </span>
-                                            </td>
-                                              )}
-
-                                            <td className="px-4 py-3 min-w-32">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {item.type}
-                                                </Badge>
                                             </td>
                                             <td className="px-4 py-3 min-w-32">
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.status}
                                                 </Badge>
                                             </td>
-
-
-                                            {/* <td className="px-4 py-3 min-w-32">
-                                                <div className="text-sm">
-                                                    <div>{new Date(item.created_at).toLocaleDateString()}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {new Date(item.created_at).toLocaleTimeString()}
-                                                    </div>
-                                                </div>
+                                            <td className="px-4 py-3 min-w-64">
+                                                <span className="truncate block max-w-md" title={item.created_at}>
+                                                    {new Date(item.created_at).toLocaleDateString()}
+                                                </span>
                                             </td>
-                                            <td className="px-4 py-3 min-w-32">
-                                                <div className="text-sm">
-                                                    <div>{new Date(item.updated_at).toLocaleDateString()}</div>
-                                                    <div className="text-xs text-muted-foreground">
-                                                        {new Date(item.updated_at).toLocaleTimeString()}
-                                                    </div>
-                                                </div>
-                                            </td> */}
+
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    {/* <Link href={route('classification-codes.show', item.id)}>
+                                                    <Link href={route('orders.show', item.id)}>
                                                         <Button variant="outline" size="sm">
                                                             <Eye className="mr-2 h-4 w-4" />
                                                             View
                                                         </Button>
-                                                    </Link> */}
-                                                    <Link href={route('products.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
-                                                        </Button>
                                                     </Link>
-                                                    <Button
+                                                    {/* <Button
                                                         variant="outline"
                                                         size="sm"
                                                         onClick={() => handleDelete(item)}
@@ -344,30 +241,27 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                     >
                                                         <Trash2 className="mr-2 h-4 w-4" />
                                                         Delete
-                                                    </Button>
+                                                    </Button> */}
                                                 </div>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
-
-                            {products.data.length === 0 && (
+                            {orders.data.length === 0 && (
                                 <div className="text-center py-12">
-                                    <FileText className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                                    <h3 className="text-lg font-medium text-foreground mb-2">No products found</h3>
-                                    <p className="text-muted-foreground">Create your first product to get started.</p>
+                                    <LayoutGrid className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+                                    <h3 className="text-lg font-medium text-foreground mb-2">No orders found</h3>
+
                                 </div>
                             )}
-
                             {/* Pagination Controls */}
-                            {products.total > 0 && (
+                            {orders.total > 0 && (
                                 <div className="flex items-center justify-between mt-6 px-4 mb-6 text-sm text-muted-foreground flex-wrap gap-4">
                                     <div>
-                                        Showing {products.from?.toLocaleString() || 0} to {products.to?.toLocaleString() || 0} of{" "}
-                                        {products.total.toLocaleString()} product(s).
+                                        Showing {orders.from?.toLocaleString() || 0} to {orders.to?.toLocaleString() || 0} of{" "}
+                                        {orders.total.toLocaleString()} category(ies).
                                     </div>
-
                                     <div className="flex items-center gap-4">
                                         {/* Per Page Selector */}
                                         <div className="flex items-center gap-2">
@@ -385,25 +279,22 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                 ))}
                                             </select>
                                         </div>
-
                                         {/* Pagination Buttons */}
                                         <div className="flex items-center gap-2">
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(products.current_page - 1)}
-                                                disabled={!products.prev_page_url || loading}
+                                                onClick={() => handlePageChange(orders.current_page - 1)}
+                                                disabled={!orders.prev_page_url || loading}
                                             >
                                                 Prev
                                             </button>
-
                                             <span className="px-2">
-                                                Page {products.current_page} of {products.last_page}
+                                                Page {orders.current_page} of {orders.last_page}
                                             </span>
-
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(products.current_page + 1)}
-                                                disabled={!products.next_page_url || loading}
+                                                onClick={() => handlePageChange(orders.current_page + 1)}
+                                                disabled={!orders.next_page_url || loading}
                                             >
                                                 Next
                                             </button>
@@ -414,14 +305,13 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                         </div>
                     </CardContent>
                 </Card>
-
                 {/* Delete Confirmation Dialog */}
-                <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+                {/* <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Confirm Delete</DialogTitle>
                             <DialogDescription>
-                                Are you sure you want to delete product "{itemToDelete?.name}"? This action cannot be undone.
+                                Are you sure you want to delete category "{itemToDelete?.name}"? This action cannot be undone.
                             </DialogDescription>
                         </DialogHeader>
                         <DialogFooter>
@@ -433,7 +323,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             </Button>
                         </DialogFooter>
                     </DialogContent>
-                </Dialog>
+                </Dialog> */}
             </div>
         </AppLayout>
     );
