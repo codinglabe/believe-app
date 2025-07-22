@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\JobPositionController;
+use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
@@ -123,9 +124,11 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     /* Category Routes */
     Route::resource('categories', CategoryController::class)->except(['show']);
 
-    Route::resource("position-categories", PositionCategoryController::class)->except(['show']);
+    Route::resource("position-categories", PositionCategoryController::class)->except(['show'])->middleware('permission:job.position.categories.read');
 
-    Route::resource("job-positions", JobPositionController::class)->except(['show']);
+    Route::resource("job-positions", JobPositionController::class)->except(['show'])->middleware('permission:job.positions.read');
+
+    Route::resource('job-posts', JobPostController::class)->middleware(['role:organization', 'permission:job.posts.read']);
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);

@@ -62,22 +62,29 @@ export default function Create() {
                     <CardContent className="px-4 md:px-6">
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="space-y-2">
-                                <Label htmlFor="category_id">Position Category</Label>
+                                <Label htmlFor="category_id" className="text-gray-900 dark:text-gray-100">
+                                    Position Category
+                                </Label>
                                 <select
                                     id="category_id"
                                     value={formData.category_id}
                                     onChange={(e) => handleChange('category_id', e.target.value)}
-                                    className={`w-full border p-2 rounded ${errors.category_id ? 'border-red-500' : ''}`}
+                                    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-900 dark:text-white dark:border-gray-600 ${
+                                        errors.category_id ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
+                                    }`}
                                 >
-                                    <option value="">Select a category</option>
+                                    <option value="" className="text-gray-500 dark:text-gray-400">Select a category</option>
                                     {positionCategories.map(cat => (
-                                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                                        <option key={cat.id} value={cat.id}>
+                                            {cat.name}
+                                        </option>
                                     ))}
                                 </select>
                                 {errors.category_id && (
                                     <p className="text-sm text-red-500">{errors.category_id}</p>
                                 )}
                             </div>
+
                             <div className="space-y-2">
                                 <Label htmlFor="title">Position Title</Label>
                                 <Input
@@ -85,7 +92,7 @@ export default function Create() {
                                     value={formData.title}
                                     onChange={(e) => handleChange('title', e.target.value)}
                                     placeholder="Enter job position title"
-                                    className={errors.title ? 'border-red-500' : ''}
+                                    className={errors.title ? 'border-red-500' : 'dark:bg-gray-900'}
                                 />
                                 {errors.title && (
                                     <p className="text-sm text-red-500">{errors.title}</p>
@@ -98,7 +105,7 @@ export default function Create() {
                                     value={formData.default_description}
                                     onChange={(e) => handleChange('default_description', e.target.value)}
                                     placeholder="Enter job description"
-                                    className={errors.default_description ? 'border-red-500' : ''}
+                                    className={errors.default_description ? 'border-red-500' : 'dark:bg-gray-900'}
                                 />
                                 {errors.default_description && (
                                     <p className="text-sm text-red-500">{errors.default_description}</p>
@@ -111,7 +118,7 @@ export default function Create() {
                                     value={formData.default_requirements}
                                     onChange={(e) => handleChange('default_requirements', e.target.value)}
                                     placeholder="Enter job requirements (optional)"
-                                    className={errors.default_requirements ? 'border-red-500' : ''}
+                                    className={errors.default_requirements ? 'border-red-500' : 'dark:bg-gray-900'}
                                 />
                                 {errors.default_requirements && (
                                     <p className="text-sm text-red-500">{errors.default_requirements}</p>

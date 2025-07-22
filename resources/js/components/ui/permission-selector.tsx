@@ -76,6 +76,7 @@ const categoryIcons = {
   Payments: CreditCard,
   Permission: FileText,
   Role: Award,
+  Job: Briefcase,
   // Existing categories (if any, ensure they are here or add them if missing from your list)
   Channels: Shield,
   Messages: MessageSquare,
@@ -110,6 +111,7 @@ const categoryColors = {
   Payments: "bg-rose-600",
   Permission: "bg-teal-600",
   Role: "bg-indigo-600",
+  Job: "bg-green-700",
   // Existing categories (if any, ensure they are here or add them if missing from your list)
   Channels: "bg-blue-500",
   Messages: "bg-green-500",

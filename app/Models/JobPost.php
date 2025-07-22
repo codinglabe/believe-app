@@ -24,4 +24,15 @@ class JobPost extends Model
         'position_id',
         'organization_id'
     ];
+
+    // Relationships
+    public function position()
+    {
+        return $this->belongsTo(JobPosition::class, 'position_id');
+    }
+
+    public function organization()
+    {
+        return $this->belongsTo(Organization::class, 'organization_id');
+    }
 }

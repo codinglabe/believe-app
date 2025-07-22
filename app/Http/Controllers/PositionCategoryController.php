@@ -9,6 +9,14 @@ use Inertia\Response;
 
 class PositionCategoryController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:job.position.categories.read')->only(['index']);
+        $this->middleware('can:job.position.categories.create')->only(['create', 'store']);
+        $this->middleware('can:job.position.categories.edit')->only(['edit', 'update']);
+        $this->middleware('can:job.position.categories.delete')->only(['destroy']);
+    }
+
     public function index(Request $request): Response
     {
         $perPage = $request->get('per_page', 10);

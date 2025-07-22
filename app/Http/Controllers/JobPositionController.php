@@ -10,27 +10,37 @@ use Inertia\Response;
 
 class JobPositionController extends Controller
 {
+    public function __construct()
+    {
+        $this->middleware('can:job.positions.read')->only(['index']);
+        $this->middleware('can:job.positions.create')->only(['create', 'store']);
+        $this->middleware('can:job.positions.edit')->only(['edit', 'update']);
+        $this->middleware('can:job.positions.delete')->only(['destroy']);
+    }
+
     public function index(Request $request): Response
     {
-        $perPage = $request->get('per_page', 10);
-        $page = $request->get('page', 1);
+        $perPage = (int) $request->get('per_page', 10);
+        $page = (int) $request->get('page', 1);
         $search = $request->get('search', '');
 
-        $query = JobPosition::query();
-        if ($search) {
+        $query = JobPosition::with('category');
+
+        if (!empty($search)) {
             $query->where(function ($q) use ($search) {
-                $q->where('title', 'LIKE', "%{$search}%");
+                $q->where('title', 'LIKE', '%' . $search . '%');
             });
         }
 
-        $positionCategories = $query->orderBy('id', 'desc')
-            ->paginate($perPage, ['*'], 'page', $page);
+        $jobPositions = $query->orderByDesc('id')
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString(); // keeps filters during pagination links
 
         return Inertia::render('job-positions/index', [
-            'categories' => $positionCategories,
+            'jobPositions' => $jobPositions,
             'filters' => [
-                'per_page' => (int) $perPage,
-                'page' => (int) $page,
+                'per_page' => $perPage,
+                'page' => $page,
                 'search' => $search,
             ],
             'allowedPerPage' => [5, 10, 25, 50, 100],
@@ -53,12 +63,14 @@ class JobPositionController extends Controller
     public function store(Request $request)
     {
         $validated = $request->validate([
+            'category_id'  => 'required|exists:position_categories,id',
             'title' => 'required|string|max:255|unique:job_positions,title',
-            'description' => 'nullable',
+            'default_description' => 'required|string',
+            'default_requirements' => 'nullable|string',
         ]);
 
         JobPosition::create($validated);
-        return redirect()->route('position-categories.index')->with('success', 'Job Position Category created successfully.');
+        return redirect()->route('job-positions.index')->with('success', 'Job Position created successfully.');
     }
 
     /**
@@ -75,21 +87,22 @@ class JobPositionController extends Controller
     public function edit(JobPosition $jobPosition): Response
     {
         return inertia('job-positions/edit', [
-            'category' => $jobPosition
+            'jobPosition' => $jobPosition,
+            'positionCategories' => PositionCategory::select('id', 'name')->get(),
         ]);
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
     public function update(Request $request, JobPosition $jobPosition)
     {
         $validated = $request->validate([
-            'title' => 'required|string|max:255|unique:position_categories,name,' . $jobPosition->id,
-            'description' => 'nullable',
+            'category_id' => 'required|exists:position_categories,id',
+            'title' => 'required|string|max:255|unique:job_positions,title,' . $jobPosition->id,
+            'default_description' => 'required|string',
+            'default_requirements' => 'nullable|string',
         ]);
+
         $jobPosition->update($validated);
-        return redirect()->route('position-categories.index')->with('success', 'Job Position Category updated successfully.');
+        return redirect()->route('job-positions.index')->with('success', 'Job Position updated successfully.');
     }
 
     /**
@@ -98,6 +111,6 @@ class JobPositionController extends Controller
     public function destroy(JobPosition $jobPosition)
     {
         $jobPosition->delete();
-        return redirect()->route('position-categories.index')->with('success', 'Job Position Category deleted successfully.');
+        return redirect()->route('job-positions.index')->with('success', 'Job Position deleted successfully.');
     }
 }

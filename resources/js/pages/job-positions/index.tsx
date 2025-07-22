@@ -15,17 +15,18 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ]
 
-interface Category {
+interface JobPositions {
     id: number;
-    name: string;
-    description?: string;
+    title: string;
+    default_description?: string;
+    default_requirements?: string;
     created_at: string;
     updated_at: string;
 }
 
 interface Props {
-    categories: {
-        data: Category[];
+    jobPositions: {
+        data: JobPositions[];
         current_page: number;
         last_page: number;
         per_page: number;
@@ -34,6 +35,10 @@ interface Props {
         to?: number;
         prev_page_url: string | null;
         next_page_url: string | null;
+        category?: {
+            id: number;
+            name: string;
+        }
     };
     filters: {
         per_page: number;
@@ -43,14 +48,14 @@ interface Props {
     allowedPerPage: number[];
 }
 
-export default function Index({ categories, filters, allowedPerPage }: Props) {
+export default function Index({ jobPositions, filters, allowedPerPage }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-    const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
+    const [itemToDelete, setItemToDelete] = useState<JobPositions | null>(null);
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
 
-    const handleDelete = (item: Category) => {
+    const handleDelete = (item: JobPositions) => {
         setItemToDelete(item);
         setDeleteDialogOpen(true);
     };
@@ -84,7 +89,7 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
     };
 
     const handlePageChange = (page: number) => {
-        if (page < 1 || page > categories.last_page) return;
+        if (page < 1 || page > jobPositions.last_page) return;
         setLoading(true);
         router.get(
             "/job-positions",
@@ -142,21 +147,21 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
-            <Head title="Job Position Categories" />
+            <Head title="Job Positions" />
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
                 <Card className="px-0">
                     <CardHeader className="px-4 md:px-6">
                         <div className="flex items-center justify-between">
                             <div>
-                                <CardTitle>Job Position Categories</CardTitle>
+                                <CardTitle>Job Positions</CardTitle>
                                 <CardDescription>
-                                    Manage Job Position categories for your organization. Total: {categories.total.toLocaleString()} categories
+                                    Manage Job Positions for your organization. Total: {jobPositions.total.toLocaleString()} jobPositions
                                 </CardDescription>
                             </div>
                             <Link href={route('job-positions.create')}>
                                 <Button>
                                     <Plus className="mr-2 h-4 w-4" />
-                                    Add Position Category
+                                    Add Job Position
                                 </Button>
                             </Link>
                         </div>
@@ -165,7 +170,7 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                                 <input
                                     type="text"
-                                    placeholder="Search by category name..."
+                                    placeholder="Search by job position title..."
                                     value={searchTerm}
                                     onChange={(e) => handleSearch(e.target.value)}
                                     className="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -190,30 +195,43 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                         {loading && (
                             <div className="flex items-center justify-center py-8">
                                 <div className="w-6 h-6 animate-spin mr-2 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                                Loading categories...
+                                Loading Job Positions...
                             </div>
                         )}
                         <div className="w-full overflow-x-auto">
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-                                        <th className="px-4 py-3 font-medium min-w-32">Name</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Position Title</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Position Title</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Description</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Requirments</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {categories.data.map((item) => (
+                                    {jobPositions.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
                                             <td className="px-4 py-3 min-w-32">
                                                 <div className="flex items-center gap-2">
                                                     <LayoutGrid className="w-4 h-4 text-blue-500" />
-                                                    <span className="font-medium">{item.name}</span>
+                                                    <span className="font-medium">{item.category?.name}</span>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 min-w-32">
                                                 <div className="flex items-center gap-2">
-                                                    <p className="font-medium">{item.description}</p>
+                                                    <LayoutGrid className="w-4 h-4 text-blue-500" />
+                                                    <span className="font-medium">{item.title}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium">{item.default_description}</p>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-medium">{item.default_requirements}</p>
                                                 </div>
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
@@ -239,19 +257,19 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                     ))}
                                 </tbody>
                             </table>
-                            {categories.data.length === 0 && (
+                            {jobPositions.data.length === 0 && (
                                 <div className="text-center py-12">
                                     <LayoutGrid className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-                                    <h3 className="text-lg font-medium text-foreground mb-2">No Position categories found</h3>
-                                    <p className="text-muted-foreground">Create your first job position category to get started.</p>
+                                    <h3 className="text-lg font-medium text-foreground mb-2">No Job Position found</h3>
+                                    <p className="text-muted-foreground">Create your first job position to get started.</p>
                                 </div>
                             )}
                             {/* Pagination Controls */}
-                            {categories.total > 0 && (
+                            {jobPositions.total > 0 && (
                                 <div className="flex items-center justify-between mt-6 px-4 mb-6 text-sm text-muted-foreground flex-wrap gap-4">
                                     <div>
-                                        Showing {categories.from?.toLocaleString() || 0} to {categories.to?.toLocaleString() || 0} of{" "}
-                                        {categories.total.toLocaleString()} category(ies).
+                                        Showing {jobPositions.from?.toLocaleString() || 0} to {jobPositions.to?.toLocaleString() || 0} of{" "}
+                                        {jobPositions.total.toLocaleString()} category(ies).
                                     </div>
                                     <div className="flex items-center gap-4">
                                         {/* Per Page Selector */}
@@ -274,18 +292,18 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                         <div className="flex items-center gap-2">
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(categories.current_page - 1)}
-                                                disabled={!categories.prev_page_url || loading}
+                                                onClick={() => handlePageChange(jobPositions.current_page - 1)}
+                                                disabled={!jobPositions.prev_page_url || loading}
                                             >
                                                 Prev
                                             </button>
                                             <span className="px-2">
-                                                Page {categories.current_page} of {categories.last_page}
+                                                Page {jobPositions.current_page} of {jobPositions.last_page}
                                             </span>
                                             <button
                                                 className="px-3 py-1 text-sm border rounded disabled:opacity-50 hover:bg-muted transition"
-                                                onClick={() => handlePageChange(categories.current_page + 1)}
-                                                disabled={!categories.next_page_url || loading}
+                                                onClick={() => handlePageChange(jobPositions.current_page + 1)}
+                                                disabled={!jobPositions.next_page_url || loading}
                                             >
                                                 Next
                                             </button>

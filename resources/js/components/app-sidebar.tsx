@@ -41,13 +41,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Job Position Categories',
         href: '/position-categories',
         icon: LayoutGrid,
-        permission: "products.read"
+        permission: "job.position.categories.read"
     },
     {
         title: 'Job Positions',
         href: '/job-positions',
         icon: LayoutGrid,
-        permission: "products.read"
+        permission: "job.positions.read"
+    },
+    {
+        title: 'Job Post',
+        href: '/job-posts',
+        icon: LayoutGrid,
+        permission: "job.posts.read"
+    },
+    {
         title: 'Orders',
         href: '/orders',
         icon: Package,
