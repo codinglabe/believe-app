@@ -27,6 +27,8 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\NodeSellController;
+use App\Http\Controllers\NodeShareController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -68,6 +70,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
 
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+    Route::get('nodeboss/shares',[NodeShareController::class, 'index'])->name('nodeboss.sahres');
 
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
@@ -158,7 +161,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
 
 
-     /* orders Routes */
+    /* orders Routes */
     Route::resource('orders', OrderController::class);
     // Purchase Order Routes
     Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
@@ -169,7 +172,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy');
 
 
-     /* orders Routes */
+    /* orders Routes */
     Route::resource('orders', OrderController::class);
     // Purchase Order Routes
     Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
@@ -188,6 +191,31 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index');
     Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show');
 });
+
+Route::middleware(['auth'])->group(function () {
+    // NodeShare routes
+    Route::resource('node-shares', NodeShareController::class);
+
+    // NodeSell routes  
+    Route::resource('node-sells', NodeSellController::class);
+
+    // Buy share routes
+    Route::get('/node-boss/{nodeBoss}/buy', [NodeSellController::class, 'buy'])->name('node-boss.buy');
+    Route::post('/node-share/purchase', [NodeSellController::class, 'store'])->name('node-share.store');
+
+    // Payment success/cancel routes
+    Route::get('/node-share/success', [NodeSellController::class, 'success'])->name('node-share.success');
+    Route::get('/node-share/cancel', [NodeSellController::class, 'cancel'])->name('node-share.cancel');
+
+    // Certificate routes
+    Route::get('/certificate/{nodeSell}', [NodeSellController::class, 'certificate'])->name('certificate.show');
+    Route::post('/certificate/{nodeSell}/email', [NodeSellController::class, 'emailCertificate'])->name('certificate.email');
+    Route::get('/certificate/{nodeSell}/download', [NodeSellController::class, 'downloadCertificate'])->name('certificate.download');
+
+    // User shares
+    Route::get('/my-shares', [NodeSellController::class, 'myShares'])->name('my-shares');
+});
+
 
 // route for donation
 Route::middleware(['auth', 'verified'])->group(function () {

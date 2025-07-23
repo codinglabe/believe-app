@@ -41,9 +41,9 @@ export function NodeBoxCard({ nodebox, onBuyShare }: NodeBoxCardProps) {
           >
             {isClosed ? "Closed" : "Open"}
           </Badge>
-          <Badge className="absolute top-3 right-3 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs px-2 py-1">
+          {/* <Badge className="absolute top-3 right-3 bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 text-xs px-2 py-1">
             {nodebox.uuid}
-          </Badge>
+          </Badge> */}
         </div>
         <CardHeader className="flex-grow pb-3">
           <CardTitle className="text-lg font-semibold text-gray-900 dark:text-white">{nodebox.name}</CardTitle>

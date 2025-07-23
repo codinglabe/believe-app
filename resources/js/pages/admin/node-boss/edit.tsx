@@ -40,7 +40,7 @@ export default function EditNodeBoss({ auth, nodeBoss }: Props) {
             : nodeBoss.suggested_amounts || [10, 25, 50, 100],
         is_closed: nodeBoss.is_closed || false,
         image: null as File | null,
-        status: nodeBoss.status || "active" || "inactive" || "draft",
+        status: nodeBoss?.status || "active" || "inactive" || "draft",
     })
 
 
@@ -513,7 +513,7 @@ export default function EditNodeBoss({ auth, nodeBoss }: Props) {
                             </div>
 
                             {/* Image Upload */}
-                            <div className="space-y-6">
+                            {/* <div className="space-y-6">
                                 <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
                                     NodeBoss Image (436x196 pixels) *
                                 </h3>
@@ -596,7 +596,7 @@ export default function EditNodeBoss({ auth, nodeBoss }: Props) {
                                         </div>
                                     )}
                                 </div>
-                            </div>
+                            </div> */}
 
                             {/* Settings */}
                             <div className="space-y-6">

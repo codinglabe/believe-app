@@ -1,59 +1,97 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
+import { useEffect, useState } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
-import { Input } from "@/components/admin/ui/input"
-import { Select } from "@/components/admin/ui/select"
 import { Button } from "@/components/admin/ui/button"
-import { Card, CardContent, CardHeader } from "@/components/admin/ui/card"
+import { Card, CardContent } from "@/components/admin/ui/card"
 import { Badge } from "@/components/admin/ui/badge"
-import { Search, Plus, Eye, Edit, Trash2, Filter, ChevronLeft, ChevronRight } from "lucide-react"
-import type { NodeBoss, NodeBossFilters, PaginatedNodeBoss } from "@/types/nodeboss"
-import { useDebounce } from "@/hooks/useDebounce"
+import { Search, Plus, Eye, Edit, Trash2 } from "lucide-react"
+import type { NodeBoss } from "@/types/nodeboss"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { showSuccessToast } from "@/lib/toast"
+import { Auth } from "@/types"
+import { CardHeader, CardTitle } from "@/components/admin/ui/card"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui/table"
+import {
+    ArrowLeft,
+    Calendar,
+    DollarSign,
+    Users,
+    TrendingUp,
+    Share2,
+    ChevronLeft,
+    ChevronRight,
+    CheckCircle,
+    XCircle,
+    Clock,
+    Ban,
+    Lock,
+    Unlock,
+} from "lucide-react"
+import { Input } from "@/components/admin/ui/input"
+import ShareEditModal from "@/components/admin/ShareEditModal"
+import ShareViewModal from "@/components/admin/ShareViewModal"
+import SoldShareEditModal from "@/components/admin/SoldShareEditModal"
+import SoldShareViewModal from "@/components/admin/SoldShareViewModal"
+import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import NodebossStatistic from "@/components/admin/nodeboss-statistic"
 
-interface Props {
-    auth: any
-    nodeBosses: PaginatedNodeBoss
-    filters: NodeBossFilters
+interface Share {
+    id: number
+    node_id: string
+    cost_of_node: number
+    accumulate_cost: number
+    reminder: number
+    status: string
 }
 
-export default function Index({ auth, nodeBosses, filters }: Props) {
-    const [search, setSearch] = useState(filters.search || "")
-    const [status, setStatus] = useState(filters.status || "")
-    const [investmentStatus, setInvestmentStatus] = useState(
-        typeof filters.is_closed === "boolean"
-            ? filters.is_closed.toString()
-            : filters.is_closed || ""
-    )
-    const [selectedNodeBossId, setSelectedNodeBossId] = useState<number | null>(null)
-    const [isLoading, setIsLoading] = useState(false)
+interface SoldShare {
+    id: number
+    name: string
+    email: string
+    node_id: string
+    price: number
+    status: string
+    created_at: string
+}
 
-    const debouncedSearch = useDebounce(search, 300)
+interface LaravelPagination<T> {
+    data: T[]
+    current_page: number
+    first_page_url: string
+    from: number | null
+    last_page: number
+    last_page_url: string
+    links: Array<{
+        url: string | null
+        label: string
+        active: boolean
+    }>
+    next_page_url: string | null
+    path: string
+    per_page: number
+    prev_page_url: string | null
+    to: number | null
+    total: number
+}
 
-    // Auto-filter when values change
-    useEffect(() => {
-        const params: any = {}
-
-        if (debouncedSearch) params.search = debouncedSearch
-        if (status) params.status = status
-        if (investmentStatus) params.is_closed = investmentStatus
-
-        setIsLoading(true)
-        router.get(route("node-boss.index"), params, {
-            preserveState: true,
-            preserveScroll: true,
-            replace: true,
-            onFinish: () => setIsLoading(false),
-        })
-    }, [debouncedSearch, status, investmentStatus])
-
-    const handleDelete = (id: number) => {
-        setSelectedNodeBossId(id)
-        setDeleteDialogOpen(true)
+interface Props {
+    auth: Auth
+    nodeBoss: NodeBoss
+    shares: LaravelPagination<Share>
+    soldShares: LaravelPagination<SoldShare>
+    filters: {
+        shares_search: string
+        shares_status: string
+        sold_search: string
+        sold_status: string
     }
+}
+
+export default function Index({ nodeBoss, shares, soldShares, filters, statistics }: Props) {
+    const [selectedNodeBossId, setSelectedNodeBossId] = useState<number | null>(nodeBoss?.id)
+    const [isLoading, setIsLoading] = useState(false)
 
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const confirmDeleteUser = () => {
@@ -71,179 +109,201 @@ export default function Index({ auth, nodeBosses, filters }: Props) {
 
     }
 
-    const clearFilters = () => {
-        setSearch("")
-        setStatus("")
-        setInvestmentStatus("")
-    }
 
-    const getStatusBadgeVariant = (status: string) => {
-        switch (status) {
-            case "active":
-                return "default"
-            case "inactive":
-                return "secondary"
-            case "draft":
-                return "outline"
-            default:
-                return "secondary"
+
+    const [sharesSearch, setSharesSearch] = useState(filters.shares_search)
+    const [sharesStatus, setSharesStatus] = useState(filters.shares_status)
+    const [soldSearch, setSoldSearch] = useState(filters.sold_search)
+    const [soldStatus, setSoldStatus] = useState(filters.sold_status)
+
+    // Modal states
+    const [shareEditModal, setShareEditModal] = useState<{ isOpen: boolean; share: Share | null }>({
+        isOpen: false,
+        share: null,
+    })
+    const [shareViewModal, setShareViewModal] = useState<{ isOpen: boolean; share: Share | null }>({
+        isOpen: false,
+        share: null,
+    })
+    const [soldShareEditModal, setSoldShareEditModal] = useState<{ isOpen: boolean; soldShare: SoldShare | null }>({
+        isOpen: false,
+        soldShare: null,
+    })
+    const [soldShareViewModal, setSoldShareViewModal] = useState<{ isOpen: boolean; soldShare: SoldShare | null }>({
+        isOpen: false,
+        soldShare: null,
+    })
+    const [deleteModal, setDeleteModal] = useState<{
+        isOpen: boolean
+        type: "share" | "soldShare" | null
+        id: number | null
+        title: string
+        message: string
+    }>({
+        isOpen: false,
+        type: null,
+        id: null,
+        title: "",
+        message: "",
+    })
+
+    const [isDeleting, setIsDeleting] = useState(false)
+
+    // Auto-filter when search/status changes with debounce - only when there are actual values
+    useEffect(() => {
+        // Don't trigger on initial load if all values are empty
+        if (!sharesSearch && !sharesStatus && !soldSearch && !soldStatus) {
+            return
         }
-    }
 
-    const hasActiveFilters = useMemo(() => {
-        return search || status || investmentStatus
-    }, [search, status, investmentStatus])
+        const timeoutId = setTimeout(() => {
+            // Only include non-empty parameters in the request
+            const params: Record<string, string> = {}
 
-    // Enhanced pagination logic
-    const generatePaginationLinks = () => {
-        const links = []
-        const currentPage = nodeBosses.current_page
-        const lastPage = nodeBosses.last_page
-        const maxVisible = 7
+            if (sharesSearch.trim()) params.shares_search = sharesSearch
+            if (sharesStatus) params.shares_status = sharesStatus
+            if (soldSearch.trim()) params.sold_search = soldSearch
+            if (soldStatus) params.sold_status = soldStatus
 
-        // Always show first page
-        if (currentPage > 3) {
-            links.push({ page: 1, url: nodeBosses.links[1]?.url, active: false })
-            if (currentPage > 4) {
-                links.push({ page: "...", url: null, active: false })
-            }
-        }
-
-        // Show pages around current page
-        const start = Math.max(1, currentPage - 2)
-        const end = Math.min(lastPage, currentPage + 2)
-
-        for (let i = start; i <= end; i++) {
-            const linkIndex = i
-            links.push({
-                page: i,
-                url: nodeBosses.links[linkIndex]?.url,
-                active: i === currentPage,
+            router.get(route("node-boss.show", nodeBoss.id), params, {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true, // Use replace to avoid cluttering browser history
             })
-        }
+        }, 500) // Increased to 500ms for better UX
 
-        // Always show last page
-        if (currentPage < lastPage - 2) {
-            if (currentPage < lastPage - 3) {
-                links.push({ page: "...", url: null, active: false })
-            }
-            links.push({ page: lastPage, url: nodeBosses.links[lastPage]?.url, active: false })
-        }
+        return () => clearTimeout(timeoutId)
+    }, [sharesSearch, sharesStatus, soldSearch, soldStatus])
 
-        return links
+    // Add a separate effect to handle clearing filters
+    const clearAllFilters = () => {
+        setSharesSearch("")
+        setSharesStatus("")
+        setSoldSearch("")
+        setSoldStatus("")
+
+        // Navigate to clean URL without query parameters
+        router.get(
+            route("node-boss.show", nodeBoss.id),
+            {},
+            {
+                preserveState: true,
+                preserveScroll: true,
+                replace: true,
+            },
+        )
     }
 
-    const paginationLinks = generatePaginationLinks()
+    const handleDeleteConfirm = () => {
+        if (!deleteModal.id || !deleteModal.type) return
+
+        setIsDeleting(true)
+        router.delete(`/${deleteModal.type === "share" ? "node-shares" : "node-sells"}/${deleteModal.id}`, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setDeleteModal({ isOpen: false, type: null, id: null, title: "", message: "" })
+                router.reload()
+            },
+            onFinish: () => {
+                setIsDeleting(false)
+            },
+        })
+    }
+
+    const openDeleteModal = (type: "share" | "soldShare", id: number, itemName: string) => {
+        setDeleteModal({
+            isOpen: true,
+            type,
+            id,
+            title: `Delete ${type === "share" ? "Share" : "Sold Share"}`,
+            message: `Are you sure you want to delete ${itemName}? This action cannot be undone.`,
+        })
+    }
+
+    const getStatusIcon = (status: string) => {
+        switch (status) {
+            case "open":
+                return <Unlock className="h-3 w-3" />
+            case "closed":
+                return <Lock className="h-3 w-3" />
+            case "completed":
+                return <CheckCircle className="h-3 w-3" />
+            case "pending":
+                return <Clock className="h-3 w-3" />
+            case "failed":
+                return <XCircle className="h-3 w-3" />
+            case "canceled":
+                return <Ban className="h-3 w-3" />
+            default:
+                return null
+        }
+    }
+
+    const getStatusVariant = (status: string) => {
+        switch (status) {
+            case "open":
+            case "completed":
+                return "default"
+            case "pending":
+                return "secondary"
+            case "failed":
+                return "destructive"
+            case "canceled":
+                return "outline"
+            case "closed":
+                return "secondary"
+            default:
+                return "outline"
+        }
+    }
+
+    const suggestedAmounts =
+        typeof nodeBoss?.suggested_amounts === "string"
+            ? JSON.parse(nodeBoss.suggested_amounts)
+            : nodeBoss?.suggested_amounts || [10, 25, 50, 100]
+
+    // Helper function to get numeric page links only
+    const getNumericLinks = (links: LaravelPagination<any>["links"]) => {
+        return links.filter((link) => {
+            const label = link.label.replace(/&laquo;|&raquo;/g, "").trim()
+            return !isNaN(Number(label)) && label !== "Previous" && label !== "Next"
+        })
+    }
+
+    const hasActiveFilters = sharesSearch || sharesStatus || soldSearch || soldStatus
+
 
     return (
         <AppLayout>
             <Head title="NodeBoss Management" />
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
-                <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="space-y-2 animate-in slide-in-from-left duration-700">
-                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-                            NodeBoss Management
-                        </h1>
-                        <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-                            Manage your investment opportunities
-                        </p>
-                    </div>
-                    <div className="animate-in slide-in-from-right duration-700">
-                        <Link href={route("node-boss.create")}>
-                            <Button
-                                size="lg"
-                                className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
-                            >
-                                <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                                <span className="hidden sm:inline">Create Node Boss</span>
-                                <span className="sm:hidden">Create</span>
-                            </Button>
-                        </Link>
-                    </div>
-                </div>
-
-                {/* Search and Filters */}
-                <Card className="hover:shadow-xl transition-all duration-300 animate-in slide-in-from-top duration-500">
-                    <CardContent className="p-4 sm:p-6">
-                        <div className="flex items-center gap-3 mb-4 sm:mb-6">
-                            <div className="p-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg animate-pulse">
-                                <Filter className="h-4 w-4 sm:h-5 sm:w-5 text-blue-600 dark:text-blue-400" />
-                            </div>
-                            <h3 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">Search & Filter</h3>
-                            {hasActiveFilters && (
-                                <Badge variant="secondary" className="ml-auto animate-in zoom-in duration-300">
-                                    {[search, status, investmentStatus].filter(Boolean).length} active
-                                </Badge>
-                            )}
+                {
+                    !nodeBoss && <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="space-y-2 animate-in slide-in-from-left duration-700">
+                            <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
+                                NodeBoss Management
+                            </h1>
+                            <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
+                                Manage your investment opportunities
+                            </p>
                         </div>
-
-                        <div className={`grid grid-cols-1 sm:grid-cols-2 ${hasActiveFilters ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-3 sm:gap-4`}>
-                            <div className="relative group">
-                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 dark:text-gray-500 h-4 w-4 group-focus-within:text-blue-500 transition-colors duration-200" />
-                                <Input
-                                    placeholder="Search NodeBoss..."
-                                    value={search}
-                                    onChange={(e) => setSearch(e.target.value)}
-                                    className="pl-10 h-10 sm:h-12 b transition-all duration-200 hover:shadow-md"
-                                />
-                            </div>
-
-                            <Select
-                                value={status}
-                                onChange={(e) => setStatus(e.target.value)}
-                                className="h-10 sm:h-12  transition-all duration-200 hover:shadow-md"
-                            >
-                                <option value="">All Status</option>
-                                <option value="active">🟢 Active</option>
-                                <option value="inactive">🟡 Inactive</option>
-                                {/* <option value="draft">📝 Draft</option> */}
-                            </Select>
-
-                            <Select
-                                value={investmentStatus}
-                                onChange={(e) => setInvestmentStatus(e.target.value)}
-                                className="h-10 sm:h-12 transition-all duration-200 hover:shadow-md"
-                            >
-                                <option value="">All Investments</option>
-                                <option value="false">🟢 Open</option>
-                                <option value="true">🔒 Closed</option>
-                            </Select>
-
-                            {hasActiveFilters && (
+                        <div className="animate-in slide-in-from-right duration-700">
+                            <Link href={route("node-boss.create")}>
                                 <Button
-                                    variant="outline"
-                                    onClick={clearFilters}
-                                    className="h-10 sm:h-12 bg-gray-50 dark:bg-gray-700 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all duration-200 animate-in zoom-in duration-300 cursor-pointer"
+                                    size="lg"
+                                    className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
                                 >
-                                    <Filter className="mr-2 h-4 w-4" />
-                                    <span className="hidden sm:inline">Clear Filters</span>
-                                    <span className="sm:hidden">Clear</span>
+                                    <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                                    <span className="hidden sm:inline">Create Node Boss</span>
+                                    <span className="sm:hidden">Create</span>
                                 </Button>
-                            )}
+                            </Link>
                         </div>
-                    </CardContent>
-                </Card>
-
-                {/* Results Summary */}
-                {/* <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 animate-in slide-in-from-left duration-500">
-                    <div className="flex items-center gap-2 sm:gap-4">
-                        <span className="text-sm sm:text-lg font-medium text-gray-900 dark:text-white">
-                            {nodeBosses.total} NodeBoss{nodeBosses.total !== 1 ? "es" : ""} found
-                        </span>
-                        {nodeBosses.data.length !== nodeBosses.total && (
-                            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                                (showing {nodeBosses.data.length})
-                            </span>
-                        )}
                     </div>
-                    {hasActiveFilters && (
-                        <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-                            <Filter className="h-3 w-3 sm:h-4 sm:w-4" />
-                            <span>Filters applied</span>
-                        </div>
-                    )}
-                </div> */}
+                }
+
+
 
                 {/* Loading Overlay */}
                 {isLoading && (
@@ -256,142 +316,586 @@ export default function Index({ auth, nodeBosses, filters }: Props) {
                 )}
 
                 {/* NodeBoss Grid */}
-                {nodeBosses.data.length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
-                        {nodeBosses.data.map((nodeBoss: NodeBoss, index) => (
-                            <Card
-                                key={nodeBoss.id}
-                                className="group hover:shadow-2xl transition-all duration-500  overflow-hidden transform animate-in fade-in slide-in-from-bottom duration-700"
-                                style={{ animationDelay: `${index * 100}ms` }}
-                            >
-                                {/* Image */}
-                                <div className="aspect-video bg-gray-200 dark:bg-gray-700 overflow-hidden relative">
-                                    {nodeBoss.image ? (
-                                        <img
-                                            src={"/" + nodeBoss.image || "/placeholder.svg"}
-                                            alt={nodeBoss.name}
-                                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
-                                        />
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800">
-                                            <div className="text-center text-gray-400 dark:text-gray-500 animate-pulse">
-                                                <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-2 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center">
-                                                    <span className="text-lg sm:text-2xl">📊</span>
-                                                </div>
-                                                <p className="text-xs sm:text-sm font-medium">No Image</p>
+                {nodeBoss ? (
+                    <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500">
+                        {/* Header */}
+                        <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-start sm:justify-between gap-4 animate-in slide-in-from-top duration-700">
+                            <div className="flex items-start gap-3 sm:gap-4 flex-1">
+                                <div className="flex items-start gap-3 flex-1">
+                                    <div className="p-2 sm:p-3 bg-blue-100 dark:bg-blue-900/50 rounded-xl animate-pulse">
+                                        <TrendingUp className="h-5 w-5 sm:h-7 sm:w-7 text-blue-600 dark:text-blue-400" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white break-words">
+                                            {nodeBoss.name}
+                                        </h1>
+                                        <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-3">
+                                            <Badge
+                                                variant={
+                                                    nodeBoss.status === "active"
+                                                        ? "default"
+                                                        : nodeBoss.status === "inactive"
+                                                            ? "secondary"
+                                                            : "outline"
+                                                }
+                                                className="animate-in zoom-in duration-300"
+                                            >
+                                                {nodeBoss.status === "active" ? (
+                                                    <CheckCircle className="mr-1 h-3 w-3" />
+                                                ) : nodeBoss.status === "inactive" ? (
+                                                    <Clock className="mr-1 h-3 w-3" />
+                                                ) : (
+                                                    <Edit className="mr-1 h-3 w-3" />
+                                                )}
+                                                {nodeBoss.status}
+                                            </Badge>
+                                            <Badge
+                                                variant={nodeBoss.is_closed ? "destructive" : "default"}
+                                                className="animate-in zoom-in duration-500"
+                                            >
+                                                {nodeBoss.is_closed ? <Lock className="mr-1 h-3 w-3" /> : <Unlock className="mr-1 h-3 w-3" />}
+                                                {nodeBoss.is_closed ? "Closed" : "Open"}
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 animate-in slide-in-from-right duration-700">
+                                {hasActiveFilters && (
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={clearAllFilters}
+                                        className="hover:scale-105 transition-all duration-200 bg-transparent text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
+                                    >
+                                        <XCircle className="mr-2 h-4 w-4" />
+                                        Clear Filters
+                                    </Button>
+                                )}
+
+                                <Button onClick={()=>setDeleteDialogOpen(!deleteDialogOpen)} className="w-full sm:w-auto hover:scale-105 transition-all duration-200 shadow-l bg-red-600 text-white hover:bg-red-700">
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    <span className="hidden sm:inline">Delete</span>
+                                    <span className="sm:hidden">Delete</span>
+                                </Button>
+
+                                <Link href={route("node-boss.edit", nodeBoss.id)}>
+                                    <Button className="w-full sm:w-auto hover:scale-105 transition-all duration-200 shadow-lg">
+                                        <Edit className="mr-2 h-4 w-4" />
+                                        <span className="hidden sm:inline">Edit</span>
+                                        <span className="sm:hidden">Edit</span>
+                                    </Button>
+                                </Link>
+                                
+                            </div>
+                        </div>
+
+                        {/* Tables Grid - Side by Side */}
+                        <NodebossStatistic statistics={statistics} />
+                        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 sm:gap-8">
+                            {/* Shares Table */}
+                            <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left duration-500">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                                        <DollarSign className="h-5 w-5 text-green-600" />
+                                        Shares ({shares.total})
+                                    </CardTitle>
+
+                                    {/* Search and Filter Controls for Shares */}
+                                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                                        <div className="flex-1">
+                                            <Input
+                                                placeholder="Search by Node ID, Cost, Sold, Remaining, or Status..."
+                                                value={sharesSearch}
+                                                onChange={(e) => setSharesSearch(e.target.value)}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <select
+                                                value={sharesStatus}
+                                                onChange={(e) => setSharesStatus(e.target.value)}
+                                                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                            >
+                                                <option value="">All Status</option>
+                                                <option value="open">Open</option>
+                                                <option value="closed">Closed</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="font-semibold">Node ID</TableHead>
+                                                    <TableHead className="font-semibold">Cost Of Node</TableHead>
+                                                    <TableHead className="font-semibold">Accumulate Cost</TableHead>
+                                                    <TableHead className="font-semibold">Reminder</TableHead>
+                                                    <TableHead className="font-semibold">Status</TableHead>
+                                                    <TableHead className="font-semibold">Actions</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {shares.data.length > 0 ? (
+                                                    shares.data.map((share) => (
+                                                        <TableRow
+                                                            key={share.id}
+                                                            className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-200"
+                                                        >
+                                                            <TableCell className="font-medium">{share.node_id}</TableCell>
+                                                            <TableCell className="text-green-600 dark:text-green-400 font-semibold">
+                                                                ${Number(share.cost_of_node).toLocaleString()}
+                                                            </TableCell>
+                                                            <TableCell className="text-blue-600 dark:text-blue-400 font-semibold">
+                                                                ${Number(share.accumulate_cost).toLocaleString()}
+                                                            </TableCell>
+                                                            <TableCell className="text-orange-600 dark:text-orange-400 font-semibold">
+                                                                ${Number(share.reminder).toLocaleString()}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant={getStatusVariant(share.status)}>
+                                                                    {getStatusIcon(share.status)}
+                                                                    <span className="ml-1">{share.status}</span>
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0"
+                                                                        onClick={() => setShareViewModal({ isOpen: true, share })}
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0"
+                                                                        onClick={() => setShareEditModal({ isOpen: true, share })}
+                                                                    >
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                                                        onClick={() => openDeleteModal("share", share.id, share.node_id)}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                ) : (
+                                                    <TableRow>
+                                                        <TableCell colSpan={6} className="text-center py-8 text-gray-500 dark:text-gray-400">
+                                                            No shares found
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </div>
+
+                                    {/* Laravel Pagination for Shares */}
+                                    {shares.last_page > 1 && (
+                                        <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between pt-6 sm:pt-8">
+                                            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
+                                                Showing <span className="font-medium text-gray-900 dark:text-white">{shares.from || 0}</span> to{" "}
+                                                <span className="font-medium text-gray-900 dark:text-white">{shares.to || 0}</span> of{" "}
+                                                <span className="font-medium text-gray-900 dark:text-white">{shares.total}</span> shares
+                                            </div>
+                                            <div className="flex items-center justify-center space-x-1 sm:space-x-2">
+                                                {/* Previous Button */}
+                                                {shares.prev_page_url && (
+                                                    <Link href={shares.prev_page_url}>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
+                                                        >
+                                                            <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                                                        </Button>
+                                                    </Link>
+                                                )}
+
+                                                {/* Page Numbers */}
+                                                {getNumericLinks(shares.links).map((link, index) => (
+                                                    <div key={index}>
+                                                        {link.url ? (
+                                                            <Link href={link.url}>
+                                                                <Button
+                                                                    variant={link.active ? "default" : "outline"}
+                                                                    size="sm"
+                                                                    className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-110 ${link.active
+                                                                        ? "bg-blue-600 text-white shadow-lg scale-110"
+                                                                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md"
+                                                                        }`}
+                                                                >
+                                                                    {link.label}
+                                                                </Button>
+                                                            </Link>
+                                                        ) : (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled
+                                                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                                                            >
+                                                                {link.label}
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                ))}
+
+                                                {/* Next Button */}
+                                                {shares.next_page_url && (
+                                                    <Link href={shares.next_page_url}>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
+                                                        >
+                                                            <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                                                        </Button>
+                                                    </Link>
+                                                )}
                                             </div>
                                         </div>
                                     )}
+                                </CardContent>
+                            </Card>
 
-                                    {/* Status Badge Overlay */}
-                                    <div className="absolute top-2 sm:top-3 right-2 sm:right-3 animate-in zoom-in duration-500">
-                                        <Badge
-                                            variant={getStatusBadgeVariant(nodeBoss.status)}
-                                            className="shadow-lg backdrop-blur-sm text-xs bg-green-400"
-                                        >
-                                            <span className="hidden sm:inline">{nodeBoss.uuid}</span>
-                                        </Badge>
-                                    </div>
+                            {/* Sold Shares Table */}
+                            <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-right duration-500">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                                        <Users className="h-5 w-5 text-purple-600" />
+                                        Sold Shares ({soldShares.total})
+                                    </CardTitle>
 
-                                    {/* Investment Status Overlay */}
-                                    <div className="absolute top-3 sm:bottom-3 left-2 sm:left-3 animate-in zoom-in duration-700">
-                                        <Badge
-                                            variant={nodeBoss.is_closed ? "destructive" : "default"}
-                                            className="shadow-lg backdrop-blur-sm text-xs"
-                                        >
-                                            {nodeBoss.is_closed ? "🔒" : "🟢"}
-                                            <span className="hidden sm:inline">{nodeBoss.is_closed ? " Closed" : " Open"}</span>
-                                        </Badge>
-                                    </div>
-                                </div>
-
-                                <CardContent className="p-3 sm:p-6 space-y-3 sm:space-y-4">
-                                    {/* Header */}
-                                    <div className="space-y-2">
-                                        <h3 className="font-bold text-base sm:text-xl text-gray-900 dark:text-white line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors duration-300">
-                                            {nodeBoss.name}
-                                        </h3>
-                                        <p className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">
-                                            {nodeBoss.description}
-                                        </p>
-                                    </div>
-
-                                    {/* Suggested Amounts */}
-                                    <div className="space-y-2">
-                                        <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wide">
-                                            Investment Options
-                                        </p>
-                                        <div className="flex flex-wrap gap-1 sm:gap-2">
-                                            {(typeof nodeBoss.suggested_amounts === "string"
-                                                ? JSON.parse(nodeBoss.suggested_amounts)
-                                                : nodeBoss.suggested_amounts
-                                            )?.slice(0, 5).map((amount: number, index: number) => (
-                                                <Badge
-                                                    key={index}
-                                                    variant="outline"
-                                                    className="text-xs font-medium bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 animate-in zoom-in duration-300"
-                                                    style={{ animationDelay: `${index * 100}ms` }}
-                                                >
-                                                    ${amount}
-                                                </Badge>
-                                            ))}
-                                            {(typeof nodeBoss.suggested_amounts === "string"
-                                                ? JSON.parse(nodeBoss.suggested_amounts)
-                                                : nodeBoss.suggested_amounts
-                                            )?.length > 3 && (
-                                                    <Badge variant="outline" className="text-xs bg-gray-50 dark:bg-gray-700">
-                                                        +{(typeof nodeBoss.suggested_amounts === "string"
-                                                            ? JSON.parse(nodeBoss.suggested_amounts)
-                                                            : nodeBoss.suggested_amounts
-                                                        ).length - 3}
-                                                    </Badge>
-                                                )}
+                                    {/* Search and Filter Controls for Sold Shares */}
+                                    <div className="flex flex-col sm:flex-row gap-3 mt-4">
+                                        <div className="flex-1">
+                                            <Input
+                                                placeholder="Search by Name, Email, Node ID, Price, or Status..."
+                                                value={soldSearch}
+                                                onChange={(e) => setSoldSearch(e.target.value)}
+                                                className="w-full"
+                                            />
+                                        </div>
+                                        <div>
+                                            <select
+                                                value={soldStatus}
+                                                onChange={(e) => setSoldStatus(e.target.value)}
+                                                className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                                            >
+                                                <option value="">All Status</option>
+                                                <option value="pending">Pending</option>
+                                                <option value="completed">Completed</option>
+                                                <option value="failed">Failed</option>
+                                                <option value="canceled">Canceled</option>
+                                            </select>
                                         </div>
                                     </div>
-
-                                    {/* Meta Information */}
-                                    <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-600">
-                                        <span className="flex text-xl items-center gap-1">
-                                            ${nodeBoss.price}
-                                        </span>
-                                        <span className="flex items-center gap-1">
-                                            🕒 {new Date(nodeBoss.updated_at).toLocaleDateString()}
-                                        </span>
+                                </CardHeader>
+                                <CardContent>
+                                    <div className="overflow-x-auto">
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead className="font-semibold">Name</TableHead>
+                                                    <TableHead className="font-semibold">Node ID</TableHead>
+                                                    <TableHead className="font-semibold">Price</TableHead>
+                                                    <TableHead className="font-semibold">Status</TableHead>
+                                                    <TableHead className="font-semibold">Actions</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {soldShares.data.length > 0 ? (
+                                                    soldShares.data.map((soldShare) => (
+                                                        <TableRow
+                                                            key={soldShare.id}
+                                                            className="hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors duration-200"
+                                                        >
+                                                            <TableCell className="font-medium">{soldShare.name}</TableCell>
+                                                            <TableCell className="text-blue-600 dark:text-blue-400 font-semibold">
+                                                                {soldShare.node_id}
+                                                            </TableCell>
+                                                            <TableCell className="text-green-600 dark:text-green-400 font-semibold">
+                                                                ${Number(soldShare.price).toLocaleString()}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant={getStatusVariant(soldShare.status)}>
+                                                                    {getStatusIcon(soldShare.status)}
+                                                                    <span className="ml-1">{soldShare.status}</span>
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0"
+                                                                        onClick={() => setSoldShareViewModal({ isOpen: true, soldShare })}
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </Button>
+                                                                    {/* <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0"
+                                                                        onClick={() => setSoldShareEditModal({ isOpen: true, soldShare })}
+                                                                    >
+                                                                        <Edit className="h-4 w-4" />
+                                                                    </Button> */}
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="sm"
+                                                                        className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                                                        onClick={() => openDeleteModal("soldShare", soldShare.id, soldShare.name)}
+                                                                    >
+                                                                        <Trash2 className="h-4 w-4" />
+                                                                    </Button>
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))
+                                                ) : (
+                                                    <TableRow>
+                                                        <TableCell colSpan={5} className="text-center py-8 text-gray-500 dark:text-gray-400">
+                                                            No sold shares found
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
                                     </div>
 
-                                    {/* Action Buttons */}
-                                    <div className="grid grid-cols-3 gap-1 sm:gap-2 pt-2 sm:pt-4">
-                                        <Link href={route("node-boss.show", nodeBoss.id)}>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="w-full bg-transparent hover:bg-blue-50 dark:hover:bg-blue-900/20 border-blue-200 dark:border-blue-800 transition-all duration-200 hover:scale-105 cursor-pointer"
-                                            >
-                                                <Eye className="h-3 w-3" />
-                                            </Button>
-                                        </Link>
-                                        <Link href={route("node-boss.edit", nodeBoss.id)}>
-                                            <Button
-                                                variant="outline"
-                                                size="sm"
-                                                className="w-full bg-transparent hover:bg-green-50 dark:hover:bg-green-900/20 border-green-200 dark:border-green-800 transition-all duration-200 hover:scale-105 cursor-pointer"
-                                            >
-                                                <Edit className="h-3 w-3" />
-                                            </Button>
-                                        </Link>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => handleDelete(nodeBoss.id)}
-                                            className="w-full bg-transparent hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800 text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 transition-all duration-200 hover:scale-105 cursor-pointer"
+                                    {/* Laravel Pagination for Sold Shares */}
+                                    {soldShares.last_page > 1 && (
+                                        <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between pt-6 sm:pt-8">
+                                            <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
+                                                Showing <span className="font-medium text-gray-900 dark:text-white">{soldShares.from || 0}</span> to{" "}
+                                                <span className="font-medium text-gray-900 dark:text-white">{soldShares.to || 0}</span> of{" "}
+                                                <span className="font-medium text-gray-900 dark:text-white">{soldShares.total}</span> sold shares
+                                            </div>
+                                            <div className="flex items-center justify-center space-x-1 sm:space-x-2">
+                                                {/* Previous Button */}
+                                                {soldShares.prev_page_url && (
+                                                    <Link href={soldShares.prev_page_url}>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
+                                                        >
+                                                            <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
+                                                        </Button>
+                                                    </Link>
+                                                )}
+
+                                                {/* Page Numbers */}
+                                                {getNumericLinks(soldShares.links).map((link, index) => (
+                                                    <div key={index}>
+                                                        {link.url ? (
+                                                            <Link href={link.url}>
+                                                                <Button
+                                                                    variant={link.active ? "default" : "outline"}
+                                                                    size="sm"
+                                                                    className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-110 ${link.active
+                                                                        ? "bg-blue-600 text-white shadow-lg scale-110"
+                                                                        : "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md"
+                                                                        }`}
+                                                                >
+                                                                    {link.label}
+                                                                </Button>
+                                                            </Link>
+                                                        ) : (
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                disabled
+                                                                className="w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
+                                                            >
+                                                                {link.label}
+                                                            </Button>
+                                                        )}
+                                                    </div>
+                                                ))}
+
+                                                {/* Next Button */}
+                                                {soldShares.next_page_url && (
+                                                    <Link href={soldShares.next_page_url}>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
+                                                        >
+                                                            <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
+                                                        </Button>
+                                                    </Link>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Details Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8">
+                            {/* Basic Information */}
+                            <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-left duration-700">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                                        <TrendingUp className="h-5 w-5 text-blue-600 animate-pulse" />
+                                        Basic Information
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4 sm:space-y-6">
+                                    <div className="space-y-2 animate-in fade-in duration-500">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Name</label>
+                                        <p className="text-gray-900 dark:text-white font-medium text-sm sm:text-base break-words">
+                                            {nodeBoss.name}
+                                        </p>
+                                    </div>
+                                    <div className="space-y-2 animate-in fade-in duration-700">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Status</label>
+                                        <Badge
+                                            variant={
+                                                nodeBoss.status === "active" ? "default" : nodeBoss.status === "inactive" ? "secondary" : "outline"
+                                            }
+                                            className="hover:scale-105 transition-transform duration-200"
                                         >
-                                            <Trash2 className="h-3 w-3" />
-                                        </Button>
+                                            {nodeBoss.status === "active" ? (
+                                                <CheckCircle className="mr-1 h-3 w-3" />
+                                            ) : nodeBoss.status === "inactive" ? (
+                                                <Clock className="mr-1 h-3 w-3" />
+                                            ) : (
+                                                <Edit className="mr-1 h-3 w-3" />
+                                            )}
+                                            {nodeBoss.status}
+                                        </Badge>
+                                    </div>
+                                    <div className="space-y-2 animate-in fade-in duration-900">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Investment Status</label>
+                                        <Badge
+                                            variant={nodeBoss.is_closed ? "destructive" : "default"}
+                                            className="hover:scale-105 transition-transform duration-200"
+                                        >
+                                            {nodeBoss.is_closed ? <Lock className="mr-1 h-3 w-3" /> : <Unlock className="mr-1 h-3 w-3" />}
+                                            {nodeBoss.is_closed ? "Closed for Investment" : "Open for Investment"}
+                                        </Badge>
+                                    </div>
+                                    <div className="space-y-2 animate-in fade-in duration-1000">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Created</label>
+                                        <div className="flex items-center gap-2 text-gray-900 dark:text-white text-sm sm:text-base">
+                                            <Calendar className="h-4 w-4 text-gray-500" />
+                                            {new Date(nodeBoss.created_at).toLocaleDateString("en-US", {
+                                                year: "numeric",
+                                                month: "long",
+                                                day: "numeric",
+                                            })}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2 animate-in fade-in duration-1100">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Last Updated</label>
+                                        <div className="flex items-center gap-2 text-gray-900 dark:text-white text-sm sm:text-base">
+                                            <Calendar className="h-4 w-4 text-gray-500" />
+                                            {new Date(nodeBoss.updated_at).toLocaleDateString("en-US", {
+                                                year: "numeric",
+                                                month: "long",
+                                                day: "numeric",
+                                            })}
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
-                        ))}
+
+                            {/* Investment Options */}
+                            <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-right duration-700">
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                                        <DollarSign className="h-5 w-5 text-green-600 animate-pulse" />
+                                        Investment Options
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-4 sm:space-y-6">
+                                    <div className="space-y-3">
+                                        <label className="block text-sm font-medium text-gray-600 dark:text-gray-400">Suggested Amounts</label>
+                                        <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                                            {suggestedAmounts.map((amount: number, index: number) => (
+                                                <div
+                                                    key={index}
+                                                    className="flex items-center justify-center p-3 sm:p-4 bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20 border border-green-200 dark:border-green-800 rounded-lg hover:scale-105 transition-all duration-200 animate-in zoom-in"
+                                                    style={{ animationDelay: `${index * 100}ms` }}
+                                                >
+                                                    <span className="text-base sm:text-lg font-semibold text-green-600 dark:text-green-400">
+                                                        ${amount}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                    <div className="pt-4 border-t border-gray-200 dark:border-gray-600 space-y-2 animate-in fade-in duration-1000">
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600 dark:text-gray-400">Total Price:</span>
+                                            <span className="font-medium text-gray-900 dark:text-white">{"$" + nodeBoss.price}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600 dark:text-gray-400">Total Shares:</span>
+                                            <span className="font-medium text-gray-900 dark:text-white">{shares.total}</span>
+                                        </div>
+                                        <div className="flex items-center justify-between text-sm">
+                                            <span className="text-gray-600 dark:text-gray-400">Sold Shares:</span>
+                                            <span className="font-medium text-gray-900 dark:text-white">{soldShares.total}</span>
+                                        </div>
+                                    </div>
+                                </CardContent>
+                            </Card>
+                        </div>
+
+                        {/* Description */}
+                        <Card className="shadow-lg hover:shadow-xl transition-all duration-300 animate-in slide-in-from-bottom duration-700">
+                            <CardHeader>
+                                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
+                                    <Users className="h-5 w-5 text-purple-600 animate-pulse" />
+                                    Description
+                                </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="prose prose-sm sm:prose max-w-none dark:prose-invert">
+                                    <p className="text-gray-900 dark:text-white whitespace-pre-wrap leading-relaxed text-sm sm:text-base">
+                                        {nodeBoss.description}
+                                    </p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        {/* Action Bar */}
+                        <div className="flex flex-col justify-end sm:flex-row gap-3 sm:gap-4 pt-6 border-t border-gray-200 dark:border-gray-600 animate-in slide-in-from-bottom duration-500">
+                            <Link href={route("node-boss.edit", nodeBoss.id)} className="flex-1 sm:flex-none">
+                                <Button className="w-full sm:w-auto hover:scale-105 transition-all duration-200 shadow-lg cursor-pointer">
+                                    <Edit className="mr-2 h-4 w-4" />
+                                    Edit
+                                </Button>
+                            </Link>
+                            <Link href={route("node-boss.index")} className="flex-1 sm:flex-none">
+                                <Button
+                                    variant="outline"
+                                    className="w-full sm:w-auto hover:scale-105 transition-all duration-200 bg-transparent cursor-pointer"
+                                >
+                                    <ArrowLeft className="mr-2 h-4 w-4" />
+                                    Back to List
+                                </Button>
+                            </Link>
+                        </div>
                     </div>
+
                 ) : (
                     <Card className="shadow-lg animate-in fade-in duration-500">
                         <CardContent className="p-8 sm:p-16">
@@ -402,102 +906,59 @@ export default function Index({ auth, nodeBosses, filters }: Props) {
                                 <div className="space-y-2">
                                     <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">No NodeBoss Found</h3>
                                     <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-lg max-w-md mx-auto">
-                                        {hasActiveFilters
-                                            ? "No results match your current filters. Try adjusting your search criteria."
-                                            : "Get started by creating your first NodeBoss investment opportunity."}
+                                        Get started by creating your first NodeBoss investment opportunity.
                                     </p>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center">
-                                    {hasActiveFilters ? (
-                                        <Button
-                                            variant="outline"
-                                            onClick={clearFilters}
-                                            size="lg"
-                                            className="hover:scale-105 transition-transform duration-200 bg-transparent"
-                                        >
-                                            <Filter className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                                            Clear All Filters
+
+                                    <Link href={route("node-boss.create")}>
+                                        <Button size="lg" className="shadow-lg hover:scale-105 transition-transform duration-200">
+                                            <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                                            Create Your First NodeBoss
                                         </Button>
-                                    ) : (
-                                        <Link href={route("node-boss.create")}>
-                                            <Button size="lg" className="shadow-lg hover:scale-105 transition-transform duration-200">
-                                                <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                                                Create Your First NodeBoss
-                                            </Button>
-                                        </Link>
-                                    )}
+                                    </Link>
                                 </div>
                             </div>
                         </CardContent>
                     </Card>
                 )}
 
-                {/* Enhanced Pagination */}
-                {nodeBosses.links && nodeBosses.links.length > 3 && (
-                    <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between pt-6 sm:pt-8 animate-in slide-in-from-bottom duration-500">
-                        {/* Total Results - Left Side */}
-                        <div className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
-                            Showing <span className="font-medium text-gray-900 dark:text-white">{nodeBosses.data.length}</span> of{" "}
-                            <span className="font-medium text-gray-900 dark:text-white">{nodeBosses.total}</span> results
-                        </div>
-
-                        {/* Pagination - Right Side */}
-                        <div className="flex items-center justify-center space-x-1 sm:space-x-2">
-                            {/* Previous Button */}
-                            {nodeBosses.current_page > 1 && (
-                                <Link href={nodeBosses.links[0]?.url || "#"}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
-                                    >
-                                        <ChevronLeft className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    </Button>
-                                </Link>
-                            )}
-
-                            {/* Page Numbers */}
-                            {paginationLinks.map((link, index) => (
-                                <div key={index}>
-                                    {link.page === "..." ? (
-                                        <span className="w-8 h-8 sm:w-10 sm:h-10 flex items-center justify-center text-gray-400 dark:text-gray-500 text-sm">
-                                            ...
-                                        </span>
-                                    ) : (
-                                        <Link href={link.url || "#"}>
-                                            <Button
-                                                variant={link.active ? "default" : "outline"}
-                                                size="sm"
-                                                className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full text-xs sm:text-sm font-medium transition-all duration-200 hover:scale-110 ${link.active
-                                                    ? "bg-blue-600 text-white shadow-lg scale-110 animate-pulse"
-                                                    : link.url
-                                                        ? "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md"
-                                                        : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                                                    }`}
-                                            >
-                                                {link.page}
-                                            </Button>
-                                        </Link>
-                                    )}
-                                </div>
-                            ))}
-
-                            {/* Next Button */}
-                            {nodeBosses.current_page < nodeBosses.last_page && (
-                                <Link href={nodeBosses.links[nodeBosses.links.length - 1]?.url || "#"}>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600 hover:shadow-md transition-all duration-200 hover:scale-110"
-                                    >
-                                        <ChevronRight className="h-3 w-3 sm:h-4 sm:w-4" />
-                                    </Button>
-                                </Link>
-                            )}
-                        </div>
-                    </div>
-                )}
             </div>
+
+            <ShareEditModal
+                share={shareEditModal.share}
+                isOpen={shareEditModal.isOpen}
+                onClose={() => setShareEditModal({ isOpen: false, share: null })}
+                onSuccess={() => router.reload()}
+            />
+
+            <ShareViewModal
+                share={shareViewModal.share}
+                isOpen={shareViewModal.isOpen}
+                onClose={() => setShareViewModal({ isOpen: false, share: null })}
+            />
+
+            <SoldShareEditModal
+                soldShare={soldShareEditModal.soldShare}
+                isOpen={soldShareEditModal.isOpen}
+                onClose={() => setSoldShareEditModal({ isOpen: false, soldShare: null })}
+                onSuccess={() => router.reload()}
+            />
+
+            <SoldShareViewModal
+                soldShare={soldShareViewModal.soldShare}
+                isOpen={soldShareViewModal.isOpen}
+                onClose={() => setSoldShareViewModal({ isOpen: false, soldShare: null })}
+            />
+
+            <DeleteConfirmModal
+                isOpen={deleteModal.isOpen}
+                onClose={() => setDeleteModal({ isOpen: false, type: null, id: null, title: "", message: "" })}
+                onConfirm={handleDeleteConfirm}
+                title={deleteModal.title}
+                message={deleteModal.message}
+                isLoading={isDeleting}
+            />
             <ConfirmationModal
                 isOpen={deleteDialogOpen}
                 onChange={setDeleteDialogOpen}

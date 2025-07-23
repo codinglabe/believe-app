@@ -57,10 +57,16 @@ const navigationItems = [
     icon: Package,
   },
   {
+    name: "Node Boss",
+    href: "/nodeboss/shares",
+    icon: Package,
+  },
+  {
     name: "Change Password",
     href: "/profile/change-password",
     icon: Shield,
   },
+
 ]
 
 export default function ProfileLayout({ children, title, description }: ProfileLayoutProps) {
@@ -220,7 +226,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             {/* Navigation */}
             <Card className="mb-6 sm:mb-8 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
               <CardContent className="p-2 sm:p-2">
-                <div className="grid grid-cols-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4">
                   {navigationItems.map((item) => {
                     const isActive = currentPath === item.href
                     return (

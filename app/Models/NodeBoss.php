@@ -10,7 +10,6 @@ class NodeBoss extends Model
     // Remove explicit property declaration for is_closed; Eloquent manages this dynamically.
 
     protected $fillable = [
-        'uuid',
         'user_id',
         'organization_id',
         'name',
@@ -51,13 +50,6 @@ class NodeBoss extends Model
             } while (self::where('slug', $fullSlug)->exists());
 
             $model->slug = $fullSlug;
-
-            // Generate unique NB- prefix
-            do {
-                $prefix = 'NB-' . mt_rand(100000, 999999);
-            } while (self::where('uuid', $prefix)->exists());
-
-            $model->uuid = $prefix;
         });
     }
 
@@ -76,6 +68,16 @@ class NodeBoss extends Model
     public function purchases()
     {
         return $this->hasMany(Purchase::class);
+    }
+
+    public function nodeshare()
+    {
+        return $this->hasOne(NodeShare::class, 'node_boss_id');
+    }
+
+    public function nodeshares()
+    {
+        return $this->hasMany(NodeShare::class, 'node_boss_id');
     }
 
     public function getFormattedPriceAttribute()
