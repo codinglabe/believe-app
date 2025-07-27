@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('node_shares', function (Blueprint $table) {
-            $table->enum('status', ['open', 'closed'])->default('open')->after('remaining');
-        });
+        if (!Schema::hasColumn('node_shares', 'status')) {
+            Schema::table('node_shares', function (Blueprint $table) {
+                $table->enum('status', ['open', 'closed'])->default('open')->after('remaining');
+            });
+        }
     }
 
     /**
@@ -21,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('node_shares', function (Blueprint $table) {
-            $table->dropColumn("status");
-        });
+        if (Schema::hasColumn('node_shares', 'status')) {
+            Schema::table('node_shares', function (Blueprint $table) {
+                $table->dropColumn('status');
+            });
+        }
     }
 };

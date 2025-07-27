@@ -11,6 +11,7 @@ class NodeSell extends Model
         "user_id",
         "node_boss_id", 
         "node_share_id",
+        "node_referral_id",
         "amount",
         "buyer_name",
         "buyer_email",

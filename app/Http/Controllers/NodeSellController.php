@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\NodeSell;
 use App\Models\NodeBoss;
+use App\Models\NodeReferral;
 use App\Models\NodeShare;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -77,12 +78,11 @@ class NodeSellController extends Controller
             'message' => 'nullable|string|max:1000',
         ]);
 
+        $ref = $request->query('ref'); // get ?ref= from URL
         $user = Auth::user();
-        $nodeBoss = NodeBoss::findOrFail($validated['node_boss_id']);
         $amount = $validated['amount'];
-        $amountInCents = (int) ($amount * 100);
 
-        // Calculate processing fee (2.9% + $0.30)
+        // Stripe fee calculation
         $processingFee = ($amount * 0.029) + 0.30;
         $totalAmount = $amount + $processingFee;
         $totalAmountInCents = (int) ($totalAmount * 100);
@@ -90,14 +90,33 @@ class NodeSellController extends Controller
         try {
             DB::beginTransaction();
 
-            // Get or create appropriate share using the updated logic
-            $nodeShare = $this->getOrCreateAvailableShare($validated['node_boss_id'], $amount);
+            $nodeBoss = NodeBoss::findOrFail($validated['node_boss_id']);
+            $nodeShare = $this->getOrCreateAvailableShare($nodeBoss->id, $amount);
 
-            // Create NodeSell record with pending status
+            $referralId = null;
+
+            // Check referral link if provided
+            if ($ref) {
+                $referral = NodeReferral::where('referral_link', $ref)->first();
+
+                if ($referral) {
+                    // Prevent self referral usage except admin/org
+                    if ($referral->user_id == $user->id && !$request->user()->hasRole(['admin', 'organization'])) {
+                        return redirect()->back()->with('warning', 'You cannot use your own referral link.');
+                    }
+
+                    if ($referral->node_boss_id == $nodeBoss->id) {
+                        $referralId = $referral->id;
+                    }
+                }
+            }
+
+            // Create the node sell record
             $nodeSell = NodeSell::create([
                 'user_id' => $user->id,
-                'node_boss_id' => $validated['node_boss_id'],
+                'node_boss_id' => $nodeBoss->id,
                 'node_share_id' => $nodeShare->id,
+                'node_referral_id' => $referralId, // may be null
                 'amount' => $amount,
                 'buyer_name' => $validated['buyer_name'],
                 'buyer_email' => $validated['buyer_email'],
@@ -109,43 +128,143 @@ class NodeSellController extends Controller
                 'purchase_date' => now(),
             ]);
 
+            // Create or get user’s own referral link (if not exists)
+            NodeReferral::firstOrCreate(
+                ['user_id' => $user->id, 'node_boss_id' => $nodeBoss->id],
+                [
+                    'node_share_id' => $nodeShare->id,
+                    'node_sell_id' => $nodeSell->id,
+                    'status' => 'inactive',
+                    'referral_link' => $user->referral_code ?? Str::slug($user->name) . '-' . rand(1000, 9999),
+                    'parchentage' => 20.00, // default commission %
+                ]
+            );
+
             DB::commit();
 
-            // Create Stripe checkout session
-            $checkoutOptions = [
-                'success_url' => route('node-share.success') . '?session_id={CHECKOUT_SESSION_ID}',
-                'cancel_url' => route('node-share.cancel'),
-                'metadata' => [
-                    'node_sell_id' => $nodeSell->id,
-                    'node_boss_id' => $validated['node_boss_id'],
-                    'node_share_id' => $nodeShare->id,
-                    'share_amount' => $amount,
-                ],
-                'payment_method_types' => ['card'],
-            ];
-
-            // One-time payment for share purchase
+            // Proceed to Stripe checkout with metadata
             $checkout = $user->checkoutCharge(
                 $totalAmountInCents,
                 "Share purchase for {$nodeBoss->name}",
                 1,
-                $checkoutOptions
+                [
+                    'success_url' => route('node-share.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => route('node-share.cancel'),
+                    'metadata' => [
+                        'node_sell_id' => $nodeSell->id,
+                        'node_boss_id' => $nodeBoss->id,
+                        'node_share_id' => $nodeShare->id,
+                        'referral_id' => $referralId, // will be null if no referral used
+                        'share_amount' => $amount,
+                    ],
+                    'payment_method_types' => ['card'],
+                ]
             );
 
             return Inertia::location($checkout->url);
         } catch (\Exception $e) {
             DB::rollBack();
 
-            // Update status to failed if record was created
             if (isset($nodeSell)) {
                 $nodeSell->update(['status' => 'failed']);
             }
 
             return redirect()->back()->withErrors([
-                'payment' => 'Payment processing failed: ' . $e->getMessage()
+                'payment' => 'Payment processing failed: ' . $e->getMessage(),
             ]);
         }
     }
+
+    /**
+     * Handle successful payment
+     */
+    public function success(Request $request)
+    {
+        $sessionId = $request->get('session_id');
+
+        if (!$sessionId) {
+            return redirect()->route('nodeboss.index')->with([
+                'warning' => 'Invalid purchase session'
+            ]);
+        }
+
+        try {
+            DB::beginTransaction();
+
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
+            $nodeSell = NodeSell::with(['user', 'nodeShare', 'nodeBoss'])
+                ->findOrFail($session->metadata->node_sell_id);
+
+            // Update NodeSell with Stripe payment info
+            $nodeSell->update([
+                'transaction_id' => $session->payment_intent,
+                'payment_method' => $session->payment_method_types[0] ?? 'card',
+                'status' => 'completed',
+                'purchase_date' => now(),
+            ]);
+
+            if (!empty($session->metadata->referral_id)) {
+                $nodeSell->update([
+                    'node_referral_id' => $session->metadata->referral_id,
+                ]);
+            }
+
+            // Update NodeShare after purchase
+            $nodeShare = $nodeSell->nodeShare;
+            $this->updateNodeShareAfterPurchase($nodeShare, $nodeSell->amount);
+
+            // Handle referral commission only if referral_id exists and referral user is NOT buyer
+            $referralId = $session->metadata->referral_id;
+            if ($referralId) {
+                $referral = NodeReferral::find($referralId);
+
+                if ($referral && $referral->user_id != $nodeSell->user_id) {
+                    if ($referral->status !== 'active') {
+                        $referral->status = 'active';
+                        $referral->save();
+                    }
+
+                    // ✅ NEW: Check if commission already paid to this referrer for this referred user + node boss
+                    $alreadyRewarded = $referral->user
+                        ->transactions()
+                        ->where('type', 'commission')
+                        ->whereJsonContains('meta->node_boss_id', $nodeSell->node_boss_id)
+                        ->whereJsonContains('meta->referred_user_id', $nodeSell->user_id)
+                        ->exists();
+
+                    if (!$alreadyRewarded) {
+                        // Calculate commission
+                        $commissionPercent = $referral->parchentage ?? 20;
+                        $commissionAmount = ($nodeSell->amount * $commissionPercent) / 100;
+
+                        // Add commission with detailed meta
+                        $referral->user->commissionAdd($commissionAmount, [
+                            'node_sell_id' => $nodeSell->id,
+                            'node_boss_id' => $nodeSell->node_boss_id,
+                            'referral_id' => $referral->id,
+                            'referred_user_id' => $nodeSell->user_id, // 👈 used for one-time check
+                        ]);
+                    }
+                }
+            }
+
+            DB::commit();
+
+            return Inertia::location(route('certificate.show', $nodeSell->id));
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            return redirect()->route('nodeboss.index')->withErrors([
+                'message' => 'Error verifying payment: ' . $e->getMessage()
+            ]);
+        }
+    }
+
+
+
+
+
+
 
     /**
      * Get or create an available share based on the updated logic
@@ -196,50 +315,7 @@ class NodeSellController extends Controller
             ->update(['status' => 'open']);
     }
 
-    /**
-     * Handle successful payment
-     */
-    public function success(Request $request)
-    {
-        $sessionId = $request->get('session_id');
 
-        if (!$sessionId) {
-            return redirect()->route('node-boss.index')->withErrors([
-                'message' => 'Invalid purchase session'
-            ]);
-        }
-
-        try {
-            DB::beginTransaction();
-
-            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            $nodeSell = NodeSell::with(['user', 'nodeShare', 'nodeBoss'])
-                ->findOrFail($session->metadata->node_sell_id);
-
-            // Update NodeSell record with successful payment info
-            $nodeSell->update([
-                'transaction_id' => $session->payment_intent,
-                'payment_method' => $session->payment_method_types[0] ?? 'card',
-                'status' => 'completed',
-                'purchase_date' => now(),
-            ]);
-
-            // Update NodeShare with the new logic
-            $nodeShare = $nodeSell->nodeShare;
-            $this->updateNodeShareAfterPurchase($nodeShare, $nodeSell->amount);
-
-            DB::commit();
-
-            // Redirect to certificate page
-            return redirect()->route('certificate.show', $nodeSell->id);
-        } catch (\Exception $e) {
-            DB::rollBack();
-
-            return redirect()->route('node-boss.index')->withErrors([
-                'message' => 'Error verifying payment: ' . $e->getMessage()
-            ]);
-        }
-    }
 
     /**
      * Update node share after successful purchase
@@ -296,10 +372,18 @@ class NodeSellController extends Controller
         if ($nodeSell->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
             abort(403);
         }
+        $refferalLink = NodeReferral::where('node_boss_id', $nodeSell->node_boss_id)
+            ->where('user_id', $nodeSell->user_id)
+            ->first();
+
+        $fullReferralLink = $refferalLink
+            ? route('nodeboss.index', ['ref' => $refferalLink->referral_link])
+            : null;
 
         return Inertia::render('frontend/nodeboss/certificate', [
             'nodeSell' => $nodeSell,
-            'nodeBoss' => $nodeSell->nodeBoss
+            'nodeBoss' => $nodeSell->nodeBoss,
+            'refferalLink' => $fullReferralLink
         ]);
     }
 

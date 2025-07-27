@@ -31,6 +31,7 @@ use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobsController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
+use App\Http\Controllers\TransactionController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -48,7 +49,7 @@ Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
 Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
 Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');
 
-Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nodeboss');
+Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nodeboss.index');
 
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
@@ -78,8 +79,8 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
 
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+    Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('nodeboss/shares',[NodeShareController::class, 'index'])->name('nodeboss.sahres');
-
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
 });
@@ -206,7 +207,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show');
 });
 
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'verified'])->group(function () {
     // NodeShare routes
     Route::resource('node-shares', NodeShareController::class);
 
@@ -214,6 +215,7 @@ Route::middleware(['auth'])->group(function () {
     Route::resource('node-sells', NodeSellController::class);
 
     // Buy share routes
+
     Route::get('/node-boss/{nodeBoss}/buy', [NodeSellController::class, 'buy'])->name('node-boss.buy');
     Route::post('/node-share/purchase', [NodeSellController::class, 'store'])->name('node-share.store');
 

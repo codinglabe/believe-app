@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
-import { DollarSign, Info, ArrowLeft, Target, TrendingUp, Users, CheckCircle, Clock, Shield } from "lucide-react"
-import { useForm, Link } from "@inertiajs/react"
+import { useEffect, useState } from "react"
+import { DollarSign, Info, Target, CheckCircle, Shield } from "lucide-react"
+import { useForm, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -10,12 +10,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Progress } from "@/components/ui/progress"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import type { NodeBoss } from "@/types/nodeboss"
 import type { Auth } from "@/types"
 import { DataNotFound } from "@/components/data-not-found"
-
+import { useNotification } from "@/components/frontend/notification-provider"
 interface Statistics {
   total_target_amount: number
   total_sold_amount: number
@@ -36,6 +35,7 @@ interface Props {
   nodeBoss: NodeBoss
   statistics: Statistics
   openShares: OpenShare[]
+  isRefOwner: boolean
   auth: Auth
   user: {
     name: string
@@ -43,7 +43,12 @@ interface Props {
   } | null
 }
 
-export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }: Props) {
+export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }: Props) {
+  const { url, props } = usePage();
+  const urlParams = new URL(url, window.location.origin).searchParams;
+  const ref = urlParams.get('ref');
+  const flash = props
+  const { showNotification } = useNotification()
   const suggestedAmounts =
     typeof nodeBoss?.suggested_amounts === "string"
       ? JSON.parse(nodeBoss.suggested_amounts)
@@ -55,6 +60,7 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
     name: user?.name || "",
     email: user?.email || "",
     message: "",
+    ref: ref || ""
   })
   const [isProcessing, setIsProcessing] = useState(false)
 
@@ -65,6 +71,7 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
     buyer_name: user?.name || "",
     buyer_email: user?.email || "",
     message: "",
+    ref: ref || ""
   })
 
   const handleAmountSelect = (amount: number) => {
@@ -73,11 +80,11 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
     setData("amount", amount)
   }
 
-  const handleCustomAmountChange = (value: string) => {
-    setCustomAmount(value)
-    setSelectedAmount(null)
-    setData("amount", Number.parseFloat(value) || 0)
-  }
+  // const handleCustomAmountChange = (value: string) => {
+  //   setCustomAmount(value)
+  //   setSelectedAmount(null)
+  //   setData("amount", Number.parseFloat(value) || 0)
+  // }
 
   const getCurrentAmount = () => {
     return Number(selectedAmount) || Number.parseFloat(customAmount) || 0
@@ -113,7 +120,7 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
     setIsProcessing(true)
 
     // Submit using Inertia
-    post("/node-share/purchase", {
+    post("/node-share/purchase?ref=" + ref, {
       onSuccess: () => {
         // Will redirect to Stripe checkout
       },
@@ -139,15 +146,26 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
   const handleResetForm = () => {
     setSelectedAmount(null)
     setCustomAmount("")
-    setDonorInfo({ name: user?.name || "", email: user?.email || "", message: "" })
+    setDonorInfo({ name: user?.name || "", email: user?.email || "", message: "", ref: ref || "" })
     setData({
       node_boss_id: nodeBoss.id,
       amount: 0,
       buyer_name: user?.name || "",
       buyer_email: user?.email || "",
       message: "",
+      ref: ref || ""
     })
   }
+
+  useEffect(() => {
+    if (flash?.warning || isRefOwner) {
+      // Show warning notification
+      showNotification({
+        type: "warning",
+        message: typeof flash?.warning === "string" ? flash.warning : "You cannot use your own referral link.",
+      })
+    }
+  }, [flash, showNotification, isRefOwner])
 
   const processingFee = getCurrentAmount() * 0.029 + 0.3
   const totalPayment = getCurrentAmount() + processingFee
@@ -167,8 +185,10 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
                     Invest in {nodeBoss.name}
                   </h1>
                   <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-                    Join the future of blockchain infrastructure. Your investment helps build cutting-edge technology that
-                    powers the decentralized world.
+                    Own the Future. Power the World.
+                  </p>
+                  <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
+                    Be part of the largest decentralized data center ever built—by the people, for the people.
                   </p>
                 </div>
               </div>
@@ -189,32 +209,32 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
                 {/* Left Column - Project Info & Statistics */}
                 <div className="lg:col-span-1 space-y-6">
                   {/* Project Overview */}
-                  <Card className="hover:shadow-2xl transition-all duration-300 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700  backdrop-blur-sm animate-in slide-in-from-left duration-500">
+                  <Card className="hover:shadow-2xl p-0 transition-all duration-300 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700  backdrop-blur-sm animate-in slide-in-from-left duration-500">
                     <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
                       <CardTitle className="flex items-center gap-2">
                         <Target className="h-5 w-5" />
                         Project Overview
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="p-6">
+                    <CardContent className="pt-0 pb-4">
                       <div className="space-y-4">
-                        <div>
+                        <div className="flex items-center justify-between">
                           <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{nodeBoss.name}</h3>
-                          <p className="text-gray-600 dark:text-gray-300 text-sm leading-relaxed">{nodeBoss.description}</p>
+                          <div className="flex items-center gap-2">
+                            <Badge
+                              variant="default"
+                              className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            >
+                              <CheckCircle className="mr-1 h-3 w-3" />
+                              {nodeBoss.is_closed ? "Closed" : "Active"}
+                            </Badge>
+                          </div>
+
+                        </div>
+                        <div className="text-sm font-semibold whitespace-pre-wrap">
+                          {nodeBoss.description}
                         </div>
 
-                        <div className="flex items-center gap-2">
-                          <Badge
-                            variant="default"
-                            className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
-                          >
-                            <CheckCircle className="mr-1 h-3 w-3" />
-                            {nodeBoss.is_closed ? "Closed" : "Active"}
-                          </Badge>
-                          <Badge variant="outline" className="text-xs">
-                            {openShares.length} Active Shares
-                          </Badge>
-                        </div>
                       </div>
                     </CardContent>
                   </Card>
@@ -223,7 +243,7 @@ export default function NodeBossIndex({ nodeBoss, statistics, openShares, user }
 
                 {/* Right Column - Investment Form */}
                 <div className="lg:col-span-2">
-                  <Card className="hover:shadow-2xl bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 backdrop-blur-sm animate-in slide-in-from-right duration-500">
+                  <Card className="hover:shadow-2xl p-0 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 backdrop-blur-sm animate-in slide-in-from-right duration-500">
                     <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
                       <CardTitle className="text-2xl flex items-center gap-3">
                         <DollarSign className="h-6 w-6" />

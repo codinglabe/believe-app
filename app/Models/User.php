@@ -9,9 +9,11 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
+
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
@@ -24,6 +26,7 @@ class User extends Authenticatable implements MustVerifyEmail
      */
     protected $fillable = [
         'name',
+        'balance',
         'user_id',
         'slug',
         'email',
@@ -142,6 +145,7 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
 
+<<<<<<< Updated upstream
     public function jobApplications()
     {
         return $this->hasMany(JobApplication::class);
@@ -159,5 +163,80 @@ class User extends Authenticatable implements MustVerifyEmail
             ->first();
 
         return $application ? $application->id : null;
+=======
+
+
+    public function transactions(): HasMany
+    {
+        return $this->hasMany(Transaction::class);
+    }
+
+    protected function recordTransaction(array $data): void
+    {
+        $this->transactions()->create(array_merge([
+            'status' => 'completed',
+            'currency' => 'USD',
+        ], $data));
+    }
+
+    public function addFund(float $amount, string $method = 'wallet', array $meta = []): void
+    {
+        $this->increment('balance', $amount);
+        $this->recordTransaction([
+            'type' => 'deposit',
+            'amount' => $amount,
+            'payment_method' => $method,
+            'meta' => $meta,
+        ]);
+    }
+
+    public function withdrawFund(float $amount, string $method = 'wallet', array $meta = []): bool
+    {
+        if ($this->balance < $amount) {
+            return false;
+        }
+
+        $this->decrement('balance', $amount);
+        $this->recordTransaction([
+            'type' => 'withdrawal',
+            'amount' => $amount,
+            'payment_method' => $method,
+            'meta' => $meta,
+        ]);
+
+        return true;
+    }
+
+    public function depositFund(float $amount, string $method = 'wallet', array $meta = []): void
+    {
+        $this->addFund($amount, $method, $meta);
+    }
+
+    public function refund(float $amount, string $method = 'wallet', array $meta = []): void
+    {
+        $this->increment('balance', $amount);
+        $this->recordTransaction([
+            'type' => 'refund',
+            'amount' => $amount,
+            'payment_method' => $method,
+            'meta' => $meta,
+        ]);
+    }
+
+    public function commissionAdd(float $amount, array $meta = []): void
+    {
+        $this->increment('balance', $amount);
+        $this->recordTransaction([
+            'type' => 'commission',
+            'amount' => $amount,
+            'payment_method' => 'system',
+            'meta' => $meta,
+        ]);
+    }
+
+    public function currentBalance(): float
+    {
+        return $this->balance;
+>>>>>>> Stashed changes
     }
 }

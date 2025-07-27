@@ -1,16 +1,30 @@
 "use client"
-
 import type React from "react"
-import { useState } from 'react';
+import { useState } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { UserIcon, Heart, CreditCard, Package, Settings, Shield, Camera, Calendar, MapPin, Edit3 } from "lucide-react"
+import {
+  UserIcon,
+  Heart,
+  CreditCard,
+  Package,
+  Settings,
+  Shield,
+  Calendar,
+  Edit3,
+  Wallet,
+  Plus,
+  Minus,
+  Eye,
+  EyeOff,
+} from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Badge } from "@/components/frontend/ui/badge"
-import { Link, usePage, Head } from "@inertiajs/react"
-
+import { Input } from "@/components/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Link, usePage } from "@inertiajs/react"
 
 interface ProfileLayoutProps {
   children: React.ReactNode
@@ -31,6 +45,8 @@ interface PageProps {
       favorite_organizations_count?: number
       total_orders?: number
       impact_score?: number
+      referral_link?: string
+      wallet_balance?: number
     }
   }
 }
@@ -62,25 +78,47 @@ const navigationItems = [
     icon: Package,
   },
   {
+    name: "Transactions",
+    href: "/profile/transactions",
+    icon: Wallet,
+  },
+  {
     name: "Change Password",
     href: "/profile/change-password",
     icon: Shield,
   },
-
 ]
 
 export default function ProfileLayout({ children, title, description }: ProfileLayoutProps) {
   const { auth } = usePage<PageProps>().props
   const user = auth.user
-
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(false)
+  const [showBalance, setShowBalance] = useState(false)
+  const [addFundsAmount, setAddFundsAmount] = useState("")
+  const [withdrawAmount, setWithdrawAmount] = useState("")
+  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
+  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(user?.referral_link);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
+    navigator.clipboard.writeText(user?.referral_link || "")
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
+
+  const handleAddFunds = () => {
+    // Handle add funds logic here
+    console.log("Adding funds:", addFundsAmount)
+    setAddFundsAmount("")
+    setIsAddFundsOpen(false)
+  }
+
+  const handleWithdraw = () => {
+    // Handle withdraw logic here
+    console.log("Withdrawing:", withdrawAmount)
+    setWithdrawAmount("")
+    setIsWithdrawOpen(false)
+  }
 
   return (
     <FrontendLayout>
@@ -103,12 +141,9 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                       </AvatarFallback>
                     </Avatar>
                   </div>
-
                   <div className="flex-1 text-center sm:text-left">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 mb-2">
-                      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
-                        {user.name}
-                      </h1>
+                      <h1 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">{user.name}</h1>
                       <Badge
                         variant="secondary"
                         className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 mx-auto sm:mx-0 w-fit"
@@ -122,27 +157,26 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:gap-4 text-xs sm:text-sm text-gray-600 dark:text-gray-500">
                       <div className="flex items-center justify-center sm:justify-start gap-1">
                         <Calendar className="h-4 w-4" />
-                        Joined{" "}{user.joined}
+                        Joined {user.joined}
                       </div>
                     </div>
-                    <div >
+
+                    <div className="mt-4">
                       <small className="mb-2 mt-5">Share Your Referral Link</small>
                       <div className="flex items-center mb-4">
                         <input
                           type="text"
-                          value={user?.referral_link}
+                          value={user?.referral_link || ""}
                           readOnly
                           className="flex-1 px-3 py-2 border rounded bg-gray-100 dark:bg-gray-900 text-gray-700 dark:text-gray-200 "
                         />
-                        <Button onClick={handleCopy}>{copied ? 'Copied!' : 'Copy'}</Button>
+                        <Button onClick={handleCopy}>{copied ? "Copied!" : "Copy"}</Button>
                       </div>
                       <p className="text-gray-600 dark:text-gray-300 text-sm">
                         Invite friends using your referral link. When they register, you'll both receive rewards!
                       </p>
                     </div>
-
                   </div>
-
                   <div className="flex justify-center items-center text-center gap-2 w-full sm:w-auto">
                     <Link href="/profile/edit">
                       <Button variant="outline" className="flex-1 sm:flex-none bg-transparent">
@@ -152,10 +186,101 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     </Link>
                   </div>
                 </div>
-
               </CardContent>
             </Card>
+            {/* Wallet Card */}
+            {/* <Card className="mb-6 sm:mb-8 bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 border-green-200 dark:border-green-700">
+              <CardContent className="pt-4 sm:pt-6">
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="flex items-center gap-4">
+                    <div className="bg-green-100 dark:bg-green-900 p-3 rounded-full">
+                      <Wallet className="h-8 w-8 text-green-600" />
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Wallet Balance</h3>
+                      <div className="flex items-center gap-2">
+                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                          {showBalance ? `$${user.wallet_balance || 0}` : "••••••"}
+                        </div>
+                        <Button variant="ghost" size="sm" onClick={() => setShowBalance(!showBalance)} className="p-1">
+                          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
 
+                  <div className="flex gap-3">
+                    <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
+                      <DialogTrigger asChild>
+                        <Button className="bg-green-600 hover:bg-green-700 flex items-center gap-2">
+                          <Plus className="h-4 w-4" />
+                          Add Funds
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add Funds to Wallet</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Amount</label>
+                            <Input
+                              type="number"
+                              placeholder="Enter amount"
+                              value={addFundsAmount}
+                              onChange={(e) => setAddFundsAmount(e.target.value)}
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={handleAddFunds} className="flex-1">
+                              Add Funds
+                            </Button>
+                            <Button variant="outline" onClick={() => setIsAddFundsOpen(false)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+
+                    <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="flex items-center gap-2 bg-transparent">
+                          <Minus className="h-4 w-4" />
+                          Withdraw
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Withdraw from Wallet</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="text-sm font-medium">Amount</label>
+                            <Input
+                              type="number"
+                              placeholder="Enter amount"
+                              value={withdrawAmount}
+                              onChange={(e) => setWithdrawAmount(e.target.value)}
+                              max={user.wallet_balance || 0}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Available balance: ${user.wallet_balance || 0}</p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button onClick={handleWithdraw} className="flex-1">
+                              Withdraw
+                            </Button>
+                            <Button variant="outline" onClick={() => setIsWithdrawOpen(false)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </div>
+              </CardContent>
+            </Card> */}
             {/* Stats Cards */}
             <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 sm:gap-6 mb-6 sm:mb-8">
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
@@ -173,7 +298,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                   </div>
                 </CardContent>
               </Card>
-
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                 <CardContent className="pt-4 sm:pt-6">
                   <div className="flex items-center justify-between">
@@ -189,7 +313,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                   </div>
                 </CardContent>
               </Card>
-
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                 <CardContent className="pt-4 sm:pt-6">
                   <div className="flex items-center justify-between">
@@ -205,7 +328,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                   </div>
                 </CardContent>
               </Card>
-
               <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                 <CardContent className="pt-4 sm:pt-6">
                   <div className="flex items-center justify-between">
@@ -222,26 +344,27 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 </CardContent>
               </Card>
             </div>
-
             {/* Navigation */}
             <Card className="mb-6 sm:mb-8 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
               <CardContent className="p-2 sm:p-2">
-                <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-7 gap-2 sm:gap-4">
                   {navigationItems.map((item) => {
                     const isActive = currentPath === item.href
                     return (
                       <Link key={item.name} href={item.href}>
                         <div
-                          className={`p-3 rounded-lg border-2 transition-all duration-200 hover:shadow-md ${isActive
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                            : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
-                            }`}
+                          className={`p-3 rounded-lg border-2 transition-all duration-200 hover:shadow-md ${
+                            isActive
+                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                              : "border-gray-200 dark:border-gray-600 hover:border-gray-300 dark:hover:border-gray-500"
+                          }`}
                         >
                           <div className="flex flex-col items-center text-center gap-2">
                             <div>
                               <h3
-                                className={`font-medium text-sm ${isActive ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"
-                                  }`}
+                                className={`font-medium text-sm ${
+                                  isActive ? "text-blue-900 dark:text-blue-100" : "text-gray-900 dark:text-white"
+                                }`}
                               >
                                 {item.name}
                               </h3>
@@ -254,7 +377,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 </div>
               </CardContent>
             </Card>
-
             {/* Page Content */}
             <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
               <CardContent className="pt-4 sm:pt-6">

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\NodeBoss;
+use App\Models\NodeReferral;
 use App\Models\NodeSell;
 use App\Models\NodeShare;
 use Illuminate\Http\Request;
@@ -187,7 +188,7 @@ class NodeBossController extends Controller
     public function frontendIndex(Request $request)
     {
         $nodeBoss = NodeBoss::first();
-
+        $ref = $request->ref;
         if ($nodeBoss) {
             // Get all shares for this NodeBoss
             $shares = NodeShare::where('node_boss_id', $nodeBoss->id)->get();
@@ -212,7 +213,11 @@ class NodeBossController extends Controller
             $openShares = $shares->filter(function ($share) {
                 return $share->status === 'open' && $share->remaining > 0;
             })->values();
-
+            if ($request->user()?->hasRole(['admin', 'organization'])) {
+                $isReferral = true;
+            } else {
+                $isReferral = NodeReferral::where('referral_link', $ref)->where('user_id', Auth::user()?->id)->exists();
+            }
             return Inertia::render('frontend/nodeboss/nodeboss', [
                 'nodeBoss' => $nodeBoss,
                 'openShares' => $openShares,
@@ -223,6 +228,7 @@ class NodeBossController extends Controller
                     'remaining_amount' => $remainingAmount,
                     'progress_percentage' => round($progressPercentage, 2),
                 ],
+                'isRefOwner' => $isReferral,
                 'user' => Auth::user() ? [
                     'name' => Auth::user()->name,
                     'email' => Auth::user()->email,
@@ -240,6 +246,7 @@ class NodeBossController extends Controller
                     'remaining_amount' => 0,
                     'progress_percentage' => round(0, 2),
                 ],
+                'referrelLink' => false,
                 'user' => Auth::user() ? [
                     'name' => Auth::user()->name,
                     'email' => Auth::user()->email,

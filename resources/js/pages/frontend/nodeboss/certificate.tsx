@@ -1,12 +1,12 @@
 "use client"
 
-import { motion } from "framer-motion"
-import { Award, Mail, Share2, Download, ArrowLeft } from "lucide-react"
+import { motion, AnimatePresence } from "framer-motion"
+import { Award, Mail, Share2, Download, ArrowLeft, Check, ClipboardCopy } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Link, router } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { NodeBoss } from "@/types/nodeboss"
-
+import { useState } from "react"
 interface NodeSell {
   id: number
   amount: number
@@ -27,9 +27,18 @@ interface NodeSell {
 interface Props {
   nodeSell: NodeSell
   nodeBoss: NodeBoss
+  refferalLink: string
 }
 
-export default function Certificate({ nodeSell, nodeBoss }: Props) {
+export default function Certificate({ nodeSell, nodeBoss, refferalLink }: Props) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopyReferralLink = () => {
+    navigator.clipboard.writeText(refferalLink).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
   const handleEmailCertificate = () => {
     router.post(
       `/certificate/${nodeSell.id}/email`,
@@ -138,6 +147,42 @@ export default function Certificate({ nodeSell, nodeBoss }: Props) {
                   <p>{formatDate(nodeSell.created_at)}</p>
                 </div>
               </div>
+
+              <div className="text-left mb-4 flex items-center gap-2 sm:mb-0">
+                <p className="font-semibold">Referral:</p>
+                <span className="font-mono text-blue-800 dark:text-blue-200 truncate">
+                  {refferalLink}
+                </span>
+                <span
+                  onClick={handleCopyReferralLink}
+                  className="cursor-pointer text-blue-600 hover:text-blue-800 dark:text-blue-300 dark:hover:text-blue-100 transition duration-200"
+                >
+                  <AnimatePresence mode="wait">
+                    {copied ? (
+                      <motion.span
+                        key="check"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <Check className="w-5 h-5 text-green-500" />
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="copy"
+                        initial={{ scale: 0 }}
+                        animate={{ scale: 1 }}
+                        exit={{ scale: 0 }}
+                        transition={{ duration: 0.2 }}
+                      >
+                        <ClipboardCopy className="w-5 h-5" />
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </span>
+              </div>
+
 
               <div className="border-t border-gray-300 dark:border-gray-700 pt-6 w-full max-w-xl">
                 <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
