@@ -11,10 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('categories', function (Blueprint $table) {
-            //
-            $table->enum('status', ['active', 'inactive'])->default('active');
-        });
+        if (!Schema::hasColumn('categories', 'status')) {
+            Schema::table('categories', function (Blueprint $table) {
+                $table->enum('status', ['active', 'inactive'])->default('active');
+            });
+        }
     }
 
     /**
@@ -22,8 +23,10 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('categories', function (Blueprint $table) {
-            //
-        });
+        if (Schema::hasColumn('categories', 'status')) {
+            Schema::table('categories', function (Blueprint $table) {
+                $table->dropColumn('status');
+            });
+        }
     }
 };
