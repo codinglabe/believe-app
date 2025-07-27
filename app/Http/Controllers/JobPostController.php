@@ -29,15 +29,15 @@ class JobPostController extends Controller
         $search = $request->get('search', '');
         $status = $request->get('status', '');
 
-        $query = JobPost::where("organization_id", $request->user()->id)->with(['position', 'position.category', 'organization'])
+        $query = JobPost::where("organization_id", $request->user()->organization?->id)->with(['position', 'position.category', 'organization'])
             ->orderByDesc('created_at');
 
         if (!empty($search)) {
             $query->where(function ($q) use ($search) {
                 $q->where('title', 'LIKE', '%' . $search . '%')
-                  ->orWhereHas('position', function($q) use ($search) {
-                      $q->where('title', 'LIKE', '%' . $search . '%');
-                  });
+                    ->orWhereHas('position', function ($q) use ($search) {
+                        $q->where('title', 'LIKE', '%' . $search . '%');
+                    });
             });
         }
 
@@ -120,8 +120,9 @@ class JobPostController extends Controller
             'status' => 'required|in:draft,open,closed,filled',
         ]);
 
-        if($request->user()){
-            $validated['organization_id'] = $request->user()->id;
+        if ($request->user()) {
+            $validated['organization_id'] = $request->user()->organization?->id;
+
         }
 
         $validated['date_posted'] = now()->toDateString();
@@ -138,7 +139,7 @@ class JobPostController extends Controller
     public function edit(Request $request, JobPost $jobPost): Response
     {
         // Check if the current user's organization owns this job post
-        if ($jobPost->organization_id !== $request->user()->id) {
+        if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -175,7 +176,7 @@ class JobPostController extends Controller
      */
     public function update(Request $request, JobPost $jobPost)
     {
-        if ($jobPost->organization_id !== $request->user()->id) {
+        if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
         }
 
@@ -207,7 +208,7 @@ class JobPostController extends Controller
      */
     public function destroy(Request $request, JobPost $jobPost)
     {
-        if ($jobPost->organization_id !== $request->user()->id) {
+        if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
         }
 

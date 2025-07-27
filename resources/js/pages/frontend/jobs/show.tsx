@@ -119,7 +119,7 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
             {job.organization?.user?.image && (
               <div className="w-20 h-20 rounded-lg bg-white dark:bg-gray-700 p-2 border dark:border-gray-600 flex items-center justify-center">
                 <img
-                  src={job.organization?.user?.image}
+                  src={'/storage/' + job.organization?.user?.image}
                   alt={`${job.organization.name} logo`}
                   className="max-w-full max-h-full object-contain"
                 />
