@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Textarea } from "@/components/frontend/ui/textarea"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import { Link, router, useForm } from "@inertiajs/react"
 import { useState, useEffect, useCallback } from "react"
 import debounce from "lodash.debounce"

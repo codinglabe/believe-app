@@ -56,6 +56,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "job.posts.read"
     },
     {
+        title: 'Job Applications',
+        href: '/job-applications',
+        icon: LayoutGrid,
+        permission: "job.posts.read"
+    },
+    {
         title: 'Orders',
         href: '/orders',
         icon: Package,

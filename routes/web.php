@@ -27,6 +27,8 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\JobApplicationController;
+use App\Http\Controllers\JobsController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -37,6 +39,12 @@ Route::get('/about', function () {
 Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
+
+Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
+Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
+
+Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
+Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');
 
 Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nodeboss');
 
@@ -129,6 +137,12 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::resource("job-positions", JobPositionController::class)->except(['show'])->middleware('permission:job.positions.read');
 
     Route::resource('job-posts', JobPostController::class)->middleware(['role:organization', 'permission:job.posts.read']);
+
+    // job applications routes
+    Route::resource('job-applications', JobApplicationController::class)->middleware(['role:organization', 'permission:job.posts.read']);
+    Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
+        ->name('job-applications.update-status')
+        ->middleware(['role:organization', 'permission:job.posts.read']);
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);

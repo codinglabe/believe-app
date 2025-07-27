@@ -141,4 +141,23 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->belongsToMany(Organization::class, 'user_favorite_organizations')
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
+
+    public function jobApplications()
+    {
+        return $this->hasMany(JobApplication::class);
+    }
+
+    public function hasAppliedToJob($jobId)
+    {
+        return $this->jobApplications()->where('job_post_id', $jobId)->exists();
+    }
+
+    public function getApplicationId($jobId)
+    {
+        $application = $this->jobApplications()
+            ->where('job_post_id', $jobId)
+            ->first();
+
+        return $application ? $application->id : null;
+    }
 }

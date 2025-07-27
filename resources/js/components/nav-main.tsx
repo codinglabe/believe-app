@@ -57,76 +57,80 @@ export function NavMain({ items = [] }: NavMainProps) {
     return (
         <>
             {items.map((item) => {
-                if ('items' in item) {
-                    // This is a NavGroup
-                    const isExpanded = expandedGroups.has(item.title);
-                    const hasActiveChild = item.items.some(subItem => subItem.href === page.url);
-                    return (
-                        <>
-                            {
-                                can(item?.permission ?? '') ? <SidebarGroup key={item.title} className="px-2 py-0">
-                                    <SidebarMenu>
-                                        <SidebarMenuItem>
-                                            <SidebarMenuButton
-                                                onClick={() => toggleGroup(item.title)}
-                                                isActive={hasActiveChild}
-                                                tooltip={{ children: item.title }}
-                                            >
-                                                <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                                <span>{item.title}</span>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
+    if ('items' in item) {
+        const isExpanded = expandedGroups.has(item.title);
+        const hasActiveChild = item.items.some(subItem => subItem.href === page.url);
+        return (
+            <React.Fragment key={item.title}>
+                {
+                    can(item?.permission ?? '') && (
+                        <SidebarGroup className="px-2 py-0">
+                            <SidebarMenu>
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        onClick={() => toggleGroup(item.title)}
+                                        isActive={hasActiveChild}
+                                        tooltip={{ children: item.title }}
+                                    >
+                                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
+                                        <span>{item.title}</span>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
 
-                                        {isExpanded && (
-                                            <div className="ml-4 space-y-1">
-                                                {item.items.map((subItem) => (
-                                                    can(subItem?.permission ?? '') && <SidebarMenuItem key={subItem.title}>
-                                                        <SidebarMenuButton
-                                                            asChild
-                                                            isActive={subItem.href === page.url}
-                                                            tooltip={{ children: subItem.title }}
-                                                        >
-                                                            <Link href={subItem.href} prefetch>
-                                                                {subItem.icon && <subItem.icon />}
-                                                                <span>{subItem.title}</span>
-                                                            </Link>
-                                                        </SidebarMenuButton>
-                                                    </SidebarMenuItem>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </SidebarMenu>
-                                </SidebarGroup> : <></>
-                            }
-                        </>
-                    );
-                } else {
-                    // This is a NavItem
-                    return (
-                        <>
-                            {
-                                can(item?.permission ?? '') && <SidebarGroup key={item.title} className="px-2 py-0">
-                                    <SidebarMenu>
-                                        <SidebarMenuItem>
-                                            <SidebarMenuButton
-                                                asChild
-                                                isActive={item.href === page.url}
-                                                tooltip={{ children: item.title }}
-                                            >
-                                                <Link href={item.href} prefetch>
-                                                    {item.icon && <item.icon />}
-                                                    <span>{item.title}</span>
-                                                </Link>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
-                                    </SidebarMenu>
-                                </SidebarGroup>
-                            }
-                        </>
-
-                    );
+                                {isExpanded && (
+                                    <div className="ml-4 space-y-1">
+                                        {item.items.map((subItem) => (
+                                            can(subItem?.permission ?? '') && (
+                                                <SidebarMenuItem key={subItem.title}>
+                                                    <SidebarMenuButton
+                                                        asChild
+                                                        isActive={subItem.href === page.url}
+                                                        tooltip={{ children: subItem.title }}
+                                                    >
+                                                        <Link href={subItem.href} prefetch>
+                                                            {subItem.icon && <subItem.icon />}
+                                                            <span>{subItem.title}</span>
+                                                        </Link>
+                                                    </SidebarMenuButton>
+                                                </SidebarMenuItem>
+                                            )
+                                        ))}
+                                    </div>
+                                )}
+                            </SidebarMenu>
+                        </SidebarGroup>
+                    )
                 }
-            })}
+            </React.Fragment>
+        );
+    } else {
+        return (
+            <React.Fragment key={item.title}>
+                {
+                    can(item?.permission ?? '') && (
+                        <SidebarGroup className="px-2 py-0">
+                            <SidebarMenu>
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        isActive={item.href === page.url}
+                                        tooltip={{ children: item.title }}
+                                    >
+                                        <Link href={item.href} prefetch>
+                                            {item.icon && <item.icon />}
+                                            <span>{item.title}</span>
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                            </SidebarMenu>
+                        </SidebarGroup>
+                    )
+                }
+            </React.Fragment>
+        );
+    }
+})}
+
         </>
     );
 }

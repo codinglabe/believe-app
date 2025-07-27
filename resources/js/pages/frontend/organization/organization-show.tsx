@@ -22,30 +22,43 @@ import {
   FileText,
   Building,
   Plus,
+  Clock,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import DonationModal from "@/components/frontend/donation-modal"
 import { Link, router, useForm } from "@inertiajs/react"
 import axios from "axios"
 import { showErrorToast } from '@/lib/toast';
+import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge"
 
 export default function OrganizationPage({ auth, organization, isFav }: { organization: any, isFav: boolean }) {
   const [isFavorite, setIsFavorite] = useState(isFav || false)
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [currentProductPage, setCurrentProductPage] = useState(1)
+  const [currentjobPostsPage, setCurrentjobPostsPage] = useState(1)
   const [cart, setCart] = useState<any[]>([])
   const [showCartModal, setShowCartModal] = useState(false)
   const productsPerPage = 4
+  const jobPostsPerPage = 4
 
   // Calculate pagination for products
-  const totalProducts = organization.products?.length || 0
+  const totalProducts = Array.isArray(organization.products) ? organization.products?.length : 0
   const totalProductPages = Math.ceil(totalProducts / productsPerPage)
   const startProductIndex = (currentProductPage - 1) * productsPerPage
   const endProductIndex = Math.min(startProductIndex + productsPerPage, totalProducts)
-  const currentProducts = organization.products?.slice(startProductIndex, endProductIndex) || []
+    const currentProducts = organization.products?.slice(startProductIndex, endProductIndex) || []
+
+    console.log("Current Products:", organization.job_posts)
+
+const totaljobPosts = organization.job_posts?.length || 0
+const totaljobPostsPages = Math.ceil(totaljobPosts / jobPostsPerPage)
+const startjobPostsIndex = (currentjobPostsPage - 1) * jobPostsPerPage
+const endjobPostsIndex = Math.min(startjobPostsIndex + jobPostsPerPage, totaljobPosts)
+const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjobPostsIndex) || []
+
 
   const { post, processing } = useForm();
 
@@ -176,6 +189,28 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
     }
   };
 
+    const formatCurrency = (amount: number | null, currency: string | null) => {
+    if (!amount || !currency) return 'Not specified';
+
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'No deadline';
+
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
   // Format address
   const fullAddress = `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}`
 
@@ -295,7 +330,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
             {/* Main Content */}
             <div className="lg:col-span-2">
               <Tabs defaultValue="about" className="w-full">
-                <TabsList className="grid w-full grid-cols-5 mb-8">
+                <TabsList className="grid w-full grid-cols-6 mb-8">
                   <TabsTrigger value="about" className="text-xs sm:text-sm">
                     About
                   </TabsTrigger>
@@ -307,6 +342,9 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                   </TabsTrigger>
                   <TabsTrigger value="products" className="text-xs sm:text-sm">
                     Products
+                  </TabsTrigger>
+                  <TabsTrigger value="jobs" className="text-xs sm:text-sm">
+                    Jobs
                   </TabsTrigger>
                   <TabsTrigger value="contact" className="text-xs sm:text-sm">
                     Contact
@@ -534,7 +572,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
 
                 <TabsContent value="products" className="space-y-6">
                   <div className="flex justify-between items-center">
-                    <div>
+                   <div>
                       <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Support Our Cause</h3>
                       <p className="text-gray-600 dark:text-gray-300">
                         Purchase products that support our mission and help us continue our work.
@@ -670,6 +708,101 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           </div>
                         </div>
                       )}
+                    </>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500">No products available at this time.</p>
+                    </div>
+                  )}
+                              </TabsContent>
+
+                <TabsContent value="jobs" className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                    <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Join Our Mission</h3>
+                    <p className="text-gray-600 dark:text-gray-300">
+                        Explore current job openings and become a part of our team. Your skills can help us make a greater impact.
+                    </p>
+                    </div>
+
+                    <Badge variant="secondary" className="text-sm">
+                      {totaljobPosts} Jobs
+                    </Badge>
+                  </div>
+
+                  {totaljobPosts > 0 ? (
+                    <>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+              {currentjobPosts.map((job) => (
+                <Card key={job.id} className="hover:shadow-lg transition-shadow duration-300 h-full flex flex-col">
+                  <CardHeader>
+                    <div className="flex flex-wrap gap-4 md:gap-2 justify-between items-start">
+                      <div>
+                        <CardTitle className="text-xl">{job.title}</CardTitle>
+                        <CardDescription className="mt-1">{organization.name}</CardDescription>
+                      </div>
+                      <div className="flex space-x-2">
+                        <JobTypeBadge type={job.type} />
+                        <LocationTypeBadge type={job.location_type} />
+                        <JobStatusBadge status={job.status} className="ml-auto" />
+                      </div>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="flex-grow">
+                    <p className="line-clamp-3 text-muted-foreground mb-4">{job.description}</p>
+                    <div className="space-y-2">
+                      <div className="flex items-center text-sm">
+                        <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                        <span>{[job.city, job.state, job.country].filter(Boolean).join(', ') || 'Location not specified'}</span>
+                      </div>
+
+                      <div className="flex items-center text-sm">
+                        <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                        <span>{formatCurrency(job.pay_rate, job.currency)}</span>
+                      </div>
+
+                      <div className="flex items-center text-sm">
+                        <Clock className="h-4 w-4 mr-2 text-muted-foreground" />
+                        <span>Apply by: {formatDate(job.application_deadline)}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+
+                  <CardFooter className="flex justify-between items-center">
+                    <Link href={route('jobs.show', job.id)} className="text-primary hover:underline text-sm font-medium">
+                      View details
+                    </Link>
+
+                    {auth?.user?.role === 'user' && job.status === 'open' && (
+                        job.has_applied ? (
+                        <Badge variant="success" className="px-3 py-1">
+                            Already Applied
+                        </Badge>
+                        ) : (
+                        <Link href={route('jobs.apply.show', job.id)}>
+                            <Button size="sm">Apply Now</Button>
+                        </Link>
+                        )
+                    )}
+
+                    {!auth?.user && job.status === 'open' && (
+                        <Link href="/login">
+                        <Button size="sm">Login to Apply</Button>
+                        </Link>
+                    )}
+
+                    {auth?.user && auth.user.role !== 'user' && job.status === 'open' && (
+                        <span className="text-xs text-muted-foreground italic">Applicants only</span>
+                    )}
+
+                    {auth?.user && auth?.user?.role === 'user' && job.status !== 'open' && (
+                        <span className="text-xs text-muted-foreground italic">Not Accepting Applications</span>
+                    )}
+                  </CardFooter>
+                </Card>
+              ))}
+            </div>
                     </>
                   ) : (
                     <div className="text-center py-12">

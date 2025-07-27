@@ -18,19 +18,19 @@ class ClassificationCodeController extends Controller
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-        
+
         $query = ClassificationCode::query();
-        
+
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('classification_code', 'LIKE', "%{$search}%")
                   ->orWhere('description', 'LIKE', "%{$search}%");
             });
         }
-        
+
         $classificationCodes = $query->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
-        
+
         return Inertia::render('classification-codes/index', [
             'classificationCodes' => $classificationCodes,
             'filters' => [

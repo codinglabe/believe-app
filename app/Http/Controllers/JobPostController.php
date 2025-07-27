@@ -18,6 +18,7 @@ class JobPostController extends Controller
         $this->middleware('can:job.posts.edit')->only(['edit', 'update']);
         $this->middleware('can:job.posts.delete')->only(['destroy']);
     }
+
     /**
      * Display a listing of job posts.
      */

@@ -33,6 +33,11 @@ class JobPost extends Model
 
     public function organization()
     {
-        return $this->belongsTo(Organization::class, 'organization_id');
+        return $this->belongsTo(Organization::class, 'organization_id', 'id');
+    }
+
+    public function applications()
+    {
+        return $this->hasMany(JobApplication::class, 'job_post_id');
     }
 }

@@ -112,13 +112,22 @@ class OrganizationController extends Controller
 
     public function show(string $slug)
     {
-        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products'])
+        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products',
+            'jobPosts' => function ($query) {
+                $query->with(['position'])
+                    ->when(auth()->check(), function ($q) {
+                        $q->withExists([
+                            'applications as has_applied' => function ($subQuery) {
+                                $subQuery->where('user_id', auth()->id());
+                            }
+                        ]);
+                    })->whereIn('status', ['open', 'filled', 'closed']);
+            }])
             ->whereHas('user', function ($query) use ($slug) {
                 $query->where('slug', $slug);
             })
             ->where('registration_status', 'approved')
             ->firstOrFail();
-
 
             // dd($organization);
 
