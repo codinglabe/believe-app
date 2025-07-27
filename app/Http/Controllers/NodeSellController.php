@@ -225,26 +225,28 @@ class NodeSellController extends Controller
                     }
 
                     // ✅ NEW: Check if commission already paid to this referrer for this referred user + node boss
-                    $alreadyRewarded = $referral->user
-                        ->transactions()
-                        ->where('type', 'commission')
-                        ->whereJsonContains('meta->node_boss_id', $nodeSell->node_boss_id)
-                        ->whereJsonContains('meta->referred_user_id', $nodeSell->user_id)
-                        ->exists();
+                    // $alreadyRewarded = $referral->user
+                    //     ->transactions()
+                    //     ->where('type', 'commission')
+                    //     ->whereJsonContains('meta->node_boss_id', $nodeSell->node_boss_id)
+                    //     ->whereJsonContains('meta->referred_user_id', $nodeSell->user_id)
+                    //     ->exists();
 
-                    if (!$alreadyRewarded) {
-                        // Calculate commission
-                        $commissionPercent = $referral->parchentage ?? 20;
-                        $commissionAmount = ($nodeSell->amount * $commissionPercent) / 100;
+                    // if (!$alreadyRewarded) {
 
-                        // Add commission with detailed meta
-                        $referral->user->commissionAdd($commissionAmount, [
-                            'node_sell_id' => $nodeSell->id,
-                            'node_boss_id' => $nodeSell->node_boss_id,
-                            'referral_id' => $referral->id,
-                            'referred_user_id' => $nodeSell->user_id, // 👈 used for one-time check
-                        ]);
-                    }
+                    // }
+
+                    // Calculate commission
+                    $commissionPercent = $referral->parchentage ?? 20;
+                    $commissionAmount = ($nodeSell->amount * $commissionPercent) / 100;
+
+                    // Add commission with detailed meta
+                    $referral->user->commissionAdd($commissionAmount, [
+                        'node_sell_id' => $nodeSell->id,
+                        'node_boss_id' => $nodeSell->node_boss_id,
+                        'referral_id' => $referral->id,
+                        'referred_user_id' => $nodeSell->user_id, // 👈 used for one-time check
+                    ]);
                 }
             }
 

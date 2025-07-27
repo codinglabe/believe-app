@@ -1,4 +1,7 @@
 "use client"
+
+import type React from "react"
+
 import { useState } from "react"
 import { Button } from "@/components/frontend/ui/button"
 import {
@@ -26,10 +29,11 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
-import { Link, router, usePage } from "@inertiajs/react"
+import { Link, router, usePage, useForm } from "@inertiajs/react" // Added useForm
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
-import { Input } from "@/components/frontend/ui/input" // Adjusted import path
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/frontend/ui/dialog" // Adjusted import path
+import { Input } from "@/components/frontend/ui/input"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/frontend/ui/dialog"
+import { showSuccessToast, showErrorToast } from "@/lib/toast" // Import toast utilities
 
 // Extending SharedData interface to include wallet_balance
 interface SharedData {
@@ -56,12 +60,27 @@ export default function Navbar() {
   const { auth } = usePage<SharedData>().props
   const [isOpen, setIsOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
+
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
-  const [addFundsAmount, setAddFundsAmount] = useState("")
-  const [withdrawAmount, setWithdrawAmount] = useState("")
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+
+  // Form state for withdrawal using Inertia's useForm
+  const {
+    data: withdrawFormData,
+    setData: setWithdrawFormData,
+    post: postWithdrawal,
+    processing: isWithdrawProcessing,
+    errors: withdrawErrors,
+    reset: resetWithdrawForm,
+  } = useForm({
+    amount: "",
+    paypal_email: "",
+  })
+
+  // Form state for deposit (if needed, currently not integrated with backend)
+  const [addFundsAmount, setAddFundsAmount] = useState("")
 
   const navItems = [
     { name: "Home", href: "/" },
@@ -82,18 +101,31 @@ export default function Navbar() {
   }
 
   const handleDeposit = () => {
-    // Implement your deposit logic here
+    // This is a client-side simulation. For a real application,
+    // you would integrate with a payment gateway here.
     console.log("Depositing:", addFundsAmount)
+    showSuccessToast(`Successfully deposited $${addFundsAmount}`)
     setAddFundsAmount("")
     setIsAddFundsOpen(false)
   }
 
-  const handleWithdraw = () => {
-    // Implement your withdraw logic here
-    console.log("Withdrawing:", withdrawAmount)
-    setWithdrawAmount("")
-    setIsWithdrawOpen(false)
+  const handleWithdraw = (e: React.FormEvent) => {
+    e.preventDefault() // Prevent default form submission
+    postWithdrawal(route("withdrawl.request"), {
+      onSuccess: () => {
+        showSuccessToast("Withdrawal request submitted successfully!")
+        resetWithdrawForm() // Reset form fields
+        setIsWithdrawOpen(false) // Close the modal
+        router.reload({ only: ["auth"] }) // Reload auth prop to update balance
+      },
+      onError: (errors) => {
+        showErrorToast("Failed to submit withdrawal request. Please check the form.")
+        console.error("Withdrawal errors:", errors)
+      },
+    })
   }
+
+  const userBalance = auth?.user?.balance
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -108,6 +140,7 @@ export default function Navbar() {
               CareConnect
             </span>
           </Link>
+
           {/* Desktop Navigation */}
           <div className="hidden md:flex items-center space-x-1">
             {navItems.map((item) => (
@@ -118,6 +151,7 @@ export default function Navbar() {
               </Link>
             ))}
           </div>
+
           {/* Desktop Actions */}
           <div className="hidden md:flex items-center space-x-2">
             <ThemeToggle />
@@ -126,13 +160,18 @@ export default function Navbar() {
                 <Button variant="ghost" size="sm" className="h-9 w-9 px-0">
                   <Bell className="h-4 w-4" />
                 </Button>
+
                 {/* Wallet Dropdown */}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+                    >
                       <Wallet className="h-4 w-4 text-green-600" />
                       <span className="font-medium text-sm">
-                        {showBalance ? `$${auth?.user?.balance || 0}` : "••••••"}
+                        {showBalance ? `$${userBalance.toLocaleString()}` : "••••••"}
                       </span>
                       <Button
                         variant="ghost"
@@ -158,16 +197,17 @@ export default function Navbar() {
                       <div className="flex items-center text-center gap-2">
                         <Wallet className="h-6 w-6 text-green-600" />
                         <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                          {showBalance ? `$${auth?.user?.balance || 0}` : "••••••"}
+                          {showBalance ? `$${userBalance}` : "••••••"}
                         </p>
                       </div>
-
                     </div>
                     <DropdownMenuSeparator />
+                    {/* Deposit Funds Dialog Trigger */}
                     {/* <DropdownMenuItem asChild>
                       <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
                         <DialogTrigger asChild>
-                          <Button variant="destructive" size="sm" className=" gap-2 text-white">
+                          <Button variant="default" className="w-full text-center">
+                            <Plus className="h-4 w-4 mr-2" />
                             <span>Deposit Funds</span>
                           </Button>
                         </DialogTrigger>
@@ -197,46 +237,74 @@ export default function Navbar() {
                         </DialogContent>
                       </Dialog>
                     </DropdownMenuItem> */}
+
+                    {/* Withdraw Funds Dialog Trigger */}
                     <DropdownMenuItem asChild>
                       <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
                         <DialogTrigger asChild>
                           <Button variant="destructive" className="w-full text-white text-center">
+                            <Minus className="h-4 w-4 mr-2" />
                             <span>Withdraw</span>
                           </Button>
                         </DialogTrigger>
                         <DialogContent>
                           <DialogHeader>
-                            <DialogTitle>Withdraw Funds</DialogTitle>
+                            <DialogTitle>Withdraw Funds (PayPal Only)</DialogTitle>
                           </DialogHeader>
-                          <div className="space-y-4">
+                          <form onSubmit={handleWithdraw} className="space-y-4">
                             <div>
                               <label className="text-sm font-medium">Amount</label>
                               <Input
                                 type="number"
                                 placeholder="Enter amount"
-                                value={withdrawAmount}
-                                onChange={(e) => setWithdrawAmount(e.target.value)}
-                                max={auth?.user?.balance || 0}
+                                value={withdrawFormData.amount}
+                                onChange={(e) => setWithdrawFormData("amount", e.target.value)}
+                                max={userBalance}
+                                step="0.01"
+                                min="1"
                               />
+                              {withdrawErrors.amount && (
+                                <p className="text-red-500 text-xs mt-1">{withdrawErrors.amount}</p>
+                              )}
                               <p className="text-xs text-gray-500 mt-1">
-                                Available balance: ${auth?.user?.balance || 0}
+                                Available balance: ${userBalance.toLocaleString()}
                               </p>
                             </div>
+                            <div>
+                              <label className="text-sm font-medium">PayPal Email</label>
+                              <Input
+                                type="email"
+                                placeholder="Enter PayPal email"
+                                value={withdrawFormData.paypal_email}
+                                onChange={(e) => setWithdrawFormData("paypal_email", e.target.value)}
+                              />
+                              {withdrawErrors.paypal_email && (
+                                <p className="text-red-500 text-xs mt-1">{withdrawErrors.paypal_email}</p>
+                              )}
+                            </div>
                             <div className="flex gap-2">
-                              <Button variant="destructive" onClick={handleWithdraw} className="flex-1 text-white">
-                                Withdraw
+                              <Button
+                                type="submit"
+                                variant="destructive"
+                                className="flex-1 text-white"
+                                disabled={isWithdrawProcessing}
+                              >
+                                {isWithdrawProcessing ? "Submitting..." : "Withdraw"}
                               </Button>
-                              <Button variant="outline" onClick={() => setIsWithdrawOpen(false)}>
+                              <Button
+                                variant="outline"
+                                onClick={() => setIsWithdrawOpen(false)}
+                                disabled={isWithdrawProcessing}
+                              >
                                 Cancel
                               </Button>
                             </div>
-                          </div>
+                          </form>
                         </DialogContent>
                       </Dialog>
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -304,6 +372,7 @@ export default function Navbar() {
               </>
             )}
           </div>
+
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-2">
             <ThemeToggle />
@@ -312,6 +381,7 @@ export default function Navbar() {
             </Button>
           </div>
         </div>
+
         {/* Mobile Navigation */}
         <AnimatePresence>
           {isOpen && (
@@ -365,9 +435,10 @@ export default function Navbar() {
                           </Button>
                         </div>
                         <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                          {showBalance ? `$${auth?.user?.balance || 0}` : "••••••"}
+                          {showBalance ? `$${userBalance.toLocaleString()}` : "••••••"}
                         </div>
                         <div className="flex gap-2 mt-2">
+                          {/* Deposit Funds Dialog Trigger (Mobile) */}
                           <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
                             <DialogTrigger asChild>
                               <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700">
@@ -400,6 +471,8 @@ export default function Navbar() {
                               </div>
                             </DialogContent>
                           </Dialog>
+
+                          {/* Withdraw Funds Dialog Trigger (Mobile) */}
                           <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
                             <DialogTrigger asChild>
                               <Button size="sm" variant="outline" className="flex-1 bg-transparent">
@@ -409,31 +482,52 @@ export default function Navbar() {
                             </DialogTrigger>
                             <DialogContent>
                               <DialogHeader>
-                                <DialogTitle>Withdraw Funds</DialogTitle>
+                                <DialogTitle>Withdraw Funds (PayPal Only)</DialogTitle>
                               </DialogHeader>
-                              <div className="space-y-4">
+                              <form onSubmit={handleWithdraw} className="space-y-4">
                                 <div>
                                   <label className="text-sm font-medium">Amount</label>
                                   <Input
                                     type="number"
                                     placeholder="Enter amount"
-                                    value={withdrawAmount}
-                                    onChange={(e) => setWithdrawAmount(e.target.value)}
-                                    max={auth?.user?.balance || 0}
+                                    value={withdrawFormData.amount}
+                                    onChange={(e) => setWithdrawFormData("amount", e.target.value)}
+                                    max={userBalance}
+                                    step="0.01"
+                                    min="1"
                                   />
+                                  {withdrawErrors.amount && (
+                                    <p className="text-red-500 text-xs mt-1">{withdrawErrors.amount}</p>
+                                  )}
                                   <p className="text-xs text-gray-500 mt-1">
-                                    Available balance: ${auth?.user?.balance || 0}
+                                    Available balance: ${userBalance.toLocaleString()}
                                   </p>
                                 </div>
+                                <div>
+                                  <label className="text-sm font-medium">PayPal Email</label>
+                                  <Input
+                                    type="email"
+                                    placeholder="Enter PayPal email"
+                                    value={withdrawFormData.paypal_email}
+                                    onChange={(e) => setWithdrawFormData("paypal_email", e.target.value)}
+                                  />
+                                  {withdrawErrors.paypal_email && (
+                                    <p className="text-red-500 text-xs mt-1">{withdrawErrors.paypal_email}</p>
+                                  )}
+                                </div>
                                 <div className="flex gap-2">
-                                  <Button onClick={handleWithdraw} className="flex-1">
-                                    Withdraw
+                                  <Button type="submit" className="flex-1" disabled={isWithdrawProcessing}>
+                                    {isWithdrawProcessing ? "Submitting..." : "Withdraw"}
                                   </Button>
-                                  <Button variant="outline" onClick={() => setIsWithdrawOpen(false)}>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => setIsWithdrawOpen(false)}
+                                    disabled={isWithdrawProcessing}
+                                  >
                                     Cancel
                                   </Button>
                                 </div>
-                              </div>
+                              </form>
                             </DialogContent>
                           </Dialog>
                         </div>

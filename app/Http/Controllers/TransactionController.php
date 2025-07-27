@@ -10,15 +10,16 @@ class TransactionController extends Controller
 {
     public function index(Request $request)
     {
+        $user = $request->user();
         $query = Transaction::query();
-
+        $query->where('user_id', $user->id);
         // Apply search filter
         if ($request->has('search') && $request->input('search')) {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('transaction_id', 'like', '%' . $search . '%')
-                  ->orWhere('type', 'like', '%' . $search . '%')
-                  ->orWhere('amount', 'like', '%' . $search . '%');
+                    ->orWhere('type', 'like', '%' . $search . '%')
+                    ->orWhere('amount', 'like', '%' . $search . '%');
                 // Add more fields to search if needed
             });
         }
@@ -30,8 +31,9 @@ class TransactionController extends Controller
 
         // Order by latest transactions
         $transactions = $query->orderBy('processed_at', 'desc')
-                              ->paginate(5) // Adjust per_page as needed
-                              ->withQueryString(); // Keep query parameters in pagination links
+        ->latest()
+            ->paginate(5) // Adjust per_page as needed
+            ->withQueryString(); // Keep query parameters in pagination links
 
         return Inertia::render('frontend/user-profile/transactions', [ // Assuming your React component is named TransactionsPage.jsx/tsx
             'transactions' => $transactions,

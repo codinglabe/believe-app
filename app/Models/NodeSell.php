@@ -9,7 +9,7 @@ class NodeSell extends Model
 {
     protected $fillable = [
         "user_id",
-        "node_boss_id", 
+        "node_boss_id",
         "node_share_id",
         "node_referral_id",
         "amount",
@@ -37,7 +37,7 @@ class NodeSell extends Model
     public static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($model) {
             if (!$model->user_id) {
                 $model->user_id = Auth::id();
@@ -54,7 +54,7 @@ class NodeSell extends Model
     {
         return $this->belongsTo(NodeShare::class, 'node_share_id');
     }
-    
+
     public function nodeBoss()
     {
         return $this->belongsTo(NodeBoss::class, 'node_boss_id');
@@ -70,5 +70,10 @@ class NodeSell extends Model
     public function scopePending($query)
     {
         return $query->where('status', self::STATUS_PENDING);
+    }
+
+    public function nodeReferral()
+    {
+        return $this->belongsTo(NodeReferral::class, 'node_referral_id');
     }
 }

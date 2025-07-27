@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\ReferralLinkController;
@@ -14,8 +15,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::delete('settings/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
 
     Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
-    Route::get('/settings/referral', [ReferralLinkController::class, 'edit'])->name('referral.edit');
-
+    Route::get('/settings/settings/referral', [ReferralLinkController::class, 'edit'])->name('referral.edit');
+    Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
+    Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');
     })->name('appearance');

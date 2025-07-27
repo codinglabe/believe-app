@@ -80,6 +80,22 @@ class NodeBoss extends Model
         return $this->hasMany(NodeShare::class, 'node_boss_id');
     }
 
+
+        public function nodeReferrals()
+    {
+        return $this->hasMany(NodeReferral::class);
+    }
+
+    public function shares()
+    {
+        return $this->hasMany(NodeShare::class);
+    }
+
+    public function soldShares()
+    {
+        return $this->hasMany(NodeSell::class);
+    }
+
     public function getFormattedPriceAttribute()
     {
         return number_format((int)$this->price, 2);

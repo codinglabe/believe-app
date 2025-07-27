@@ -2,7 +2,7 @@ import { NavMain } from '@/components/nav-main';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal } from 'lucide-react';
+import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal, Network, HandCoins } from 'lucide-react';
 import AppLogo from './app-logo';
 
 
@@ -68,11 +68,30 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "management.data.read"
     },
     {
-        title: 'Node Boss',
-        href: '/node-boss',
-        icon: AlignEndHorizontal,
-        permission: "node.boss.read"
+        title: 'Node Boss Manage',
+        items: [
+            {
+                title: 'Node Boss',
+                href: '/node-boss',
+                icon: AlignEndHorizontal,
+                permission: "node.boss.read"
+            },
+            {
+                title: 'Node Referral',
+                href: route('node-referral.index'),
+                icon: Network,
+                permission: "node.boss.read"
+            },
+        ],
+        permission: "code.management.read"
     },
+        {
+        title: 'Withdrawals',
+        href: route("withdrawals.index"),
+        icon: HandCoins,
+        permission: "management.data.read"
+    },
+    
     {
         title: 'Codes',
         items: [

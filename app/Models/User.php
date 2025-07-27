@@ -3,7 +3,6 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
-
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -66,7 +65,6 @@ class User extends Authenticatable implements MustVerifyEmail
     protected static function boot()
     {
         parent::boot();
-
         static::creating(function ($user) {
             if (empty($user->referral_code)) {
                 do {
@@ -85,6 +83,11 @@ class User extends Authenticatable implements MustVerifyEmail
     public function organization()
     {
         return $this->hasOne(Organization::class);
+    }
+
+    public function nodeReferrals()
+    {
+        return $this->hasMany(NodeReferral::class);
     }
 
     /**
@@ -118,7 +121,6 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         if ($this->image) {
             Storage::disk("public")->delete($this->image);
-
             $this->forceFill([
                 'image' => null,
             ])->save();
@@ -145,7 +147,6 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
 
-<<<<<<< Updated upstream
     public function jobApplications()
     {
         return $this->hasMany(JobApplication::class);
@@ -163,22 +164,40 @@ class User extends Authenticatable implements MustVerifyEmail
             ->first();
 
         return $application ? $application->id : null;
-=======
-
+    }
 
     public function transactions(): HasMany
     {
         return $this->hasMany(Transaction::class);
     }
 
+    /**
+     * Record a transaction for the user.
+     *
+     * @param array $data
+     * @return void
+     */
     protected function recordTransaction(array $data): void
     {
-        $this->transactions()->create(array_merge([
-            'status' => 'completed',
+        // Merge default values, allowing overrides
+        $defaultData = [
+            'status' => 'completed', // Default status, can be overridden
             'currency' => 'USD',
-        ], $data));
+            'related_id' => null,
+            'related_type' => null,
+            'processed_at' => now(), // Default processed_at
+        ];
+        $this->transactions()->create(array_merge($defaultData, $data));
     }
 
+    /**
+     * Add funds to the user's balance and record a deposit transaction.
+     *
+     * @param float $amount
+     * @param string $method
+     * @param array $meta
+     * @return void
+     */
     public function addFund(float $amount, string $method = 'wallet', array $meta = []): void
     {
         $this->increment('balance', $amount);
@@ -190,28 +209,63 @@ class User extends Authenticatable implements MustVerifyEmail
         ]);
     }
 
-    public function withdrawFund(float $amount, string $method = 'wallet', array $meta = []): bool
-    {
+    /**
+     * Withdraw funds from the user's balance and record a withdrawal transaction.
+     *
+     * @param float $amount
+     * @param string $method
+     * @param array $meta
+     * @param int|null $relatedId
+     * @param string|null $relatedType
+     * @param string $status
+     * @return bool
+     */
+    public function withdrawFund(
+        float $amount,
+        string $method = 'wallet',
+        array $meta = [],
+        ?int $relatedId = null,
+        ?string $relatedType = null,
+        string $status = 'pending' // Default to pending for withdrawals
+    ): bool {
         if ($this->balance < $amount) {
             return false;
         }
-
         $this->decrement('balance', $amount);
         $this->recordTransaction([
             'type' => 'withdrawal',
+            'status' => $status, // Use the provided status
             'amount' => $amount,
             'payment_method' => $method,
             'meta' => $meta,
+            'related_id' => $relatedId,
+            'related_type' => $relatedType,
+            'processed_at' => null, // Set to null initially for pending withdrawals
         ]);
-
         return true;
     }
 
+    /**
+     * Alias for addFund.
+     *
+     * @param float $amount
+     * @param string $method
+     * @param array $meta
+     * @return void
+     */
     public function depositFund(float $amount, string $method = 'wallet', array $meta = []): void
     {
         $this->addFund($amount, $method, $meta);
     }
 
+    /**
+     * Refund funds to the user's balance and record a refund transaction.
+     *
+     * @param float $amount
+     * @param string $method
+     * @param array $meta
+     * @return void
+     */
     public function refund(float $amount, string $method = 'wallet', array $meta = []): void
     {
         $this->increment('balance', $amount);
@@ -223,6 +277,13 @@ class User extends Authenticatable implements MustVerifyEmail
         ]);
     }
 
+    /**
+     * Add commission to the user's balance and record a commission transaction.
+     *
+     * @param float $amount
+     * @param array $meta
+     * @return void
+     */
     public function commissionAdd(float $amount, array $meta = []): void
     {
         $this->increment('balance', $amount);
@@ -234,9 +295,13 @@ class User extends Authenticatable implements MustVerifyEmail
         ]);
     }
 
+    /**
+     * Get the current balance of the user.
+     *
+     * @return float
+     */
     public function currentBalance(): float
     {
-        return $this->balance;
->>>>>>> Stashed changes
+        return (float) $this->balance;
     }
 }

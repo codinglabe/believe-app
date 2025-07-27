@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Str;
 
 class Transaction extends Model
 {
@@ -27,21 +28,52 @@ class Transaction extends Model
         'processed_at' => 'datetime',
     ];
 
-    // Polymorphic relation
+    public const STATUS_PENDING    = 'pending';
+    public const STATUS_COMPLETED = 'completed';
+    public const STATUS_FAILED    = 'failed';
+    public const STATUS_CANCELLED = 'cancelled';
+    public const STATUS_WITHDRAWAL = 'withdrawal';
+    public const STATUS_REFUND    = 'refund';
+    public const STATUS_DEPOSIT   = 'deposit';
+    public const STATUS_REJECTED  = 'rejected';
+
+    public static function statuses(): array
+    {
+        return [
+            self::STATUS_PENDING,
+            self::STATUS_COMPLETED,
+            self::STATUS_FAILED,
+            self::STATUS_CANCELLED,
+            self::STATUS_WITHDRAWAL,
+            self::STATUS_REFUND,
+            self::STATUS_DEPOSIT,
+            self::STATUS_REJECTED,
+        ];
+    }
+
+    // Boot method to hook into the creating event
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($transaction) {
+            // Generate a unique transaction ID if not provided
+            if (empty($transaction->transaction_id)) {
+                $transaction->transaction_id = 'TXN-' . strtoupper(Str::random(10));
+            }
+        });
+    }
+
     public function related(): MorphTo
     {
         return $this->morphTo();
     }
 
-    // Belongs to user
     public function user()
     {
         return $this->belongsTo(User::class);
     }
 
-    /**
-     * Static reusable method to create a transaction.
-     */
     public static function record(array $data): self
     {
         return self::create([
@@ -54,7 +86,7 @@ class Transaction extends Model
             'fee'            => $data['fee'] ?? 0,
             'currency'       => $data['currency'] ?? 'USD',
             'payment_method' => $data['payment_method'] ?? null,
-            'transaction_id' => $data['transaction_id'] ?? null,
+            // 'transaction_id' is now handled automatically in boot()
             'meta'           => $data['meta'] ?? null,
             'processed_at'   => $data['processed_at'] ?? now(),
         ]);

@@ -1,8 +1,10 @@
 <?php
 
+use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\JobPostController;
 use App\Http\Controllers\NodeBossController;
+use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
 use Inertia\Inertia;
@@ -32,6 +34,7 @@ use App\Http\Controllers\JobsController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
+use App\Http\Controllers\WithdrawalController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -80,7 +83,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
-    Route::get('nodeboss/shares',[NodeShareController::class, 'index'])->name('nodeboss.sahres');
+    Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
 });
@@ -205,6 +208,21 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy');
     Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index');
     Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show');
+
+    //node boss referral
+    Route::resource('node-referral', NodeReferralController::class);
+
+    // New Withdrawal resource routes
+    Route::resource('withdrawals', WithdrawalController::class);
+
+    // Custom routes for withdrawal actions
+    Route::post('withdrawals/{withdrawal}/accept', [WithdrawalController::class, 'accept'])->name('withdrawals.accept');
+    Route::post('withdrawals/{withdrawal}/make-payment', [WithdrawalController::class, 'makePayment'])->name('withdrawals.makePayment');
+
+    // Route::prefix('settings')->group(function () {
+    //     Route::get('/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
+    //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
+    // });
 });
 
 Route::middleware(['auth', 'verified'])->group(function () {
@@ -230,6 +248,9 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // User shares
     Route::get('/my-shares', [NodeSellController::class, 'myShares'])->name('my-shares');
+
+    //comission withdrawls
+    Route::post('/withrawl/request', [WithdrawalController::class, 'store'])->name("withdrawl.request");
 });
 
 
