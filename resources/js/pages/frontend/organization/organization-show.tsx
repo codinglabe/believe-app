@@ -806,7 +806,7 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
                     </>
                   ) : (
                     <div className="text-center py-12">
-                      <p className="text-gray-500">No products available at this time.</p>
+                      <p className="text-gray-500">No job posts available at this time.</p>
                     </div>
                   )}
                 </TabsContent>
