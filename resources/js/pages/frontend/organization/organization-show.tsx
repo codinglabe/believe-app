@@ -1,7 +1,6 @@
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useState, useEffect } from "react"
 import { motion } from "framer-motion"
 import {
   Heart,
@@ -33,6 +32,120 @@ import { Link, router, useForm } from "@inertiajs/react"
 import axios from "axios"
 import { showErrorToast } from '@/lib/toast';
 import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge"
+import React, { useEffect, useState } from "react";
+
+// Helper to extract channel ID from a YouTube URL
+function extractYouTubeChannelId(url: string): string | null {
+  // Handles URLs like https://www.youtube.com/channel/UCxxxx, /user/xxxx, /@xxxx
+  if (!url) return null;
+  const channelMatch = url.match(/youtube\.com\/(channel|user|@)([\w-]+)/);
+  if (channelMatch) {
+    if (channelMatch[1] === "channel") return channelMatch[2];
+    if (channelMatch[1] === "user" || channelMatch[1] === "@") return channelMatch[2];
+  }
+  // Try to extract from full URL
+  const idMatch = url.match(/(?:channel\/|user\/|@)([\w-]+)/);
+  return idMatch ? idMatch[1] : null;
+}
+
+function YouTubeChannelVideos({ channelUrl }: { channelUrl: string }) {
+  const [videos, setVideos] = useState<any[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  // Get API key from environment variable
+  // Set VITE_YOUTUBE_API_KEY in your .env file
+  const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY;
+
+  useEffect(() => {
+    if (!channelUrl) return;
+    setLoading(true);
+    setError(null);
+    // First, get the channel ID if it's a username or handle
+    let channelId = null;
+    let username = null;
+    if (channelUrl.includes("/channel/")) {
+      channelId = extractYouTubeChannelId(channelUrl);
+    } else if (channelUrl.includes("/user/")) {
+      username = extractYouTubeChannelId(channelUrl);
+    } else if (channelUrl.includes("/@")) {
+      username = extractYouTubeChannelId(channelUrl);
+    }
+    // If username, resolve to channelId
+    const fetchVideos = async (cid: string) => {
+      // Get uploads playlist ID
+      const channelResp = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${cid}&key=${API_KEY}`
+      );
+      const channelData = await channelResp.json();
+      if (!channelData.items || !channelData.items[0]) {
+        setError("Channel not found.");
+        setLoading(false);
+        return;
+      }
+      const uploadsPlaylistId = channelData.items[0].contentDetails.relatedPlaylists.uploads;
+      // Fetch videos from uploads playlist
+      const playlistResp = await fetch(
+        `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=8&playlistId=${uploadsPlaylistId}&key=${API_KEY}`
+      );
+      const playlistData = await playlistResp.json();
+      setVideos(playlistData.items || []);
+      setLoading(false);
+    };
+    const fetchChannelIdFromUsername = async (uname: string) => {
+      // Try to resolve username or handle to channelId
+      const resp = await fetch(
+        `https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${uname}&key=${API_KEY}`
+      );
+      const data = await resp.json();
+      if (data.items && data.items[0]) {
+        await fetchVideos(data.items[0].id);
+      } else {
+        // Try handle (for @username)
+        const searchResp = await fetch(
+          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${uname}&type=channel&key=${API_KEY}`
+        );
+        const searchData = await searchResp.json();
+        if (searchData.items && searchData.items[0]) {
+          await fetchVideos(searchData.items[0].id.channelId);
+        } else {
+          setError("Channel not found.");
+          setLoading(false);
+        }
+      }
+    };
+    if (channelId) {
+      fetchVideos(channelId);
+    } else if (username) {
+      fetchChannelIdFromUsername(username);
+    } else {
+      setError("Invalid YouTube channel URL.");
+      setLoading(false);
+    }
+  }, [channelUrl]);
+
+  if (!channelUrl) return null;
+  if (loading) return <div>Loading YouTube videos...</div>;
+  if (error) return <div className="text-red-500">{error}</div>;
+  if (!videos.length) return <div>No videos found.</div>;
+  return (
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+      {videos.map((item) => (
+        <div key={item.snippet.resourceId.videoId} className="aspect-w-16 aspect-h-9">
+          <iframe
+            width="100%"
+            height="315"
+            src={`https://www.youtube.com/embed/${item.snippet.resourceId.videoId}`}
+            title={item.snippet.title}
+            frameBorder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen
+          ></iframe>
+          <div className="mt-2 text-sm">{item.snippet.title}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function OrganizationPage({ auth, organization, isFav }: { organization: any, isFav: boolean }) {
   const [isFavorite, setIsFavorite] = useState(isFav || false)
@@ -820,55 +933,70 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
                       <CardTitle className="text-gray-900 dark:text-white text-xl">Social Media</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      {organization.social_accounts && (
-                        <div className="flex flex-col gap-4">
-                          {organization.social_accounts.facebook && (
-                            <a href={organization.social_accounts.facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M22.675 0h-21.35C.595 0 0 .592 0 1.326v21.348C0 23.408.595 24 1.326 24H12.82v-9.294H9.692v-3.622h3.127V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.797.143v3.24l-1.918.001c-1.504 0-1.797.715-1.797 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116C23.406 24 24 23.408 24 22.674V1.326C24 .592 23.406 0 22.675 0"/></svg>
-                              Facebook
-                            </a>
+                      <Tabs defaultValue="links" className="w-full">
+                        <TabsList className="mb-6">
+                          <TabsTrigger value="links">Social Media Links</TabsTrigger>
+                          <TabsTrigger value="videos">Video Media</TabsTrigger>
+                        </TabsList>
+                        <TabsContent value="links">
+                          {organization.social_accounts && (
+                            <div className="flex flex-col gap-4">
+                              {organization.social_accounts.facebook && (
+                                <a href={organization.social_accounts.facebook} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-600 hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M22.675 0h-21.35C.595 0 0 .592 0 1.326v21.348C0 23.408.595 24 1.326 24H12.82v-9.294H9.692v-3.622h3.127V8.413c0-3.1 1.893-4.788 4.659-4.788 1.325 0 2.463.099 2.797.143v3.24l-1.918.001c-1.504 0-1.797.715-1.797 1.763v2.313h3.587l-.467 3.622h-3.12V24h6.116C23.406 24 24 23.408 24 22.674V1.326C24 .592 23.406 0 22.675 0"/></svg>
+                                  Facebook
+                                </a>
+                              )}
+                              {organization.social_accounts.twitter && (
+                                <a href={organization.social_accounts.twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-400 hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557a9.93 9.93 0 0 1-2.828.775 4.932 4.932 0 0 0 2.165-2.724c-.951.564-2.005.974-3.127 1.195a4.92 4.92 0 0 0-8.384 4.482C7.691 8.095 4.066 6.13 1.64 3.161c-.542.929-.856 2.01-.857 3.17 0 2.188 1.115 4.116 2.823 5.247a4.904 4.904 0 0 1-2.229-.616c-.054 2.281 1.581 4.415 3.949 4.89a4.936 4.936 0 0 1-2.224.084c.627 1.956 2.444 3.377 4.6 3.417A9.867 9.867 0 0 1 0 21.543a13.94 13.94 0 0 0 7.548 2.209c9.057 0 14.009-7.496 14.009-13.986 0-.21-.005-.423-.015-.634A9.936 9.936 0 0 0 24 4.557z"/></svg>
+                                  Twitter
+                                </a>
+                              )}
+                              {organization.social_accounts.instagram && (
+                                <a href={organization.social_accounts.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-pink-500 hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608C4.515 2.497 5.782 2.225 7.148 2.163 8.414 2.105 8.794 2.163 12 2.163zm0-2.163C8.741 0 8.332.012 7.052.07 5.771.128 4.659.334 3.678 1.315c-.98.98-1.187 2.092-1.245 3.373C2.012 5.668 2 6.077 2 12c0 5.923.012 6.332.07 7.612.058 1.281.265 2.393 1.245 3.373.98.98 2.092 1.187 3.373 1.245C8.332 23.988 8.741 24 12 24s3.668-.012 4.948-.07c1.281-.058 2.393-.265 3.373-1.245.98-.98 1.187-2.092 1.245-3.373.058-1.28.07-1.689.07-7.612 0-5.923-.012-6.332-.07-7.612-.058-1.281-.265-2.393-1.245-3.373-.98-.98-2.092-1.187-3.373-1.245C15.668.012 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+                                  Instagram
+                                </a>
+                              )}
+                              {organization.social_accounts.youtube && (
+                                <a href={organization.social_accounts.youtube} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-red-600 hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a2.994 2.994 0 0 0-2.112-2.112C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.386.574A2.994 2.994 0 0 0 .502 6.186C0 8.072 0 12 0 12s0 3.928.502 5.814a2.994 2.994 0 0 0 2.112 2.112C4.5 20.5 12 20.5 12 20.5s7.5 0 9.386-.574a2.994 2.994 0 0 0 2.112-2.112C24 15.928 24 12 24 12s0-3.928-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
+                                  YouTube
+                                </a>
+                              )}
+                              {organization.social_accounts.linkedin && (
+                                <a href={organization.social_accounts.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-700 hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.327-.027-3.037-1.849-3.037-1.851 0-2.132 1.445-2.132 2.939v5.667H9.358V9h3.414v1.561h.049c.476-.899 1.637-1.849 3.37-1.849 3.602 0 4.267 2.368 4.267 5.455v6.285zM5.337 7.433a2.062 2.062 0 1 1 0-4.124 2.062 2.062 0 0 1 0 4.124zM7.119 20.452H3.554V9h3.565v11.452zM22.225 0H1.771C.792 0 0 .771 0 1.723v20.549C0 23.229.792 24 1.771 24h20.451C23.2 24 24 23.229 24 22.271V1.723C24 .771 23.2 0 22.225 0z"/></svg>
+                                  LinkedIn
+                                </a>
+                              )}
+                              {organization.social_accounts.tiktok && (
+                                <a href={organization.social_accounts.tiktok} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-black dark:text-white hover:underline text-base">
+                                  <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.75 0h3.375a.375.375 0 0 1 .375.375v3.375a.375.375 0 0 0 .375.375h2.25a.375.375 0 0 1 .375.375v2.25a.375.375 0 0 1-.375.375h-2.25a.375.375 0 0 0-.375.375v9.375a5.25 5.25 0 1 1-5.25-5.25.375.375 0 0 1 .375.375v2.25a.375.375 0 0 1-.375.375 2.625 2.625 0 1 0 2.625 2.625V0z"/></svg>
+                                  TikTok
+                                </a>
+                              )}
+                              {/* If no social accounts, show a message */}
+                              {!organization.social_accounts.facebook &&
+                                !organization.social_accounts.twitter &&
+                                !organization.social_accounts.instagram &&
+                                !organization.social_accounts.youtube &&
+                                !organization.social_accounts.linkedin &&
+                                !organization.social_accounts.tiktok && (
+                                  <span className="text-gray-500">No social media accounts available.</span>
+                              )}
+                            </div>
                           )}
-                          {organization.social_accounts.twitter && (
-                            <a href={organization.social_accounts.twitter} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-400 hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M24 4.557a9.93 9.93 0 0 1-2.828.775 4.932 4.932 0 0 0 2.165-2.724c-.951.564-2.005.974-3.127 1.195a4.92 4.92 0 0 0-8.384 4.482C7.691 8.095 4.066 6.13 1.64 3.161c-.542.929-.856 2.01-.857 3.17 0 2.188 1.115 4.116 2.823 5.247a4.904 4.904 0 0 1-2.229-.616c-.054 2.281 1.581 4.415 3.949 4.89a4.936 4.936 0 0 1-2.224.084c.627 1.956 2.444 3.377 4.6 3.417A9.867 9.867 0 0 1 0 21.543a13.94 13.94 0 0 0 7.548 2.209c9.057 0 14.009-7.496 14.009-13.986 0-.21-.005-.423-.015-.634A9.936 9.936 0 0 0 24 4.557z"/></svg>
-                              Twitter
-                            </a>
+                        </TabsContent>
+                        <TabsContent value="videos">
+                          {organization.social_accounts && organization.social_accounts.youtube ? (
+                            <YouTubeChannelVideos channelUrl={organization.social_accounts.youtube} />
+                          ) : (
+                            <span className="text-gray-500">No YouTube channel set for this organization.</span>
                           )}
-                          {organization.social_accounts.instagram && (
-                            <a href={organization.social_accounts.instagram} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-pink-500 hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 1.366.062 2.633.334 3.608 1.308.974.974 1.246 2.241 1.308 3.608.058 1.266.069 1.646.069 4.85s-.012 3.584-.07 4.85c-.062 1.366-.334 2.633-1.308 3.608-.974.974-2.241 1.246-3.608 1.308-1.266.058-1.646.069-4.85.069s-3.584-.012-4.85-.07c-1.366-.062-2.633-.334-3.608-1.308-.974-.974-1.246-2.241-1.308-3.608C2.175 15.647 2.163 15.267 2.163 12s.012-3.584.07-4.85c.062-1.366.334-2.633 1.308-3.608C4.515 2.497 5.782 2.225 7.148 2.163 8.414 2.105 8.794 2.163 12 2.163zm0-2.163C8.741 0 8.332.012 7.052.07 5.771.128 4.659.334 3.678 1.315c-.98.98-1.187 2.092-1.245 3.373C2.012 5.668 2 6.077 2 12c0 5.923.012 6.332.07 7.612.058 1.281.265 2.393 1.245 3.373.98.98 2.092 1.187 3.373 1.245C8.332 23.988 8.741 24 12 24s3.668-.012 4.948-.07c1.281-.058 2.393-.265 3.373-1.245.98-.98 1.187-2.092 1.245-3.373.058-1.28.07-1.689.07-7.612 0-5.923-.012-6.332-.07-7.612-.058-1.281-.265-2.393-1.245-3.373-.98-.98-2.092-1.187-3.373-1.245C15.668.012 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zm0 10.162a3.999 3.999 0 1 1 0-7.998 3.999 3.999 0 0 1 0 7.998zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
-                              Instagram
-                            </a>
-                          )}
-                          {organization.social_accounts.youtube && (
-                            <a href={organization.social_accounts.youtube} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-red-600 hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M23.498 6.186a2.994 2.994 0 0 0-2.112-2.112C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.386.574A2.994 2.994 0 0 0 .502 6.186C0 8.072 0 12 0 12s0 3.928.502 5.814a2.994 2.994 0 0 0 2.112 2.112C4.5 20.5 12 20.5 12 20.5s7.5 0 9.386-.574a2.994 2.994 0 0 0 2.112-2.112C24 15.928 24 12 24 12s0-3.928-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/></svg>
-                              YouTube
-                            </a>
-                          )}
-                          {organization.social_accounts.linkedin && (
-                            <a href={organization.social_accounts.linkedin} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-blue-700 hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.327-.027-3.037-1.849-3.037-1.851 0-2.132 1.445-2.132 2.939v5.667H9.358V9h3.414v1.561h.049c.476-.899 1.637-1.849 3.37-1.849 3.602 0 4.267 2.368 4.267 5.455v6.285zM5.337 7.433a2.062 2.062 0 1 1 0-4.124 2.062 2.062 0 0 1 0 4.124zM7.119 20.452H3.554V9h3.565v11.452zM22.225 0H1.771C.792 0 0 .771 0 1.723v20.549C0 23.229.792 24 1.771 24h20.451C23.2 24 24 23.229 24 22.271V1.723C24 .771 23.2 0 22.225 0z"/></svg>
-                              LinkedIn
-                            </a>
-                          )}
-                          {organization.social_accounts.tiktok && (
-                            <a href={organization.social_accounts.tiktok} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-black dark:text-white hover:underline">
-                              <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24"><path d="M12.75 0h3.375a.375.375 0 0 1 .375.375v3.375a.375.375 0 0 0 .375.375h2.25a.375.375 0 0 1 .375.375v2.25a.375.375 0 0 1-.375.375h-2.25a.375.375 0 0 0-.375.375v9.375a5.25 5.25 0 1 1-5.25-5.25.375.375 0 0 1 .375.375v2.25a.375.375 0 0 1-.375.375 2.625 2.625 0 1 0 2.625 2.625V0z"/></svg>
-                              TikTok
-                            </a>
-                          )}
-                          {/* If no social accounts, show a message */}
-                          {!organization.social_accounts.facebook &&
-                            !organization.social_accounts.twitter &&
-                            !organization.social_accounts.instagram &&
-                            !organization.social_accounts.youtube &&
-                            !organization.social_accounts.linkedin &&
-                            !organization.social_accounts.tiktok && (
-                              <span className="text-gray-500">No social media accounts available.</span>
-                          )}
-                        </div>
-                      )}
+                        </TabsContent>
+                      </Tabs>
                     </CardContent>
                   </Card>
                 </TabsContent>
