@@ -92,15 +92,6 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
 
   const handlePurchase = async () => {
     const amountToPurchase = getCurrentAmount()
-    if (amountToPurchase <= 0) {
-      alert("Please enter a valid amount")
-      return
-    }
-
-    if (amountToPurchase > statistics.remaining_amount) {
-      alert(`Amount exceeds remaining funds. Maximum available: $${statistics.remaining_amount.toLocaleString()}`)
-      return
-    }
 
     // Update form data
     setData({
@@ -135,12 +126,12 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
   }
 
   const getImpactText = (amount: number) => {
-    if (amount >= 500) return "🚀 Become a major contributor and significantly accelerate project completion!"
-    if (amount >= 250) return "⭐ Make a substantial impact and help reach our funding milestone!"
-    if (amount >= 100) return "💪 Your investment will make a meaningful difference to this project!"
-    if (amount >= 50) return "🎯 Help us get closer to our funding goal with this solid contribution!"
-    if (amount >= 25) return "✨ Every contribution counts and brings us closer to success!"
-    return "🙏 Your support, no matter the size, is truly valuable and appreciated!"
+    if (amount >= 500) return "🚀 You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
+    if (amount >= 250) return "⭐ You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
+    if (amount >= 100) return "💪 You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
+    if (amount >= 50) return "🎯 You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
+    if (amount >= 25) return "✨ You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
+    return "🙏 You’ve become one of the million individuals with a stake in what will be the world’s largest people‑powered data center. By taking this step, you’re not only supporting an ambitious vision—you’re on the path to future earnings as the project grows. Welcome aboard!"
   }
 
   const handleResetForm = () => {
@@ -267,7 +258,6 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
                                   ? "bg-blue-600 hover:bg-blue-700 scale-105 shadow-lg"
                                   : "hover:scale-105 hover:shadow-md "
                                   }`}
-                                disabled={amount > statistics.remaining_amount}
                               >
                                 ${amount}
                               </Button>
@@ -310,16 +300,16 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
                                 </div>
                                 <div className="flex-1">
                                   <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 text-lg">
-                                    Your Investment Impact
+                                    Your Purchase Impact
                                   </h4>
                                   <p className="text-blue-800 dark:text-blue-200">{getImpactText(getCurrentAmount())}</p>
                                   <div className="mt-3 p-3 bg-white/50 rounded-lg">
                                     <p className="text-sm text-blue-700 dark:text-blue-100">
-                                      Your ${getCurrentAmount().toLocaleString()} investment represents{" "}
-                                      <strong>
+                                      Your ${getCurrentAmount().toLocaleString()} purchase
+                                      {/* <strong>
                                         {((getCurrentAmount() / statistics.total_target_amount) * 100).toFixed(2)}%
                                       </strong>{" "}
-                                      of the total project funding goal.
+                                      of the total project funding goal. */}
                                     </p>
                                   </div>
                                 </div>
@@ -420,7 +410,6 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
                             className="flex-1 h-14 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg hover:shadow-xl transition-all duration-200 hover:scale-105"
                             disabled={
                               getCurrentAmount() <= 0 ||
-                              getCurrentAmount() > statistics.remaining_amount ||
                               !donorInfo.name ||
                               !donorInfo.email ||
                               isProcessing ||

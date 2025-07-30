@@ -64,7 +64,6 @@ class NodeSellController extends Controller
         ]);
     }
 
-
     /**
      * Process the share purchase
      */
@@ -94,29 +93,32 @@ class NodeSellController extends Controller
             $nodeShare = $this->getOrCreateAvailableShare($nodeBoss->id, $amount);
 
             $referralId = null;
+            $parentReferralId = null;
 
             // Check referral link if provided
             if ($ref) {
                 $referral = NodeReferral::where('referral_link', $ref)->first();
-
                 if ($referral) {
                     // Prevent self referral usage except admin/org
                     if ($referral->user_id == $user->id && !$request->user()->hasRole(['admin', 'organization'])) {
                         return redirect()->back()->with('warning', 'You cannot use your own referral link.');
                     }
-
                     if ($referral->node_boss_id == $nodeBoss->id) {
                         $referralId = $referral->id;
+                        $parentReferralId = $referral->parent_referral_id; // Track the hierarchy
                     }
                 }
             }
+
+            // Check if this purchase will make the user a Big Boss
+            $willBeBigBoss = $this->checkIfWillBeBigBoss($nodeBoss, $amount);
 
             // Create the node sell record
             $nodeSell = NodeSell::create([
                 'user_id' => $user->id,
                 'node_boss_id' => $nodeBoss->id,
                 'node_share_id' => $nodeShare->id,
-                'node_referral_id' => $referralId, // may be null
+                'node_referral_id' => $referralId,
                 'amount' => $amount,
                 'buyer_name' => $validated['buyer_name'],
                 'buyer_email' => $validated['buyer_email'],
@@ -126,19 +128,8 @@ class NodeSellController extends Controller
                 'transaction_id' => 'temp_' . rand(100000, 999999),
                 'certificate_id' => 'CERT-' . strtoupper(Str::random(8)),
                 'purchase_date' => now(),
+                'is_big_boss' => $willBeBigBoss,
             ]);
-
-            // Create or get user’s own referral link (if not exists)
-            NodeReferral::firstOrCreate(
-                ['user_id' => $user->id, 'node_boss_id' => $nodeBoss->id],
-                [
-                    'node_share_id' => $nodeShare->id,
-                    'node_sell_id' => $nodeSell->id,
-                    'status' => 'inactive',
-                    'referral_link' => $user->referral_code ?? Str::slug($user->name) . '-' . rand(1000, 9999),
-                    'parchentage' => 20.00, // default commission %
-                ]
-            );
 
             DB::commit();
 
@@ -154,21 +145,21 @@ class NodeSellController extends Controller
                         'node_sell_id' => $nodeSell->id,
                         'node_boss_id' => $nodeBoss->id,
                         'node_share_id' => $nodeShare->id,
-                        'referral_id' => $referralId, // will be null if no referral used
+                        'referral_id' => $referralId,
+                        'parent_referral_id' => $parentReferralId,
                         'share_amount' => $amount,
+                        'will_be_big_boss' => $willBeBigBoss ? '1' : '0',
                     ],
-                    'payment_method_types' => ['card'],
+                    'payment_method_types' => ['card', 'afterpay_clearpay'],
                 ]
             );
 
             return Inertia::location($checkout->url);
         } catch (\Exception $e) {
             DB::rollBack();
-
             if (isset($nodeSell)) {
                 $nodeSell->update(['status' => 'failed']);
             }
-
             return redirect()->back()->withErrors([
                 'payment' => 'Payment processing failed: ' . $e->getMessage(),
             ]);
@@ -181,7 +172,6 @@ class NodeSellController extends Controller
     public function success(Request $request)
     {
         $sessionId = $request->get('session_id');
-
         if (!$sessionId) {
             return redirect()->route('nodeboss.index')->with([
                 'warning' => 'Invalid purchase session'
@@ -213,60 +203,133 @@ class NodeSellController extends Controller
             $nodeShare = $nodeSell->nodeShare;
             $this->updateNodeShareAfterPurchase($nodeShare, $nodeSell->amount);
 
-            // Handle referral commission only if referral_id exists and referral user is NOT buyer
-            $referralId = $session->metadata->referral_id;
-            if ($referralId) {
-                $referral = NodeReferral::find($referralId);
+            // Create user's own referral link
+            $this->createUserReferralLink($nodeSell, $session->metadata);
 
-                if ($referral && $referral->user_id != $nodeSell->user_id) {
-                    if ($referral->status !== 'active') {
-                        $referral->status = 'active';
-                        $referral->save();
-                    }
-
-                    // ✅ NEW: Check if commission already paid to this referrer for this referred user + node boss
-                    // $alreadyRewarded = $referral->user
-                    //     ->transactions()
-                    //     ->where('type', 'commission')
-                    //     ->whereJsonContains('meta->node_boss_id', $nodeSell->node_boss_id)
-                    //     ->whereJsonContains('meta->referred_user_id', $nodeSell->user_id)
-                    //     ->exists();
-
-                    // if (!$alreadyRewarded) {
-
-                    // }
-
-                    // Calculate commission
-                    $commissionPercent = $referral->parchentage ?? 20;
-                    $commissionAmount = ($nodeSell->amount * $commissionPercent) / 100;
-
-                    // Add commission with detailed meta
-                    $referral->user->commissionAdd($commissionAmount, [
-                        'node_sell_id' => $nodeSell->id,
-                        'node_boss_id' => $nodeSell->node_boss_id,
-                        'referral_id' => $referral->id,
-                        'referred_user_id' => $nodeSell->user_id, // 👈 used for one-time check
-                    ]);
-                }
-            }
+            // Handle referral commissions
+            $this->handleReferralCommissions($nodeSell, $session->metadata);
 
             DB::commit();
 
             return Inertia::location(route('certificate.show', $nodeSell->id));
         } catch (\Exception $e) {
             DB::rollBack();
-
             return redirect()->route('nodeboss.index')->withErrors([
                 'message' => 'Error verifying payment: ' . $e->getMessage()
             ]);
         }
     }
 
+    /**
+     * Check if the purchase amount will make the user a Big Boss
+     */
+    private function checkIfWillBeBigBoss($nodeBoss, $amount)
+    {
+        // Get total target amount for this NodeBoss
+        $totalTargetAmount = $nodeBoss->price;
 
+        // Check if the purchase amount equals the full target amount
+        return $amount >= $totalTargetAmount;
+    }
 
+    /**
+     * Create user's own referral link after purchase
+     */
+    private function createUserReferralLink($nodeSell, $metadata)
+    {
+        $user = $nodeSell->user;
+        $nodeBoss = $nodeSell->nodeBoss;
 
+        // Determine commission percentage based on Big Boss status
+        $commissionPercentage = $nodeSell->is_big_boss ? 20.00 : 10.00;
 
+        // Get parent referral if exists
+        $parentReferralId = null;
+        if (!empty($metadata->referral_id)) {
+            $parentReferral = NodeReferral::find($metadata->referral_id);
+            if ($parentReferral) {
+                $parentReferralId = $parentReferral->id;
+            }
+        }
 
+        // Create or update user's referral link
+        NodeReferral::updateOrCreate(
+            [
+                'user_id' => $user->id,
+                'node_boss_id' => $nodeBoss->id
+            ],
+            [
+                'node_share_id' => $nodeSell->node_share_id,
+                'node_sell_id' => $nodeSell->id,
+                'parent_referral_id' => $parentReferralId,
+                'status' => 'active',
+                'referral_link' => $user->referral_code ?? Str::slug($user->name) . '-' . rand(1000, 9999),
+                'parchentage' => $commissionPercentage,
+                'is_big_boss' => $nodeSell->is_big_boss,
+                'level' => $parentReferralId ? 2 : 1, // Level 1 for Big Boss, Level 2 for referred users
+            ]
+        );
+    }
+
+    /**
+     * Handle referral commissions for the hierarchy
+     */
+    private function handleReferralCommissions($nodeSell, $metadata)
+    {
+        if (empty($metadata->referral_id)) {
+            return; // No referral used
+        }
+
+        $directReferral = NodeReferral::find($metadata->referral_id);
+        if (!$directReferral || $directReferral->user_id == $nodeSell->user_id) {
+            return; // Invalid referral or self-referral
+        }
+
+        // Activate the referral if not already active
+        if ($directReferral->status !== 'active') {
+            $directReferral->update(['status' => 'active']);
+        }
+
+        // Calculate and pay direct referral commission
+        $directCommissionPercent = $directReferral->parchentage ?? ($directReferral->is_big_boss ? 20 : 10);
+        $directCommissionAmount = ($nodeSell->amount * $directCommissionPercent) / 100;
+
+        // Add commission to direct referrer
+        $directReferral->user->commissionAdd($directCommissionAmount, [
+            'type' => 'direct_referral',
+            'node_sell_id' => $nodeSell->id,
+            'node_boss_id' => $nodeSell->node_boss_id,
+            'referral_id' => $directReferral->id,
+            'referred_user_id' => $nodeSell->user_id,
+            'commission_percentage' => $directCommissionPercent,
+            'level' => 1,
+        ]);
+
+        // Handle Big Boss commission if the direct referrer is not a Big Boss
+        if (!$directReferral->is_big_boss && $directReferral->parent_referral_id) {
+            $bigBossReferral = NodeReferral::find($directReferral->parent_referral_id);
+
+            if ($bigBossReferral && $bigBossReferral->is_big_boss && $bigBossReferral->user_id != $nodeSell->user_id) {
+                // Big Boss gets their commission (20%) minus what was already paid to direct referrer
+                $bigBossCommissionPercent = 20;
+                $bigBossCommissionAmount = ($nodeSell->amount * $bigBossCommissionPercent) / 100;
+
+                // Add commission to Big Boss
+                $bigBossReferral->user->commissionAdd($bigBossCommissionAmount, [
+                    'type' => 'big_boss_override',
+                    'node_sell_id' => $nodeSell->id,
+                    'node_boss_id' => $nodeSell->node_boss_id,
+                    'referral_id' => $bigBossReferral->id,
+                    'direct_referral_id' => $directReferral->id,
+                    'referred_user_id' => $nodeSell->user_id,
+                    'commission_percentage' => $bigBossCommissionPercent,
+                    'level' => 0, // Big Boss level
+                ]);
+            }
+        }
+
+        Log::info("Referral commissions processed for NodeSell ID: {$nodeSell->id}");
+    }
 
     /**
      * Get or create an available share based on the updated logic
@@ -317,8 +380,6 @@ class NodeSellController extends Controller
             ->update(['status' => 'open']);
     }
 
-
-
     /**
      * Update node share after successful purchase
      */
@@ -344,7 +405,6 @@ class NodeSellController extends Controller
     public function cancel(Request $request)
     {
         $sessionId = $request->get('session_id');
-
         if ($sessionId) {
             try {
                 $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
@@ -374,18 +434,20 @@ class NodeSellController extends Controller
         if ($nodeSell->user_id !== Auth::id() && !Auth::user()->hasRole('admin')) {
             abort(403);
         }
+
         $refferalLink = NodeReferral::where('node_boss_id', $nodeSell->node_boss_id)
             ->where('user_id', $nodeSell->user_id)
             ->first();
 
         $fullReferralLink = $refferalLink
-            ? route('nodeboss.index', ['ref' => $refferalLink->referral_link])
+            ? route('nodeboss.index', ['nodeBoss' => $nodeSell->node_boss_id, 'ref' => $refferalLink->referral_link])
             : null;
 
         return Inertia::render('frontend/nodeboss/certificate', [
             'nodeSell' => $nodeSell,
             'nodeBoss' => $nodeSell->nodeBoss,
-            'refferalLink' => $fullReferralLink
+            'refferalLink' => $fullReferralLink,
+            'isBigBoss' => $nodeSell->is_big_boss ?? false,
         ]);
     }
 
@@ -404,7 +466,6 @@ class NodeSellController extends Controller
         try {
             // Here you would send the email with certificate
             // Mail::to($nodeSell->buyer_email)->send(new ShareCertificateMail($nodeSell));
-
             return back()->with('success', 'Certificate sent to your email successfully!');
         } catch (\Exception $e) {
             return back()->withErrors(['email' => 'Failed to send certificate: ' . $e->getMessage()]);
@@ -427,7 +488,6 @@ class NodeSellController extends Controller
             // Generate PDF using a library like DomPDF
             // $pdf = PDF::loadView('certificates.pdf', compact('nodeSell'));
             // return $pdf->download('certificate-' . $nodeSell->certificate_id . '.pdf');
-
             return back()->with('success', 'Certificate download will start shortly!');
         } catch (\Exception $e) {
             return back()->withErrors(['download' => 'Failed to download certificate: ' . $e->getMessage()]);
@@ -440,7 +500,6 @@ class NodeSellController extends Controller
     public function myShares(Request $request)
     {
         $user = Auth::user();
-
         $query = NodeSell::with(['nodeBoss', 'nodeShare'])
             ->where('user_id', $user->id);
 
@@ -464,6 +523,39 @@ class NodeSellController extends Controller
             'shares' => $shares,
             'searchQuery' => $request->input('search', ''),
             'statusFilter' => $request->input('status', ''),
+        ]);
+    }
+
+    /**
+     * Display user's referral dashboard
+     */
+    public function myReferrals(Request $request)
+    {
+        $user = Auth::user();
+
+        // Get user's referral links
+        $referrals = NodeReferral::with(['nodeBoss', 'nodeSells.user'])
+            ->where('user_id', $user->id)
+            ->get();
+
+        // Calculate total commissions earned
+        $totalCommissions = $user->transactions()
+            ->where('type', 'commission')
+            ->sum('amount');
+
+        // Get recent referral activities
+        $recentActivities = NodeSell::with(['user', 'nodeBoss'])
+            ->whereHas('nodeReferral', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            })
+            ->orderBy('created_at', 'desc')
+            ->limit(10)
+            ->get();
+
+        return Inertia::render('frontend/MyReferrals', [
+            'referrals' => $referrals,
+            'totalCommissions' => $totalCommissions,
+            'recentActivities' => $recentActivities,
         ]);
     }
 
