@@ -38,12 +38,14 @@ class Organization extends Model
         'mission',
         'registration_status',
         'has_edited_irs_data',
-        'original_irs_data'
+        'original_irs_data',
+        'social_accounts'
     ];
 
     protected $casts = [
         'original_irs_data' => 'array',
         'has_edited_irs_data' => 'boolean',
+        'social_accounts' => 'array',
     ];
 
     public function user()

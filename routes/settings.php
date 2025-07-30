@@ -24,3 +24,8 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 });
 
 Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
+
+Route::middleware(['auth', 'verified', 'role:organization'])->patch(
+    'settings/social-accounts',
+    [ProfileController::class, 'updateSocialAccounts']
+)->name('profile.social-accounts.update');
