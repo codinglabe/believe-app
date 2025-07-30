@@ -77,4 +77,29 @@ class ProfileController extends Controller
 
         return redirect('/');
     }
+
+
+    public function updateSocialAccounts(Request $request)
+    {
+        $request->validate([
+            'social_accounts' => ['required', 'array'],
+            'social_accounts.youtube' => ['nullable', 'string', 'url'],
+            'social_accounts.facebook' => ['nullable', 'string', 'url'],
+            'social_accounts.instagram' => ['nullable', 'string', 'url'],
+            'social_accounts.twitter' => ['nullable', 'string', 'url'],
+            'social_accounts.linkedin' => ['nullable', 'string', 'url'],
+            'social_accounts.tiktok' => ['nullable', 'string', 'url'],
+        ]);
+
+        $user = $request->user();
+        if ($user->role !== 'organization') {
+            abort(403, 'Unauthorized');
+        }
+
+        $user->organization()->update([
+            'social_accounts' => $request->input('social_accounts'),
+        ]);
+
+        return response()->json(['success' => true]);
+    }
 }
