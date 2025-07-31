@@ -48,6 +48,7 @@ Route::get('/contact', function () {
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
+Route::get('/get-job-positions',[JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
 
 Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
 Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');

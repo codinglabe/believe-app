@@ -17,6 +17,7 @@ import {
 } from "@/components/frontend/ui/pagination";
 import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge";
 import { Badge } from "@/components/frontend/ui/badge";
+import axios from "axios";
 
 interface JobPost {
   id: number;
@@ -51,11 +52,15 @@ interface JobsIndexProps {
       active: boolean;
     }>;
   };
-  filters: {
-    search?: string;
-    location_type?: string;
-    type?: string;
-  };
+    positionCategories: Record<string, string>; // {id: title} pairs
+    positions: Record<string, string>; // {id: title} pairs
+    filters: {
+        search?: string;
+        location_type?: string;
+        type?: string;
+        city?: string;
+        state?: string;
+    };
   auth?: {
     user: {
       role: string;
@@ -63,10 +68,15 @@ interface JobsIndexProps {
   };
 }
 
-export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
+export default function JobsIndex({ jobs, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
-  const [jobType, setJobType] = useState(filters.type || '');
+    const [jobType, setJobType] = useState(filters.type || '');
+     const [city, setCity] = useState(filters.city || '');
+    const [state, setState] = useState(filters.state || '');
+    const [positionCategoryId, setPositionCategoryId] = useState(filters.position_category_id || '');
+const [positionId, setPositionId] = useState(filters.position_id || '');
+const [positions, setPositions] = useState<Array<{id: number, title: string}>>([]);
     const [loading, setLoading] = useState(false);
      const [currentPage, setCurrentPage] = useState(jobs.current_page || 1); // Initialize with current page from server
 
@@ -77,6 +87,10 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
         search,
         location_type: locationType,
         type: jobType,
+        city,
+          state,
+        position_category_id: positionCategoryId,
+            position_id: positionId,
         page: currentPage, // Use currentPage state
       }, {
         preserveState: true,
@@ -86,7 +100,48 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, locationType, jobType, currentPage]); // Add currentPage to dependencies
+  }, [search, locationType, jobType, city, state, positionCategoryId, positionId, currentPage]); // Add currentPage to dependencies
+
+    // Add this effect to load positions when category changes
+// useEffect(() => {
+//     if (positionCategoryId) {
+//         router.get('/get-job-positions', { category_id: positionCategoryId }, {
+//             preserveState: true,
+//             preserveScroll: true,
+//             onSuccess: (page) => {
+//                 setPositions(page.props.positions || []);
+//             },
+//             onError: (error) => {
+//                 console.error('Error fetching positions:', error);
+//                 setPositions([]);
+//             }
+//         });
+//     } else {
+//         setPositions([]);
+//         setPositionId('');
+//     }
+    // }, [positionCategoryId]);
+
+    useEffect(() => {
+    if (positionCategoryId) {
+      axios.get('/get-job-positions', { params: { category_id: positionCategoryId } })
+        .then(response => {
+          // Convert array to {id: title} format
+          const positionsMap = response.data.reduce((acc: Record<string, string>, position: any) => {
+            acc[position.id] = position.title;
+            return acc;
+          }, {});
+          setPositions(positionsMap);
+        })
+        .catch(error => {
+          console.error('Error fetching positions:', error);
+          setPositions({});
+        });
+    } else {
+      setPositions({});
+      setPositionId('');
+    }
+  }, [positionCategoryId]);
 
   const handlePageChange = (newPage: number) => {
     setCurrentPage(newPage);
@@ -117,7 +172,11 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
      const clearFilters = () => {
     setSearch('');
     setLocationType('');
-    setJobType('');
+         setJobType('');
+         setCity('');
+         setPositionCategoryId('');
+    setPositionId('');
+    setState('');
     setCurrentPage(1); // Reset to first page when clearing filters
   };
 
@@ -133,7 +192,7 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
 
         {/* Filters */}
         <div className="mb-8 p-6 rounded-lg bg-card border">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4">
             <div className="md:col-span-2 relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -142,6 +201,49 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
+                      </div>
+
+            {/* Position Category Filter */}
+            <select
+                className="w-full border rounded px-3 py-2 text-sm dark:bg-gray-950"
+                value={positionCategoryId}
+                onChange={(e) => setPositionCategoryId(e.target.value)}
+            >
+                <option value="">All Categories</option>
+                {Object.entries(positionCategories).map(([id, title]) => (
+                    <option key={id} value={id}>{title}</option>
+                ))}
+            </select>
+
+            {/* Position Filter (dependent on category) */}
+            <select
+                className="w-full border rounded px-3 py-2 text-sm dark:bg-gray-950"
+                value={positionId}
+                onChange={(e) => setPositionId(e.target.value)}
+                disabled={!positionCategoryId}
+            >
+                <option value="">{positionCategoryId ? "All Positions" : "Select Category First"}</option>
+                {Object.entries(positions).map(([id, title]) => (
+                    <option key={id} value={id}>{title}</option>
+                ))}
+            </select>
+
+            {/* City Input */}
+            <div className="md:col-span-1">
+            <Input
+                placeholder="City"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+            />
+            </div>
+
+            {/* State Input */}
+            <div className="md:col-span-1">
+            <Input
+                placeholder="State"
+                value={state}
+                onChange={(e) => setState(e.target.value)}
+            />
             </div>
 
             <select
@@ -172,7 +274,7 @@ export default function JobsIndex({ jobs, filters, auth }: JobsIndexProps) {
           <Button
             variant="outline"
             onClick={clearFilters}
-            disabled={!search && !locationType && !jobType}
+            disabled={!search && !locationType && !jobType && !city && !state && !positionCategoryId && !positionId}
             className="flex items-center justify-center gap-2"
           >
             <svg
