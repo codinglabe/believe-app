@@ -112,7 +112,16 @@ class OrganizationController extends Controller
 
     public function show(string $slug)
     {
+<<<<<<< Updated upstream
         $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products', 'events',
+=======
+        //dd( $slug);
+        $organization = Organization::with([
+            'nteeCode',
+            'user',
+            'isFavoritedByUser',
+            'products',
+>>>>>>> Stashed changes
             'jobPosts' => function ($query) {
                 $query->with(['position'])
                     ->when(auth()->check(), function ($q) {
@@ -122,14 +131,15 @@ class OrganizationController extends Controller
                             }
                         ]);
                     })->whereIn('status', ['open', 'filled', 'closed']);
-            }])
+            }
+        ])
             ->whereHas('user', function ($query) use ($slug) {
                 $query->where('slug', $slug);
             })
             ->where('registration_status', 'approved')
             ->firstOrFail();
 
-            // dd($organization);
+        //dd($organization);
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organization,
@@ -178,6 +188,5 @@ class OrganizationController extends Controller
         // return Inertia::render('frontend/organization/organization-show', ['slug' => $organization->slug, 'organization' => $organization]);
 
         return redirect()->route('organizations.show', ['slug' => $org->user->slug]);
-
     }
 }
