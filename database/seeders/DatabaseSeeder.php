@@ -34,10 +34,13 @@ class DatabaseSeeder extends Seeder
             RoleSeeder::class,
             AdminPermissionsSeeder::class,
             permissionsSeeder::class,
+            JobPostsPermisstionSeeder::class,
             assignRole::class,
             AssignRolePermissionToUsersSeeder::class,
             UsernameSeeder::class,
             CategorySeeder::class,
+            ExistingUserReferralGenerate::class,
+            PositionCategoriesAndJobPositionsSeeder::class,
         ]);
     }
 }

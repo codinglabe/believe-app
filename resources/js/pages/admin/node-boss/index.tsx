@@ -19,7 +19,6 @@ import {
     DollarSign,
     Users,
     TrendingUp,
-    Share2,
     ChevronLeft,
     ChevronRight,
     CheckCircle,

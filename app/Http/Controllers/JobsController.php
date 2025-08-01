@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\JobApplication;
+use App\Models\JobPosition;
 use App\Models\JobPost;
+use App\Models\PositionCategory;
 use Illuminate\Container\Attributes\Auth;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -12,7 +14,7 @@ class JobsController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'role:user'])->except(['index', 'show']);
+        $this->middleware(['auth', 'role:user'])->except(['index', 'getJobPositions', 'show']);
     }
 
     public function index(Request $request)
@@ -32,6 +34,20 @@ class JobsController extends Controller
             ->when($request->type, function ($query, $type) {
                 $query->where('type', $type);
             })
+            ->when($request->city, function ($query, $city) {
+                $query->where('city', 'like', "%{$city}%");
+            })
+            ->when($request->state, function ($query, $state) {
+                $query->where('state', 'like', "%{$state}%");
+            })
+            ->when($request->position_category_id, function ($query, $categoryId) {
+                $query->whereHas('position', function ($q) use ($categoryId) {
+                    $q->where('category_id', $categoryId);
+                });
+            })
+            ->when($request->position_id, function ($query, $positionId) {
+                $query->where('position_id', $positionId);
+            })
             ->when(auth()->check(), function ($query) {
                 $query->withExists([
                     'applications as has_applied' => function ($q) {
@@ -43,10 +59,43 @@ class JobsController extends Controller
             ->paginate(12)
             ->withQueryString();
 
+        $positionCategories = PositionCategory::pluck('name', 'id')->toArray();
+
+        // Load positions if category filter is applied
+        $positions = [];
+        if ($request->position_category_id) {
+            $positions = JobPosition::where('category_id', $request->position_category_id)
+                ->pluck('title', 'id')
+                ->toArray();
+        }
+
         return Inertia::render('frontend/jobs/index', [
             'jobs' => $jobs,
-            'filters' => $request->only(['search', 'location_type', 'type']),
+            'positionCategories' => $positionCategories,
+            'positions' => $positions,
+            'filters' => $request->only([
+                'search',
+                'location_type',
+                'type',
+                'city',
+                'state',
+                'position_category_id',
+                'position_id'
+            ]),
         ]);
+    }
+
+    public function getJobPositions(Request $request)
+    {
+        $request->validate([
+            'category_id' => 'required|exists:position_categories,id'
+        ]);
+
+        $positions = JobPosition::where('category_id', $request->category_id)
+            ->orderBy('title')
+            ->get(['id', 'title']);
+
+        return response()->json($positions);
     }
 
     public function show($id)

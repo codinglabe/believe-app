@@ -21,12 +21,13 @@ import {
   Shield,
   Info,
   Tag,
+  ShoppingCart,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { showSuccessToast } from "@/lib/toast"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui/table"
-import { useState } from "react"
+import { useState, useMemo } from "react" // Added useMemo
 import {
   Dialog,
   DialogContent,
@@ -102,8 +103,9 @@ interface HierarchyNode {
   total_earned: number
   status: string // referral link status (active/inactive)
   created_at: string // Added for modal
-  full_referral_url?: string // Added this line
   children: HierarchyNode[]
+  is_direct_buyer_node?: boolean // New flag for direct buyer pseudo-nodes
+  buyer_details?: BuyerDetail // Optional: link to buyer details if it's a direct buyer node
 }
 
 interface Referral {
@@ -171,6 +173,7 @@ export default function ReferralDetailsPage({ referral }: Props) {
       case "failed":
         return "destructive"
       case "canceled":
+        return "outline"
       case "inactive":
         return "outline"
       default:
@@ -217,7 +220,20 @@ export default function ReferralDetailsPage({ referral }: Props) {
   const openUserModal = (user: any) => {
     const userToDisplay = { ...user } // Create a copy to modify
 
-    if (user.id === referral.id) {
+    if (user.is_direct_buyer_node) {
+      // If it's a direct buyer pseudo-node, use its buyer_details
+      userToDisplay.referrer_name = user.buyer_details?.name || "N/A"
+      userToDisplay.referrer_email = user.buyer_details?.email || "N/A"
+      userToDisplay.total_amount_invested = user.buyer_details?.amount_invested
+      userToDisplay.total_earned_for_modal = user.buyer_details?.commission_earned
+      userToDisplay.status = user.buyer_details?.status
+      userToDisplay.is_big_boss = user.buyer_details?.is_big_boss
+      userToDisplay.certificate_id = user.buyer_details?.certificate_id
+      userToDisplay.purchase_date = user.buyer_details?.purchase_date
+      userToDisplay.node_boss_name = referral.node_boss_name // Direct buyers are always for the current node boss
+      userToDisplay.full_referral_url = null // Direct buyers don't have their own referral link in this context
+      userToDisplay.total_sales = null // Not applicable for a single purchase
+    } else if (user.id === referral.id) {
       // This is the current referral being viewed on the page
       userToDisplay.total_earned_for_modal = referral.total_user_commissions_earned // Use the aggregated value
       userToDisplay.referrer_name = referral.referrer_name // Ensure correct name/email for current referral
@@ -249,10 +265,61 @@ export default function ReferralDetailsPage({ referral }: Props) {
     })
   }
 
+  // Memoize the augmented referral tree data
+  const augmentedReferralTreeData = useMemo(() => {
+    if (!referral.referral_tree_data) return null
+
+    const treeCopy = JSON.parse(JSON.stringify(referral.referral_tree_data)) as HierarchyNode
+
+    // Only augment the root node (the current referral being viewed)
+    if (treeCopy.id === referral.id) {
+      const directBuyerNodes: HierarchyNode[] = []
+      const existingChildUserIds = new Set(treeCopy.children.map((child) => child.id))
+
+      referral.buyers.forEach((buyer) => {
+        // If the buyer has user_info and is not already a direct referrer child of this node,
+        // add them as a direct buyer pseudo-node.
+        // This allows showing direct purchases visually, even if the buyer is also a referrer
+        // under a different parent in the hierarchy.
+        if (buyer.user_info?.id && !existingChildUserIds.has(buyer.user_info.id)) {
+          directBuyerNodes.push({
+            id: buyer.user_info.id, // Use user_info.id for consistency, but it's a pseudo-node
+            user_name: buyer.name,
+            user_email: buyer.email,
+            is_big_boss: buyer.is_big_boss,
+            level: treeCopy.level + 1, // Treat them as one level below the current referrer
+            commission_percentage: referral.commission_percentage, // Commission of the link they bought from
+            total_sales: 1, // Represents this single purchase
+            total_earned: buyer.commission_earned, // Commission earned from this specific purchase
+            status: buyer.status, // Status of the purchase
+            created_at: buyer.purchase_date || buyer.sold_at,
+            children: [], // Direct buyers don't have children in this context
+            is_direct_buyer_node: true,
+            buyer_details: buyer, // Store full buyer details for modal
+          })
+        }
+      })
+
+      // Combine actual children (referrers) and direct buyer pseudo-nodes
+      treeCopy.children = [...treeCopy.children, ...directBuyerNodes]
+    }
+
+    return treeCopy
+  }, [referral])
+
   // Function to render a single node and its children recursively
   const renderNode = (node: HierarchyNode) => {
-    const isCurrentReferral = node.id === referral.id
-    const nodeIconColor = node.is_big_boss ? "text-amber-400" : "text-blue-400"
+    const isCurrentReferral = node.id === referral.id && !node.is_direct_buyer_node // Ensure it's the actual current referral, not a pseudo-node
+    const nodeBorderClass = isCurrentReferral
+      ? "border-blue-500"
+      : node.is_direct_buyer_node
+        ? "border-red-500"
+        : "border-gray-700"
+    const nodeIconColor = node.is_big_boss
+      ? "text-amber-400"
+      : node.is_direct_buyer_node
+        ? "text-red-400"
+        : "text-blue-400"
     const nodeTextColor = "text-white" // All text white for contrast on dark background
 
     return (
@@ -266,55 +333,54 @@ export default function ReferralDetailsPage({ referral }: Props) {
         <motion.div
           whileHover={{ scale: 1.05, boxShadow: "0 8px 16px rgba(0,0,0,0.4)" }}
           whileTap={{ scale: 0.95 }}
-          className={`p-3 rounded-lg cursor-pointer flex flex-col items-center gap-1 bg-gray-800 shadow-lg`} // Removed border, increased padding, added shadow
+          className={`p-1 rounded-md border cursor-pointer flex flex-col items-center gap-0.5 ${nodeBorderClass} bg-transparent`}
           onClick={() => openUserModal(node)}
         >
           <Tooltip>
             <TooltipTrigger asChild>
-              {node.is_big_boss ? (
-                <Crown className={`h-6 w-6 ${nodeIconColor}`} /> // Slightly larger icon
+              {node.is_direct_buyer_node ? (
+                <ShoppingCart className={`h-5 w-5 ${nodeIconColor}`} />
+              ) : node.is_big_boss ? (
+                <Crown className={`h-5 w-5 ${nodeIconColor}`} />
               ) : (
-                <User className={`h-6 w-6 ${nodeIconColor}`} /> // Slightly larger icon
+                <User className={`h-5 w-5 ${nodeIconColor}`} />
               )}
             </TooltipTrigger>
             <TooltipContent side="top" className="bg-gray-700 text-white border-gray-600">
-              {node.is_big_boss ? "Big Boss" : "Regular User"}
+              {node.is_direct_buyer_node ? "Direct Buyer" : node.is_big_boss ? "Big Boss" : "Regular User"}
             </TooltipContent>
           </Tooltip>
-          <span className={`font-semibold text-sm ${nodeTextColor}`}>{node.user_name}</span>{" "}
-          {/* Slightly larger text */}
+          <span className={`font-semibold text-xs ${nodeTextColor}`}>{node.user_name}</span>
           <Badge
             variant="outline"
-            className={`text-[0.7rem] px-2 py-0.5 rounded-full ${
-              isCurrentReferral ? "bg-blue-700 text-white border-blue-500" : "bg-gray-700 text-gray-300 border-gray-600"
+            className={`text-[0.6rem] px-1 py-0.5 ${
+              isCurrentReferral
+                ? "bg-blue-700 text-white border-blue-500"
+                : node.is_direct_buyer_node
+                  ? "bg-red-700 text-white border-red-500"
+                  : "bg-gray-700 text-gray-300 border-gray-600"
             }`}
           >
-            {isCurrentReferral ? "Current Referral" : `Level ${node.level}`} {/* More descriptive badge */}
+            {isCurrentReferral ? "Current" : node.is_direct_buyer_node ? "Direct Buyer" : `Level ${node.level}`}
           </Badge>
         </motion.div>
 
         {/* Children */}
         {node.children.length > 0 && (
-          <div className="relative flex justify-center w-full mt-8">
-            {" "}
-            {/* Increased margin-top */}
+          <div className="relative flex justify-center w-full mt-6">
             {/* Vertical line from parent to horizontal line */}
-            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-8 w-0.5 bg-gray-600" />{" "}
-            {/* Thicker, slightly lighter line */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-0.5 bg-gray-700" />
             {/* Horizontal line connecting children */}
-            <div className="absolute top-8 left-0 right-0 h-0.5 bg-gray-600" /> {/* Thicker, slightly lighter line */}
-            <div className="flex justify-center gap-6 mt-8 w-full flex-wrap">
-              {" "}
-              {/* Increased gap, increased margin-top */}
+            <div className="absolute top-6 left-0 right-0 h-0.5 bg-gray-700" />
+
+            <div className="flex justify-center gap-4 mt-6 w-full flex-wrap">
               {node.children.map((child, index) => (
-                <div key={child.id} className="flex flex-col items-center relative">
+                <div
+                  key={child.id + (child.is_direct_buyer_node ? "-direct" : "")}
+                  className="flex flex-col items-center relative"
+                >
                   {/* Vertical line to child with arrow */}
-                  <div className="h-8 w-0.5 bg-gray-600 relative">
-                    {" "}
-                    {/* Thicker, slightly lighter line */}
-                    {/* Arrow at the top of the child's vertical line */}
-                    <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-full w-0 h-0 border-l-[4px] border-r-[4px] border-b-[8px] border-l-transparent border-r-transparent border-b-gray-600" />
-                  </div>
+                  <div className="h-6 w-0.5 bg-gray-700 relative" />
                   {renderNode(child)}
                 </div>
               ))}
@@ -534,15 +600,15 @@ export default function ReferralDetailsPage({ referral }: Props) {
               Referral Hierarchy
             </CardTitle>
             <CardDescription className="text-gray-400">
-              Visual representation of this referral link's position in the **referrer network**. Click on any user to
-              see details.
+              Visual representation of this referral link's position in the **referrer network** and **direct
+              purchases**. Click on any user to see details.
             </CardDescription>
           </CardHeader>
           <CardContent className="p-6 flex flex-col items-center justify-center min-h-[300px] relative">
             <TooltipProvider delayDuration={100}>
-              {referral.referral_tree_data ? (
+              {augmentedReferralTreeData ? (
                 <div className="relative flex flex-col items-center w-full max-w-4xl mx-auto">
-                  {renderNode(referral.referral_tree_data)}
+                  {renderNode(augmentedReferralTreeData)}
                 </div>
               ) : (
                 <p className="text-gray-400 text-center py-8">No hierarchy data available for this referral.</p>
@@ -810,12 +876,14 @@ export default function ReferralDetailsPage({ referral }: Props) {
         <DialogContent className="sm:max-w-[600px] bg-gray-900 text-white border-gray-700">
           <DialogHeader>
             <DialogTitle className="text-white text-2xl flex items-center gap-2">
-              {selectedUser?.is_big_boss ? (
+              {selectedUser?.is_direct_buyer_node ? (
+                <ShoppingCart className="h-6 w-6 text-red-400" />
+              ) : selectedUser?.is_big_boss ? (
                 <Crown className="h-6 w-6 text-amber-400" />
               ) : (
                 <User className="h-6 w-6 text-blue-400" />
               )}
-              {selectedUser?.user_name || selectedUser?.name || "User Details"}
+              {selectedUser?.user_name || selectedUser?.name || selectedUser?.referrer_name || "User Details"}
             </DialogTitle>
             <DialogDescription className="text-gray-400">
               Detailed information about this user in the referral hierarchy.
@@ -827,19 +895,23 @@ export default function ReferralDetailsPage({ referral }: Props) {
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="text-gray-400 col-span-1">Name:</span>
                   <span className="col-span-3 font-medium text-white">
-                    {selectedUser.user_name || selectedUser.name}
+                    {selectedUser.user_name || selectedUser.name || selectedUser.referrer_name}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="text-gray-400 col-span-1">Email:</span>
                   <span className="col-span-3 font-medium text-white">
-                    {selectedUser.user_email || selectedUser.email}
+                    {selectedUser.user_email || selectedUser.email || selectedUser.referrer_email}
                   </span>
                 </div>
                 <div className="grid grid-cols-4 items-center gap-4">
                   <span className="text-gray-400 col-span-1">Type:</span>
                   <span className="col-span-3">
-                    {getReferralTypeBadge(selectedUser.is_big_boss, selectedUser.level || 0)}
+                    {selectedUser.is_direct_buyer_node ? (
+                      <Badge className="bg-red-700 text-white border-red-500">Direct Buyer</Badge>
+                    ) : (
+                      getReferralTypeBadge(selectedUser.is_big_boss, selectedUser.level || 0)
+                    )}
                   </span>
                 </div>
                 {selectedUser.node_boss_name && (
@@ -874,7 +946,7 @@ export default function ReferralDetailsPage({ referral }: Props) {
                     </span>
                   </div>
                 )}
-                {selectedUser.total_sales !== undefined && (
+                {selectedUser.total_sales !== undefined && selectedUser.total_sales !== null && (
                   <div className="grid grid-cols-4 items-center gap-4">
                     <span className="text-gray-400 col-span-1">Total Sales:</span>
                     <span className="col-span-3 font-medium text-white">{selectedUser.total_sales}</span>

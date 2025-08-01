@@ -35,6 +35,7 @@ use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
+use App\Http\Controllers\EventController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -48,6 +49,7 @@ Route::get('/contact', function () {
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
+Route::get('/get-job-positions',[JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
 
 Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
 Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');
@@ -150,6 +152,11 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
         ->name('job-applications.update-status')
         ->middleware(['role:organization', 'permission:job.posts.read']);
+
+    // Events Routes
+    Route::resource('events', EventController::class);
+    Route::get('/events/{event}/update-status', [EventController::class, 'updateStatus'])->name('events.update-status');
+    Route::get('/api/events/dashboard', [EventController::class, 'dashboard'])->name('events.dashboard');
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);

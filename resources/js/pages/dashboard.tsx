@@ -289,6 +289,11 @@ export default function Dashboard({ totalOrg, orgInfo, totalFav }: { totalOrg: n
                                                 Products
                                             </Link>
                                         </TabsTrigger>
+                                        <TabsTrigger value="events" className="text-xs sm:text-sm cursor-pointer">
+                                            <Link href={route("events.index")} className='w-full'>
+                                                Events
+                                            </Link>
+                                        </TabsTrigger>
                                         <TabsTrigger value="social" className="text-xs sm:text-sm cursor-pointer">
                                             Social Media
                                         </TabsTrigger>

@@ -157,3 +157,7 @@
         @apply bg-background text-foreground;
     }
 }
+
+.max-w-max  {
+    width: max-content !important;
+}

@@ -22,6 +22,7 @@ import {
   Building,
   Plus,
   Clock,
+  Users,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -443,7 +444,7 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
             {/* Main Content */}
             <div className="lg:col-span-2">
               <Tabs defaultValue="about" className="w-full">
-                <TabsList className="grid w-full grid-cols-7 mb-8">
+                <TabsList className="grid w-full grid-cols-8 mb-8">
                   <TabsTrigger value="about" className="text-xs sm:text-sm">
                     About
                   </TabsTrigger>
@@ -458,6 +459,9 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
                   </TabsTrigger>
                   <TabsTrigger value="jobs" className="text-xs sm:text-sm">
                     Jobs
+                  </TabsTrigger>
+                  <TabsTrigger value="events" className="text-xs sm:text-sm">
+                    Events
                   </TabsTrigger>
                   <TabsTrigger value="social" className="text-xs sm:text-sm">
                     Social Media
@@ -923,6 +927,124 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
                   ) : (
                     <div className="text-center py-12">
                       <p className="text-gray-500">No job posts available at this time.</p>
+                    </div>
+                  )}
+                </TabsContent>
+
+                <TabsContent value="events" className="space-y-6">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="text-xl font-semibold text-gray-900 dark:text-white">Events</h3>
+                      <p className="text-gray-600 dark:text-gray-300">
+                        Join us at our upcoming events and be part of our mission to make a difference.
+                      </p>
+                    </div>
+                    <Badge variant="secondary" className="text-sm">
+                      {organization.events?.length || 0} Events
+                    </Badge>
+                  </div>
+
+                  {organization.events && organization.events.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {organization.events.map((event: any) => (
+                        <Card key={event.id} className="hover:shadow-lg transition-shadow duration-300 h-full flex flex-col">
+                          <div className="relative overflow-hidden">
+                            <img
+                              src={event.poster_image ? '/storage/' + event.poster_image : "/placeholder.svg"}
+                              alt={event.name}
+                              width={400}
+                              height={200}
+                              className="w-full h-48 object-cover"
+                            />
+                            <Badge 
+                              variant="secondary" 
+                              className={`absolute top-2 right-2 ${
+                                event.status === 'upcoming' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
+                                event.status === 'ongoing' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
+                                event.status === 'completed' ? 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' :
+                                'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
+                              }`}
+                            >
+                              {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                            </Badge>
+                          </div>
+                          
+                          <CardHeader>
+                            <CardTitle className="text-xl">{event.name}</CardTitle>
+                            <CardDescription className="mt-1">
+                              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                                <Calendar className="h-4 w-4" />
+                                <span>
+                                  {new Date(event.start_date).toLocaleDateString('en-US', {
+                                    weekday: 'long',
+                                    year: 'numeric',
+                                    month: 'long',
+                                    day: 'numeric'
+                                  })}
+                                </span>
+                              </div>
+                            </CardDescription>
+                          </CardHeader>
+
+                          <CardContent className="flex-grow">
+                            <p className="line-clamp-3 text-muted-foreground mb-4">{event.description}</p>
+                            <div className="space-y-2">
+                              <div className="flex items-center text-sm">
+                                <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
+                                <span>{event.location || event.full_address || 'Location TBD'}</span>
+                              </div>
+
+                              {event.registration_fee > 0 && (
+                                <div className="flex items-center text-sm">
+                                  <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
+                                  <span>Registration Fee: ${event.registration_fee}</span>
+                                </div>
+                              )}
+
+                              {event.max_participants && (
+                                <div className="flex items-center text-sm">
+                                  <Users className="h-4 w-4 mr-2 text-muted-foreground" />
+                                  <span>Max Participants: {event.max_participants}</span>
+                                </div>
+                              )}
+                            </div>
+                          </CardContent>
+
+                          <CardFooter className="flex justify-between items-center">
+                            {/* <Link href={route('events.show', event.id)} className="text-primary hover:underline text-sm font-medium">
+                              View details
+                            </Link> */}
+
+                            {event.status === 'upcoming' && (
+                              <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
+                                Register Now
+                              </Button>
+                            )}
+
+                            {event.status === 'ongoing' && (
+                              <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                                Happening Now
+                              </Badge>
+                            )}
+
+                            {event.status === 'completed' && (
+                              <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
+                                Completed
+                              </Badge>
+                            )}
+
+                            {event.status === 'cancelled' && (
+                              <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+                                Cancelled
+                              </Badge>
+                            )}
+                          </CardFooter>
+                        </Card>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-12">
+                      <p className="text-gray-500">No events available at this time.</p>
                     </div>
                   )}
                 </TabsContent>
