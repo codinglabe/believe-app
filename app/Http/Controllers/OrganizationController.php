@@ -112,7 +112,7 @@ class OrganizationController extends Controller
 
     public function show(string $slug)
     {
-        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products',
+        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products', 'events',
             'jobPosts' => function ($query) {
                 $query->with(['position'])
                     ->when(auth()->check(), function ($q) {

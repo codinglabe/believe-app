@@ -103,4 +103,9 @@ class Organization extends Model
     {
         return $this->hasMany(JobPost::class, 'organization_id', 'id');
     }
+
+    public function events()
+    {
+        return $this->hasMany(Event::class, 'organization_id');
+    }
 }
