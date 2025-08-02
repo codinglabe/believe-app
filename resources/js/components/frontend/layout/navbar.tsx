@@ -86,6 +86,7 @@ export default function Navbar() {
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
     { name: "Marketplace", href: "/marketplace" },
+    { name: "Events", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
     { name: "Node Boss", href: "/nodeboss" },

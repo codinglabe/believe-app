@@ -1011,9 +1011,9 @@ const currentjobPosts = organization.job_posts?.slice(startjobPostsIndex, endjob
                           </CardContent>
 
                           <CardFooter className="flex justify-between items-center">
-                            {/* <Link href={route('events.show', event.id)} className="text-primary hover:underline text-sm font-medium">
+                            <Link href={route('viewEvent', event.id)} className="text-primary hover:underline text-sm font-medium">
                               View details
-                            </Link> */}
+                            </Link>
 
                             {event.status === 'upcoming' && (
                               <Button size="sm" className="bg-blue-600 hover:bg-blue-700">

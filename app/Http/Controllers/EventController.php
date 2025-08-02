@@ -9,6 +9,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class EventController extends Controller
 {
@@ -234,5 +235,36 @@ class EventController extends Controller
         $event->update(['status' => $request->status]);
 
         return response()->json(['message' => 'Event status updated successfully!']);
+    }
+
+
+
+
+    
+    public function alleventsPage(Request $request): Response
+    {
+        $search = $request->input('search');
+        $status = $request->input('status');
+
+        $events = Event::query()
+            ->when($search, function ($query, $search) {
+                $query->where('name', 'like', '%' . $search . '%');
+            })->when($status, function ($query, $status) {
+                $query->where('status', $status);
+            })->get();
+
+        return Inertia::render('frontend/events', [
+            'events'           => $events,
+            'search'             => $search,
+        ]);
+
+    }
+
+    public function viewEvent(string $id): Response
+    {
+        $event = Event::with('organization')->findOrFail($id);
+        return Inertia::render('frontend/view-event', [
+            'event' => $event,
+        ]);
     }
 }
