@@ -112,16 +112,12 @@ class OrganizationController extends Controller
 
     public function show(string $slug)
     {
-<<<<<<< Updated upstream
-        $organization = Organization::with(['nteeCode', 'user', 'isFavoritedByUser','products', 'events',
-=======
-        //dd( $slug);
         $organization = Organization::with([
             'nteeCode',
             'user',
             'isFavoritedByUser',
             'products',
->>>>>>> Stashed changes
+            'events',
             'jobPosts' => function ($query) {
                 $query->with(['position'])
                     ->when(auth()->check(), function ($q) {
