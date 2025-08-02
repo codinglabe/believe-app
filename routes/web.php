@@ -63,6 +63,10 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 
+/* events */
+Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
+Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
+
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
