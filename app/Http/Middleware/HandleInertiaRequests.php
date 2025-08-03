@@ -73,7 +73,8 @@ class HandleInertiaRequests extends Middleware
                         'joined' => $user->created_at->format('F Y'),
                     ] : null,
                 ] : null,
-                'permissions' => $permissions
+                'permissions' => $permissions,
+                'roles' => $user?->roles?->pluck('name')->toArray() ?? [],
             ],
             'ziggy' => fn(): array => [
                 ...(new Ziggy)->toArray(),

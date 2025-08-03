@@ -98,6 +98,13 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
     return Inertia::render('frontend/profile');
 });
 
+
+Route::prefix("chat")->middleware(['auth', 'verified', 'role:organization'])->name("chat.")->group(function () {
+    Route::get("/", function () {
+        return Inertia::render('chat/index');
+    });
+});
+
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 

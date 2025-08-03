@@ -13,7 +13,8 @@ export interface BreadcrumbItem {
 export interface NavGroup {
     title: string;
     items: NavItem[];
-    permission?: string
+    permission?: string,
+    role?: string,
 }
 
 export interface NavItem {
@@ -22,6 +23,7 @@ export interface NavItem {
     icon?: LucideIcon | null;
     isActive?: boolean;
     permission?: string | Array;
+    role?: string | Array;
 }
 
 export interface SharedData {
