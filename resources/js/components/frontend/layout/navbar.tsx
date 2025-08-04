@@ -89,6 +89,7 @@ export default function Navbar() {
     { name: "Events", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
+    { name: "Courses", href: route('course.index') },
     { name: "Node Boss", href: "/nodeboss" },
     { name: "Contact", href: "/contact" },
   ]

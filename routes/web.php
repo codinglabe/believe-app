@@ -29,6 +29,8 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\CourseController;
+use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\JobApplicationController;
 use App\Http\Controllers\JobsController;
 use App\Http\Controllers\NodeSellController;
@@ -36,6 +38,7 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\TopicController;
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -49,7 +52,7 @@ Route::get('/contact', function () {
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
-Route::get('/get-job-positions',[JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
+Route::get('/get-job-positions', [JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
 
 Route::get("/jobs/{id}/apply", [JobsController::class, 'applyShow'])->name('jobs.apply.show');
 Route::post("/jobs/{id}/apply", [JobsController::class, 'applyStore'])->name('jobs.apply.store');
@@ -242,6 +245,37 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
     // });
 });
+
+
+// Public Course Routes
+Route::get('/courses', [CourseController::class, 'publicIndex'])->name('course.index');
+Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->name('course.show'); // Use slug for public show
+// Enrollment routes (require authentication)
+Route::middleware('auth')->group(function () {
+    Route::get('/courses/{course:slug}/enroll', [EnrollmentController::class, 'show'])->name('courses.enroll');
+    Route::post('/courses/{course:slug}/enroll', [EnrollmentController::class, 'store'])->name('courses.enroll.store');
+    Route::post('/courses/{course:slug}/cancel', [EnrollmentController::class, 'cancel'])->name('courses.cancel');
+    Route::post('/courses/{course:slug}/refund', [EnrollmentController::class, 'refund'])->name('courses.refund');
+    Route::get('/courses/enrollment/success', [EnrollmentController::class, 'success'])->name('courses.enrollment.success');
+    Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
+    Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
+});
+Route::middleware(['auth', 'verified'])->group(function () {
+    // Admin Course Management Routes
+    Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
+        Route::get('/', [CourseController::class, 'adminIndex'])->name('index');
+        Route::get('/create', [CourseController::class, 'create'])->name('create');
+        Route::post('/', [CourseController::class, 'store'])->name('store');
+        Route::get('/{course:slug}', [CourseController::class, 'adminShow'])->name('show'); // Added this line
+        Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit');
+        Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update');
+        Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy');
+    });
+
+    // Topic Management Routes (Admin Only)
+    Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
+});
+
 
 Route::middleware(['auth', 'verified'])->group(function () {
     // NodeShare routes

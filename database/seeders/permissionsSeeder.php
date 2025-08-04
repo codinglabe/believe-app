@@ -28,7 +28,8 @@ class permissionsSeeder extends Seeder
             'rating',
             'review',
             'payments',
-            'node.boss'
+            'node.boss',
+            'course'
         ];
         $prefixes = ['.read','.create', '.edit', '.update', '.delete'];
 

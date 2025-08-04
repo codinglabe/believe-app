@@ -167,12 +167,12 @@ export default function Dashboard({ totalOrg, orgInfo, totalFav }: { totalOrg: n
     ];
 
     const [socialMedias, setSocialMedias] = useState<Record<string, string>>({
-        youtube: organization.social_accounts?.youtube || '',
-        facebook: organization.social_accounts?.facebook || '',
-        instagram: organization.social_accounts?.instagram || '',
-        twitter: organization.social_accounts?.twitter || '',
-        linkedin: organization.social_accounts?.linkedin || '',
-        tiktok: organization.social_accounts?.tiktok || '',
+        youtube: organization?.social_accounts?.youtube || '',
+        facebook: organization?.social_accounts?.facebook || '',
+        instagram: organization?.social_accounts?.instagram || '',
+        twitter: organization?.social_accounts?.twitter || '',
+        linkedin: organization?.social_accounts?.linkedin || '',
+        tiktok: organization?.social_accounts?.tiktok || '',
     });
 
     const handleSocialChange = (platform: string, value: string) => {

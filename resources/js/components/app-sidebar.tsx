@@ -2,7 +2,11 @@ import { NavMain } from '@/components/nav-main';
 import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
+<<<<<<< Updated upstream
 import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal, Network, HandCoins, Text } from 'lucide-react';
+=======
+import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal, Network, HandCoins, GraduationCap } from 'lucide-react';
+>>>>>>> Stashed changes
 import AppLogo from './app-logo';
 
 
@@ -85,12 +89,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ],
         permission: "code.management.read"
     },
-        {
+    {
         title: 'Withdrawals',
         href: route("withdrawals.index"),
         icon: HandCoins,
         permission: "management.data.read"
     },
+<<<<<<< Updated upstream
+=======
+    {
+        title: 'Course',
+        href: route("admin.courses.index"),
+        icon: GraduationCap,
+        permission: "course.read"
+    },
+>>>>>>> Stashed changes
 
     {
         title: 'Codes',
