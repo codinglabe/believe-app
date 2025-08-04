@@ -1,7 +1,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { ArrowLeft, Calendar, MapPin, Users, DollarSign, Upload, Save } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Users, DollarSign, Upload, Save, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card';
 import { Button } from '@/components/frontend/ui/button';
 import { Input } from '@/components/frontend/ui/input';
@@ -43,6 +43,8 @@ type Event = {
     registration_fee?: number;
     requirements?: string;
     contact_info?: string;
+    birthday?: string;
+    visibility?: 'public' | 'private';
     created_at: string;
     updated_at: string;
 };
@@ -53,7 +55,7 @@ type Props = {
 
 export default function EditEvent({ event }: Props) {
     const [imagePreview, setImagePreview] = useState<string | null>(null);
-    
+
     const { data, setData, post, processing, errors } = useForm({
         _method: 'put',
         name: event.name,
@@ -65,12 +67,14 @@ export default function EditEvent({ event }: Props) {
         city: event.city || '',
         state: event.state || '',
         zip: event.zip || '',
-        status: event.status,
+        status: event.status as 'upcoming' | 'ongoing' | 'completed' | 'cancelled',
         max_participants: event.max_participants?.toString() || '',
         registration_fee: event.registration_fee?.toString() || '',
         requirements: event.requirements || '',
         contact_info: event.contact_info || '',
         poster_image: null as File | null,
+        birthday: event.birthday ? event.birthday.split('T')[0] : '', // Format for date input (YYYY-MM-DD)
+        visibility: (event.visibility || 'public') as 'public' | 'private',
     });
 
     // Set initial image preview if event has a poster
@@ -84,7 +88,7 @@ export default function EditEvent({ event }: Props) {
         const file = e.target.files?.[0];
         if (file) {
             setData('poster_image', file);
-            
+
             // Create preview
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -284,6 +288,46 @@ export default function EditEvent({ event }: Props) {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="birthdate">Birthdate</Label>
+                                           
+                                            <Input
+                                                id="birthdate"
+                                                type="date"
+                                                value={data.birthday}
+                                                onChange={(e) => setData('birthday', e.target.value)}
+                                                className={errors.birthday ? 'border-red-500' : ''}
+                                            />
+                                            {errors.birthday && <p className="text-red-500 text-sm mt-1">{errors.birthday}</p>}
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="visibility">Visibility</Label>
+                                            <Select value={data.visibility} onValueChange={(value: 'public' | 'private') => setData('visibility', value)}>
+                                                <SelectTrigger className={errors.visibility ? 'border-red-500' : ''}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="public">
+                                                        <div className="flex items-center">
+                                                            <Eye className="h-4 w-4 mr-2" />
+                                                            Public
+                                                        </div>
+                                                    </SelectItem>
+                                                    <SelectItem value="private">
+                                                        <div className="flex items-center">
+                                                            <EyeOff className="h-4 w-4 mr-2" />
+                                                            Private
+                                                        </div>
+                                                    </SelectItem>
+
+                                                </SelectContent>
+                                            </Select>
+                                            {errors.visibility && <p className="text-red-500 text-sm mt-1">{errors.visibility}</p>}
+                                        </div>
+                                    </div>
+
                                     <div>
                                         <Label htmlFor="requirements">Requirements</Label>
                                         <Textarea
@@ -317,7 +361,7 @@ export default function EditEvent({ event }: Props) {
                                     <CardTitle className="text-gray-900 dark:text-white">Event Status</CardTitle>
                                 </CardHeader>
                                 <CardContent>
-                                    <Select value={data.status} onValueChange={(value) => setData('status', value)}>
+                                    <Select value={data.status} onValueChange={(value: 'upcoming' | 'ongoing' | 'completed' | 'cancelled') => setData('status', value)}>
                                         <SelectTrigger>
                                             <SelectValue />
                                         </SelectTrigger>
@@ -340,14 +384,14 @@ export default function EditEvent({ event }: Props) {
                                     <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                                         {imagePreview ? (
                                             <div className="space-y-4">
-                                                <img 
-                                                    src={imagePreview} 
-                                                    alt="Preview" 
+                                                <img
+                                                    src={imagePreview}
+                                                    alt="Preview"
                                                     className="w-full h-32 object-cover rounded"
                                                 />
-                                                <Button 
-                                                    type="button" 
-                                                    variant="outline" 
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
                                                     size="sm"
                                                     onClick={() => {
                                                         setImagePreview(null);
@@ -386,8 +430,8 @@ export default function EditEvent({ event }: Props) {
                             <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                                 <CardContent className="pt-6">
                                     <div className="space-y-3">
-                                        <Button 
-                                            type="submit" 
+                                        <Button
+                                            type="submit"
                                             className="w-full bg-blue-600 hover:bg-blue-700"
                                             disabled={processing}
                                         >
@@ -403,9 +447,9 @@ export default function EditEvent({ event }: Props) {
                                                 </>
                                             )}
                                         </Button>
-                                        <Button 
-                                            type="button" 
-                                            variant="outline" 
+                                        <Button
+                                            type="button"
+                                            variant="outline"
                                             className="w-full"
                                             onClick={() => window.history.back()}
                                         >
@@ -420,4 +464,4 @@ export default function EditEvent({ event }: Props) {
             </div>
         </AppLayout>
     );
-} 
+}

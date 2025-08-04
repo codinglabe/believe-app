@@ -24,12 +24,15 @@ class Event extends Model
         'registration_fee',
         'requirements',
         'contact_info',
+        'birthday',
+        'visibility',
     ];
 
     protected $casts = [
         'start_date' => 'datetime',
         'end_date' => 'datetime',
         'registration_fee' => 'decimal:2',
+        'birthday' => 'date',
     ];
 
     public function organization(): BelongsTo
