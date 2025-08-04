@@ -3,7 +3,7 @@ import { type NavItem, type NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
-import { useCan as can } from '@/lib/can';
+import { useCan as can, useRole as role } from '@/lib/can';
 interface NavMainProps {
     items?: (NavItem | NavGroup)[];
 }
@@ -54,17 +54,29 @@ export function NavMain({ items = [] }: NavMainProps) {
         });
     };
 
+    const shouldShowItem = (item: NavItem | NavGroup) => {
+        // If no permission or role is specified, show the item
+        if (!item.permission && !item.role) return true;
+
+        // Check if user has either the required permission or role
+        return can(item.permission ?? '') || role(item.role ?? '');
+    };
+
     return (
         <>
             {items.map((item) => {
-    if ('items' in item) {
-        const isExpanded = expandedGroups.has(item.title);
-        const hasActiveChild = item.items.some(subItem => subItem.href === page.url);
-        return (
-            <React.Fragment key={item.title}>
-                {
-                    can(item?.permission ?? '') && (
-                        <SidebarGroup className="px-2 py-0">
+                if (!shouldShowItem(item)) return null;
+
+                if ('items' in item) {
+                    const isExpanded = expandedGroups.has(item.title);
+                    const hasActiveChild = item.items.some(subItem =>
+                        subItem.href === page.url ||
+                        page.url.startsWith(subItem.href + '/create') ||
+                        page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`))
+                    );
+
+                    return (
+                        <SidebarGroup key={item.title} className="px-2 py-0">
                             <SidebarMenu>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton
@@ -77,38 +89,28 @@ export function NavMain({ items = [] }: NavMainProps) {
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
 
-                                {isExpanded && (
-                                    <div className="ml-4 space-y-1">
-                                        {item.items.map((subItem) => (
-                                            can(subItem?.permission ?? '') && (
-                                                <SidebarMenuItem key={subItem.title}>
-                                                    <SidebarMenuButton
-                                                        asChild
-                                                        isActive={subItem.href === page.url}
-                                                        tooltip={{ children: subItem.title }}
-                                                    >
-                                                        <Link href={subItem.href} prefetch>
-                                                            {subItem.icon && <subItem.icon />}
-                                                            <span>{subItem.title}</span>
-                                                        </Link>
-                                                    </SidebarMenuButton>
-                                                </SidebarMenuItem>
-                                            )
-                                        ))}
-                                    </div>
-                                )}
+                                {isExpanded && item.items.map((subItem) => (
+                                    shouldShowItem(subItem) && (
+                                        <SidebarMenuItem key={subItem.title}>
+                                            <SidebarMenuButton
+                                                asChild
+                                                isActive={subItem.href === page.url}
+                                                tooltip={{ children: subItem.title }}
+                                            >
+                                                <Link href={subItem.href} prefetch>
+                                                    {subItem.icon && <subItem.icon />}
+                                                    <span>{subItem.title}</span>
+                                                </Link>
+                                            </SidebarMenuButton>
+                                        </SidebarMenuItem>
+                                    )
+                                ))}
                             </SidebarMenu>
                         </SidebarGroup>
-                    )
-                }
-            </React.Fragment>
-        );
-    } else {
-        return (
-            <React.Fragment key={item.title}>
-                {
-                    can(item?.permission ?? '') && (
-                        <SidebarGroup className="px-2 py-0">
+                    );
+                } else {
+                    return (
+                        <SidebarGroup key={item.title} className="px-2 py-0">
                             <SidebarMenu>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton
@@ -124,13 +126,9 @@ export function NavMain({ items = [] }: NavMainProps) {
                                 </SidebarMenuItem>
                             </SidebarMenu>
                         </SidebarGroup>
-                    )
+                    );
                 }
-            </React.Fragment>
-        );
-    }
-})}
-
+            })}
         </>
     );
 }

@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { DollarSign, Info, Target, CheckCircle, Shield } from "lucide-react"
+import { DollarSign, Info, Target, CheckCircle, Shield, Crown } from "lucide-react"
 import { useForm, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Button } from "@/components/ui/button"
@@ -43,7 +43,7 @@ interface Props {
   } | null
 }
 
-export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }: Props) {
+export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
   const { url, props } = usePage();
   const urlParams = new URL(url, window.location.origin).searchParams;
   const ref = urlParams.get('ref');
@@ -249,19 +249,35 @@ export default function NodeBossIndex({ nodeBoss, statistics, user, isRefOwner }
                             Select Investment Amount
                           </Label>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                            {suggestedAmounts.map((amount: number) => (
-                              <Button
-                                key={amount}
-                                variant={selectedAmount === amount ? "default" : "outline"}
-                                onClick={() => handleAmountSelect(amount)}
-                                className={`h-16 text-lg font-semibold transition-all duration-200 ${selectedAmount === amount
-                                  ? "bg-blue-600 hover:bg-blue-700 scale-105 shadow-lg"
-                                  : "hover:scale-105 hover:shadow-md "
-                                  }`}
-                              >
-                                ${amount}
-                              </Button>
-                            ))}
+                            {suggestedAmounts.map((amount: number) => {
+                              const isSelected = selectedAmount === amount;
+                              const isBigBoss = Number(selectedAmount) === Number(nodeBoss?.price) && isSelected;
+
+                              return (
+                                <div className="relative w-full">
+                                  <Button
+                                    variant={isSelected ? "default" : "outline"}
+                                    onClick={() => handleAmountSelect(amount)}
+                                    className={`h-16 text-lg font-semibold transition-all duration-200 w-full ${isSelected
+                                        ? isBigBoss
+                                          ? "bg-gradient-to-br from-amber-400 via-yellow-500 text-white scale-105 shadow-lg"
+                                          : "bg-blue-600 hover:bg-blue-700 text-white scale-105 shadow-lg"
+                                        : "hover:scale-105 hover:shadow-md"
+                                      }`}
+                                  >
+                                    ${amount}
+                                  </Button>
+
+                                  {isBigBoss && (
+                                    <span className="absolute -top-2 -right-2 bg-red-600 text-white text-[10px] px-2 py-[2px] rounded-full shadow-md flex items-center gap-1 z-20">
+                                      <Crown className="w-4 h-4"/> Big Boss
+                                    </span>
+                                  )}
+                                </div>
+
+                              );
+                            })}
+
                           </div>
 
                           {/* Custom Amount */}
