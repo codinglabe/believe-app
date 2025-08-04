@@ -25,7 +25,7 @@ class EventController extends Controller
             // Admin can see all events
             $events = Event::with('organization')->latest()->paginate(12);
         } else {
-            // Organization can only see their own events
+            // Organization can only see their own events (both public and private)
             $organization = Organization::where('user_id', $user->id)->first();
             if ($organization) {
                 $events = Event::where('organization_id', $organization->id)->latest()->paginate(12);
@@ -201,6 +201,7 @@ class EventController extends Controller
             $organization = Organization::where('user_id', $user->id)->first();
             if ($organization) {
                 $events = Event::where('organization_id', $organization->id)
+                    ->where('status', 'upcoming')
                     ->latest()
                     ->take(6)
                     ->get();
@@ -245,13 +246,21 @@ class EventController extends Controller
     {
         $search = $request->input('search');
         $status = $request->input('status');
+        $user = Auth::user();
 
         $events = Event::query()
             ->when($search, function ($query, $search) {
                 $query->where('name', 'like', '%' . $search . '%');
             })->when($status, function ($query, $status) {
                 $query->where('status', $status);
-            })->get();
+            });
+
+        // Only show public events to non-authenticated users or non-admin users
+        if (!$user || $user->role !== 'admin') {
+            $events->where('visibility', 'public');
+        }
+
+        $events = $events->get();
 
         return Inertia::render('frontend/events', [
             'events'           => $events,
@@ -263,6 +272,24 @@ class EventController extends Controller
     public function viewEvent(string $id): Response
     {
         $event = Event::with('organization')->findOrFail($id);
+        $user = Auth::user();
+
+        // Check if user can view this event
+        if ($event->visibility === 'private') {
+            if (!$user) {
+                abort(403, 'This event is private and requires authentication.');
+            }
+            
+            if ($user->role === 'organization') {
+                $organization = Organization::where('user_id', $user->id)->first();
+                if (!$organization || $event->organization_id !== $organization->id) {
+                    abort(403, 'You can only view your own private events.');
+                }
+            } elseif ($user->role !== 'admin') {
+                abort(403, 'You do not have permission to view this private event.');
+            }
+        }
+
         return Inertia::render('frontend/view-event', [
             'event' => $event,
         ]);
