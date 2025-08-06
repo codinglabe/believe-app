@@ -1,317 +1,615 @@
 "use client"
 
 import type React from "react"
-import { createContext, useContext, useState, useCallback } from "react"
-import { v4 as uuidv4 } from "uuid"
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react"
+import { router, usePage } from "@inertiajs/react"
 
 interface User {
-  id: string
+  id: number
   name: string
   avatar: string
-  status: "online" | "offline" | "away"
+  is_online: boolean
+  role: string
+  organization_id?: number
 }
 
 interface Attachment {
   name: string
-  url: string // In a real app, this would be a URL to the uploaded file
-  type: string // e.g., 'image/png', 'application/pdf'
+  url: string
+  type: string
+  size: number
 }
 
 export interface Message {
-  id: string
-  senderId: string
-  content: string
-  timestamp: string
+  id: number
+  message: string
   attachments?: Attachment[]
-  repliedToMessageId?: string // Added for reply functionality
+  created_at: string
+  is_edited: boolean
+  user: User
+  reply_to_message?: {
+    id: number
+    message: string
+    user: {
+      name: string
+    }
+  }
 }
 
-interface Conversation {
-  id: string
-  type: "individual" | "group"
+interface ChatRoom {
+  id: number
   name: string
-  participants: User[]
-  messages: Message[]
-  lastMessage: string
-  lastMessageTime: string
-  unreadCount?: number // Added for unread messages
+  type: "public" | "private" | "direct"
+  image?: string
+  description?: string
+  created_at?: string
+  last_message?: {
+    message: string
+    created_at: string
+    user_name: string
+  }
+  unread_count: number
+  members: User[]
+  is_member?: boolean
 }
 
 interface ChatContextType {
-  conversations: Conversation[]
-  selectedConversationId: string | null
-  selectConversation: (id: string) => void
-  addMessage: (conversationId: string, content: string, attachments?: Attachment[], repliedToMessageId?: string) => void
-  deleteMessage: (conversationId: string, messageId: string) => void // Added delete message
-  createGroup: (name: string, participantIds: string[]) => void
-  currentUser: User
+  chatRooms: ChatRoom[]
+  filteredRooms: ChatRoom[]
+  selectedRoomId: number | null
+  selectRoom: (id: number) => void
+  messages: Message[]
+  loadingMessages: boolean
+  hasMoreMessages: boolean
+  loadMoreMessages: () => void
+  sendMessage: (message: string, attachments?: File[], replyToMessageId?: number) => Promise<void>
+  deleteMessage: (messageId: number) => Promise<void>
+  createRoom: (
+    name: string,
+    description: string,
+    type: "public" | "private",
+    members?: number[],
+    image?: File,
+  ) => Promise<void>
+  joinRoom: (roomId: number) => Promise<void>
+  leaveRoom: (roomId: number) => Promise<void>
+  currentUser: User | null
   allUsers: User[]
-  isTyping: boolean // Mock typing state
-  setIsTyping: (typing: boolean) => void // Function to set typing state
-  replyingToMessage: Message | null // Message being replied to
-  setReplyingToMessage: (message: Message | null) => void // Set message to reply to
+  activeUsers: User[]
+  typingUsers: User[]
+  setTyping: (isTyping: boolean) => void
+  replyingToMessage: Message | null
+  setReplyingToMessage: (message: Message | null) => void
+  isConnected: boolean
+  searchQuery: string
+  setSearchQuery: (query: string) => void
+  createDirectChat: (userId: number) => Promise<void>
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
 
-const mockUsers: User[] = [
-  { id: "user-1", name: "Alice", avatar: "/placeholder.svg?height=40&width=40&text=A", status: "online" },
-  { id: "user-2", name: "Bob", avatar: "/placeholder.svg?height=40&width=40&text=B", status: "offline" },
-  { id: "user-3", name: "Charlie", avatar: "/placeholder.svg?height=40&width=40&text=C", status: "away" },
-  { id: "user-4", name: "Diana", avatar: "/placeholder.svg?height=40&width=40&text=D", status: "online" },
-  { id: "user-5", name: "Eve", avatar: "/placeholder.svg?height=40&width=40&text=E", status: "offline" },
-]
-
-const initialConversations: Conversation[] = [
-  {
-    id: "conv-1",
-    type: "individual",
-    name: "Alice",
-    participants: [mockUsers[0], mockUsers[1]], // Assuming currentUser is mockUsers[0]
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[1].id,
-        content: "Hey there! How are you?",
-        timestamp: "10:00 AM",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "I'm good, thanks! Just working on a new project.",
-        timestamp: "10:05 AM",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[1].id,
-        content: "Check out these images!",
-        timestamp: "10:10 AM",
-        attachments: [
-          {
-            name: "image1.png",
-            url: "/placeholder.svg?height=150&width=200",
-            type: "image/png",
-          },
-          {
-            name: "image2.jpg",
-            url: "/placeholder.svg?height=120&width=180",
-            type: "image/jpeg",
-          },
-          {
-            name: "image3.jpeg",
-            url: "/placeholder.svg?height=100&width=150",
-            type: "image/jpeg",
-          },
-          {
-            name: "image4.png",
-            url: "/placeholder.svg?height=130&width=190",
-            type: "image/png",
-          },
-          {
-            name: "image5.gif",
-            url: "/placeholder.svg?height=110&width=160",
-            type: "image/gif",
-          },
-          {
-            name: "image6.webp",
-            url: "/placeholder.svg?height=140&width=210",
-            type: "image/webp",
-          },
-        ],
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "And here's a document!",
-        timestamp: "10:15 AM",
-        attachments: [
-          {
-            name: "document.pdf",
-            url: "https://example.com/document.pdf", // Placeholder URL for a PDF
-            type: "application/pdf",
-          },
-        ],
-      },
-    ],
-    lastMessage: "And here's a document!",
-    lastMessageTime: "10:15 AM",
-    unreadCount: 0, // No unread for selected
-  },
-  {
-    id: "conv-2",
-    type: "group",
-    name: "Project Team",
-    participants: [mockUsers[0], mockUsers[1], mockUsers[2], mockUsers[3]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[2].id,
-        content: "Meeting at 2 PM today, don't forget!",
-        timestamp: "Yesterday",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "Got it!",
-        timestamp: "Yesterday",
-      },
-    ],
-    lastMessage: "Got it!",
-    lastMessageTime: "Yesterday",
-    unreadCount: 13, // Example unread count
-  },
-  {
-    id: "conv-3",
-    type: "individual",
-    name: "Bob",
-    participants: [mockUsers[0], mockUsers[2]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[2].id,
-        content: "Are you free for a call later?",
-        timestamp: "Mon",
-      },
-    ],
-    lastMessage: "Are you free for a call later?",
-    lastMessageTime: "Mon",
-    unreadCount: 0,
-  },
-  {
-    id: "conv-4",
-    type: "individual",
-    name: "Jack",
-    participants: [mockUsers[0], mockUsers[3]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[3].id,
-        content: "I will send you the work file",
-        timestamp: "9:00 AM",
-      },
-    ],
-    lastMessage: "I will send you the work file",
-    lastMessageTime: "9:00 AM",
-    unreadCount: 0,
-  },
-  {
-    id: "conv-5",
-    type: "individual",
-    name: "Kate",
-    participants: [mockUsers[0], mockUsers[4]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[4].id,
-        content: "I will send you the work file",
-        timestamp: "7:10 PM",
-      },
-    ],
-    lastMessage: "I will send you the work file",
-    lastMessageTime: "7:10 PM",
-    unreadCount: 0,
-  },
-]
-
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const currentUser = mockUsers[0] // Current logged-in user
-  const allUsers = mockUsers
+  const { props } = usePage()
 
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
-    initialConversations[0]?.id || null,
-  )
-  const [isTyping, setIsTyping] = useState(false) // Mock typing state
-  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null) // Message being replied to
+  // Safely extract props with fallbacks
+  const initialData = props as any
+  const initialChatRooms = initialData?.chatRooms || initialData?.chat_rooms || []
+  const initialAllUsers = initialData?.allUsers || initialData?.all_users || []
+  const initialCurrentUser = initialData?.currentUser || initialData?.current_user || null
 
-  const selectConversation = useCallback((id: string) => {
-    setConversations((prevConversations) =>
-      prevConversations.map((conv) => (conv.id === id ? { ...conv, unreadCount: 0 } : conv)),
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>(initialChatRooms)
+  const [selectedRoomId, setSelectedRoomId] = useState<number | null>(null)
+  const [messages, setMessages] = useState<Message[]>([])
+  const [loadingMessages, setLoadingMessages] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  const [currentPage, setCurrentPage] = useState(1)
+  const [typingUsers, setTypingUsers] = useState<User[]>([])
+  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const wsRef = useRef<WebSocket | null>(null)
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const reconnectAttempts = useRef(0)
+  const maxReconnectAttempts = 5
+  const currentChannelRef = useRef<string | null>(null)
+
+  // Filter rooms based on search query
+  const filteredRooms = chatRooms.filter((room) => {
+    const query = searchQuery.toLowerCase().trim()
+    if (!query) return true
+
+    return (
+      room.name.toLowerCase().includes(query) ||
+      room.last_message?.message.toLowerCase().includes(query) ||
+      room.members.some(member => member.name.toLowerCase().includes(query))
     )
-    setSelectedConversationId(id)
-    setReplyingToMessage(null) // Clear reply state when changing conversation
-  }, [])
+  })
 
-  const addMessage = useCallback(
-    (conversationId: string, content: string, attachments?: Attachment[], repliedToMessageId?: string) => {
-      setConversations((prevConversations) =>
-        prevConversations.map((conv) => {
-          if (conv.id === conversationId) {
-            const newMessage: Message = {
-              id: uuidv4(),
-              senderId: currentUser.id,
-              content,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              attachments,
-              repliedToMessageId,
-            }
-            const lastMsgContent = attachments?.length ? `[${attachments.length} file(s)]` : content || "New message"
-            return {
-              ...conv,
-              messages: [...conv.messages, newMessage],
-              lastMessage: lastMsgContent,
-              lastMessageTime: newMessage.timestamp,
-              unreadCount: conv.id === selectedConversationId ? 0 : (conv.unreadCount || 0) + 1, // Increment unread if not selected
-            }
+  // Get active users (online users from other organizations)
+  const activeUsers = initialAllUsers.filter((user: User) =>
+    user.is_online &&
+    user.id !== initialCurrentUser?.id &&
+    user.organization_id !== initialCurrentUser?.organization_id
+  )
+
+  // WebSocket connection setup for Laravel Reverb
+  const connectWebSocket = useCallback(() => {
+    if (!initialCurrentUser) return
+
+    // Use Laravel Reverb's default configuration
+    const reverbHost = import.meta.env.VITE_REVERB_HOST || "127.0.0.1"
+    const reverbPort = import.meta.env.VITE_REVERB_PORT || "8080"
+    const reverbAppKey = import.meta.env.VITE_REVERB_APP_KEY || "local"
+    const reverbScheme = import.meta.env.VITE_REVERB_SCHEME || "http"
+
+    const protocol = reverbScheme === "https" ? "wss" : "ws"
+    const wsUrl = `${protocol}://${reverbHost}:${reverbPort}/app/${reverbAppKey}?protocol=7&client=js&version=8.4.0-rc2&flash=false`
+
+    try {
+      wsRef.current = new WebSocket(wsUrl)
+
+      wsRef.current.onopen = () => {
+        console.log("WebSocket connected to Laravel Reverb")
+        setIsConnected(true)
+        reconnectAttempts.current = 0
+
+        // Subscribe to user's private channel for global notifications
+        const globalSubscribe = {
+          event: "pusher:subscribe",
+          data: {
+            auth: "",
+            channel: `private-user.${initialCurrentUser.id}`,
+          },
+        }
+        wsRef.current?.send(JSON.stringify(globalSubscribe))
+      }
+
+      wsRef.current.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data)
+
+          // Handle connection established
+          if (data.event === "pusher:connection_established") {
+            console.log("Laravel Reverb connection established")
+            return
           }
-          return conv
-        }),
-      )
-      setReplyingToMessage(null) // Clear reply state after sending message
-    },
-    [currentUser.id, selectedConversationId],
-  )
 
-  const deleteMessage = useCallback((conversationId: string, messageId: string) => {
-    setConversations((prevConversations) =>
-      prevConversations.map((conv) =>
-        conv.id === conversationId ? { ...conv, messages: conv.messages.filter((msg) => msg.id !== messageId) } : conv,
-      ),
-    )
+          // Handle subscription succeeded
+          if (data.event === "pusher:subscription_succeeded") {
+            console.log("Subscription succeeded for channel:", data.channel)
+            return
+          }
+
+          // Handle new message
+          if (data.event === "MessageSent") {
+            const messageData = JSON.parse(data.data)
+            const newMessage = messageData.message
+
+            console.log("New message received:", newMessage)
+
+            // Add message to current room if it matches
+            if (newMessage.chat_room_id === selectedRoomId) {
+              setMessages((prev) => [...prev, newMessage])
+            }
+
+            // Update room list - move room to top and update last message
+            setChatRooms((prev) => {
+              const updatedRooms = prev.map((room) => {
+                if (room.id === newMessage.chat_room_id) {
+                  return {
+                    ...room,
+                    last_message: {
+                      message: newMessage.message || "[Attachment]",
+                      created_at: newMessage.created_at,
+                      user_name: newMessage.user.name,
+                    },
+                    unread_count: newMessage.user.id === initialCurrentUser.id ? 0 : room.unread_count + 1,
+                  }
+                }
+                return room
+              })
+
+              // Sort rooms - move updated room to top
+              return updatedRooms.sort((a, b) => {
+                if (a.id === newMessage.chat_room_id) return -1
+                if (b.id === newMessage.chat_room_id) return 1
+                return new Date(b.last_message?.created_at || '').getTime() - new Date(a.last_message?.created_at || '').getTime()
+              })
+            })
+          }
+
+          // Handle user typing
+          if (data.event === "UserTyping") {
+            const typingData = JSON.parse(data.data)
+            if (typingData.user.id === initialCurrentUser.id) return
+
+            console.log("User typing event:", typingData)
+
+            setTypingUsers((prev) => {
+              if (typingData.is_typing) {
+                return prev.find((u) => u.id === typingData.user.id) ? prev : [...prev, typingData.user]
+              } else {
+                return prev.filter((u) => u.id !== typingData.user.id)
+              }
+            })
+          }
+        } catch (error) {
+          console.error("Error parsing WebSocket message:", error)
+        }
+      }
+
+      wsRef.current.onclose = () => {
+        console.log("WebSocket disconnected")
+        setIsConnected(false)
+
+        // Attempt to reconnect
+        if (reconnectAttempts.current < maxReconnectAttempts) {
+          reconnectAttempts.current++
+          const delay = Math.pow(2, reconnectAttempts.current) * 1000
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            console.log(`Attempting to reconnect... (${reconnectAttempts.current}/${maxReconnectAttempts})`)
+            connectWebSocket()
+          }, delay)
+        }
+      }
+
+      wsRef.current.onerror = (error) => {
+        console.error("WebSocket error:", error)
+        setIsConnected(false)
+      }
+    } catch (error) {
+      console.error("Failed to create WebSocket connection:", error)
+    }
+  }, [initialCurrentUser, selectedRoomId])
+
+  // Subscribe to room channel
+  const subscribeToRoomChannel = useCallback((roomId: number) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return
+
+    // Unsubscribe from previous channel
+    if (currentChannelRef.current) {
+      const unsubscribe = {
+        event: "pusher:unsubscribe",
+        data: {
+          channel: currentChannelRef.current,
+        },
+      }
+      wsRef.current.send(JSON.stringify(unsubscribe))
+    }
+
+    // Subscribe to new room channel
+    const channelName = `presence-chat-room.${roomId}`
+    const subscribe = {
+      event: "pusher:subscribe",
+      data: {
+        auth: "",
+        channel: channelName,
+      },
+    }
+
+    wsRef.current.send(JSON.stringify(subscribe))
+    currentChannelRef.current = channelName
+    console.log(`Subscribed to ${channelName}`)
   }, [])
 
-  const createGroup = useCallback(
-    (name: string, participantIds: string[]) => {
-      const participants = allUsers.filter((user) => participantIds.includes(user.id))
-      // Ensure current user is always in the group
-      if (!participants.some((p) => p.id === currentUser.id)) {
-        participants.push(currentUser)
+  // Disconnect WebSocket
+  const disconnectWebSocket = useCallback(() => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    if (wsRef.current) {
+      wsRef.current.close()
+      wsRef.current = null
+    }
+
+    setIsConnected(false)
+    setTypingUsers([])
+    currentChannelRef.current = null
+  }, [])
+
+  // Load messages for selected room
+  const loadMessages = useCallback(async (roomId: number, page = 1, append = false) => {
+    if (!roomId) return
+
+    setLoadingMessages(true)
+    try {
+      const response = await fetch(`/chat/rooms/${roomId}/messages?page=${page}`, {
+        headers: {
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
       }
 
-      const newGroup: Conversation = {
-        id: uuidv4(),
-        type: "group",
-        name,
-        participants,
-        messages: [],
-        lastMessage: "No messages yet.",
-        lastMessageTime: "",
-        unreadCount: 0,
+      const data = await response.json()
+
+      if (append) {
+        setMessages((prev) => [...data.messages.reverse(), ...prev])
+      } else {
+        setMessages(data.messages.reverse())
       }
-      setConversations((prevConversations) => [newGroup, ...prevConversations])
-      setSelectedConversationId(newGroup.id)
+
+      setHasMoreMessages(data.has_more)
+      setCurrentPage(data.current_page)
+    } catch (error) {
+      console.error("Failed to load messages:", error)
+      setMessages([])
+    } finally {
+      setLoadingMessages(false)
+    }
+  }, [])
+
+  const selectRoom = useCallback(
+    async (id: number) => {
+      // Don't reload if same room is selected
+      if (id === selectedRoomId) return
+
+      setSelectedRoomId(id)
+      setMessages([])
+      setCurrentPage(1)
+      setReplyingToMessage(null)
+      setTypingUsers([])
+
+      await loadMessages(id, 1, false)
+
+      // Subscribe to room channel
+      subscribeToRoomChannel(id)
+
+      // Mark room as read
+      try {
+        await fetch(`/chat/rooms/${id}/read`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          },
+        })
+        setChatRooms((prev) => prev.map((room) => (room.id === id ? { ...room, unread_count: 0 } : room)))
+      } catch (error) {
+        console.error("Failed to mark room as read:", error)
+      }
     },
-    [allUsers, currentUser],
+    [loadMessages, selectedRoomId, subscribeToRoomChannel],
   )
+
+  const loadMoreMessages = useCallback(async () => {
+    if (!selectedRoomId || !hasMoreMessages || loadingMessages) return
+    await loadMessages(selectedRoomId, currentPage + 1, true)
+  }, [selectedRoomId, hasMoreMessages, loadingMessages, currentPage, loadMessages])
+
+  const sendMessage = useCallback(
+    async (message: string, attachments?: File[], replyToMessageId?: number) => {
+      if (!selectedRoomId || (!message.trim() && !attachments?.length)) return
+
+      const formData = new FormData()
+      if (message.trim()) formData.append("message", message)
+      if (replyToMessageId) formData.append("reply_to_message_id", replyToMessageId.toString())
+
+      attachments?.forEach((file, index) => {
+        formData.append(`attachments[${index}]`, file)
+      })
+
+      try {
+        const response = await fetch(`/chat/rooms/${selectedRoomId}/messages`, {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          },
+        })
+
+        if (!response.ok) throw new Error("Failed to send message")
+
+        const data = await response.json()
+
+        // Add message to local state immediately
+        setMessages((prev) => [...prev, data.message])
+
+        setReplyingToMessage(null)
+      } catch (error) {
+        console.error("Failed to send message:", error)
+        throw error
+      }
+    },
+    [selectedRoomId],
+  )
+
+  const deleteMessage = useCallback(async (messageId: number) => {
+    try {
+      const response = await fetch(`/chat/messages/${messageId}`, {
+        method: "DELETE",
+        headers: {
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      })
+
+      if (!response.ok) throw new Error("Failed to delete message")
+
+      setMessages((prev) => prev.filter((msg) => msg.id !== messageId))
+    } catch (error) {
+      console.error("Failed to delete message:", error)
+      throw error
+    }
+  }, [])
+
+  const createRoom = useCallback(
+    async (name: string, description: string, type: "public" | "private", members?: number[], image?: File) => {
+      const formData = new FormData()
+      formData.append("name", name)
+      formData.append("description", description)
+      formData.append("type", type)
+      if (image) formData.append("image", image)
+
+      members?.forEach((memberId, index) => {
+        formData.append(`members[${index}]`, memberId.toString())
+      })
+
+      try {
+        const response = await fetch("/chat/rooms", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          },
+        })
+
+        if (!response.ok) throw new Error("Failed to create room")
+
+        const data = await response.json()
+
+        // Add room to state immediately and select it
+        setChatRooms((prev) => [data.room, ...prev])
+        setSelectedRoomId(data.room.id)
+
+        return data.room
+      } catch (error) {
+        console.error("Failed to create room:", error)
+        throw error
+      }
+    },
+    [],
+  )
+
+  const createDirectChat = useCallback(async (userId: number) => {
+    try {
+      const response = await fetch("/chat/direct", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+        body: JSON.stringify({ user_id: userId }),
+      })
+
+      if (!response.ok) throw new Error("Failed to create direct chat")
+
+      const data = await response.json()
+
+      // Check if room already exists in state
+      const existingRoom = chatRooms.find(room => room.id === data.room.id)
+
+      if (!existingRoom) {
+        setChatRooms((prev) => [data.room, ...prev])
+      }
+
+      setSelectedRoomId(data.room.id)
+      return data.room
+    } catch (error) {
+      console.error("Failed to create direct chat:", error)
+      throw error
+    }
+  }, [chatRooms])
+
+  const joinRoom = useCallback(async (roomId: number) => {
+    try {
+      const response = await fetch(`/chat/rooms/${roomId}/join`, {
+        method: "POST",
+        headers: {
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      })
+
+      if (!response.ok) throw new Error("Failed to join room")
+
+      // Update room membership in state
+      setChatRooms((prev) =>
+        prev.map((room) =>
+          room.id === roomId
+            ? { ...room, is_member: true, members: [...room.members, initialCurrentUser].filter(Boolean) }
+            : room
+        )
+      )
+    } catch (error) {
+      console.error("Failed to join room:", error)
+      throw error
+    }
+  }, [initialCurrentUser])
+
+  const leaveRoom = useCallback(async (roomId: number) => {
+    try {
+      const response = await fetch(`/chat/rooms/${roomId}/leave`, {
+        method: "POST",
+        headers: {
+          "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+        },
+      })
+
+      if (!response.ok) throw new Error("Failed to leave room")
+
+      // Remove room from state or update membership
+      setChatRooms((prev) => prev.filter((room) => room.id !== roomId))
+
+      if (selectedRoomId === roomId) {
+        setSelectedRoomId(null)
+        setMessages([])
+      }
+    } catch (error) {
+      console.error("Failed to leave room:", error)
+      throw error
+    }
+  }, [selectedRoomId])
+
+  const setTyping = useCallback(
+    async (isTyping: boolean) => {
+      if (!selectedRoomId) return
+
+      try {
+        await fetch(`/chat/rooms/${selectedRoomId}/typing`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
+          },
+          body: JSON.stringify({ is_typing: isTyping }),
+        })
+      } catch (error) {
+        console.error("Failed to send typing status:", error)
+      }
+    },
+    [selectedRoomId],
+  )
+
+  // Connect WebSocket on mount
+  useEffect(() => {
+    connectWebSocket()
+    return () => {
+      disconnectWebSocket()
+    }
+  }, [connectWebSocket, disconnectWebSocket])
 
   return (
     <ChatContext.Provider
       value={{
-        conversations,
-        selectedConversationId,
-        selectConversation,
-        addMessage,
+        chatRooms,
+        filteredRooms,
+        selectedRoomId,
+        selectRoom,
+        messages,
+        loadingMessages,
+        hasMoreMessages,
+        loadMoreMessages,
+        sendMessage,
         deleteMessage,
-        createGroup,
-        currentUser,
-        allUsers,
-        isTyping,
-        setIsTyping,
+        createRoom,
+        joinRoom,
+        leaveRoom,
+        currentUser: initialCurrentUser,
+        allUsers: initialAllUsers,
+        activeUsers,
+        typingUsers,
+        setTyping,
         replyingToMessage,
         setReplyingToMessage,
+        isConnected,
+        searchQuery,
+        setSearchQuery,
+        createDirectChat,
       }}
     >
       {children}

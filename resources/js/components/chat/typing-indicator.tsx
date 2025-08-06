@@ -1,6 +1,7 @@
 "use client"
 
 import { motion } from "framer-motion"
+import { UserAvatar } from "./user-avatar"
 
 interface TypingIndicatorProps {
   senderName: string
@@ -9,12 +10,8 @@ interface TypingIndicatorProps {
 
 export function TypingIndicator({ senderName, senderAvatar }: TypingIndicatorProps) {
   const dotVariants = {
-    start: {
-      y: "0%",
-    },
-    end: {
-      y: "100%",
-    },
+    start: { y: "0%" },
+    end: { y: "100%" },
   }
 
   const dotTransition = {
@@ -33,50 +30,34 @@ export function TypingIndicator({ senderName, senderAvatar }: TypingIndicatorPro
       transition={{ duration: 0.3 }}
       className="flex items-start gap-3 p-2 justify-start"
     >
-      <div className="relative">
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.1 }}
-          className="h-8 w-8 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground"
-        >
-          {senderAvatar ? (
-            <img
-              src={senderAvatar || "/placeholder.svg"}
-              alt={senderName}
-              className="h-full w-full rounded-full object-cover"
-            />
-          ) : (
-            senderName.charAt(0)
-          )}
-        </motion.div>
-        <span className="absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background bg-green-500" />
-      </div>
+      <UserAvatar src={senderAvatar} alt={senderName} fallback={senderName.charAt(0)} status="online" />
       <div className="flex flex-col items-start">
-        <div className="rounded-lg px-4 py-2 text-sm bg-muted text-foreground flex items-center gap-1">
-          <span className="font-semibold text-xs mb-1 block">{senderName}</span>
-          <div className="flex items-center h-4">
-            <motion.span
-              className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
-              variants={dotVariants}
-              initial="start"
-              animate="end"
-              transition={{ ...dotTransition, delay: 0 }}
-            />
-            <motion.span
-              className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
-              variants={dotVariants}
-              initial="start"
-              animate="end"
-              transition={{ ...dotTransition, delay: 0.1 }}
-            />
-            <motion.span
-              className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
-              variants={dotVariants}
-              initial="start"
-              animate="end"
-              transition={{ ...dotTransition, delay: 0.2 }}
-            />
+        <div className="rounded-lg px-4 py-2 text-sm bg-muted text-foreground">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-xs">{senderName} is typing</span>
+            <div className="flex items-center h-4">
+              <motion.span
+                className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
+                variants={dotVariants}
+                initial="start"
+                animate="end"
+                transition={{ ...dotTransition, delay: 0 }}
+              />
+              <motion.span
+                className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
+                variants={dotVariants}
+                initial="start"
+                animate="end"
+                transition={{ ...dotTransition, delay: 0.1 }}
+              />
+              <motion.span
+                className="block w-1.5 h-1.5 rounded-full bg-muted-foreground mx-0.5"
+                variants={dotVariants}
+                initial="start"
+                animate="end"
+                transition={{ ...dotTransition, delay: 0.2 }}
+              />
+            </div>
           </div>
         </div>
       </div>

@@ -1,7 +1,6 @@
 "use client"
 import { MessageList } from "./message-list"
 import type React from "react"
-
 import { MessageInput } from "./message-input"
 import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "./user-avatar"
@@ -14,27 +13,28 @@ interface ChatAreaProps {
 }
 
 export function ChatArea({ mobileMenuButton, toggleDetailsPanel }: ChatAreaProps) {
-  const { conversations, selectedConversationId, currentUser } = useChat()
+  const { chatRooms, selectedRoomId, currentUser } = useChat()
 
-  const selectedConversation = conversations.find((conv) => conv.id === selectedConversationId)
+  const selectedRoom = chatRooms?.find((room) => room.id === selectedRoomId)
 
   const getChatHeaderInfo = () => {
-    if (!selectedConversation) {
-      return { name: "No Conversation Selected", avatar: "", status: undefined }
+    if (!selectedRoom) {
+      return { name: "No Room Selected", avatar: "", status: undefined }
     }
 
-    if (selectedConversation.type === "group") {
+    if (selectedRoom.type === "public" || selectedRoom.type === "private") {
       return {
-        name: selectedConversation.name,
-        avatar: "/placeholder.svg?height=40&width=40&text=G",
+        name: selectedRoom.name,
+        avatar: selectedRoom.image || "/placeholder.svg?height=40&width=40&text=G",
         status: undefined, // Groups don't have a single status
       }
     } else {
-      const otherParticipant = selectedConversation.participants.find((p) => p.id !== currentUser.id)
+      // Direct message
+      const otherParticipant = selectedRoom.members?.find((member) => member.id !== currentUser?.id)
       return {
         name: otherParticipant?.name || "Unknown User",
         avatar: otherParticipant?.avatar || "/placeholder.svg?height=40&width=40",
-        status: otherParticipant?.status,
+        status: otherParticipant?.is_online ? "online" : "offline",
       }
     }
   }
@@ -47,7 +47,15 @@ export function ChatArea({ mobileMenuButton, toggleDetailsPanel }: ChatAreaProps
         <div className="flex items-center gap-3">
           {mobileMenuButton}
           <UserAvatar src={avatar} alt={name} fallback={name.charAt(0)} status={status} />
-          <h2 className="text-lg font-semibold">{name}</h2>
+          <div className="flex flex-col">
+            <h2 className="text-lg font-semibold">{name}</h2>
+            {selectedRoom && selectedRoom.type === "direct" && (
+              <span className="text-xs text-muted-foreground">{status === "online" ? "Online" : "Offline"}</span>
+            )}
+            {selectedRoom && (selectedRoom.type === "public" || selectedRoom.type === "private") && (
+              <span className="text-xs text-muted-foreground">{selectedRoom.members?.length || 0} members</span>
+            )}
+          </div>
         </div>
         <Button
           variant="ghost"
@@ -60,7 +68,6 @@ export function ChatArea({ mobileMenuButton, toggleDetailsPanel }: ChatAreaProps
         </Button>
       </div>
       <div className="flex-1 relative overflow-hidden">
-        {/* MessageList now has its own background for readability */}
         <MessageList />
       </div>
       <MessageInput />

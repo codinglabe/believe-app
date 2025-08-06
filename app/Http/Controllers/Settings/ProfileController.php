@@ -40,6 +40,7 @@ class ProfileController extends Controller
             'name' => $request->input('name'),
             'email' => $request->input('email'),
             'contact_number' => $request->input('phone'),
+            'dob' => $request->input('dob'),
         ]);
 
         if ($request->user()->role === "organization") {

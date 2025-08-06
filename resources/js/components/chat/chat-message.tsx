@@ -2,55 +2,46 @@
 import { cn } from "@/lib/utils"
 import { UserAvatar } from "./user-avatar"
 import { motion } from "framer-motion"
-import { FileText, MoreHorizontal, Reply, X } from "lucide-react"
+import { FileText, MoreHorizontal, Reply, X, Download } from "lucide-react"
 import { useState } from "react"
 import ImageViewerModal from "./image-viewer-modal"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/chat/ui/dropdown-menu"
-import type { Message } from "@/providers/chat-provider" // Import Message type
+import type { Message } from "@/providers/chat-provider"
 
 interface ChatMessageProps {
-  senderName: string
-  senderAvatar: string
-  content: string
-  timestamp: string
+  message: Message
   isCurrentUser: boolean
-  attachments?: {
-    name: string
-    url: string
-    type: string
-  }[]
-  messageId: string // Added for delete/reply
-  onDelete: (messageId: string) => void // Added for delete
-  onReply: (message: Message) => void // Added for reply
-  repliedToMessage?: Message // Added for displaying replied message
+  onDelete: (messageId: number) => void
+  onReply: (message: Message) => void
 }
 
-export function ChatMessage({
-  senderName,
-  senderAvatar,
-  content,
-  timestamp,
-  isCurrentUser,
-  attachments,
-  messageId,
-  onDelete,
-  onReply,
-  repliedToMessage,
-}: ChatMessageProps) {
+export function ChatMessage({ message, isCurrentUser, onDelete, onReply }: ChatMessageProps) {
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
 
-  const imageAttachments = attachments?.filter((att) => att.type.startsWith("image/")) || []
-  const otherAttachments = attachments?.filter((att) => !att.type.startsWith("image/")) || []
+  const imageAttachments = message.attachments?.filter((att) => att.type.startsWith("image/")) || []
+  const otherAttachments = message.attachments?.filter((att) => !att.type.startsWith("image/")) || []
 
-  const displayImages = imageAttachments.slice(0, 3) // Show first 3 images
+  const displayImages = imageAttachments.slice(0, 3)
   const remainingImagesCount = imageAttachments.length - displayImages.length
-
-  const hasMultipleAttachments = attachments && attachments.length > 0
+  const hasAttachments = message.attachments && message.attachments.length > 0
 
   const openImageViewer = (index: number) => {
     setCurrentImageIndex(index)
     setIsImageViewerOpen(true)
+  }
+
+  const formatTime = (dateString: string) => {
+    const date = new Date(dateString)
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+  }
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return "0 Bytes"
+    const k = 1024
+    const sizes = ["Bytes", "KB", "MB", "GB"]
+    const i = Math.floor(Math.log(bytes) / Math.log(k))
+    return Number.parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i]
   }
 
   return (
@@ -62,51 +53,60 @@ export function ChatMessage({
       transition={{ duration: 0.3 }}
       className={cn("flex items-start gap-3 p-2 group relative", isCurrentUser ? "justify-end" : "justify-start")}
     >
-      {!isCurrentUser && <UserAvatar src={senderAvatar} alt={senderName} fallback={senderName.charAt(0)} />}
+      {!isCurrentUser && (
+        <UserAvatar
+          src={message.user.avatar}
+          alt={message.user.name}
+          fallback={message.user.name.charAt(0)}
+          status={message.user.is_online ? "online" : "offline"}
+        />
+      )}
+
       <div className={cn("flex flex-col max-w-[70%]", isCurrentUser ? "items-end" : "items-start")}>
         <div
           className={cn(
             "rounded-lg px-4 py-2 text-sm relative",
-            isCurrentUser
-              ? "bg-chat-bubble-mine text-chat-bubble-mine-foreground"
-              : "bg-chat-bubble-other dark:bg-chat-bubble-other-dark text-chat-bubble-other-foreground dark:text-chat-bubble-other-foreground-dark", // Changed colors
-            hasMultipleAttachments && "p-2",
+            isCurrentUser ? "bg-primary text-primary-foreground" : "bg-muted text-foreground",
+            hasAttachments && "p-2",
           )}
         >
-          {!isCurrentUser && <span className="font-semibold text-xs mb-1 block">{senderName}</span>}
+          {!isCurrentUser && <span className="font-semibold text-xs mb-1 block">{message.user.name}</span>}
 
-          {repliedToMessage && (
+          {/* Reply to message */}
+          {message.reply_to_message && (
             <div
               className={cn(
-                "border-l-2 pl-2 mb-2 text-xs italic",
-                isCurrentUser ? "border-chat-bubble-mine-foreground/50" : "border-muted-foreground/50",
+                "border-l-2 pl-2 mb-2 text-xs italic opacity-75",
+                isCurrentUser ? "border-primary-foreground/50" : "border-muted-foreground/50",
               )}
             >
-              <p className="font-semibold">
-                Replying to {repliedToMessage.senderId === messageId ? "yourself" : repliedToMessage.senderId}
-              </p>
-              <p className="truncate max-w-[200px]">{repliedToMessage.content || "[Attachment]"}</p>
+              <p className="font-semibold">Replying to {message.reply_to_message.user.name}</p>
+              <p className="truncate max-w-[200px]">{message.reply_to_message.message || "[Attachment]"}</p>
             </div>
           )}
 
-          {content && <p className={cn(hasMultipleAttachments && "mb-2")}>{content}</p>}
+          {/* Message content */}
+          {message.message && <p className={cn(hasAttachments && "mb-2")}>{message.message}</p>}
 
+          {/* Image attachments */}
           {imageAttachments.length > 0 && (
             <div className={cn("grid gap-2", imageAttachments.length > 1 ? "grid-cols-2" : "grid-cols-1")}>
               {displayImages.map((img, index) => (
-                <img
-                  key={index}
-                  src={img.url || "/placeholder.svg"}
-                  alt={img.name}
-                  className="w-full h-24 object-cover rounded-md cursor-pointer"
-                  style={{ maxWidth: "200px", maxHeight: "200px" }}
-                  onClick={() => openImageViewer(index)}
-                />
+                <div key={index} className="relative group/image">
+                  <img
+                    src={img.url || "/placeholder.svg"}
+                    alt={img.name}
+                    className="w-full h-24 object-cover rounded-md cursor-pointer hover:opacity-80 transition-opacity"
+                    style={{ maxWidth: "200px", maxHeight: "200px" }}
+                    onClick={() => openImageViewer(index)}
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover/image:bg-black/20 transition-colors rounded-md" />
+                </div>
               ))}
               {remainingImagesCount > 0 && (
                 <div
-                  className="relative w-full h-24 bg-muted-foreground/20 rounded-md flex items-center justify-center text-lg font-bold text-muted-foreground cursor-pointer"
-                  onClick={() => openImageViewer(3)} // Open viewer starting from the 4th image (index 3)
+                  className="relative w-full h-24 bg-muted-foreground/20 rounded-md flex items-center justify-center text-lg font-bold text-muted-foreground cursor-pointer hover:bg-muted-foreground/30 transition-colors"
+                  onClick={() => openImageViewer(3)}
                 >
                   +{remainingImagesCount}
                 </div>
@@ -114,32 +114,42 @@ export function ChatMessage({
             </div>
           )}
 
+          {/* Other attachments */}
           {otherAttachments.length > 0 && (
             <div className="grid gap-2 mt-2">
               {otherAttachments.map((file, index) => (
-                <a
+                <div
                   key={index}
-                  href={file.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-blue-500 hover:underline text-xs"
+                  className="flex items-center gap-2 p-2 bg-background/10 rounded-md hover:bg-background/20 transition-colors"
                 >
                   <FileText className="h-4 w-4 flex-shrink-0" />
-                  <span className="truncate">{file.name}</span>
-                </a>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium truncate">{file.name}</p>
+                    <p className="text-xs opacity-75">{formatFileSize(file.size)}</p>
+                  </div>
+                  <a
+                    href={file.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-1 hover:bg-background/20 rounded transition-colors"
+                    title="Download"
+                  >
+                    <Download className="h-3 w-3" />
+                  </a>
+                </div>
               ))}
             </div>
           )}
 
-          {/* Message Actions Dropdown - Moved back inside the bubble */}
+          {/* Message actions dropdown */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
                 className={cn(
                   "absolute top-1 right-1 p-1 rounded-full transition-colors opacity-0 group-hover:opacity-100",
                   isCurrentUser
-                    ? "text-chat-bubble-mine-foreground/70 hover:bg-chat-bubble-mine-foreground/20"
-                    : "text-chat-bubble-other-foreground/70 dark:text-chat-bubble-other-foreground-dark/70 hover:bg-chat-bubble-other/20 dark:hover:bg-chat-bubble-other-dark/20",
+                    ? "text-primary-foreground/70 hover:bg-primary-foreground/20"
+                    : "text-foreground/70 hover:bg-background/20",
                 )}
               >
                 <MoreHorizontal className="h-4 w-4" />
@@ -147,32 +157,34 @@ export function ChatMessage({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align={isCurrentUser ? "end" : "start"}>
-              <DropdownMenuItem
-                onClick={() =>
-                  onReply({
-                    id: messageId,
-                    senderId: "",
-                    content,
-                    timestamp,
-                    attachments,
-                    repliedToMessageId: repliedToMessage?.id,
-                  })
-                }
-              >
+              <DropdownMenuItem onClick={() => onReply(message)}>
                 <Reply className="mr-2 h-4 w-4" /> Reply
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onDelete(messageId)}>
-                <X className="mr-2 h-4 w-4" /> Delete
-              </DropdownMenuItem>
+              {isCurrentUser && (
+                <DropdownMenuItem onClick={() => onDelete(message.id)} className="text-destructive">
+                  <X className="mr-2 h-4 w-4" /> Delete
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
+
+          {/* Edit indicator */}
+          {message.is_edited && <span className="text-xs opacity-50 ml-2">(edited)</span>}
         </div>
+
         <span className={cn("text-xs text-muted-foreground mt-1", isCurrentUser ? "text-right" : "text-left")}>
-          {timestamp}
+          {formatTime(message.created_at)}
         </span>
       </div>
 
-      {isCurrentUser && <UserAvatar src={senderAvatar} alt={senderName} fallback={senderName.charAt(0)} />}
+      {isCurrentUser && (
+        <UserAvatar
+          src={message.user.avatar}
+          alt={message.user.name}
+          fallback={message.user.name.charAt(0)}
+          status={message.user.is_online ? "online" : "offline"}
+        />
+      )}
 
       {isImageViewerOpen && (
         <ImageViewerModal

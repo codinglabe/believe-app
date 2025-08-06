@@ -40,7 +40,8 @@ import { TextArea } from "@/components/ui/textarea"
 
 type ProfileForm = {
   name: string
-  email: string
+    email: string
+  dob: string
     contact_title: string
     website?: string
     phone?: string
@@ -81,6 +82,7 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     name: auth.user.name || "",
     email: auth.user.email || "",
     phone: auth.user.phone || "",
+    dob: auth.user.dob || "",
     contact_title: auth.user?.organization?.contact_title || "",
     website: auth.user?.organization?.website || "",
     description: auth.user?.organization?.description || "",
@@ -818,7 +820,27 @@ const getCroppedImage = async (
                   />
                 </div>
                 <InputError message={errors.phone} className="mt-1" />
-              </div>
+                          </div>
+
+
+               {/* Date of Birth */}
+                <div>
+                <Label htmlFor="dob" className="text-gray-900 dark:text-white font-medium">
+                    Date of Birth
+                </Label>
+                <div className="relative mt-1">
+                    <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                    id="dob"
+                    type="date"
+                    value={data.dob}
+                    onChange={(e) => setData("dob", e.target.value)}
+                    className="pl-10 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                    />
+                </div>
+                <InputError message={errors.dob} className="mt-1" />
+                </div>
             </CardContent>
                   </Card>
 

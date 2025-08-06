@@ -28,6 +28,7 @@ class ProfileUpdateRequest extends FormRequest
                 Rule::unique(User::class)->ignore($this->user()->id),
             ],
             'phone' => ['nullable', 'string'],
+            'dob' => ["nullable", 'date'],
         ];
 
         if ($this->user()->role === 'organization') {
