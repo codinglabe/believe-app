@@ -28,7 +28,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/
 import { Badge } from "@/components/frontend/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import DonationModal from "@/components/frontend/donation-modal"
-import { Link } from "@inertiajs/react"
 
 // Mock data - in a real app, this would come from an API
 const organizationData = {

@@ -1,7 +1,7 @@
 import { Head, useForm } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { ArrowLeft, Calendar, MapPin, Users, DollarSign, Upload, Save } from 'lucide-react';
+import { ArrowLeft, Calendar, MapPin, Users, DollarSign, Upload, Save, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card';
 import { Button } from '@/components/frontend/ui/button';
 import { Input } from '@/components/frontend/ui/input';
@@ -28,7 +28,7 @@ const breadcrumbs: BreadcrumbItem[] = [
 
 export default function CreateEvent() {
     const [imagePreview, setImagePreview] = useState<string | null>(null);
-    
+
     const { data, setData, post, processing, errors } = useForm({
         name: '',
         description: '',
@@ -45,13 +45,15 @@ export default function CreateEvent() {
         requirements: '',
         contact_info: '',
         poster_image: null as File | null,
+        birthday: '',
+        visibility: 'public',
     });
 
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (file) {
             setData('poster_image', file);
-            
+
             // Create preview
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -251,6 +253,45 @@ export default function CreateEvent() {
                                         </div>
                                     </div>
 
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div>
+                                            <Label htmlFor="birthday">Birthdate</Label>
+                                            <Input
+                                                id="birthdate"
+                                                type="date"
+                                                value={data.birthday}
+                                                onChange={(e) => setData('birthday', e.target.value)}
+                                                className={errors.birthday ? 'border-red-500' : ''}
+                                            />
+                                            {errors.birthday && <p className="text-red-500 text-sm mt-1">{errors.birthday}</p>}
+                                        </div>
+
+                                        <div>
+                                            <Label htmlFor="visibility">Visibility</Label>
+                                            <Select value={data.visibility} onValueChange={(value) => setData('visibility', value)}>
+                                                <SelectTrigger className={errors.visibility ? 'border-red-500' : ''}>
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="public">
+                                                        <div className="flex items-center">
+                                                            <Eye className="h-4 w-4 mr-2" />
+                                                            Public
+                                                        </div>
+                                                    </SelectItem>
+                                                    <SelectItem value="private">
+                                                        <div className="flex items-center">
+                                                            <EyeOff className="h-4 w-4 mr-2" />
+                                                            Private
+                                                        </div>
+                                                    </SelectItem>
+
+                                                </SelectContent>
+                                            </Select>
+                                            {errors.visibility && <p className="text-red-500 text-sm mt-1">{errors.visibility}</p>}
+                                        </div>
+                                    </div>
+
                                     <div>
                                         <Label htmlFor="requirements">Requirements</Label>
                                         <Textarea
@@ -307,14 +348,14 @@ export default function CreateEvent() {
                                     <div className="border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg p-6 text-center">
                                         {imagePreview ? (
                                             <div className="space-y-4">
-                                                <img 
-                                                    src={imagePreview} 
-                                                    alt="Preview" 
+                                                <img
+                                                    src={imagePreview}
+                                                    alt="Preview"
                                                     className="w-full h-32 object-cover rounded"
                                                 />
-                                                <Button 
-                                                    type="button" 
-                                                    variant="outline" 
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
                                                     size="sm"
                                                     onClick={() => {
                                                         setImagePreview(null);
@@ -353,8 +394,8 @@ export default function CreateEvent() {
                             <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-700">
                                 <CardContent className="pt-6">
                                     <div className="space-y-3">
-                                        <Button 
-                                            type="submit" 
+                                        <Button
+                                            type="submit"
                                             className="w-full bg-blue-600 hover:bg-blue-700"
                                             disabled={processing}
                                         >
@@ -370,9 +411,9 @@ export default function CreateEvent() {
                                                 </>
                                             )}
                                         </Button>
-                                        <Button 
-                                            type="button" 
-                                            variant="outline" 
+                                        <Button
+                                            type="button"
+                                            variant="outline"
                                             className="w-full"
                                             onClick={() => window.history.back()}
                                         >
@@ -387,4 +428,4 @@ export default function CreateEvent() {
             </div>
         </AppLayout>
     );
-} 
+}

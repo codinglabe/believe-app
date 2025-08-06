@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Laravel\Cashier\Cashier;
+use Stripe\Stripe;
 
 class NodeSellController extends Controller
 {
@@ -85,7 +86,12 @@ class NodeSellController extends Controller
         $processingFee = ($amount * 0.029) + 0.30;
         $totalAmount = $amount + $processingFee;
         $totalAmountInCents = (int) ($totalAmount * 100);
+        $stripeSecret = app()->environment('production')
+            ? config('services.stripe.live_secret')
+            : config('cashier.secret');
 
+        // Set the Stripe secret key for this request
+        Stripe::setApiKey($stripeSecret);
         try {
             DB::beginTransaction();
 

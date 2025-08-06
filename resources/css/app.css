@@ -68,6 +68,7 @@
   color utility to any element that depends on these defaults.
 */
 @layer base {
+
     *,
     ::after,
     ::before,
@@ -158,6 +159,432 @@
     }
 }
 
-.max-w-max  {
+.max-w-max {
     width: max-content !important;
+}
+
+/* Complete Rich Text Editor with All Features */
+.rich-text-editor-complete {
+  font-family: inherit;
+}
+
+.rich-text-editor-complete .ql-container {
+  border: none !important;
+  font-family: inherit;
+}
+
+.rich-text-editor-complete .ql-toolbar {
+  border: none !important;
+  padding: 0 !important;
+  background: transparent !important;
+}
+
+.rich-text-editor-complete .ql-editor {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border: none;
+  font-size: 14px;
+  line-height: 1.6;
+  padding: 16px;
+  min-height: 240px;
+  font-family: inherit;
+}
+
+.rich-text-editor-complete .ql-editor.ql-blank::before {
+  color: hsl(var(--muted-foreground));
+  font-style: normal;
+  opacity: 0.7;
+  left: 16px;
+  right: 16px;
+}
+
+/* Typography Styles */
+.rich-text-editor-complete .ql-editor p {
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+.rich-text-editor-complete .ql-editor h1,
+.rich-text-editor-complete .ql-editor h2,
+.rich-text-editor-complete .ql-editor h3,
+.rich-text-editor-complete .ql-editor h4,
+.rich-text-editor-complete .ql-editor h5,
+.rich-text-editor-complete .ql-editor h6 {
+  color: hsl(var(--foreground));
+  font-weight: 600;
+  margin-bottom: 16px;
+  margin-top: 24px;
+  line-height: 1.3;
+}
+
+.rich-text-editor-complete .ql-editor h1 {
+  font-size: 2rem;
+}
+.rich-text-editor-complete .ql-editor h2 {
+  font-size: 1.75rem;
+}
+.rich-text-editor-complete .ql-editor h3 {
+  font-size: 1.5rem;
+}
+.rich-text-editor-complete .ql-editor h4 {
+  font-size: 1.25rem;
+}
+.rich-text-editor-complete .ql-editor h5 {
+  font-size: 1.125rem;
+}
+.rich-text-editor-complete .ql-editor h6 {
+  font-size: 1rem;
+}
+
+.rich-text-editor-complete .ql-editor blockquote {
+  border-left: 4px solid hsl(var(--primary));
+  background: hsl(var(--muted) / 0.3);
+  padding: 12px 16px;
+  margin: 16px 0;
+  font-style: italic;
+  color: hsl(var(--muted-foreground));
+}
+
+.rich-text-editor-complete .ql-editor ul,
+.rich-text-editor-complete .ql-editor ol {
+  padding-left: 24px;
+  margin-bottom: 16px;
+}
+
+.rich-text-editor-complete .ql-editor li {
+  margin-bottom: 6px;
+  line-height: 1.6;
+}
+
+.rich-text-editor-complete .ql-editor a {
+  color: hsl(var(--primary));
+  text-decoration: underline;
+}
+
+.rich-text-editor-complete .ql-editor strong {
+  font-weight: 600;
+}
+
+/* Toolbar Button Styles */
+.rich-text-editor-complete .ql-toolbar button {
+  border: none !important;
+  background: transparent !important;
+  color: hsl(var(--foreground)) !important;
+  padding: 6px !important;
+  margin: 1px !important;
+  width: 32px !important;
+  height: 32px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border-radius: 6px !important;
+  transition: all 0.2s ease !important;
+}
+
+.rich-text-editor-complete .ql-toolbar button:hover {
+  background: hsl(var(--muted)) !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar button.ql-active {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar button svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+/* Select Dropdown Styles */
+.rich-text-editor-complete .ql-toolbar select {
+  border: 1px solid hsl(var(--input)) !important;
+  background: hsl(var(--background)) !important;
+  color: hsl(var(--foreground)) !important;
+  border-radius: 6px !important;
+  padding: 4px 8px !important;
+  font-size: 13px !important;
+  height: 32px !important;
+  min-width: 80px !important;
+  transition: all 0.2s ease !important;
+  margin: 1px !important;
+}
+
+.rich-text-editor-complete .ql-toolbar select:hover {
+  background: hsl(var(--muted)) !important;
+  border-color: hsl(var(--ring)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar select:focus {
+  outline: none !important;
+  border-color: hsl(var(--ring)) !important;
+  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.2) !important;
+}
+
+/* Color Picker Styles */
+.rich-text-editor-complete .ql-toolbar .ql-color,
+.rich-text-editor-complete .ql-toolbar .ql-background {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  border: 1px solid hsl(var(--input)) !important;
+  border-radius: 6px !important;
+  background: hsl(var(--background)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-color .ql-picker-label,
+.rich-text-editor-complete .ql-toolbar .ql-background .ql-picker-label {
+  border: none !important;
+  width: 100% !important;
+  height: 100% !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-color:hover,
+.rich-text-editor-complete .ql-toolbar .ql-background:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+/* Picker Dropdown Styles */
+.rich-text-editor-complete .ql-toolbar .ql-picker {
+  color: hsl(var(--foreground)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-picker-options {
+  background: hsl(var(--background)) !important;
+  border: 1px solid hsl(var(--border)) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -2px rgb(0 0 0 / 0.05) !important;
+  padding: 4px !important;
+  z-index: 1000 !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-picker-item {
+  color: hsl(var(--foreground)) !important;
+  padding: 8px 12px !important;
+  border-radius: 4px !important;
+  margin: 2px !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-picker-item:hover {
+  background: hsl(var(--muted)) !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-picker-item.ql-selected {
+  background: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+}
+
+/* Color Picker Options */
+.rich-text-editor-complete .ql-toolbar .ql-color-picker .ql-picker-options,
+.rich-text-editor-complete .ql-toolbar .ql-background .ql-picker-options {
+  width: 152px !important;
+  padding: 8px !important;
+}
+
+.rich-text-editor-complete .ql-toolbar .ql-color-picker .ql-picker-item,
+.rich-text-editor-complete .ql-toolbar .ql-background .ql-picker-item {
+  width: 20px !important;
+  height: 20px !important;
+  margin: 2px !important;
+  border-radius: 4px !important;
+  border: 1px solid hsl(var(--border)) !important;
+}
+
+/* Focus States */
+.rich-text-editor-complete .ql-editor:focus {
+  outline: none !important;
+  border: none !important;
+}
+
+/* Remove default Quill margins */
+.rich-text-editor-complete .ql-toolbar .ql-formats {
+  margin-right: 0 !important;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .rich-text-editor-complete .ql-toolbar {
+    padding: 8px !important;
+  }
+
+  .rich-text-editor-complete .ql-toolbar button {
+    width: 28px !important;
+    height: 28px !important;
+    padding: 4px !important;
+  }
+
+  .rich-text-editor-complete .ql-toolbar select {
+    min-width: 70px !important;
+    font-size: 12px !important;
+    height: 28px !important;
+    padding: 2px 6px !important;
+  }
+
+  .rich-text-editor-complete .ql-toolbar .ql-color,
+  .rich-text-editor-complete .ql-toolbar .ql-background {
+    width: 28px !important;
+    height: 28px !important;
+  }
+
+  .rich-text-editor-complete .ql-editor {
+    padding: 12px;
+    min-height: 200px;
+  }
+}
+
+@media (max-width: 640px) {
+  .rich-text-editor-complete .ql-toolbar button {
+    width: 24px !important;
+    height: 24px !important;
+  }
+
+  .rich-text-editor-complete .ql-toolbar select {
+    min-width: 60px !important;
+    font-size: 11px !important;
+    height: 24px !important;
+  }
+
+  .rich-text-editor-complete .ql-toolbar .ql-color,
+  .rich-text-editor-complete .ql-toolbar .ql-background {
+    width: 24px !important;
+    height: 24px !important;
+  }
+}
+
+
+/* Ensure calendar/clock icons are visible */
+input[type="date"]::-webkit-calendar-picker-indicator,
+input[type="time"]::-webkit-calendar-picker-indicator,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  opacity: 1 !important;
+  cursor: pointer;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  width: 20px;
+  height: 20px;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover,
+input[type="time"]::-webkit-calendar-picker-indicator:hover,
+input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+/* Style the date/time text */
+input[type="date"]::-webkit-datetime-edit,
+input[type="time"]::-webkit-datetime-edit,
+input[type="datetime-local"]::-webkit-datetime-edit {
+  color: hsl(var(--foreground));
+}
+
+input[type="date"]::-webkit-datetime-edit-fields-wrapper,
+input[type="time"]::-webkit-datetime-edit-fields-wrapper,
+input[type="datetime-local"]::-webkit-datetime-edit-fields-wrapper {
+  color: hsl(var(--foreground));
+}
+
+/* Style individual date/time components */
+input[type="date"]::-webkit-datetime-edit-text,
+input[type="time"]::-webkit-datetime-edit-text,
+input[type="datetime-local"]::-webkit-datetime-edit-text {
+  color: hsl(var(--muted-foreground));
+  padding: 0 2px;
+}
+
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field,
+input[type="time"]::-webkit-datetime-edit-hour-field,
+input[type="time"]::-webkit-datetime-edit-minute-field,
+input[type="time"]::-webkit-datetime-edit-ampm-field,
+input[type="datetime-local"]::-webkit-datetime-edit-month-field,
+input[type="datetime-local"]::-webkit-datetime-edit-day-field,
+input[type="datetime-local"]::-webkit-datetime-edit-year-field,
+input[type="datetime-local"]::-webkit-datetime-edit-hour-field,
+input[type="datetime-local"]::-webkit-datetime-edit-minute-field,
+input[type="datetime-local"]::-webkit-datetime-edit-ampm-field {
+  color: hsl(var(--foreground));
+  background: transparent;
+  border: none;
+  outline: none;
+}
+
+/* Focus states for date/time inputs */
+input[type="date"]:focus::-webkit-datetime-edit-month-field,
+input[type="date"]:focus::-webkit-datetime-edit-day-field,
+input[type="date"]:focus::-webkit-datetime-edit-year-field,
+input[type="time"]:focus::-webkit-datetime-edit-hour-field,
+input[type="time"]:focus::-webkit-datetime-edit-minute-field,
+input[type="time"]:focus::-webkit-datetime-edit-ampm-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-month-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-day-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-year-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-hour-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-minute-field,
+input[type="datetime-local"]:focus::-webkit-datetime-edit-ampm-field {
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
+  border-radius: 2px;
+}
+
+/* Firefox support */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  -moz-appearance: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Ensure proper sizing */
+input[type="date"],
+input[type="time"],
+input[type="datetime-local"] {
+  min-width: 150px;
+}
+
+input[type="time"] {
+  min-width: 120px;
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  input[type="date"]::-webkit-calendar-picker-indicator,
+  input[type="time"]::-webkit-calendar-picker-indicator,
+  input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+    filter: invert(1);
+  }
+}
+
+/* Custom fallback for browsers that don't support native pickers */
+.date-input-fallback {
+  position: relative;
+}
+
+.date-input-fallback::after {
+  content: "📅";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 16px;
+}
+
+.time-input-fallback::after {
+  content: "🕐";
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  font-size: 16px;
 }

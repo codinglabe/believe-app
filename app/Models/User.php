@@ -331,4 +331,50 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->login_status == 1;
     }
+
+
+    /**
+     * Get the courses created by this user (as organization).
+     */
+    public function createdCourses()
+    {
+        return $this->hasMany(Course::class, 'organization_id');
+    }
+
+    /**
+     * Get the courses instructed by this user.
+     */
+    public function instructedCourses()
+    {
+        return $this->hasMany(Course::class, 'user_id');
+    }
+
+    /**
+     * Get the enrollments for this user.
+     */
+    public function enrollments()
+    {
+        return $this->hasMany(Enrollment::class);
+    }
+
+    /**
+     * Get the courses this user is enrolled in.
+     */
+    public function enrolledCourses()
+    {
+        return $this->belongsToMany(Course::class, 'enrollments')
+                    ->withPivot(['status', 'amount_paid', 'enrolled_at'])
+                    ->withTimestamps();
+    }
+
+    /**
+     * Check if user is enrolled in a specific course
+     */
+    public function isEnrolledIn(Course $course)
+    {
+        return $this->enrollments()
+                    ->where('course_id', $course->id)
+                    ->where('status', 'active')
+                    ->exists();
+    }
 }

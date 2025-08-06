@@ -1,7 +1,7 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Plus, Search, Filter, Calendar, MapPin, Users, DollarSign, Edit, Trash2, Eye } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, MapPin, Users, DollarSign, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/frontend/ui/button';
@@ -33,6 +33,7 @@ type Event = {
     zip?: string;
     poster_image?: string;
     status: 'upcoming' | 'ongoing' | 'completed' | 'cancelled';
+    visibility: 'public' | 'private';
     max_participants?: number;
     registration_fee?: number;
     requirements?: string;
@@ -59,6 +60,7 @@ type Props = {
 export default function EventsIndex({ events, userRole }: Props) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
+    const [visibilityFilter, setVisibilityFilter] = useState('all');
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -70,6 +72,17 @@ export default function EventsIndex({ events, userRole }: Props) {
                 return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
             case 'cancelled':
                 return 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200';
+            default:
+                return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
+        }
+    };
+
+    const getVisibilityColor = (visibility: string) => {
+        switch (visibility) {
+            case 'public':
+                return 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200';
+            case 'private':
+                return 'bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200';
             default:
                 return 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200';
         }
@@ -113,8 +126,9 @@ export default function EventsIndex({ events, userRole }: Props) {
                             event.location.toLowerCase().includes(searchTerm.toLowerCase());
         
         const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
+        const matchesVisibility = visibilityFilter === 'all' || event.visibility === visibilityFilter;
         
-        return matchesSearch && matchesStatus;
+        return matchesSearch && matchesStatus && matchesVisibility;
     });
 
     return (
@@ -167,6 +181,15 @@ export default function EventsIndex({ events, userRole }: Props) {
                                     <option value="completed">Completed</option>
                                     <option value="cancelled">Cancelled</option>
                                 </select>
+                                <select
+                                    value={visibilityFilter}
+                                    onChange={(e) => setVisibilityFilter(e.target.value)}
+                                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                >
+                                    <option value="all">All Visibility</option>
+                                    <option value="public">Public</option>
+                                    <option value="private">Private</option>
+                                </select>
                             </div>
                         </div>
                     </CardContent>
@@ -186,12 +209,25 @@ export default function EventsIndex({ events, userRole }: Props) {
                                 ) : (
                                     <Calendar className="h-12 w-12 text-white" />
                                 )}
-                                <Badge 
-                                    variant="secondary" 
-                                    className={`absolute top-3 right-3 ${getStatusColor(event.status)}`}
-                                >
-                                    {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                                </Badge>
+                                <div className="absolute top-3 right-3 flex gap-2">
+                                    <Badge 
+                                        variant="secondary" 
+                                        className={getStatusColor(event.status)}
+                                    >
+                                        {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
+                                    </Badge>
+                                    <Badge 
+                                        variant="secondary" 
+                                        className={getVisibilityColor(event.visibility)}
+                                    >
+                                        {event.visibility === 'public' ? (
+                                            <Eye className="h-3 w-3 mr-1" />
+                                        ) : (
+                                            <EyeOff className="h-3 w-3 mr-1" />
+                                        )}
+                                        {event.visibility.charAt(0).toUpperCase() + event.visibility.slice(1)}
+                                    </Badge>
+                                </div>
                             </div>
                             
                             <CardContent className="p-6">
@@ -275,7 +311,7 @@ export default function EventsIndex({ events, userRole }: Props) {
                                 No events found
                             </h3>
                             <p className="text-gray-600 dark:text-gray-300 mb-4">
-                                {searchTerm || statusFilter !== 'all' 
+                                {searchTerm || statusFilter !== 'all' || visibilityFilter !== 'all'
                                     ? 'Try adjusting your search or filters.'
                                     : 'Get started by creating your first event.'
                                 }

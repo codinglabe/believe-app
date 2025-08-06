@@ -5,36 +5,18 @@ import { motion } from "framer-motion"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
-import { Label } from "@/components/frontend/ui/label"
-import { Textarea } from "@/components/frontend/ui/textarea"
-import { Link, router, useForm } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 import { useState, useEffect, useCallback } from "react"
 import { debounce, pickBy } from "lodash"
-import axios from "axios"
-import { showErrorToast } from '@/lib/toast';
 import { Badge } from "@/components/frontend/ui/badge"
 import {
-    Heart,
     MapPin,
-    Globe,
-    Phone,
-    Mail,
     Calendar,
-    Award,
-    Share2,
     DollarSign,
-    Star,
-    ExternalLink,
     ChevronLeft,
     ChevronRight,
-    ShoppingCart,
-    Check,
-    FileText,
     Building,
-    Plus,
-    Clock,
     Users,
-    Tag,
 } from "lucide-react"
 
 interface Event {

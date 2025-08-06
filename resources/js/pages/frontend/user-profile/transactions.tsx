@@ -246,10 +246,10 @@ function TransactionDetailDialog({
                     <span className="text-lg font-semibold text-gray-900 dark:text-white">
                       {transaction.processed_at
                         ? new Date(transaction.processed_at).toLocaleDateString("en-US", {
-                            year: "numeric",
-                            month: "long",
-                            day: "numeric",
-                          })
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        })
                         : "N/A"}
                     </span>
                   </div>
@@ -393,11 +393,10 @@ function PaginationControls({
             size="icon"
             onClick={() => onPageChange(Number(link.label))}
             disabled={link.active}
-            className={`rounded-full ${
-              link.active
+            className={`rounded-full ${link.active
                 ? "bg-blue-600 hover:bg-blue-700 text-white"
                 : "border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700"
-            }`}
+              }`}
           >
             {link.label}
           </Button>
@@ -462,6 +461,8 @@ export default function TransactionsPage() {
         return <ArrowUpCircle className="h-5 w-5 text-blue-500" />
       case "withdrawal":
         return <ArrowDownCircle className="h-5 w-5 text-red-500" />
+      case "enrollment":
+        return <ShoppingCart className="h-5 w-5 text-purple-500" />
       case "purchase":
         return <ShoppingCart className="h-5 w-5 text-purple-500" />
       case "refund":
@@ -624,15 +625,15 @@ export default function TransactionsPage() {
                       <span className="font-semibold text-gray-900 dark:text-white sm:ml-2">
                         {transaction.processed_at
                           ? new Date(transaction.processed_at).toLocaleDateString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })
                           : new Date(transaction.created_at).toLocaleDateString("en-US", {
-                              year: "numeric",
-                              month: "short",
-                              day: "numeric",
-                            })}
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                          })}
                       </span>
                     </div>
                     {transaction.fee > 0 && (

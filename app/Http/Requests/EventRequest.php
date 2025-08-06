@@ -37,6 +37,8 @@ class EventRequest extends FormRequest
             'registration_fee' => 'nullable|numeric|min:0',
             'requirements' => 'nullable|string|max:500',
             'contact_info' => 'nullable|string|max:500',
+            'birthday' => 'nullable|date',
+            'visibility' => 'required|in:public,private',
         ];
 
         // Add poster image validation only for create/update
@@ -68,6 +70,9 @@ class EventRequest extends FormRequest
             'poster_image.image' => 'Poster must be an image file.',
             'poster_image.mimes' => 'Poster must be a JPEG, PNG, JPG, or GIF file.',
             'poster_image.max' => 'Poster image must be less than 2MB.',
+            'birthday.date' => 'Birthday must be a valid date.',
+            'visibility.required' => 'Event visibility is required.',
+            'visibility.in' => 'Visibility must be either public or private.',
         ];
     }
 }
