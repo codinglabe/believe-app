@@ -1,235 +1,148 @@
 "use client"
 
-import { ScrollArea } from "@/components/chat/ui/scroll-area"
+import React, { useState } from "react"
+import { ChatRoom, User, ChatMessage as ChatMessageType } from "@/providers/chat-provider"
+import { UserAvatar } from "@/components/chat/user-avatar"
 import { Button } from "@/components/chat/ui/button"
-import { X, ImageIcon, FileText, Users, Settings } from "lucide-react"
-import { UserAvatar } from "./user-avatar"
-import { Separator } from "@/components/chat/ui/separator"
+import { PlusIcon, LogOutIcon, UserPlusIcon, Trash2Icon } from 'lucide-react'
 import { useChat } from "@/providers/chat-provider"
-import { cn } from "@/lib/utils"
-import { useState } from "react"
-import ImageViewerModal from "./image-viewer-modal"
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/chat/ui/accordion"
+import { ScrollArea } from "@/components/chat/ui/scroll-area"
+import { Checkbox } from "@/components/chat/ui/checkbox"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/chat/ui/dialog"
+import { Label } from "@/components/chat/ui/label"
+import toast from "react-hot-toast"
 
 interface ChatDetailsPanelProps {
+  room: ChatRoom
   onClose: () => void
-  className?: string
 }
 
-export function ChatDetailsPanel({ onClose, className }: ChatDetailsPanelProps) {
-  const { chatRooms, selectedRoomId, currentUser, messages } = useChat()
-  const selectedRoom = chatRooms?.find((room) => room.id === selectedRoomId)
+export function ChatDetailsPanel({ room, onClose }: ChatDetailsPanelProps) {
+  const { currentUser, leaveRoom, deleteMessage, allUsers, addMembers } = useChat()
+  const [isAddMembersDialogOpen, setIsAddMembersDialogOpen] = useState(false)
+  const [selectedMembersToAdd, setSelectedMembersToAdd] = useState<number[]>([])
 
-  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false)
-  const [currentImageIndex, setCurrentImageIndex] = useState(0)
-  const [imagesForViewer, setImagesForViewer] = useState<{ url: string; name: string }[]>([])
+  const isCreator = room.created_by === currentUser.id
+  const isAdmin = currentUser.role === "admin" || currentUser.role === "organization" // Assuming organization role can manage groups
 
-  if (!selectedRoom) {
-    return (
-      <div className={cn("flex flex-col h-full border-l bg-background p-4", className)}>
-        <div className="flex items-center justify-between pb-4 border-b">
-          <h2 className="text-lg font-semibold">Details</h2>
-          <Button variant="ghost" size="icon" className="rounded-full" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </Button>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">No room selected.</div>
-      </div>
+  const canAddMembers = (isCreator || isAdmin) && room.type === "private"
+  const canLeave = room.type !== "direct" || room.members.length > 1 // Cannot leave direct chat if only one member
+  const canDeleteMessage = (message: ChatMessageType) => message.user.id === currentUser.id; // Only own messages
+
+  const handleLeaveRoom = async () => {
+    if (confirm(`Are you sure you want to leave "${room.name}"?`)) {
+      await leaveRoom(room.id)
+      onClose()
+    }
+  }
+
+  const handleAddMembers = async () => {
+    if (selectedMembersToAdd.length === 0) {
+      toast.error("Please select members to add.");
+      return;
+    }
+    try {
+      await addMembers(room.id, selectedMembersToAdd);
+      toast.success("Members added successfully!");
+      setSelectedMembersToAdd([]);
+      setIsAddMembersDialogOpen(false);
+    } catch (error) {
+      console.error("Failed to add members:", error);
+      toast.error("Failed to add members.");
+    }
+  }
+
+  const handleMemberToggle = (userId: number) => {
+    setSelectedMembersToAdd((prev) =>
+      prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId],
     )
   }
 
-  const isGroupChat = selectedRoom.type === "public" || selectedRoom.type === "private"
-  const otherParticipant = !isGroupChat
-    ? selectedRoom.members?.find((member) => member.id !== currentUser?.id)
-    : undefined
-
-  // Extract shared media from messages
-  const sharedMedia =
-    messages?.flatMap((message) =>
-      message.attachments
-        ? message.attachments.map((att) => ({
-            ...att,
-            messageId: message.id,
-            senderId: message.user.id,
-          }))
-        : [],
-    ) || []
-
-  const sharedImages = sharedMedia.filter((att) => att.type.startsWith("image/"))
-  const sharedFiles = sharedMedia.filter((att) => !att.type.startsWith("image/"))
-
-  const openImageViewer = (images: { url: string; name: string }[], index: number) => {
-    setImagesForViewer(images)
-    setCurrentImageIndex(index)
-    setIsImageViewerOpen(true)
-  }
+  const membersNotInRoom = allUsers.filter(
+    (user) => !room.members.some((member) => member.id === user.id) && user.id !== currentUser.id
+  )
 
   return (
-    <div className={cn("flex flex-col h-full border-l bg-background", className)}>
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Details</h2>
-        <Button variant="ghost" size="icon" className="rounded-full" onClick={onClose} aria-label="Close details">
-          <X className="h-5 w-5" />
-        </Button>
+    <div className="flex flex-col h-full p-4">
+      <div className="flex flex-col items-center gap-4 border-b pb-4">
+        <UserAvatar user={{ name: room.name, avatar: room.image || '/placeholder.svg?height=64&width=64' }} className="h-20 w-20 text-4xl" />
+        <h3 className="text-xl font-semibold">{room.name}</h3>
+        {room.description && <p className="text-sm text-muted-foreground text-center">{room.description}</p>}
+        <p className="text-sm text-muted-foreground">
+          {room.type === "public" ? "Public Group" : room.type === "private" ? "Private Group" : "Direct Message"}
+        </p>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
-        {/* Room/User Info */}
-        <div className="flex flex-col items-center gap-4 pb-4">
-          <UserAvatar
-            src={
-              isGroupChat
-                ? selectedRoom.image || "/placeholder.svg?height=80&width=80&text=Group"
-                : otherParticipant?.avatar
-            }
-            alt={selectedRoom.name}
-            fallback={selectedRoom.name.charAt(0)}
-            className="h-20 w-20 text-3xl"
-            status={isGroupChat ? undefined : otherParticipant?.is_online ? "online" : "offline"}
-          />
-          <div className="text-center">
-            <h3 className="text-xl font-bold">{selectedRoom.name}</h3>
-            {!isGroupChat && otherParticipant && (
-              <p className="text-sm text-muted-foreground">{otherParticipant.is_online ? "Online" : "Offline"}</p>
-            )}
-            {isGroupChat && (
-              <p className="text-sm text-muted-foreground">
-                {selectedRoom.type === "public" ? "Public Group" : "Private Group"}
-              </p>
+      <div className="flex-1 py-4 overflow-y-auto">
+        <h4 className="font-semibold mb-3">Members ({room.members.length})</h4>
+        <div className="grid gap-2">
+          {room.members.map((member) => (
+            <div key={member.id} className="flex items-center gap-3">
+              <UserAvatar user={member} className="h-8 w-8" />
+              <div>
+                <p className="font-medium">{member.name}</p>
+                <p className="text-sm text-muted-foreground">
+                  {member.role} {member.organization ? `(${member.organization.name})` : ''}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+        {canAddMembers && (
+          <Button variant="outline" className="w-full mt-4" onClick={() => setIsAddMembersDialogOpen(true)}>
+            <UserPlusIcon className="mr-2 h-4 w-4" /> Add Members
+          </Button>
+        )}
+      </div>
+
+      <div className="border-t pt-4 flex flex-col gap-2">
+        {canLeave && (
+          <Button variant="outline" className="w-full" onClick={handleLeaveRoom}>
+            <LogOutIcon className="mr-2 h-4 w-4" /> Leave Room
+          </Button>
+        )}
+        {/* Add other actions like delete room if applicable */}
+      </div>
+
+      <Dialog open={isAddMembersDialogOpen} onOpenChange={setIsAddMembersDialogOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Add Members to {room.name}</DialogTitle>
+            <DialogDescription>
+              Select users to add to this private chat room.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            {membersNotInRoom.length > 0 ? (
+              <ScrollArea className="h-60 border rounded-md p-2">
+                {membersNotInRoom.map((user) => (
+                  <div key={user.id} className="flex items-center gap-2 py-1">
+                    <Checkbox
+                      id={`add-member-${user.id}`}
+                      checked={selectedMembersToAdd.includes(user.id)}
+                      onCheckedChange={() => handleMemberToggle(user.id)}
+                    />
+                    <Label htmlFor={`add-member-${user.id}`} className="flex items-center gap-2 cursor-pointer">
+                      <UserAvatar user={user} className="h-7 w-7" />
+                      <span>{user.name}</span>
+                      {user.organization && (
+                        <span className="text-xs text-muted-foreground">({user.organization.name})</span>
+                      )}
+                    </Label>
+                  </div>
+                ))}
+              </ScrollArea>
+            ) : (
+              <p className="text-center text-muted-foreground text-sm py-4">No new users to add.</p>
             )}
           </div>
-        </div>
-
-        {/* Group Members */}
-        {isGroupChat && selectedRoom.members && (
-          <>
-            <Separator className="my-4" />
-            <div className="flex items-center gap-2 mb-3">
-              <Users className="h-4 w-4" />
-              <h4 className="font-semibold text-md">Members ({selectedRoom.members.length})</h4>
-            </div>
-            <div className="grid gap-2">
-              {selectedRoom.members.map((member) => (
-                <div key={member.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50">
-                  <UserAvatar
-                    src={member.avatar}
-                    alt={member.name}
-                    fallback={member.name.charAt(0)}
-                    status={member.is_online ? "online" : "offline"}
-                  />
-                  <div className="flex-1">
-                    <span className="text-sm font-medium">{member.name}</span>
-                    {member.role && <span className="text-xs text-muted-foreground ml-2">({member.role})</span>}
-                    {member.id === currentUser?.id && <span className="text-xs text-muted-foreground ml-2">(You)</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-
-        {/* Shared Media */}
-        {(sharedImages.length > 0 || sharedFiles.length > 0) && (
-          <>
-            <Separator className="my-4" />
-            <h4 className="font-semibold text-md mb-2">Shared Media</h4>
-            <Accordion type="multiple" defaultValue={["images", "files"]} className="w-full">
-              {sharedImages.length > 0 && (
-                <AccordionItem value="images">
-                  <AccordionTrigger className="flex items-center gap-1 text-sm font-medium">
-                    <ImageIcon className="h-4 w-4" /> Images ({sharedImages.length})
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="grid grid-cols-2 gap-2 py-2">
-                      {sharedImages.slice(0, 4).map((img, index) => (
-                        <img
-                          key={index}
-                          src={img.url || "/placeholder.svg"}
-                          alt={img.name}
-                          className="w-full h-24 object-cover rounded-md cursor-pointer hover:opacity-80 transition-opacity"
-                          onClick={() => openImageViewer(sharedImages, index)}
-                        />
-                      ))}
-                      {sharedImages.length > 4 && (
-                        <div
-                          className="relative w-full h-24 bg-muted-foreground/20 rounded-md flex items-center justify-center text-lg font-bold text-muted-foreground cursor-pointer hover:bg-muted-foreground/30 transition-colors"
-                          onClick={() => openImageViewer(sharedImages, 4)}
-                        >
-                          +{sharedImages.length - 4}
-                        </div>
-                      )}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              )}
-
-              {sharedFiles.length > 0 && (
-                <AccordionItem value="files">
-                  <AccordionTrigger className="flex items-center gap-1 text-sm font-medium">
-                    <FileText className="h-4 w-4" /> Files ({sharedFiles.length})
-                  </AccordionTrigger>
-                  <AccordionContent>
-                    <div className="grid gap-2 py-2">
-                      {sharedFiles.slice(0, 3).map((file, index) => (
-                        <a
-                          key={index}
-                          href={file.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-2 text-sm text-blue-500 hover:underline p-2 rounded-md hover:bg-muted/50 transition-colors"
-                        >
-                          <FileText className="h-4 w-4 flex-shrink-0" />
-                          <span className="truncate">{file.name}</span>
-                          <span className="text-xs text-muted-foreground ml-auto">
-                            {(file.size / 1024).toFixed(1)} KB
-                          </span>
-                        </a>
-                      ))}
-                      {sharedFiles.length > 3 && (
-                        <div className="text-center text-sm text-blue-500 hover:underline cursor-pointer mt-2 p-2">
-                          View all files ({sharedFiles.length})
-                        </div>
-                      )}
-                    </div>
-                  </AccordionContent>
-                </AccordionItem>
-              )}
-            </Accordion>
-          </>
-        )}
-
-        {/* Room Settings (for group chats) */}
-        {isGroupChat && (
-          <>
-            <Separator className="my-4" />
-            <div className="flex items-center gap-2 mb-3">
-              <Settings className="h-4 w-4" />
-              <h4 className="font-semibold text-md">Room Settings</h4>
-            </div>
-            <div className="space-y-2">
-              <div className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50">
-                <span className="text-sm">Room Type</span>
-                <span className="text-sm text-muted-foreground capitalize">{selectedRoom.type}</span>
-              </div>
-              <div className="flex justify-between items-center p-2 rounded-lg hover:bg-muted/50">
-                <span className="text-sm">Created</span>
-                <span className="text-sm text-muted-foreground">
-                  {new Date(selectedRoom.created_at || "").toLocaleDateString()}
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-      </ScrollArea>
-
-      {isImageViewerOpen && (
-        <ImageViewerModal
-          isOpen={isImageViewerOpen}
-          onClose={() => setIsImageViewerOpen(false)}
-          images={imagesForViewer}
-          initialIndex={currentImageIndex}
-        />
-      )}
+          <DialogFooter>
+            <Button onClick={handleAddMembers} disabled={selectedMembersToAdd.length === 0}>
+              Add Selected Members
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

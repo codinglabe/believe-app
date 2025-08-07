@@ -103,16 +103,18 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
 });
 
 
-Route::prefix("chat")->middleware(['auth', 'verified', 'role:organization'])->name("chat.")->group(function () {
+Route::prefix("chat")->middleware(['auth', 'verified'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
     Route::get("/rooms/{chatRoom}/messages", [ChatController::class, 'getMessages'])->name('messages');
     Route::post("/rooms/{chatRoom}/messages", [ChatController::class, 'sendMessage'])->name('send-message');
     Route::delete("/messages/{message}", [ChatController::class, 'deleteMessage'])->name('delete-message');
     Route::post("/rooms", [ChatController::class, 'createRoom'])->name('create-room');
+    Route::post("/direct-chat", [ChatController::class, 'createDirectChat'])->name('create-direct-chat'); // Corrected route name
     Route::post("/rooms/{chatRoom}/join", [ChatController::class, 'joinRoom'])->name('join-room');
     Route::post("/rooms/{chatRoom}/leave", [ChatController::class, 'leaveRoom'])->name('leave-room');
-    Route::post("/rooms/{chatRoom}/typing", [ChatController::class, 'typing'])->name('typing');
-    Route::post("/rooms/{chatRoom}/read", [ChatController::class, 'markAsRead'])->name('mark-read');
+    Route::post("/rooms/{chatRoom}/typing", [ChatController::class, 'setTypingStatus'])->name('typing'); // Renamed function
+    Route::post("/rooms/{chatRoom}/mark-as-read", [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
+    Route::post("/rooms/{chatRoom}/members", [ChatController::class, 'addMembers'])->name('add-members');
 });
 
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {

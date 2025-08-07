@@ -47,8 +47,9 @@ class ChatMessage extends Model
         return $this->hasMany(ChatMessage::class, 'reply_to_message_id');
     }
 
-    public function reads(): HasMany
+    public function reads()
     {
-        return $this->hasMany(ChatMessageRead::class, 'message_id');
+        return $this->belongsToMany(User::class, 'chat_message_reads', 'message_id', 'user_id')
+            ->withTimestamps();
     }
 }

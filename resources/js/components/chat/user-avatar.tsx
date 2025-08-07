@@ -1,36 +1,29 @@
 "use client"
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/chat/ui/avatar"
 import { cn } from "@/lib/utils"
 
 interface UserAvatarProps {
-  src?: string
-  alt?: string
-  fallback: string
+  user: {
+    name?: string | null
+    avatar?: string | null
+  }
   className?: string
-  status?: "online" | "offline" | "away"
 }
 
-export function UserAvatar({ src, alt, fallback, className, status }: UserAvatarProps) {
-  const statusColorClass = {
-    online: "bg-green-500",
-    offline: "bg-gray-400",
-    away: "bg-yellow-500",
-  }
+export function UserAvatar({ user, className }: UserAvatarProps) {
+  const initials = user.name
+    ? user.name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .toUpperCase()
+    : "UN" // Unknown User
 
   return (
-    <div className="relative">
-      <Avatar className={cn("h-8 w-8", className)}>
-        <AvatarImage src={src || "/placeholder.svg"} alt={alt} />
-        <AvatarFallback>{fallback}</AvatarFallback>
-      </Avatar>
-      {status && (
-        <span
-          className={cn(
-            "absolute bottom-0 right-0 block h-2.5 w-2.5 rounded-full ring-2 ring-background",
-            statusColorClass[status],
-          )}
-        />
-      )}
-    </div>
+    <Avatar className={cn("relative", className)}>
+      <AvatarImage src={user.avatar || undefined} alt={user.name || "User Avatar"} />
+      <AvatarFallback>{initials}</AvatarFallback>
+    </Avatar>
   )
 }

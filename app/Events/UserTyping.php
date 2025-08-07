@@ -1,5 +1,5 @@
 <?php
-// app/Events/UserTyping.php
+
 namespace App\Events;
 
 use App\Models\User;
@@ -14,33 +14,60 @@ class UserTyping implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
-    public function __construct(
-        public User $user,
-        public int $chatRoomId,
-        public bool $isTyping
-    ) {
+    public $user;
+    public $roomId;
+    public $isTyping;
+
+    /**
+     * Create a new event instance.
+     */
+    public function __construct(User $user, int $roomId, bool $isTyping)
+    {
+        $this->user = $user->load('organization'); // Load organization for the user
+        $this->roomId = $roomId;
+        $this->isTyping = $isTyping;
     }
 
+    /**
+     * Get the channels the event should broadcast on.
+     *
+     * @return array<int, \Illuminate\Broadcasting\Channel>
+     */
     public function broadcastOn(): array
     {
-        return [
-            new PresenceChannel('chat-room.' . $this->chatRoomId),
-        ];
+        // Broadcast to the specific chat room's presence channel
+        // This ensures typing indicators are only seen by members of that room
+        return [new PresenceChannel('presence-chat-room.' . $this->roomId)];
     }
 
+    /**
+     * The event's broadcast name.
+     */
     public function broadcastAs(): string
     {
-        return 'UserTyping';
+        return 'user.typing';
     }
 
+    /**
+     * Get the data to broadcast.
+     *
+     * @return array<string, mixed>
+     */
     public function broadcastWith(): array
     {
         return [
             'user' => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
-                'avatar' => $this->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
+                'avatar' => $this->user->avatar_url,
+                'is_online' => $this->user->is_online,
+                'role' => $this->user->role,
+                'organization' => $this->user->organization ? [
+                    'id' => $this->user->organization->id,
+                    'name' => $this->user->organization->name,
+                ] : null,
             ],
+            'room_id' => $this->roomId,
             'is_typing' => $this->isTyping,
         ];
     }

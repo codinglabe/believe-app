@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { XCircle, UploadCloud } from "lucide-react"
-import { toast } from "sonner"
+import toast from "react-hot-toast"
 
 interface ImageUploadProps {
   id?: string

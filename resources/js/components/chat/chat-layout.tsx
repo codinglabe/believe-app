@@ -1,7 +1,6 @@
 "use client"
 import { Sidebar } from "./sidebar"
 import { ChatArea } from "./chat-area"
-import { ChatDetailsPanel } from "./chat-details-panel"
 import { useIsMobile } from "@/hooks/use-mobile"
 import { Sheet, SheetContent, SheetTrigger } from "@/components/chat/ui/sheet"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/chat/ui/resizable"
@@ -13,7 +12,7 @@ import { useChat } from "@/providers/chat-provider"
 export function ChatLayout() {
   const isMobile = useIsMobile()
   const [showDetailsPanel, setShowDetailsPanel] = useState(false)
-  const { selectedRoomId } = useChat()
+  const { activeRoom } = useChat()
 
   const toggleDetailsPanel = () => {
     setShowDetailsPanel((prev) => !prev)
@@ -41,7 +40,7 @@ export function ChatLayout() {
     return (
       <Sheet>
         <div className="h-screen flex flex-col">
-          {selectedRoomId ? (
+          {activeRoom ? (
             <ChatArea
               mobileMenuButton={
                 <SheetTrigger asChild>
@@ -63,7 +62,7 @@ export function ChatLayout() {
             </div>
           )}
 
-          {!selectedRoomId && <WelcomeScreen />}
+          {!activeRoom && <WelcomeScreen />}
         </div>
 
         <SheetContent side="left" className="p-0 w-80">
@@ -72,7 +71,7 @@ export function ChatLayout() {
 
         <Sheet open={showDetailsPanel} onOpenChange={setShowDetailsPanel}>
           <SheetContent side="right" className="p-0 w-80">
-            <ChatDetailsPanel onClose={() => setShowDetailsPanel(false)} />
+            {/* Placeholder for ChatDetailsPanel */}
           </SheetContent>
         </Sheet>
       </Sheet>
@@ -80,35 +79,20 @@ export function ChatLayout() {
   }
 
   return (
-    <ResizablePanelGroup direction="horizontal" className="h-screen">
-      <ResizablePanel defaultSize={25} minSize={20} maxSize={35}>
+    <ResizablePanelGroup direction="horizontal" className="h-screen max-w-full">
+      <ResizablePanel defaultSize={30} minSize={25} maxSize={40}>
         <Sidebar />
       </ResizablePanel>
       <ResizableHandle withHandle />
-      <ResizablePanel defaultSize={selectedRoomId ? 55 : 75}>
-        {selectedRoomId ? (
-          <ChatArea toggleDetailsPanel={toggleDetailsPanel} />
+      <ResizablePanel defaultSize={70} minSize={50}>
+        {activeRoom ? (
+          <ChatArea />
         ) : (
-          <WelcomeScreen />
+          <div className="flex h-full items-center justify-center text-muted-foreground">
+            Select a chat to start messaging
+          </div>
         )}
       </ResizablePanel>
-      {selectedRoomId && (
-        <>
-          <ResizableHandle withHandle />
-          <ResizablePanel
-            defaultSize={20}
-            minSize={15}
-            maxSize={30}
-            collapsedSize={0}
-            collapsible={true}
-            onCollapse={() => setShowDetailsPanel(false)}
-            onExpand={() => setShowDetailsPanel(true)}
-            defaultCollapsed={!showDetailsPanel}
-          >
-            <ChatDetailsPanel onClose={toggleDetailsPanel} />
-          </ResizablePanel>
-        </>
-      )}
     </ResizablePanelGroup>
   )
 }

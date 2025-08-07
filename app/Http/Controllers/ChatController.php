@@ -3,12 +3,15 @@
 namespace App\Http\Controllers;
 
 use App\Events\MessageSent;
+use App\Events\RoomCreated;
 use App\Events\UserTyping;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rule;
 use Inertia\Inertia;
 
 class ChatController extends Controller
@@ -17,144 +20,117 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
-        // Get user's chat rooms with latest message and unread count
-        $chatRooms = $user->chatRooms()
-            ->with(['latestMessage.user', 'members'])
+        // Get chat rooms the user is a member of
+        $userChatRooms = $user->chatRooms()
+            ->with(['members.organization', 'latestMessage.user'])
             ->where('is_active', true)
-            ->get()
-            ->map(function ($room) {
-                $latestMessage = $room->latestMessage->first();
-                return [
-                    'id' => $room->id,
-                    'name' => $room->name,
-                    'type' => $room->type,
-                    'image' => $room->image ? asset('storage/' . $room->image) : null,
-                    'last_message' => $latestMessage ? [
-                        'message' => $latestMessage->message ?: '[Attachment]',
-                        'created_at' => $latestMessage->created_at->diffForHumans(),
-                        'user_name' => $latestMessage->user->name,
-                    ] : null,
-                    'unread_count' => $room->unread_count,
-                    'members' => $room->members->map(fn($member) => [
+            ->get();
+
+        // Get public chat rooms that user is NOT a member of
+        $publicRooms = ChatRoom::where('type', 'public')
+            ->where('is_active', true)
+            ->whereDoesntHave('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->with(['members.organization', 'latestMessage.user'])
+            ->get();
+
+        // Combine and remove duplicates (important if a public room is also a user's member room)
+        $allRooms = $userChatRooms->merge($publicRooms)->unique('id');
+
+        $chatRooms = $allRooms->map(function ($room) use ($user) {
+            $latestMessage = $room->latestMessage->first();
+            $isMember = $room->members->contains('id', $user->id);
+
+            return [
+                'id' => $room->id,
+                'name' => $room->name,
+                'type' => $room->type,
+                'image' => $room->image_url,
+                'description' => $room->description,
+                'created_at' => $room->created_at->toISOString(),
+                'last_message' => $latestMessage ? [
+                    'message' => $latestMessage->message ?? '',
+                    'created_at' => $latestMessage->created_at->toISOString() ?? "",
+                    'user_name' => $latestMessage->user->name ?? "",
+                ] : null,
+                'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $user->id)->whereDoesntHave('reads', function ($query) use ($user) {
+                    $query->where('user_id', $user->id);
+                })->count() : 0, // Only count unread if user is a member
+                'members' => $room->members->map(function ($member) {
+                    return [
                         'id' => $member->id,
                         'name' => $member->name,
-                        'avatar' => $member->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                        'is_online' => $member->is_online ?? false,
+                        'avatar' => $member->avatar_url,
+                        'is_online' => $member->is_online,
                         'role' => $member->role,
-                        'organization_id' => $member->organization_id,
-                    ]),
-                ];
-            });
+                        'organization' => $member->organization ? ['id' => $member->organization->id, 'name' => $member->organization->name] : null,
+                    ];
+                }),
+                'is_member' => $isMember,
+                'created_by' => $room->created_by,
+            ];
+        })
+            ->sortByDesc(function ($room) {
+                return $room['last_message']['created_at'] ?? $room['created_at'];
+            })
+            ->values();
 
-        // Get all users for creating new chats (excluding current user)
-        $allUsers = User::where('id', '!=', $user->id)
-            ->select('id', 'name', 'image', 'login_status', 'role')
-            ->get()
-            ->map(fn($u) => [
-                'id' => $u->id,
-                'name' => $u->name,
-                'avatar' => $u->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                'is_online' => $u->is_online ?? false,
-                'role' => $u->role,
-            ]);
+        $allUsers = User::with('organization')->get()->map(function ($user) {
+            return [
+                'id' => $user->id,
+                'name' => $user->name,
+                'avatar' => $user->avatar_url,
+                'is_online' => $user->is_online,
+                'role' => $user->role,
+                'organization' => $user->organization ? ['id' => $user->organization->id, 'name' => $user->organization->name] : null,
+            ];
+        });
+
+        $currentUser = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'avatar' => $user->avatar_url,
+            'is_online' => $user->is_online,
+            'role' => $user->role,
+            'organization' => $user->organization ? ['id' => $user->organization->id, 'name' => $user->organization->name] : null,
+        ];
 
         return Inertia::render('chat/index', [
             'chatRooms' => $chatRooms,
             'allUsers' => $allUsers,
-            'currentUser' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'avatar' => $user->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                'role' => $user->role,
-                'organization_id' => $user->organization_id,
-            ],
+            'currentUser' => $currentUser,
         ]);
     }
 
     public function getMessages(Request $request, ChatRoom $chatRoom)
     {
-        // Check if user is member of this chat room
-        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
-            abort(403, 'You are not a member of this chat room');
+        $user = auth()->user();
+
+        // For public rooms, auto-join the user if not already a member
+        if ($chatRoom->type === 'public') {
+            if (!$chatRoom->members()->where('user_id', $user->id)->exists()) {
+                $chatRoom->members()->attach($user->id, [
+                    'role' => 'member',
+                    'joined_at' => now(),
+                ]);
+            }
+        } else {
+            // For private/direct rooms, check membership
+            if (!$chatRoom->members()->where('user_id', $user->id)->exists()) {
+                abort(403, 'You are not a member of this chat room');
+            }
         }
 
         $page = $request->get('page', 1);
         $perPage = 20;
-
         $messages = $chatRoom->messages()
-            ->with(['user', 'replyToMessage.user'])
+            ->with(['user.organization', 'replyToMessage.user.organization'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
-        return response()->json([
-            'messages' => $messages->items()->map(function ($message) {
-                return [
-                    'id' => $message->id,
-                    'message' => $message->message,
-                    'attachments' => $message->attachments,
-                    'created_at' => $message->created_at->toISOString(),
-                    'is_edited' => $message->is_edited,
-                    'user' => [
-                        'id' => $message->user->id,
-                        'name' => $message->user->name,
-                        'avatar' => $message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                    ],
-                    'reply_to_message' => $message->replyToMessage ? [
-                        'id' => $message->replyToMessage->id,
-                        'message' => $message->replyToMessage->message,
-                        'user' => [
-                            'name' => $message->replyToMessage->user->name,
-                        ],
-                    ] : null,
-                ];
-            }),
-            'has_more' => $messages->hasMorePages(),
-            'current_page' => $messages->currentPage(),
-        ]);
-    }
-
-    public function sendMessage(Request $request, ChatRoom $chatRoom)
-    {
-        $request->validate([
-            'message' => 'nullable|string|max:5000',
-            'attachments' => 'nullable|array|max:5',
-            'attachments.*' => 'file|max:10240', // 10MB max per file
-            'reply_to_message_id' => 'nullable|exists:chat_messages,id',
-        ]);
-
-        // Check if user is member of this chat room
-        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
-            abort(403, 'You are not a member of this chat room');
-        }
-
-        $attachments = [];
-        if ($request->hasFile('attachments')) {
-            foreach ($request->file('attachments') as $file) {
-                $path = $file->store('chat-attachments', 'public');
-                $attachments[] = [
-                    'name' => $file->getClientOriginalName(),
-                    'url' => asset('storage/' . $path),
-                    'type' => $file->getMimeType(),
-                    'size' => $file->getSize(),
-                ];
-            }
-        }
-
-        $message = ChatMessage::create([
-            'chat_room_id' => $chatRoom->id,
-            'user_id' => auth()->id(),
-            'message' => $request->message,
-            'attachments' => $attachments ?: null,
-            'reply_to_message_id' => $request->reply_to_message_id,
-        ]);
-
-        $message->load(['user', 'replyToMessage.user']);
-
-        // Broadcast the message
-        broadcast(new MessageSent($message));
-
-        return response()->json([
-            'message' => [
+        $transformedMessages = collect($messages->items())->map(function ($message) {
+            return [
                 'id' => $message->id,
                 'message' => $message->message,
                 'attachments' => $message->attachments,
@@ -164,6 +140,8 @@ class ChatController extends Controller
                     'id' => $message->user->id,
                     'name' => $message->user->name,
                     'avatar' => $message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
+                    'role' => $message->user->role,
+                    'organization' => $message->user->organization ? ['id' => $message->user->organization->id, 'name' => $message->user->organization->name] : null,
                 ],
                 'reply_to_message' => $message->replyToMessage ? [
                     'id' => $message->replyToMessage->id,
@@ -172,190 +150,221 @@ class ChatController extends Controller
                         'name' => $message->replyToMessage->user->name,
                     ],
                 ] : null,
-            ],
+            ];
+        });
+
+        return response()->json([
+            'messages' => $transformedMessages,
+            'has_more' => $messages->hasMorePages(),
+            'current_page' => $messages->currentPage(),
         ]);
+    }
+
+    public function sendMessage(Request $request, ChatRoom $chatRoom)
+    {
+        $request->validate([
+            'message' => 'nullable|string|max:2000',
+            'attachments.*' => 'nullable|file|max:10240', // Max 10MB per file
+            'reply_to_message_id' => 'nullable|exists:chat_messages,id',
+        ]);
+
+        if (!$request->filled('message') && !$request->hasFile('attachments')) {
+            return response()->json(['error' => 'Message or attachment is required.'], 422);
+        }
+
+        // Check if user is member of this chat room
+        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
+            abort(403, 'You are not a member of this chat room');
+        }
+
+        $attachmentsData = [];
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $path = $file->store('chat_attachments', 'public');
+                $attachmentsData[] = [
+                    'name' => $file->getClientOriginalName(),
+                    'url' => Storage::url($path),
+                    'type' => $file->getClientMimeType(),
+                    'size' => $file->getSize(),
+                ];
+            }
+        }
+
+        $message = $chatRoom->messages()->create([
+            'user_id' => auth()->id(),
+            'message' => $request->input('message'),
+            'attachments' => $attachmentsData,
+            'reply_to_message_id' => $request->input('reply_to_message_id'),
+        ]);
+
+        // Mark message as read by sender
+        $message->reads()->attach(auth()->id());
+
+        // Broadcast the message
+        broadcast(new MessageSent($message));
+
+        return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }
 
     public function deleteMessage(ChatMessage $message)
     {
-        // Check if user owns this message or is admin of the chat room
+        // Only allow sender to delete their own message
         if ($message->user_id !== auth()->id()) {
-            $isAdmin = $message->chatRoom->members()
-                ->where('user_id', auth()->id())
-                ->where('role', 'admin')
-                ->exists();
-
-            if (!$isAdmin) {
-                abort(403, 'You can only delete your own messages');
-            }
+            abort(403, 'You are not authorized to delete this message.');
         }
 
         // Delete attachments from storage
         if ($message->attachments) {
             foreach ($message->attachments as $attachment) {
-                $path = str_replace(asset('storage/'), '', $attachment['url']);
+                $path = str_replace(Storage::url(''), '', $attachment['url']);
                 Storage::disk('public')->delete($path);
             }
         }
 
         $message->delete();
 
-        return response()->json(['success' => true]);
+        return response()->json(['message' => 'Message deleted successfully.']);
+    }
+
+    public function markRoomAsRead(ChatRoom $chatRoom)
+    {
+        $user = auth()->user();
+        $unreadMessages = $chatRoom->messages()->where('user_id', '!=', $user->id)->whereDoesntHave('reads', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })->get();
+
+        foreach ($unreadMessages as $message) {
+            $message->reads()->attach($user->id);
+        }
+
+        return response()->json(['status' => 'Room marked as read.']);
     }
 
     public function createRoom(Request $request)
     {
+        // Only users with 'admin' or 'organization' role can create groups
+        if (!in_array(auth()->user()->role, ['admin', 'organization'])) {
+            abort(403, 'You are not authorized to create chat rooms.');
+        }
+
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
-            'type' => 'required|in:public,private',
+            'type' => ['required', Rule::in(['public', 'private'])],
+            'image' => 'nullable|image|max:2048', // Max 2MB
             'members' => 'nullable|array',
             'members.*' => 'exists:users,id',
-            'image' => 'nullable|image|max:2048',
         ]);
 
-        // Only organizations can create rooms
-        if (auth()->user()->role !== 'organization') {
-            abort(403, 'Only organizations can create chat rooms');
-        }
-
-        $imagePath = null;
+        $imageUrl = null;
         if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('chat-rooms', 'public');
+            $imageUrl = Storage::url($request->file('image')->store('chat_room_images', 'public'));
         }
 
-        $chatRoom = ChatRoom::create([
-            'name' => $request->name,
-            'description' => $request->description,
-            'type' => $request->type,
-            'created_by' => auth()->id(),
-            'image' => $imagePath,
-        ]);
-
-        // Add creator as admin
-        $chatRoom->members()->attach(auth()->id(), [
-            'role' => 'admin',
-            'joined_at' => now(),
-        ]);
-
-        // Add selected members for private rooms
-        if ($request->type === 'private' && $request->members) {
-            $memberIds = collect($request->members)->filter(fn($id) => $id !== auth()->id());
-            $chatRoom->members()->attach($memberIds, [
-                'role' => 'member',
-                'joined_at' => now(),
+        $room = DB::transaction(function () use ($request, $imageUrl) {
+            $room = ChatRoom::create([
+                'name' => $request->input('name'),
+                'description' => $request->input('description'),
+                'type' => $request->input('type'),
+                'image_url' => $imageUrl,
+                'created_by' => auth()->id(),
             ]);
-        }
 
-        return response()->json([
-            'room' => [
-                'id' => $chatRoom->id,
-                'name' => $chatRoom->name,
-                'type' => $chatRoom->type,
-                'image' => $chatRoom->image ? asset('storage/' . $chatRoom->image) : null,
-                'unread_count' => 0,
-                'members' => $chatRoom->members->map(fn($member) => [
-                    'id' => $member->id,
-                    'name' => $member->name,
-                    'avatar' => $member->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                    'is_online' => $member->is_online ?? false,
-                ]),
-            ],
-        ]);
+            // Add creator as a member
+            $room->members()->attach(auth()->id());
+
+            // Add specified members for private rooms only
+            if ($request->input('type') === 'private' && $request->has('members')) {
+                $room->members()->attach($request->input('members'));
+            }
+
+            return $room;
+        });
+
+        // Broadcast the new room
+        broadcast(new RoomCreated($room));
+
+        return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
     }
 
     public function createDirectChat(Request $request)
     {
         $request->validate([
-            'user_id' => 'required|exists:users,id',
+            'user_id' => 'required|exists:users,id|different:' . auth()->id(),
         ]);
 
-        $otherUserId = $request->user_id;
-        $currentUserId = auth()->id();
+        $user1 = auth()->user();
+        $user2 = User::find($request->input('user_id'));
 
-        // Check if direct chat already exists
+        // Check if a direct chat already exists between these two users
         $existingRoom = ChatRoom::where('type', 'direct')
-            ->whereHas('members', function ($query) use ($currentUserId) {
-                $query->where('user_id', $currentUserId);
+            ->whereHas('members', function ($query) use ($user1) {
+                $query->where('user_id', $user1->id);
             })
-            ->whereHas('members', function ($query) use ($otherUserId) {
-                $query->where('user_id', $otherUserId);
-            })
+            ->whereHas('members', function ($query) use ($user2) {
+                $query->where('user_id', $user2->id);
+            }, '=', 2) // Ensure only these two members
             ->first();
 
         if ($existingRoom) {
-            return response()->json([
-                'room' => [
-                    'id' => $existingRoom->id,
-                    'name' => $existingRoom->name,
-                    'type' => $existingRoom->type,
-                    'image' => null,
-                    'unread_count' => $existingRoom->unread_count,
-                    'members' => $existingRoom->members->map(fn($member) => [
-                        'id' => $member->id,
-                        'name' => $member->name,
-                        'avatar' => $member->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                        'is_online' => $member->is_online ?? false,
-                    ]),
-                ],
-            ]);
+            return response()->json(['room' => $existingRoom->load('members.organization', 'latestMessage.user')]);
         }
 
-        // Create new direct chat
-        $otherUser = User::find($otherUserId);
-        $chatRoom = ChatRoom::create([
-            'name' => $otherUser->name,
-            'type' => 'direct',
-            'created_by' => $currentUserId,
-        ]);
+        $room = DB::transaction(function () use ($user1, $user2) {
+            $room = ChatRoom::create([
+                'name' => 'Direct Chat', // Name will be dynamically set on frontend
+                'type' => 'direct',
+                'created_by' => $user1->id,
+            ]);
 
-        // Add both users as members
-        $chatRoom->members()->attach([
-            $currentUserId => ['role' => 'member', 'joined_at' => now()],
-            $otherUserId => ['role' => 'member', 'joined_at' => now()],
-        ]);
+            $room->members()->attach([$user1->id, $user2->id]);
 
-        return response()->json([
-            'room' => [
-                'id' => $chatRoom->id,
-                'name' => $chatRoom->name,
-                'type' => $chatRoom->type,
-                'image' => null,
-                'unread_count' => 0,
-                'members' => $chatRoom->members->map(fn($member) => [
-                    'id' => $member->id,
-                    'name' => $member->name,
-                    'avatar' => $member->avatar_url ?? '/placeholder.svg?height=32&width=32',
-                    'is_online' => $member->is_online ?? false,
-                ]),
-            ],
-        ]);
+            return $room;
+        });
+
+        // Broadcast the new room
+        broadcast(new RoomCreated($room));
+
+        return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
     }
 
     public function joinRoom(ChatRoom $chatRoom)
     {
-        // Only allow joining public rooms or if user is invited to private rooms
-        if ($chatRoom->type === 'private') {
-            abort(403, 'Cannot join private rooms without invitation');
+        if ($chatRoom->type === 'private' && !in_array(auth()->user()->role, ['admin', 'organization'])) {
+            abort(403, 'You cannot join a private room without being invited or having admin privileges.');
         }
 
-        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
-            $chatRoom->members()->attach(auth()->id(), [
-                'role' => 'member',
-                'joined_at' => now(),
-            ]);
+        if ($chatRoom->members()->where('user_id', auth()->id())->exists()) {
+            return response()->json(['message' => 'Already a member.']);
         }
 
-        return response()->json(['success' => true]);
+        $chatRoom->members()->attach(auth()->id());
+
+        return response()->json(['message' => 'Joined room successfully.']);
     }
 
     public function leaveRoom(ChatRoom $chatRoom)
     {
+        if (!$chatRoom->members()->where('user_id', auth()->id())->exists()) {
+            return response()->json(['message' => 'Not a member of this room.']);
+        }
+
+        // Prevent creator from leaving if they are the only member
+        if ($chatRoom->created_by === auth()->id() && $chatRoom->members()->count() === 1) {
+            return response()->json(['error' => 'You cannot leave a room you created if you are the only member.'], 403);
+        }
+
         $chatRoom->members()->detach(auth()->id());
-        return response()->json(['success' => true]);
+
+        // If it's a direct chat and one user leaves, delete the room
+        if ($chatRoom->type === 'direct' && $chatRoom->members()->count() === 0) {
+            $chatRoom->delete();
+        }
+
+        return response()->json(['message' => 'Left room successfully.']);
     }
 
-    public function typing(Request $request, ChatRoom $chatRoom)
+    public function setTypingStatus(Request $request, ChatRoom $chatRoom)
     {
         $request->validate([
             'is_typing' => 'required|boolean',
@@ -366,18 +375,30 @@ class ChatController extends Controller
             abort(403, 'You are not a member of this chat room');
         }
 
-        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->is_typing));
+        broadcast(new UserTyping(auth()->user(), $chatRoom->id, $request->input('is_typing')));
 
-        return response()->json(['success' => true]);
+        return response()->json(['status' => 'Typing status updated.']);
     }
 
-    public function markAsRead(ChatRoom $chatRoom)
+    public function addMembers(Request $request, ChatRoom $chatRoom)
     {
-        // Update last seen timestamp
-        $chatRoom->members()
-            ->where('user_id', auth()->id())
-            ->update(['last_seen_at' => now()]);
+        // Only private rooms can have members added
+        if ($chatRoom->type !== 'private') {
+            abort(403, 'Members can only be added to private chat rooms.');
+        }
 
-        return response()->json(['success' => true]);
+        // Only creator or admin can add members
+        if ($chatRoom->created_by !== auth()->id() && !in_array(auth()->user()->role, ['admin', 'organization'])) {
+            abort(403, 'You are not authorized to add members to this chat room.');
+        }
+
+        $request->validate([
+            'members' => 'required|array',
+            'members.*' => 'exists:users,id',
+        ]);
+
+        $chatRoom->members()->syncWithoutDetaching($request->input('members'));
+
+        return response()->json(['message' => 'Members added successfully.']);
     }
 }

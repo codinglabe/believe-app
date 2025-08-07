@@ -4,9 +4,9 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ChatRoom extends Model
 {
@@ -16,19 +16,14 @@ class ChatRoom extends Model
         'name',
         'description',
         'type',
-        'created_by',
         'image',
-        'is_active'
+        'created_by',
+        'is_active',
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
     ];
-
-    public function creator(): BelongsTo
-    {
-        return $this->belongsTo(User::class, 'created_by');
-    }
 
     public function members(): BelongsToMany
     {
@@ -39,29 +34,38 @@ class ChatRoom extends Model
 
     public function messages(): HasMany
     {
-        return $this->hasMany(ChatMessage::class)->orderBy('created_at', 'desc');
+        return $this->hasMany(ChatMessage::class);
     }
 
     public function latestMessage(): HasMany
     {
-        return $this->hasMany(ChatMessage::class)->latest()->limit(1);
+        return $this->hasMany(ChatMessage::class)->latest();
     }
 
-    public function getUnreadCountAttribute()
+    public function creator(): BelongsTo
     {
-        if (!auth()->check())
+        return $this->belongsTo(User::class, 'created_by');
+    }
+
+    public function getUnreadCountAttribute(): int
+    {
+        $user = auth()->user();
+        if (!$user)
             return 0;
 
         $lastSeen = $this->members()
-            ->where('user_id', auth()->id())
-            ->first()?->pivot?->last_seen_at;
+            ->where('user_id', $user->id)
+            ->first()
+            ?->pivot
+                ?->last_seen_at;
 
-        if (!$lastSeen)
+        if (!$lastSeen) {
             return $this->messages()->count();
+        }
 
         return $this->messages()
             ->where('created_at', '>', $lastSeen)
-            ->where('user_id', '!=', auth()->id())
+            ->where('user_id', '!=', $user->id)
             ->count();
     }
 }
