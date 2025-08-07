@@ -1,86 +1,172 @@
 "use client"
 
-import { useState } from "react"
-import { ScrollArea } from "@/components/chat/ui/scroll-area"
-import { Button } from "@/components/chat/ui/button"
-import { PlusCircle, Sun, Moon, MoreVertical, Search } from "lucide-react"
-import { ConversationItem } from "./conversation-item"
-import { useChat } from "@/providers/chat-provider"
-import { GroupCreateDialog } from "./group-create-dialog"
-import { UserAvatar } from "./user-avatar"
+import React, { useState } from "react"
 import { Input } from "@/components/chat/ui/input"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/chat/ui/dropdown-menu"
+import { Button } from "@/components/chat/ui/button"
+import { ScrollArea } from "@/components/chat/ui/scroll-area"
+import { ConversationItem } from "@/components/chat/conversation-item"
+import { GroupCreateDialog } from "@/components/chat/group-create-dialog"
+import { useChat } from "@/providers/chat-provider"
+import { UserAvatar } from "@/components/chat/user-avatar"
+import { PlusIcon, SearchIcon } from 'lucide-react'
+
+// Helper function to safely convert to lowercase
+const safeToLower = (str: any): string => {
+  return String(str || '').toLowerCase()
+}
 
 export function Sidebar() {
-  const { conversations, selectedConversationId, selectConversation, currentUser, allUsers } = useChat()
-  const [isGroupDialogOpen, setIsGroupDialogOpen] = useState(false)
+  const {
+    chatRooms = [],
+    activeRoom,
+    setActiveRoom,
+    allUsers = [],
+    currentUser,
+    createDirectChat,
+    searchQuery = '',
+    setSearchQuery,
+  } = useChat()
 
+  const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
+  const [showUsers, setShowUsers] = useState(false)
 
-  const activeUsers = allUsers.filter((user) => user.status === "online" && user.id !== currentUser.id)
+  // Safe filtering for rooms
+  const filteredRooms = chatRooms.filter((room) => {
+    const query = safeToLower(searchQuery).trim()
+    if (!query) return true
+
+    return (
+      safeToLower(room.name).includes(query) ||
+      safeToLower(room.last_message?.message).includes(query) ||
+      room.members?.some(member =>
+        safeToLower(member.name).includes(query)
+      ) || false
+    )
+  })
+
+  // Safe filtering for users
+  const filteredUsers = allUsers.filter((user) => {
+    if (!user || user.id === currentUser?.id) return false
+
+    const query = safeToLower(searchQuery).trim()
+    if (!query) return true
+
+    return safeToLower(user.name).includes(query)
+  })
+
+  const handleUserClick = async (userId: number) => {
+    try {
+      const room = await createDirectChat(userId)
+      setActiveRoom(room)
+      setShowUsers(false)
+      setSearchQuery("")
+    } catch (error) {
+      console.error("Failed to create direct chat:", error)
+    }
+  }
+
+  const canCreateGroups = currentUser?.role === "organization" || currentUser?.role === "admin"
 
   return (
-    <div className="flex flex-col h-full border-r bg-background">
+    <div className="flex h-full flex-col border-r">
+      {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">Active Users</h2>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon" className="rounded-full" aria-label="More options">
-              <MoreVertical className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => setIsGroupDialogOpen(true)}>
-              <PlusCircle className="mr-2 h-4 w-4" /> Create New Group
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+        <h2 className="text-xl font-semibold">Chats</h2>
+        {canCreateGroups && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsGroupCreateOpen(true)}
+          >
+            <PlusIcon className="h-5 w-5" />
+          </Button>
+        )}
       </div>
 
-      <ScrollArea className="px-4 py-2 border-b whitespace-nowrap">
-        <div className="flex gap-3 pb-2">
-          {activeUsers.map((user) => (
-            <div key={user.id} className="flex flex-col items-center gap-1">
-              <UserAvatar src={user.avatar} alt={user.name} fallback={user.name.charAt(0)} status={user.status} />
-              <span className="text-xs truncate max-w-[50px]">{user.name}</span>
-            </div>
-          ))}
-        </div>
-      </ScrollArea>
-
+      {/* Search and Toggle */}
       <div className="p-4 border-b">
         <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input placeholder="Search or start new chat" className="pl-9 pr-4 py-2 rounded-full" />
+          <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search chats or users..."
+            className="pl-9"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+        <div className="flex gap-2 mt-3">
+          <Button
+            variant={!showUsers ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowUsers(false)}
+            className="flex-1"
+          >
+            Rooms
+          </Button>
+          <Button
+            variant={showUsers ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowUsers(true)}
+            className="flex-1"
+          >
+            Users
+          </Button>
         </div>
       </div>
 
-      <h3 className="text-sm font-semibold px-4 pt-4 pb-2 text-muted-foreground uppercase">All Chats</h3>
-      <ScrollArea className="flex-1 p-2">
-        <div className="grid gap-1">
-          {conversations.map((conv) => {
-            const otherParticipant =
-              conv.type === "individual" ? conv.participants.find((p) => p.id !== currentUser.id) : undefined
-            const avatarSrc = otherParticipant?.avatar || "/placeholder.svg?height=40&width=40"
-            const status = otherParticipant?.status
-
-            return (
-              <ConversationItem
-                key={conv.id}
-                id={conv.id}
-                name={conv.name}
-                lastMessage={conv.lastMessage}
-                lastMessageTime={conv.lastMessageTime}
-                avatarSrc={avatarSrc}
-                isSelected={conv.id === selectedConversationId}
-                onClick={selectConversation}
-                status={status}
-                unreadCount={conv.unreadCount}
-              />
-            )
-          })}
-        </div>
+      {/* Content */}
+      <ScrollArea className="flex-1">
+        {showUsers ? (
+          <div className="p-2">
+            {filteredUsers.length > 0 ? (
+              filteredUsers.map((user) => (
+                <div
+                  key={user?.id}
+                  className="flex items-center gap-3 p-2 rounded-md hover:bg-accent cursor-pointer"
+                  onClick={() => user?.id && handleUserClick(user.id)}
+                >
+                  <UserAvatar user={user} className="h-8 w-8" />
+                  <div className="flex-1">
+                    <p className="font-medium">{user?.name}</p>
+                    {user?.organization && (
+                      <p className="text-sm text-muted-foreground">
+                        {user.organization.name}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-4">
+                No users found
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="p-2">
+            {filteredRooms.length > 0 ? (
+              filteredRooms.map((room) => (
+                <ConversationItem
+                  key={room?.id}
+                  room={room}
+                  isActive={activeRoom?.id === room?.id}
+                  onClick={() => room?.id && setActiveRoom(room)}
+                />
+              ))
+            ) : (
+              <p className="text-center text-muted-foreground py-4">
+                No chat rooms found
+              </p>
+            )}
+          </div>
+        )}
       </ScrollArea>
-      <GroupCreateDialog isOpen={isGroupDialogOpen} onClose={() => setIsGroupDialogOpen(false)} />
+
+      {/* Create Group Dialog */}
+      <GroupCreateDialog
+        open={isGroupCreateOpen}
+        onOpenChange={setIsGroupCreateOpen}
+      />
     </div>
   )
 }

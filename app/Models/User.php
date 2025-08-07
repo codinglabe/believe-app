@@ -5,7 +5,9 @@ namespace App\Models;
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +34,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'password',
         'image',
         'cover_img',
+        'dob',
         'contact_number',
         'role',
         'login_status',
@@ -78,11 +81,6 @@ class User extends Authenticatable implements MustVerifyEmail
     public function user()
     {
         return $this->hasOne(User::class);
-    }
-
-    public function organization()
-    {
-        return $this->hasOne(Organization::class);
     }
 
     public function nodeReferrals()
@@ -303,5 +301,80 @@ class User extends Authenticatable implements MustVerifyEmail
     public function currentBalance(): float
     {
         return (float) $this->balance;
+    }
+
+
+    // Add these relationships to your existing User model
+    public function chatRooms(): BelongsToMany
+    {
+        return $this->belongsToMany(ChatRoom::class, 'chat_room_members')
+            ->withPivot(['role', 'joined_at', 'last_seen_at'])
+            ->withTimestamps();
+    }
+
+    public function chatMessages(): HasMany
+    {
+        return $this->hasMany(ChatMessage::class);
+    }
+
+    public function organization(): HasOne
+    {
+        return $this->hasOne(Organization::class);
+    }
+
+    public function getAvatarUrlAttribute(): string
+    {
+        return $this->image ? asset('storage/' . $this->image) : 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=random';
+    }
+
+    public function getIsOnlineAttribute(): bool
+    {
+        return $this->login_status == 1;
+    }
+
+
+    /**
+     * Get the courses created by this user (as organization).
+     */
+    public function createdCourses()
+    {
+        return $this->hasMany(Course::class, 'organization_id');
+    }
+
+    /**
+     * Get the courses instructed by this user.
+     */
+    public function instructedCourses()
+    {
+        return $this->hasMany(Course::class, 'user_id');
+    }
+
+    /**
+     * Get the enrollments for this user.
+     */
+    public function enrollments()
+    {
+        return $this->hasMany(Enrollment::class);
+    }
+
+    /**
+     * Get the courses this user is enrolled in.
+     */
+    public function enrolledCourses()
+    {
+        return $this->belongsToMany(Course::class, 'enrollments')
+                    ->withPivot(['status', 'amount_paid', 'enrolled_at'])
+                    ->withTimestamps();
+    }
+
+    /**
+     * Check if user is enrolled in a specific course
+     */
+    public function isEnrolledIn(Course $course)
+    {
+        return $this->enrollments()
+                    ->where('course_id', $course->id)
+                    ->where('status', 'active')
+                    ->exists();
     }
 }

@@ -8,7 +8,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
-import { Save, X, Upload, CheckCircle } from "lucide-react"
+import { Save, X, Upload, CheckCircle, Calendar } from "lucide-react"
 import { useForm, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
@@ -19,6 +19,7 @@ interface User {
   name: string
   email: string
   phone?: string
+  dob?: string
   image?: string
 }
 
@@ -36,6 +37,7 @@ export default function ProfileEdit() {
     name: user.name || "",
     email: user.email || "",
     phone: user.phone || "",
+    dob: user.dob || "",
     image: null as File | null,
   })
 
@@ -48,6 +50,7 @@ export default function ProfileEdit() {
     formData.append("name", data.name)
     formData.append("email", data.email)
     formData.append("phone", data.phone)
+    formData.append("dob", data.dob)
     if (data.image) {
       formData.append("image", data.image)
     }
@@ -176,7 +179,25 @@ export default function ProfileEdit() {
                 placeholder="+1 (555) 123-4567"
               />
               {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
-            </div>
+                      </div>
+
+                      {/* Date of Birth */}
+                                      <div>
+                                      <Label htmlFor="dob" className="text-gray-900 dark:text-white font-medium">
+                                          Date of Birth
+                                      </Label>
+                                      <div className="relative mt-1">
+                                          <Input
+                                          id="dob"
+                                          type="date"
+                                          value={data.dob}
+                                          onChange={(e) => setData("dob", e.target.value)}
+                                          className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                                          max={new Date().toISOString().split('T')[0]} // Prevent future dates
+                                          />
+                          </div>
+                          {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
+                                      </div>
           </CardContent>
         </Card>
 

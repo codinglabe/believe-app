@@ -1,328 +1,425 @@
 "use client"
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import axios from 'axios';
+import { usePage } from '@inertiajs/react';
+import { useDebounce } from '@/hooks/useDebounce';
+import toast from 'react-hot-toast';
 
-import type React from "react"
-import { createContext, useContext, useState, useCallback } from "react"
-import { v4 as uuidv4 } from "uuid"
+// Configure Axios instance
+const api = axios.create({
+  baseURL: '/',
+  headers: {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+  },
+});
+
+// Add response interceptor for error handling
+api.interceptors.response.use(
+  response => response,
+  error => {
+    if (error.response) {
+      const message = error.response.data?.message || 'An error occurred';
+      toast.error(message);
+    } else {
+      toast.error('Network error - please check your connection');
+    }
+    return Promise.reject(error);
+  }
+);
+
+// Type declarations
+declare global {
+  interface Window {
+    Echo: any;
+  }
+}
+
+interface Organization {
+  id: number;
+  name: string;
+}
 
 interface User {
-  id: string
-  name: string
-  avatar: string
-  status: "online" | "offline" | "away"
+  id: number;
+  name: string;
+  avatar: string;
+  is_online: boolean;
+  role: string;
+  organization?: Organization | null;
 }
 
 interface Attachment {
-  name: string
-  url: string // In a real app, this would be a URL to the uploaded file
-  type: string // e.g., 'image/png', 'application/pdf'
+  name: string;
+  url: string;
+  type: string;
+  size: number;
 }
 
-export interface Message {
-  id: string
-  senderId: string
-  content: string
-  timestamp: string
-  attachments?: Attachment[]
-  repliedToMessageId?: string // Added for reply functionality
+export interface ChatMessage {
+  id: number;
+  message: string;
+  attachments: Attachment[];
+  created_at: string;
+  is_edited: boolean;
+  user: User;
+  reply_to_message?: {
+    id: number;
+    message: string;
+    user: { name: string };
+  };
+  chat_room_id: number;
 }
 
-interface Conversation {
-  id: string
-  type: "individual" | "group"
-  name: string
-  participants: User[]
-  messages: Message[]
-  lastMessage: string
-  lastMessageTime: string
-  unreadCount?: number // Added for unread messages
+export interface ChatRoom {
+  id: number;
+  name: string;
+  type: 'public' | 'private' | 'direct';
+  image?: string;
+  description?: string;
+  last_message?: {
+    message: string;
+    created_at: string;
+    user_name: string;
+  };
+  unread_count: number;
+  members: User[];
+  is_member: boolean;
+  created_by: number;
+  created_at: string;
 }
 
 interface ChatContextType {
-  conversations: Conversation[]
-  selectedConversationId: string | null
-  selectConversation: (id: string) => void
-  addMessage: (conversationId: string, content: string, attachments?: Attachment[], repliedToMessageId?: string) => void
-  deleteMessage: (conversationId: string, messageId: string) => void // Added delete message
-  createGroup: (name: string, participantIds: string[]) => void
-  currentUser: User
-  allUsers: User[]
-  isTyping: boolean // Mock typing state
-  setIsTyping: (typing: boolean) => void // Function to set typing state
-  replyingToMessage: Message | null // Message being replied to
-  setReplyingToMessage: (message: Message | null) => void // Set message to reply to
+  chatRooms: ChatRoom[];
+  setChatRooms: React.Dispatch<React.SetStateAction<ChatRoom[]>>;
+  activeRoom: ChatRoom | null;
+  setActiveRoom: (room: ChatRoom | null) => void;
+  messages: ChatMessage[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  hasMoreMessages: boolean;
+  loadMoreMessages: () => void;
+  sendMessage: (message: string, attachments: File[], replyToMessageId?: number) => Promise<void>;
+  deleteMessage: (messageId: number) => Promise<void>;
+  createRoom: (name: string, type: 'public' | 'private', description?: string, image?: File, members?: number[]) => Promise<void>;
+  createDirectChat: (userId: number) => Promise<void>;
+  joinRoom: (roomId: number) => Promise<void>;
+  leaveRoom: (roomId: number) => Promise<void>;
+  setTypingStatus: (isTyping: boolean) => void;
+  typingUsers: User[];
+  markRoomAsRead: (roomId: number) => Promise<void>;
+  allUsers: User[];
+  currentUser: User;
+  activeUsers: User[];
+  replyingToMessage: ChatMessage | null;
+  setReplyingToMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>;
 }
 
-const ChatContext = createContext<ChatContextType | undefined>(undefined)
-
-const mockUsers: User[] = [
-  { id: "user-1", name: "Alice", avatar: "/placeholder.svg?height=40&width=40&text=A", status: "online" },
-  { id: "user-2", name: "Bob", avatar: "/placeholder.svg?height=40&width=40&text=B", status: "offline" },
-  { id: "user-3", name: "Charlie", avatar: "/placeholder.svg?height=40&width=40&text=C", status: "away" },
-  { id: "user-4", name: "Diana", avatar: "/placeholder.svg?height=40&width=40&text=D", status: "online" },
-  { id: "user-5", name: "Eve", avatar: "/placeholder.svg?height=40&width=40&text=E", status: "offline" },
-]
-
-const initialConversations: Conversation[] = [
-  {
-    id: "conv-1",
-    type: "individual",
-    name: "Alice",
-    participants: [mockUsers[0], mockUsers[1]], // Assuming currentUser is mockUsers[0]
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[1].id,
-        content: "Hey there! How are you?",
-        timestamp: "10:00 AM",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "I'm good, thanks! Just working on a new project.",
-        timestamp: "10:05 AM",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[1].id,
-        content: "Check out these images!",
-        timestamp: "10:10 AM",
-        attachments: [
-          {
-            name: "image1.png",
-            url: "/placeholder.svg?height=150&width=200",
-            type: "image/png",
-          },
-          {
-            name: "image2.jpg",
-            url: "/placeholder.svg?height=120&width=180",
-            type: "image/jpeg",
-          },
-          {
-            name: "image3.jpeg",
-            url: "/placeholder.svg?height=100&width=150",
-            type: "image/jpeg",
-          },
-          {
-            name: "image4.png",
-            url: "/placeholder.svg?height=130&width=190",
-            type: "image/png",
-          },
-          {
-            name: "image5.gif",
-            url: "/placeholder.svg?height=110&width=160",
-            type: "image/gif",
-          },
-          {
-            name: "image6.webp",
-            url: "/placeholder.svg?height=140&width=210",
-            type: "image/webp",
-          },
-        ],
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "And here's a document!",
-        timestamp: "10:15 AM",
-        attachments: [
-          {
-            name: "document.pdf",
-            url: "https://example.com/document.pdf", // Placeholder URL for a PDF
-            type: "application/pdf",
-          },
-        ],
-      },
-    ],
-    lastMessage: "And here's a document!",
-    lastMessageTime: "10:15 AM",
-    unreadCount: 0, // No unread for selected
-  },
-  {
-    id: "conv-2",
-    type: "group",
-    name: "Project Team",
-    participants: [mockUsers[0], mockUsers[1], mockUsers[2], mockUsers[3]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[2].id,
-        content: "Meeting at 2 PM today, don't forget!",
-        timestamp: "Yesterday",
-      },
-      {
-        id: uuidv4(),
-        senderId: mockUsers[0].id,
-        content: "Got it!",
-        timestamp: "Yesterday",
-      },
-    ],
-    lastMessage: "Got it!",
-    lastMessageTime: "Yesterday",
-    unreadCount: 13, // Example unread count
-  },
-  {
-    id: "conv-3",
-    type: "individual",
-    name: "Bob",
-    participants: [mockUsers[0], mockUsers[2]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[2].id,
-        content: "Are you free for a call later?",
-        timestamp: "Mon",
-      },
-    ],
-    lastMessage: "Are you free for a call later?",
-    lastMessageTime: "Mon",
-    unreadCount: 0,
-  },
-  {
-    id: "conv-4",
-    type: "individual",
-    name: "Jack",
-    participants: [mockUsers[0], mockUsers[3]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[3].id,
-        content: "I will send you the work file",
-        timestamp: "9:00 AM",
-      },
-    ],
-    lastMessage: "I will send you the work file",
-    lastMessageTime: "9:00 AM",
-    unreadCount: 0,
-  },
-  {
-    id: "conv-5",
-    type: "individual",
-    name: "Kate",
-    participants: [mockUsers[0], mockUsers[4]],
-    messages: [
-      {
-        id: uuidv4(),
-        senderId: mockUsers[4].id,
-        content: "I will send you the work file",
-        timestamp: "7:10 PM",
-      },
-    ],
-    lastMessage: "I will send you the work file",
-    lastMessageTime: "7:10 PM",
-    unreadCount: 0,
-  },
-]
+const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const currentUser = mockUsers[0] // Current logged-in user
-  const allUsers = mockUsers
+  const { props } = usePage();
+  const [chatRooms, setChatRooms] = useState<ChatRoom[]>((props.chatRooms as ChatRoom[]) || []);
+  const [activeRoom, setActiveRoom] = useState<ChatRoom | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasMoreMessages, setHasMoreMessages] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [typingUsers, setTypingUsers] = useState<User[]>([]);
+  const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
 
-  const [conversations, setConversations] = useState<Conversation[]>(initialConversations)
-  const [selectedConversationId, setSelectedConversationId] = useState<string | null>(
-    initialConversations[0]?.id || null,
-  )
-  const [isTyping, setIsTyping] = useState(false) // Mock typing state
-  const [replyingToMessage, setReplyingToMessage] = useState<Message | null>(null) // Message being replied to
+  const allUsers = (props.allUsers as User[]) || [];
+  const currentUser = (props.currentUser as User);
 
-  const selectConversation = useCallback((id: string) => {
-    setConversations((prevConversations) =>
-      prevConversations.map((conv) => (conv.id === id ? { ...conv, unreadCount: 0 } : conv)),
-    )
-    setSelectedConversationId(id)
-    setReplyingToMessage(null) // Clear reply state when changing conversation
-  }, [])
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const isScrolledToBottomRef = useRef(true);
 
-  const addMessage = useCallback(
-    (conversationId: string, content: string, attachments?: Attachment[], repliedToMessageId?: string) => {
-      setConversations((prevConversations) =>
-        prevConversations.map((conv) => {
-          if (conv.id === conversationId) {
-            const newMessage: Message = {
-              id: uuidv4(),
-              senderId: currentUser.id,
-              content,
-              timestamp: new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              }),
-              attachments,
-              repliedToMessageId,
+  // Initialize active users
+  useEffect(() => {
+    setActiveUsers(allUsers.filter(u => u.is_online));
+  }, [allUsers]);
+
+  const fetchMessages = useCallback(async (roomId: number, page: number = 1, append: boolean = false) => {
+    try {
+      const { data } = await api.get<{
+        messages: ChatMessage[];
+        has_more: boolean;
+        current_page: number;
+      }>(`/chat/rooms/${roomId}/messages`, { params: { page } });
+
+      setMessages(prev => {
+        const newMessages = data.messages.filter(msg => !prev.some(pMsg => pMsg.id === msg.id));
+        return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse();
+      });
+      setHasMoreMessages(data.has_more);
+      setCurrentPage(data.current_page);
+    } catch (error) {
+      console.error('Error fetching messages:', error);
+    }
+  }, []);
+
+  // Real-time event handling
+  useEffect(() => {
+    if (!window.Echo) {
+      console.warn("Laravel Echo not initialized");
+      return;
+    }
+
+    let currentChannelName: string | null = null;
+
+    if (activeRoom) {
+      setMessages([]);
+      setCurrentPage(1);
+      setTypingUsers([]);
+      setReplyingToMessage(null);
+
+      fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
+
+      currentChannelName = activeRoom.type === 'public'
+        ? `chat.${activeRoom.id}`
+        : `presence-chat-room.${activeRoom.id}`;
+
+      if (activeRoom.type === 'public') {
+        window.Echo.channel(currentChannelName)
+          .listen('MessageSent', (e: { message: ChatMessage }) => {
+            setMessages(prev => [...prev, e.message]);
+            if (e.message.user.id !== currentUser.id) {
+              markRoomAsRead(activeRoom.id);
             }
-            const lastMsgContent = attachments?.length ? `[${attachments.length} file(s)]` : content || "New message"
-            return {
-              ...conv,
-              messages: [...conv.messages, newMessage],
-              lastMessage: lastMsgContent,
-              lastMessageTime: newMessage.timestamp,
-              unreadCount: conv.id === selectedConversationId ? 0 : (conv.unreadCount || 0) + 1, // Increment unread if not selected
+          })
+          .listen('UserTyping', (e: { user: User; is_typing: boolean }) => {
+            setTypingUsers(prev =>
+              e.is_typing
+                ? [...prev.filter(u => u.id !== e.user.id), e.user]
+                : prev.filter(u => u.id !== e.user.id)
+            );
+          });
+      } else {
+        window.Echo.join(currentChannelName)
+          .here((users: User[]) => setActiveUsers(users))
+          .joining((user: User) => setActiveUsers(prev => [...prev, user]))
+          .leaving((user: User) => setActiveUsers(prev => prev.filter(u => u.id !== user.id)))
+          .listen('MessageSent', (e: { message: ChatMessage }) => {
+            setMessages(prev => [...prev, e.message]);
+            if (e.message.user.id !== currentUser.id) {
+              markRoomAsRead(activeRoom.id);
             }
+          })
+          .listen('UserTyping', (e: { user: User; is_typing: boolean }) => {
+            setTypingUsers(prev =>
+              e.is_typing
+                ? [...prev.filter(u => u.id !== e.user.id), e.user]
+                : prev.filter(u => u.id !== e.user.id)
+            );
+          });
+      }
+    }
+
+    return () => {
+      if (window.Echo && currentChannelName) {
+        window.Echo.leave(currentChannelName);
+      }
+    };
+  }, [activeRoom, fetchMessages, currentUser.id]);
+
+  // Global room updates
+  useEffect(() => {
+    if (!window.Echo) return;
+
+    window.Echo.channel('chat-rooms')
+      .listen('RoomCreated', (e: { room: ChatRoom }) => {
+        setChatRooms(prev => {
+          if (e.room.type === 'public' || e.room.members.some(m => m.id === currentUser.id)) {
+            return !prev.some(r => r.id === e.room.id)
+              ? [e.room, ...prev].sort((a, b) =>
+                  new Date(b.last_message?.created_at || b.created_at).getTime() -
+                  new Date(a.last_message?.created_at || a.created_at).getTime()
+                )
+              : prev;
           }
-          return conv
-        }),
-      )
-      setReplyingToMessage(null) // Clear reply state after sending message
-    },
-    [currentUser.id, selectedConversationId],
-  )
+          return prev;
+        });
+      });
 
-  const deleteMessage = useCallback((conversationId: string, messageId: string) => {
-    setConversations((prevConversations) =>
-      prevConversations.map((conv) =>
-        conv.id === conversationId ? { ...conv, messages: conv.messages.filter((msg) => msg.id !== messageId) } : conv,
-      ),
-    )
-  }, [])
+    window.Echo.private(`user.${currentUser.id}`)
+      .listen('RoomCreated', (e: { room: ChatRoom }) => {
+        setChatRooms(prev => !prev.some(r => r.id === e.room.id) ? [e.room, ...prev] : prev);
+      });
 
-  const createGroup = useCallback(
-    (name: string, participantIds: string[]) => {
-      const participants = allUsers.filter((user) => participantIds.includes(user.id))
-      // Ensure current user is always in the group
-      if (!participants.some((p) => p.id === currentUser.id)) {
-        participants.push(currentUser)
+    return () => {
+      if (window.Echo) {
+        window.Echo.leave('chat-rooms');
+        window.Echo.leave(`user.${currentUser.id}`);
       }
+    };
+  }, [currentUser.id]);
 
-      const newGroup: Conversation = {
-        id: uuidv4(),
-        type: "group",
-        name,
-        participants,
-        messages: [],
-        lastMessage: "No messages yet.",
-        lastMessageTime: "",
-        unreadCount: 0,
+  const loadMoreMessages = useCallback(() => {
+    if (activeRoom && hasMoreMessages) {
+      fetchMessages(activeRoom.id, currentPage + 1, true);
+    }
+  }, [activeRoom, hasMoreMessages, currentPage, fetchMessages]);
+
+  const sendMessage = useCallback(async (message: string, attachments: File[], replyToMessageId?: number) => {
+    if (!activeRoom) return;
+
+    const formData = new FormData();
+    formData.append('message', message);
+    attachments.forEach(file => formData.append('attachments[]', file));
+    if (replyToMessageId) formData.append('reply_to_message_id', replyToMessageId.toString());
+
+    try {
+      await api.post(`/chat/rooms/${activeRoom.id}/messages`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setReplyingToMessage(null);
+    } catch (error) {
+      console.error('Error sending message:', error);
+    }
+  }, [activeRoom]);
+
+  const deleteMessage = useCallback(async (messageId: number) => {
+    try {
+      await api.delete(`/chat/messages/${messageId}`);
+      setMessages(prev => prev.filter(msg => msg.id !== messageId));
+      toast.success('Message deleted');
+    } catch (error) {
+      console.error('Error deleting message:', error);
+    }
+  }, []);
+
+  const createRoom = useCallback(async (name: string, type: 'public' | 'private', description?: string, image?: File, members?: number[]) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('type', type);
+    if (description) formData.append('description', description);
+    if (image) formData.append('image', image);
+    if (type === 'private' && members) {
+      members.forEach(id => formData.append('members[]', id.toString()));
+    }
+
+    try {
+      const { data } = await api.post<{ room: ChatRoom }>('/chat/rooms', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setActiveRoom(data.room);
+      toast.success('Room created');
+    } catch (error) {
+      console.error('Error creating room:', error);
+    }
+  }, []);
+
+  const createDirectChat = useCallback(async (userId: number) => {
+    try {
+      const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
+      setActiveRoom(data.room);
+      toast.success('Direct chat started');
+    } catch (error) {
+      console.error('Error creating direct chat:', error);
+    }
+  }, []);
+
+  const joinRoom = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/join`);
+      setChatRooms(prev => prev.map(room =>
+        room.id === roomId ? { ...room, is_member: true } : room
+      ));
+      toast.success('Joined room');
+    } catch (error) {
+      console.error('Error joining room:', error);
+    }
+  }, []);
+
+  const leaveRoom = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/leave`);
+      setChatRooms(prev => prev.filter(room => room.id !== roomId));
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(null);
+        setMessages([]);
       }
-      setConversations((prevConversations) => [newGroup, ...prevConversations])
-      setSelectedConversationId(newGroup.id)
-    },
-    [allUsers, currentUser],
-  )
+      toast.success('Left room');
+    } catch (error) {
+      console.error('Error leaving room:', error);
+    }
+  }, [activeRoom]);
+
+  const setTypingStatus = useDebounce(async (isTyping: boolean) => {
+    if (!activeRoom) return;
+    try {
+      await api.post(`/chat/rooms/${activeRoom.id}/typing`, { is_typing: isTyping });
+    } catch (error) {
+      console.error('Error setting typing status:', error);
+    }
+  }, 300);
+
+  const markRoomAsRead = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/mark-as-read`);
+      setChatRooms(prev => prev.map(room =>
+        room.id === roomId ? { ...room, unread_count: 0 } : room
+      ));
+    } catch (error) {
+      console.error('Error marking room as read:', error);
+    }
+  }, []);
+
+  // Auto-scroll handling
+  useEffect(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      isScrolledToBottomRef.current =
+        container.scrollHeight - container.scrollTop <= container.clientHeight + 10;
+    };
+
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (messagesContainerRef.current && isScrolledToBottomRef.current) {
+      messagesContainerRef.current.scrollTop = messagesContainerRef.current.scrollHeight;
+    }
+  }, [messages]);
 
   return (
     <ChatContext.Provider
       value={{
-        conversations,
-        selectedConversationId,
-        selectConversation,
-        addMessage,
+        chatRooms,
+        setChatRooms,
+        activeRoom,
+        setActiveRoom,
+        messages,
+        setMessages,
+        hasMoreMessages,
+        loadMoreMessages,
+        sendMessage,
         deleteMessage,
-        createGroup,
-        currentUser,
+        createRoom,
+        createDirectChat,
+        joinRoom,
+        leaveRoom,
+        setTypingStatus,
+        typingUsers,
+        markRoomAsRead,
         allUsers,
-        isTyping,
-        setIsTyping,
+        currentUser,
+        activeUsers,
         replyingToMessage,
         setReplyingToMessage,
       }}
     >
       {children}
     </ChatContext.Provider>
-  )
-}
+  );
+};
 
 export const useChat = () => {
-  const context = useContext(ChatContext)
-  if (context === undefined) {
-    throw new Error("useChat must be used within a ChatProvider")
+  const context = useContext(ChatContext);
+  if (!context) {
+    throw new Error('useChat must be used within a ChatProvider');
   }
-  return context
-}
+  return context;
+};

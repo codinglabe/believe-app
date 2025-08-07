@@ -1,54 +1,67 @@
 "use client"
+
+import React from "react"
+import { ChatRoom } from "@/providers/chat-provider"
+import { UserAvatar } from "@/components/chat/user-avatar"
 import { cn } from "@/lib/utils"
-import { UserAvatar } from "./user-avatar"
-import { motion } from "framer-motion"
+import { formatDistanceToNowStrict } from "date-fns"
+import { Badge } from "@/components/chat/ui/badge"
 
 interface ConversationItemProps {
-  id: string
-  name: string
-  lastMessage: string
-  lastMessageTime: string
-  avatarSrc: string
-  isSelected: boolean
-  onClick: (id: string) => void
-  status?: "online" | "offline" | "away"
-  unreadCount?: number // Added for unread messages
+  room: ChatRoom
+  isActive: boolean
+  onClick: () => void
 }
 
-export function ConversationItem({
-  id,
-  name,
-  lastMessage,
-  lastMessageTime,
-  avatarSrc,
-  isSelected,
-  onClick,
-  status,
-  unreadCount = 0,
-}: ConversationItemProps) {
+export function ConversationItem({ room, isActive, onClick }: ConversationItemProps) {
+  const displayAvatar = room.type === 'direct'
+    ? room.members.find(member => member.id !== room.created_by)?.avatar // For direct, show other user's avatar
+    : room.image;
+
+  const displayName = room.type === 'direct'
+    ? room.members.find(member => member.id !== room.created_by)?.name || 'Direct Chat'
+    : room.name;
+
+  const lastMessageTime = room.last_message?.created_at
+    ? formatDistanceToNowStrict(new Date(room.last_message.created_at), { addSuffix: true })
+    : null;
+
   return (
-    <motion.div
+    <div
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
-        isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/50 hover:text-foreground",
+        isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent",
       )}
-      onClick={() => onClick(id)}
-      whileHover={{ scale: 1.01 }}
-      whileTap={{ scale: 0.98 }}
+      onClick={onClick}
     >
-      <UserAvatar src={avatarSrc} alt={name} fallback={name.charAt(0)} status={status} />
+      <UserAvatar user={{ name: displayName, avatar: displayAvatar || '/placeholder.svg?height=32&width=32' }} className="h-10 w-10" />
       <div className="flex-1 overflow-hidden">
-        <h3 className="font-semibold text-sm truncate">{name}</h3>
-        <p className="text-xs text-muted-foreground truncate">{lastMessage}</p>
+        <div className="flex items-center justify-between">
+          <h3 className={cn("font-medium truncate", isActive ? "text-primary-foreground" : "text-foreground")}>
+            {displayName}
+          </h3>
+          {lastMessageTime && (
+            <span className={cn("text-xs", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+              {lastMessageTime}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center justify-between mt-1">
+          <p className={cn("text-sm truncate", isActive ? "text-primary-foreground/90" : "text-muted-foreground")}>
+            {room.last_message?.message || "No messages yet."}
+          </p>
+          {room.unread_count > 0 && (
+            <Badge
+              className={cn(
+                "ml-2 px-2 py-0.5 rounded-full text-xs font-bold",
+                isActive ? "bg-primary-foreground text-primary" : "bg-blue-500 text-white",
+              )}
+            >
+              {room.unread_count}
+            </Badge>
+          )}
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground flex-shrink-0">{lastMessageTime}</span>
-        {unreadCount > 0 && (
-          <span className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-500 text-xs font-medium text-white">
-            {unreadCount > 99 ? "99+" : unreadCount}
-          </span>
-        )}
-      </div>
-    </motion.div>
+    </div>
   )
 }

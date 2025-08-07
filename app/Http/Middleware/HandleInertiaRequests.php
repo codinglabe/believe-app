@@ -60,6 +60,7 @@ class HandleInertiaRequests extends Middleware
                     'balance'=>$user->balance,
                     "image" => $user->image ? '/storage/' . $user->image : null,
                     "cover_img" => $user->cover_img ? '/storage/' . $user->cover_img : null,
+                    "dob" => $user->dob,
                     'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
                     'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,

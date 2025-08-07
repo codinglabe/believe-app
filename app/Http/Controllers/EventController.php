@@ -250,7 +250,12 @@ class EventController extends Controller
 
         $events = Event::query()
             ->when($search, function ($query, $search) {
-                $query->where('name', 'like', '%' . $search . '%');
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%' . $search . '%')
+                      ->orWhere('location', 'like', '%' . $search . '%')
+                      ->orWhere('city', 'like', '%' . $search . '%')
+                      ->orWhere('state', 'like', '%' . $search . '%');
+                });
             })->when($status, function ($query, $status) {
                 $query->where('status', $status);
             });
