@@ -138,7 +138,7 @@ export default function EventsPage({ events, search }: EventsPageProps) {
                         <div className="flex-1">
                             <Input
                                 type="text"
-                                placeholder="Search events..."
+                                placeholder="Search events by name or location..."
                                 value={filters.search}
                                 onChange={handleSearchChange}
                                 className="w-full p-3 border rounded-lg"
