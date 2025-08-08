@@ -11,6 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useState } from 'react';
 import { showErrorToast } from '@/lib/toast';
 
+type EventType = {
+    id: number;
+    name: string;
+    category: string;
+    description?: string;
+};
+
+type Props = {
+    eventTypes: EventType[];
+};
+
 const breadcrumbs: BreadcrumbItem[] = [
     {
         title: 'Dashboard',
@@ -26,10 +37,11 @@ const breadcrumbs: BreadcrumbItem[] = [
     },
 ];
 
-export default function CreateEvent() {
+export default function CreateEvent({ eventTypes }: Props) {
     const [imagePreview, setImagePreview] = useState<string | null>(null);
 
     const { data, setData, post, processing, errors } = useForm({
+        event_type_id: '',
         name: '',
         description: '',
         start_date: '',
@@ -102,6 +114,37 @@ export default function CreateEvent() {
                                     <CardTitle className="text-gray-900 dark:text-white">Basic Information</CardTitle>
                                 </CardHeader>
                                 <CardContent className="space-y-4">
+                                    <div>
+                                        <Label htmlFor="event_type_id">Event Type *</Label>
+                                        <Select value={data.event_type_id} onValueChange={(value) => setData('event_type_id', value)}>
+                                            <SelectTrigger className={errors.event_type_id ? 'border-red-500' : ''}>
+                                                <SelectValue placeholder="Select event type" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                {Object.entries(eventTypes.reduce((acc, eventType) => {
+                                                    const category = eventType.category;
+                                                    if (!acc[category]) {
+                                                        acc[category] = [];
+                                                    }
+                                                    acc[category].push(eventType);
+                                                    return acc;
+                                                }, {} as Record<string, EventType[]>)).map(([category, types]) => (
+                                                    <div key={category}>
+                                                        <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                                            {category}
+                                                        </div>
+                                                        {types.map((type) => (
+                                                            <SelectItem key={type.id} value={type.id.toString()}>
+                                                                {type.name}
+                                                            </SelectItem>
+                                                        ))}
+                                                    </div>
+                                                ))}
+                                            </SelectContent>
+                                        </Select>
+                                        {errors.event_type_id && <p className="text-red-500 text-sm mt-1">{errors.event_type_id}</p>}
+                                    </div>
+
                                     <div>
                                         <Label htmlFor="name">Event Name *</Label>
                                         <Input

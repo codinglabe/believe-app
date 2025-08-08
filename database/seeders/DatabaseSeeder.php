@@ -41,6 +41,7 @@ class DatabaseSeeder extends Seeder
             CategorySeeder::class,
             ExistingUserReferralGenerate::class,
             PositionCategoriesAndJobPositionsSeeder::class,
+            EventTypesTableSeeder::class,
         ]);
     }
 }

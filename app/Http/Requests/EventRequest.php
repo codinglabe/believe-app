@@ -23,6 +23,7 @@ class EventRequest extends FormRequest
     {
         // dd($this->all());
         $rules = [
+            'event_type_id' => 'required|exists:event_types,id',
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
             'start_date' => 'required|date|after:now',
@@ -55,6 +56,8 @@ class EventRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'event_type_id.required' => 'Event type is required.',
+            'event_type_id.exists' => 'Selected event type is invalid.',
             'name.required' => 'Event name is required.',
             'description.required' => 'Event description is required.',
             'start_date.required' => 'Start date is required.',
