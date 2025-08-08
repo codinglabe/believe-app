@@ -9,6 +9,7 @@ class Event extends Model
 {
     protected $fillable = [
         'organization_id',
+        'event_type_id',
         'name',
         'description',
         'start_date',
@@ -38,6 +39,11 @@ class Event extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function eventType(): BelongsTo
+    {
+        return $this->belongsTo(EventType::class);
     }
 
     public function getFullAddressAttribute(): string
