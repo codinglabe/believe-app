@@ -26,6 +26,7 @@ import {
   Minus,
   Eye,
   EyeOff,
+  Text,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -337,7 +338,15 @@ export default function Navbar() {
                         <User className="mr-2 h-4 w-4" />
                         <span>Profile</span>
                       </Link>
-                    </DropdownMenuItem>
+                                      </DropdownMenuItem>
+                    {(auth?.user?.role === "user") && (
+                      <DropdownMenuItem asChild>
+                        <Link href={route("chat.index")}>
+                          <Text className="mr-2 h-4 w-4" />
+                          <span>Chat</span>
+                        </Link>
+                      </DropdownMenuItem>
+                    )}
                     {(auth?.user?.role === "admin" || auth?.user?.role === "organization") && (
                       <DropdownMenuItem asChild>
                         <Link href={route("dashboard")}>

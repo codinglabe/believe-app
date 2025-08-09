@@ -160,8 +160,10 @@ class ChatController extends Controller
         ]);
     }
 
-    public function sendMessage(Request $request, ChatRoom $chatRoom)
+    public function sendMessage(Request $request, int $id)
     {
+        $chatRoom = ChatRoom::findOrFail($id);
+
         $request->validate([
             'message' => 'nullable|string|max:2000',
             'attachments.*' => 'nullable|file|max:10240', // Max 10MB per file
@@ -200,8 +202,7 @@ class ChatController extends Controller
         // Mark message as read by sender
         $message->reads()->attach(auth()->id());
 
-        // Broadcast the message
-        broadcast(new MessageSent($message));
+        $haha = broadcast(new MessageSent($message))->toOthers();
 
         return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }
@@ -364,8 +365,10 @@ class ChatController extends Controller
         return response()->json(['message' => 'Left room successfully.']);
     }
 
-    public function setTypingStatus(Request $request, ChatRoom $chatRoom)
+    public function setTypingStatus(Request $request, int $id)
     {
+        $chatRoom = ChatRoom::findOrFail($id);
+
         $request->validate([
             'is_typing' => 'required|boolean',
         ]);

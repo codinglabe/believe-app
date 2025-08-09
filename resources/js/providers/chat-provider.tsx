@@ -4,6 +4,7 @@ import axios from 'axios';
 import { usePage } from '@inertiajs/react';
 import { useDebounce } from '@/hooks/useDebounce';
 import toast from 'react-hot-toast';
+import Echo from 'laravel-echo';
 
 // Configure Axios instance
 const api = axios.create({
@@ -43,7 +44,7 @@ interface Organization {
 interface User {
   id: number;
   name: string;
-  avatar: string;
+  avatar_url: string;
   is_online: boolean;
   role: string;
   organization?: Organization | null;
@@ -75,7 +76,7 @@ export interface ChatRoom {
   id: number;
   name: string;
   type: 'public' | 'private' | 'direct';
-  image?: string;
+  image_url?: string;
   description?: string;
   last_message?: {
     message: string;
@@ -112,6 +113,9 @@ interface ChatContextType {
   activeUsers: User[];
   replyingToMessage: ChatMessage | null;
   setReplyingToMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>;
+  addMembers: (roomId: number, memberIds: number[]) => Promise<void>;
+  searchQuery: string;
+  setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -126,12 +130,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [typingUsers, setTypingUsers] = useState<User[]>([]);
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
+  const [searchQuery, setSearchQuery] = useState<string>('');
 
   const allUsers = (props.allUsers as User[]) || [];
   const currentUser = (props.currentUser as User);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const isScrolledToBottomRef = useRef(true);
+    const isScrolledToBottomRef = useRef(true);
 
   // Initialize active users
   useEffect(() => {
@@ -154,96 +159,108 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setCurrentPage(data.current_page);
     } catch (error) {
       console.error('Error fetching messages:', error);
+      toast.error('Failed to load messages');
     }
   }, []);
 
   // Real-time event handling
   useEffect(() => {
-    if (!window.Echo) {
-      console.warn("Laravel Echo not initialized");
+    if (!window.Echo || !activeRoom) {
+      console.warn("Echo not initialized or no active room");
       return;
     }
 
-    let currentChannelName: string | null = null;
+    let channelName: string;
+    let channel: any;
 
-    if (activeRoom) {
-      setMessages([]);
-      setCurrentPage(1);
-      setTypingUsers([]);
-      setReplyingToMessage(null);
+    switch (activeRoom.type) {
+      case 'public':
+        channelName = `public-chat.${activeRoom.id}`;
+        channel = window.Echo.channel(channelName);
+        break;
+      case 'private':
+        channelName = `private-chat.${activeRoom.id}`;
+        channel = window.Echo.private(channelName);
+        break;
+      case 'direct':
+        channelName = `direct-chat.${activeRoom.id}`;
+        channel = window.Echo.private(channelName);
+        break;
+      default:
+        return;
+    }
 
-      fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
+    // Clear existing state when changing rooms
+    setMessages([]);
+    setCurrentPage(1);
+    setTypingUsers([]);
+    setReplyingToMessage(null);
 
-      currentChannelName = activeRoom.type === 'public'
-        ? `chat.${activeRoom.id}`
-        : `presence-chat-room.${activeRoom.id}`;
+    // Load initial messages
+    fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
 
-      if (activeRoom.type === 'public') {
-        window.Echo.channel(currentChannelName)
-          .listen('MessageSent', (e: { message: ChatMessage }) => {
-            setMessages(prev => [...prev, e.message]);
-            if (e.message.user.id !== currentUser.id) {
-              markRoomAsRead(activeRoom.id);
-            }
-          })
-          .listen('UserTyping', (e: { user: User; is_typing: boolean }) => {
-            setTypingUsers(prev =>
-              e.is_typing
-                ? [...prev.filter(u => u.id !== e.user.id), e.user]
-                : prev.filter(u => u.id !== e.user.id)
-            );
-          });
-      } else {
-        window.Echo.join(currentChannelName)
-          .here((users: User[]) => setActiveUsers(users))
-          .joining((user: User) => setActiveUsers(prev => [...prev, user]))
-          .leaving((user: User) => setActiveUsers(prev => prev.filter(u => u.id !== user.id)))
-          .listen('MessageSent', (e: { message: ChatMessage }) => {
-            setMessages(prev => [...prev, e.message]);
-            if (e.message.user.id !== currentUser.id) {
-              markRoomAsRead(activeRoom.id);
-            }
-          })
-          .listen('UserTyping', (e: { user: User; is_typing: boolean }) => {
-            setTypingUsers(prev =>
-              e.is_typing
-                ? [...prev.filter(u => u.id !== e.user.id), e.user]
-                : prev.filter(u => u.id !== e.user.id)
-            );
-          });
+    // Message listener
+    channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+      setMessages(prev => [...prev, e.message]);
+      if (e.message.user.id !== currentUser.id) {
+        markRoomAsRead(activeRoom.id);
       }
+    });
+
+    // Typing indicator listener
+    channel.listen('.user.typing', (e: { user: User; is_typing: boolean }) => {
+      setTypingUsers(prev =>
+        e.is_typing
+          ? [...prev.filter(u => u.id !== e.user.id), e.user]
+          : prev.filter(u => u.id !== e.user.id)
+      );
+    });
+
+    // Presence channel for private/direct chats
+    if (activeRoom.type !== 'public') {
+      const presenceChannel = window.Echo.join(`presence-chat.${activeRoom.id}`);
+
+      presenceChannel
+        .here((users: User[]) => setActiveUsers(users))
+        .joining((user: User) => setActiveUsers(prev => [...prev, user]))
+        .leaving((user: User) => setActiveUsers(prev => prev.filter(u => u.id !== user.id)));
     }
 
     return () => {
-      if (window.Echo && currentChannelName) {
-        window.Echo.leave(currentChannelName);
+      if (window.Echo) {
+        window.Echo.leave(channelName);
+        if (activeRoom.type !== 'public') {
+          window.Echo.leave(`presence-chat.${activeRoom.id}`);
+        }
       }
     };
-  }, [activeRoom, fetchMessages, currentUser.id]);
+  }, [activeRoom?.id, currentUser.id, fetchMessages]);
 
-  // Global room updates
+
+  // Global room updates listener
   useEffect(() => {
     if (!window.Echo) return;
 
-    window.Echo.channel('chat-rooms')
-      .listen('RoomCreated', (e: { room: ChatRoom }) => {
-        setChatRooms(prev => {
-          if (e.room.type === 'public' || e.room.members.some(m => m.id === currentUser.id)) {
-            return !prev.some(r => r.id === e.room.id)
-              ? [e.room, ...prev].sort((a, b) =>
-                  new Date(b.last_message?.created_at || b.created_at).getTime() -
-                  new Date(a.last_message?.created_at || a.created_at).getTime()
-                )
-              : prev;
-          }
-          return prev;
-        });
-      });
+    const publicChannel = window.Echo.channel('chat-rooms');
+    const privateChannel = window.Echo.private(`user.${currentUser.id}`);
 
-    window.Echo.private(`user.${currentUser.id}`)
-      .listen('RoomCreated', (e: { room: ChatRoom }) => {
-        setChatRooms(prev => !prev.some(r => r.id === e.room.id) ? [e.room, ...prev] : prev);
+    publicChannel.listen('RoomCreated', (e: { room: ChatRoom }) => {
+      setChatRooms(prev => {
+        if (e.room.type === 'public' || e.room.members.some(m => m.id === currentUser.id)) {
+          return !prev.some(r => r.id === e.room.id)
+            ? [e.room, ...prev].sort((a, b) =>
+                new Date(b.last_message?.created_at || b.created_at).getTime() -
+                new Date(a.last_message?.created_at || a.created_at).getTime()
+              )
+            : prev;
+        }
+        return prev;
       });
+    });
+
+    privateChannel.listen('RoomCreated', (e: { room: ChatRoom }) => {
+      setChatRooms(prev => !prev.some(r => r.id === e.room.id) ? [e.room, ...prev] : prev);
+    });
 
     return () => {
       if (window.Echo) {
@@ -259,8 +276,34 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [activeRoom, hasMoreMessages, currentPage, fetchMessages]);
 
-  const sendMessage = useCallback(async (message: string, attachments: File[], replyToMessageId?: number) => {
+  const sendMessage = useCallback(async (message: string, attachments: File[] = [], replyToMessageId?: number) => {
     if (!activeRoom) return;
+
+    // Create optimistic message
+    const tempId = Date.now();
+    const optimisticMessage: ChatMessage = {
+      id: tempId,
+      message,
+      attachments: attachments.map(file => ({
+        name: file.name,
+        url: URL.createObjectURL(file),
+        type: file.type,
+        size: file.size
+      })),
+      created_at: new Date().toISOString(),
+      is_edited: false,
+      user: currentUser,
+      reply_to_message: replyToMessageId ? {
+        id: replyToMessageId,
+        message: messages.find(m => m.id === replyToMessageId)?.message || '',
+        user: { name: currentUser.name }
+      } : undefined,
+      chat_room_id: activeRoom.id
+    };
+
+    // Add to UI immediately
+    setMessages(prev => [...prev, optimisticMessage]);
+    setReplyingToMessage(null);
 
     const formData = new FormData();
     formData.append('message', message);
@@ -268,14 +311,23 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (replyToMessageId) formData.append('reply_to_message_id', replyToMessageId.toString());
 
     try {
-      await api.post(`/chat/rooms/${activeRoom.id}/messages`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setReplyingToMessage(null);
+      const { data } = await api.post<{ message: ChatMessage }>(
+        `/chat/rooms/${activeRoom.id}/messages`,
+        formData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
+
+      // Replace optimistic message with real one
+      setMessages(prev => prev.map(msg =>
+        msg.id === tempId ? data.message : msg
+      ));
     } catch (error) {
       console.error('Error sending message:', error);
+      // Remove optimistic message if failed
+      setMessages(prev => prev.filter(msg => msg.id !== tempId));
+      toast.error('Failed to send message');
     }
-  }, [activeRoom]);
+  }, [activeRoom, currentUser, messages]);
 
   const deleteMessage = useCallback(async (messageId: number) => {
     try {
@@ -284,10 +336,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success('Message deleted');
     } catch (error) {
       console.error('Error deleting message:', error);
+      toast.error('Failed to delete message');
     }
   }, []);
 
-  const createRoom = useCallback(async (name: string, type: 'public' | 'private', description?: string, image?: File, members?: number[]) => {
+  const createRoom = useCallback(async (
+    name: string,
+    type: 'public' | 'private',
+    description?: string,
+    image?: File,
+    members?: number[]
+  ) => {
     const formData = new FormData();
     formData.append('name', name);
     formData.append('type', type);
@@ -302,9 +361,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       setActiveRoom(data.room);
-      toast.success('Room created');
+      toast.success('Room created successfully');
     } catch (error) {
       console.error('Error creating room:', error);
+      toast.error('Failed to create room');
     }
   }, []);
 
@@ -315,8 +375,41 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.success('Direct chat started');
     } catch (error) {
       console.error('Error creating direct chat:', error);
+      toast.error('Failed to start direct chat');
     }
   }, []);
+
+  const addMembers = useCallback(async (roomId: number, memberIds: number[]) => {
+    try {
+      const { data } = await api.post(`/chat/rooms/${roomId}/members`, { members: memberIds });
+
+      setChatRooms(prev => prev.map(room => {
+        if (room.id === roomId) {
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !room.members.some(m => m.id === user.id)
+          );
+          return { ...room, members: [...room.members, ...newMembers] };
+        }
+        return room;
+      }));
+
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(prev => {
+          if (!prev) return null;
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !prev.members.some(m => m.id === user.id)
+          );
+          return { ...prev, members: [...prev.members, ...newMembers] };
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error adding members:', error);
+      toast.error('Failed to add members');
+      throw error;
+    }
+  }, [allUsers, activeRoom?.id]);
 
   const joinRoom = useCallback(async (roomId: number) => {
     try {
@@ -324,9 +417,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setChatRooms(prev => prev.map(room =>
         room.id === roomId ? { ...room, is_member: true } : room
       ));
-      toast.success('Joined room');
+      toast.success('Joined room successfully');
     } catch (error) {
       console.error('Error joining room:', error);
+      toast.error('Failed to join room');
     }
   }, []);
 
@@ -338,9 +432,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveRoom(null);
         setMessages([]);
       }
-      toast.success('Left room');
+      toast.success('Left room successfully');
     } catch (error) {
       console.error('Error leaving room:', error);
+      toast.error('Failed to leave room');
     }
   }, [activeRoom]);
 
@@ -409,6 +504,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeUsers,
         replyingToMessage,
         setReplyingToMessage,
+        addMembers,
+        searchQuery,
+        setSearchQuery,
       }}
     >
       {children}

@@ -41,6 +41,12 @@ use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\TopicController;
 
+Route::get('/test-broadcast', function () {
+    $message = App\Models\ChatMessage::first();
+    event(new App\Events\MessageSent($message));
+    return "Event fired for message: " . $message;
+});
+
 Route::get('/', [HomeController::class, "index"])->name('home');
 
 Route::get('/about', function () {

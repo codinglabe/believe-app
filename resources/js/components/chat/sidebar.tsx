@@ -9,6 +9,7 @@ import { GroupCreateDialog } from "@/components/chat/group-create-dialog"
 import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { PlusIcon, SearchIcon } from 'lucide-react'
+import { Link, usePage } from "@inertiajs/react"
 
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
@@ -16,6 +17,7 @@ const safeToLower = (str: any): string => {
 }
 
 export function Sidebar() {
+    const page = usePage().props;
   const {
     chatRooms = [],
     activeRoom,
@@ -70,8 +72,15 @@ export function Sidebar() {
   return (
     <div className="flex h-full flex-col border-r">
       {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-xl font-semibold">Chats</h2>
+          <div className="flex items-center justify-between p-4 border-b">
+        <h2 className="text-xl font-semibold">
+        {['admin', 'organization'].includes(page.auth.user.role) ? (
+            <Link href={route("dashboard")} className="underline">Dashboard</Link>
+        ) : (
+            <Link href={route("home")} className="underline">Home</Link>
+        )}
+        &nbsp;/ Chats
+        </h2>
         {canCreateGroups && (
           <Button
             variant="ghost"
