@@ -39,6 +39,8 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\OwnershipVerificationController;
+use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\TopicController;
 
 Route::get('/test-broadcast', function () {
@@ -265,6 +267,14 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 // Public Course Routes
 Route::get('/courses', [CourseController::class, 'publicIndex'])->name('course.index');
 Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->name('course.show'); // Use slug for public show
+// Ownership Verification Routes
+// Route::middleware(['auth', 'verified'])->group(function () {
+//     // Ownership Verification routes
+//     Route::get('/verification/ownership', [OwnershipVerificationController::class, 'show'])->name('verification.ownership');
+//     Route::post('/verification/ownership/verify', [OwnershipVerificationController::class, 'verify'])->name('verification.verify');
+//     Route::get('/verification/results', [OwnershipVerificationController::class, 'results'])->name('verification.results');
+//     Route::post('/verification/ownership/retry', [OwnershipVerificationController::class, 'retry'])->name('verification.retry');
+// });
 // Enrollment routes (require authentication)
 Route::middleware('auth')->group(function () {
     Route::get('/courses/{course:slug}/enroll', [EnrollmentController::class, 'show'])->name('courses.enroll');
@@ -289,6 +299,29 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     // Topic Management Routes (Admin Only)
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
+});
+
+
+
+// Plaid Verification routes
+Route::middleware(['auth'])->group(function () {
+    Route::get('/verification/ownership', [PlaidVerificationController::class, 'show'])->name('verification.ownership');
+    Route::get('/verification/results', [PlaidVerificationController::class, 'results'])->name('verification.results');
+    Route::post('/verification/download-certificate', [PlaidVerificationController::class, 'downloadCertificate'])->name('verification.download-certificate');
+    Route::post('/verification/retry', [PlaidVerificationController::class, 'retry'])->name('verification.retry');
+});
+
+// Plaid API routes
+Route::middleware(['auth'])->prefix('api/plaid')->group(function () {
+    Route::post('/create-link-token', [PlaidVerificationController::class, 'createLinkToken']);
+    Route::post('/exchange-token', [PlaidVerificationController::class, 'exchangeToken']);
+    Route::post('/verify-ownership', [PlaidVerificationController::class, 'verifyOwnership']);
+});
+
+// Plaid webhook (no auth required)
+Route::post('/api/plaid/webhook', function () {
+    // Handle Plaid webhooks
+    return response()->json(['status' => 'success']);
 });
 
 

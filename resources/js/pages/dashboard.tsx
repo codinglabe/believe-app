@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/frontend/ui/button';
 import { useState } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import VerificationBanner from '@/components/admin/verification-banner';
 // import { IconActivity, IconDonation, IconUsers, IconCalendarStats } from '@/components/icons';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -213,6 +214,7 @@ export default function Dashboard({ totalOrg, orgInfo, totalFav }: { totalOrg: n
                     <h1 className="text-2xl font-bold">
                         {welcomeMessages[userRole as keyof typeof welcomeMessages] || 'Welcome!'}
                     </h1>
+                    <VerificationBanner user={auth?.user}/>
                     <p className="text-muted-foreground mt-2">
                         {userRole === 'admin'
                             ? 'System overview and management tools'

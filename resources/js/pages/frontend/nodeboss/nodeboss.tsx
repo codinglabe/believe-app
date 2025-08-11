@@ -173,7 +173,7 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
                 <div className="text-center mb-8">
                   <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 dark:text-white mb-4 flex items-center justify-center gap-3">
                     <DollarSign className="h-8 w-8 text-green-500" />
-                    Invest in {nodeBoss.name}
+                    Purchase in {nodeBoss.name}
                   </h1>
                   <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
                     Own the Future. Power the World.
@@ -232,13 +232,13 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
 
                 </div>
 
-                {/* Right Column - Investment Form */}
+                {/* Right Column - Purchase Form */}
                 <div className="lg:col-span-2">
                   <Card className="hover:shadow-2xl p-0 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 backdrop-blur-sm animate-in slide-in-from-right duration-500">
                     <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
                       <CardTitle className="text-2xl flex items-center gap-3">
                         <DollarSign className="h-6 w-6" />
-                        Make Your Investment
+                        Make Your Purchase
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="p-8">
@@ -246,7 +246,7 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
                         {/* Amount Selection */}
                         <div className="space-y-4">
                           <Label className="text-lg font-semibold text-gray-900 dark:text-white">
-                            Select Investment Amount
+                            Select Purchase Amount
                           </Label>
                           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                             {suggestedAmounts.map((amount: number) => {
@@ -334,7 +334,7 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
                           </Card>
                         )}
 
-                        {/* Investor Information */}
+                        {/* Purchaseor Information */}
                         <div className="space-y-4">
                           <Label className="text-lg font-semibold text-gray-900 dark:text-white">Your Information</Label>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -388,11 +388,11 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
                         <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
                           <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                             <Shield className="h-5 w-5 text-green-500" />
-                            Investment Summary
+                            Purchase Summary
                           </h4>
                           <div className="space-y-3">
                             <div className="flex justify-between items-center">
-                              <span className="text-gray-600 dark:text-gray-300">Investment Amount:</span>
+                              <span className="text-gray-600 dark:text-gray-300">Purchase Amount:</span>
                               <span className="font-semibold text-lg text-gray-900 dark:text-white">
                                 ${getCurrentAmount().toFixed(2)}
                               </span>
@@ -435,12 +435,12 @@ export default function NodeBossIndex({ nodeBoss, user, isRefOwner }: Props) {
                             {isProcessing || processing ? (
                               <div className="flex items-center gap-3">
                                 <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                                Processing Investment...
+                                Processing Purchase...
                               </div>
                             ) : (
                               <div className="flex items-center gap-3">
                                 <DollarSign className="h-5 w-5" />
-                                Invest ${getCurrentAmount().toFixed(2)}
+                                Purchase ${getCurrentAmount().toFixed(2)}
                                 <Shield className="h-5 w-5" />
                               </div>
                             )}

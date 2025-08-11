@@ -445,7 +445,7 @@ export default function FrontendCoursesListPage({
                   {/* Course Image */}
                   <div className="relative overflow-hidden">
                     <img
-                      src={"/"+course.image || "/placeholder.svg?height=200&width=300&query=community course"}
+                      src={course.image_url || "/placeholder.svg?height=200&width=300&query=community course"}
                       alt={course.name}
                       className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                     />

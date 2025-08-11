@@ -41,4 +41,10 @@ return [
         'live_secret' => env('STRIPE_LIVE_SECRET'),
     ],
 
+    'plaid' => [
+        'client_id' => env('PLAID_CLIENT_ID'),
+        'secret' => env('PLAID_SECRET'),
+        'environment' => env('PLAID_ENVIRONMENT', 'sandbox'), // sandbox, development, production
+        'webhook_url' => env('PLAID_WEBHOOK_URL'),
+    ],
 ];

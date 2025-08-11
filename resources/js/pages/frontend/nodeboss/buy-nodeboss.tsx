@@ -129,7 +129,7 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
   const getImpactText = (amount: number) => {
     if (amount >= 500) return "🚀 Become a major contributor and significantly accelerate project completion!"
     if (amount >= 250) return "⭐ Make a substantial impact and help reach our funding milestone!"
-    if (amount >= 100) return "💪 Your investment will make a meaningful difference to this project!"
+    if (amount >= 100) return "💪 Your purchase will make a meaningful difference to this project!"
     if (amount >= 50) return "🎯 Help us get closer to our funding goal with this solid contribution!"
     if (amount >= 25) return "✨ Every contribution counts and brings us closer to success!"
     return "🙏 Your support, no matter the size, is truly valuable and appreciated!"
@@ -172,7 +172,7 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                 Invest in {nodeBoss.name}
               </h1>
               <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-                Join the future of blockchain infrastructure. Your investment helps build cutting-edge technology that
+                Join the future of blockchain infrastructure. Your purchase helps build cutting-edge technology that
                 powers the decentralized world.
               </p>
             </div>
@@ -327,13 +327,13 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
               )} */}
             </div>
 
-            {/* Right Column - Investment Form */}
+            {/* Right Column - purchase Form */}
             <div className="lg:col-span-2">
               <Card className="shadow-2xl border-0 bg-white/90 backdrop-blur-sm animate-in slide-in-from-right duration-500">
                 <CardHeader className="bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-t-lg">
                   <CardTitle className="text-2xl flex items-center gap-3">
                     <DollarSign className="h-6 w-6" />
-                    Make Your Investment
+                    Make Your purchase
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-8">
@@ -341,7 +341,7 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                     {/* Amount Selection */}
                     <div className="space-y-4">
                       <Label className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Select Investment Amount
+                        Select purchase Amount
                       </Label>
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                         {suggestedAmounts.map((amount: number) => (
@@ -397,12 +397,12 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                             </div>
                             <div className="flex-1">
                               <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 text-lg">
-                                Your Investment Impact
+                                Your purchase Impact
                               </h4>
                               <p className="text-blue-800 dark:text-blue-200">{getImpactText(getCurrentAmount())}</p>
                               <div className="mt-3 p-3 bg-white/50 rounded-lg">
                                 <p className="text-sm text-blue-700 dark:text-blue-100">
-                                  Your ${getCurrentAmount().toLocaleString()} investment represents{" "}
+                                  Your ${getCurrentAmount().toLocaleString()} purchase represents{" "}
                                   <strong>
                                     {((getCurrentAmount() / statistics.total_target_amount) * 100).toFixed(2)}%
                                   </strong>{" "}
@@ -469,11 +469,11 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                     <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-700 rounded-xl p-6 border border-gray-200 dark:border-gray-600">
                       <h4 className="font-bold text-lg text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                         <Shield className="h-5 w-5 text-green-500" />
-                        Investment Summary
+                        purchase Summary
                       </h4>
                       <div className="space-y-3">
                         <div className="flex justify-between items-center">
-                          <span className="text-gray-600 dark:text-gray-300">Investment Amount:</span>
+                          <span className="text-gray-600 dark:text-gray-300">purchase Amount:</span>
                           <span className="font-semibold text-lg text-gray-900 dark:text-white">
                             ${getCurrentAmount().toFixed(2)}
                           </span>
@@ -517,7 +517,7 @@ export default function BuyNodeBossPage({ nodeBoss, statistics, openShares, auth
                         {isProcessing || processing ? (
                           <div className="flex items-center gap-3">
                             <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                            Processing Investment...
+                            Processing purchase...
                           </div>
                         ) : (
                           <div className="flex items-center gap-3">

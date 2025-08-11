@@ -83,6 +83,7 @@
         "react-easy-crop": "^5.4.2",
         "react-hook-form": "^7.60.0",
         "react-hot-toast": "^2.5.2",
+        "react-plaid-link": "^4.1.1",
         "react-quill": "^2.0.0",
         "react-resizable-panels": "^3.0.4",
         "sonner": "^2.0.6",
