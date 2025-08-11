@@ -257,9 +257,11 @@ class EventController extends Controller
         $search = $request->input('search');
         $status = $request->input('status');
         $eventTypeId = $request->input('event_type_id');
+        $organizationId = $request->input('organization_id');
         
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
+        $organizations = Organization::orderBy('name')->get();
 
         $events = Event::query()
             ->with(['organization', 'eventType'])
@@ -274,6 +276,8 @@ class EventController extends Controller
                 $query->where('status', $status);
             })->when($eventTypeId && $eventTypeId !== 'all', function ($query) use ($eventTypeId) {
                 $query->where('event_type_id', $eventTypeId);
+            })->when($organizationId && $organizationId !== 'all', function ($query) use ($organizationId) {
+                $query->where('organization_id', $organizationId);
             });
 
         // Only show public events to non-authenticated users or non-admin users
@@ -286,9 +290,11 @@ class EventController extends Controller
         return Inertia::render('frontend/events', [
             'events' => $events,
             'eventTypes' => $eventTypes,
+            'organizations' => $organizations,
             'search' => $search,
             'status' => $status,
             'eventTypeId' => $eventTypeId,
+            'organizationId' => $organizationId,
         ]);
 
     }

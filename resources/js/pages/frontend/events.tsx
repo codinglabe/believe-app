@@ -53,15 +53,22 @@ interface Event {
     };
 }
 
+interface Organization {
+    id: number;
+    name: string;
+}
+
 interface EventsPageProps {
     events: Event[];
     eventTypes: EventType[];
+    organizations: Organization[];
     search?: string;
     status?: string;
     eventTypeId?: string;
+    organizationId?: string;
 }
 
-export default function EventsPage({ events, eventTypes, search, status, eventTypeId }: EventsPageProps) {
+export default function EventsPage({ events, eventTypes, organizations, search, status, eventTypeId, organizationId }: EventsPageProps) {
     const [currentPage, setCurrentPage] = useState(1)
     const eventsPerPage = 6
 
@@ -76,10 +83,12 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
         search: string
         status: string
         event_type_id: string
+        organization_id: string
     }>({
         search: search || '',
         status: status || 'all',
-        event_type_id: eventTypeId || 'all'
+        event_type_id: eventTypeId || 'all',
+        organization_id: organizationId || 'all'
     })
 
     const statusOptions = [
@@ -115,8 +124,16 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
         setFilters({
             search: '',
             status: 'all',
-            event_type_id: 'all'
+            event_type_id: 'all',
+            organization_id: 'all'
         })
+    }
+
+    const handleOrganizationChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            organization_id: value
+        }))
     }
 
     const debouncedFilter = useCallback(
@@ -168,7 +185,7 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
                         <div className="flex-1">
                             <Input
                                 type="text"
-                                placeholder="Search events by name or location..."
+                                placeholder="Search events by name or address location city state"
                                 value={filters.search}
                                 onChange={handleSearchChange}
                                 className="w-full p-3 border rounded-lg"
@@ -204,6 +221,21 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
                             </Select>
                         </div>
                         <div className="lg:w-48">
+                            <Select value={filters.organization_id} onValueChange={handleOrganizationChange}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="All Organizations" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Organizations</SelectItem>
+                                    {organizations.map((organization) => (
+                                        <SelectItem key={organization.id} value={organization.id.toString()}>
+                                            {organization.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="lg:w-48">
                             <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
                                 <SelectTrigger className="w-full">
                                     <SelectValue placeholder="All Statuses" />
@@ -222,7 +254,7 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
                                 onClick={clearAllFilters}
                                 variant="outline"
                                 className="w-full lg:w-auto px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                                disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all'}
+                                disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all'}
                             >
                                 <X className="h-4 w-4 mr-2" />
                                 Clear Filters
@@ -380,7 +412,7 @@ export default function EventsPage({ events, eventTypes, search, status, eventTy
                                         <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                                         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No events found</h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all')
+                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all')
                                                 ? "Try adjusting your search criteria or filters."
                                                 : "No events are currently available."
                                             }
