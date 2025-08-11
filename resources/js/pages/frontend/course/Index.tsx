@@ -22,6 +22,7 @@ interface Organization {
   id: number
   name: string
   email: string
+  slug?: string
 }
 
 interface Creator {
@@ -64,6 +65,7 @@ interface Course {
   updated_at: string
   topic: Topic | null
   organization: Organization
+  organization_name: string | null
   creator: Creator
   image_url: string | null
   formatted_price: string
@@ -77,6 +79,7 @@ interface CourseListUser {
 }
 
 interface FrontendCoursesListPageProps {
+  organizations: Organization[]
   courses: {
     data: Course[]
     current_page: number
@@ -100,15 +103,18 @@ interface FrontendCoursesListPageProps {
 export default function FrontendCoursesListPage({
   courses: initialCourses,
   topics,
+  organizations,
   user,
   filters,
 }: FrontendCoursesListPageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
-
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(
     filters.topic_id ? Number.parseInt(filters.topic_id) : null,
+  )
+  const [selectedOrganization, setSelectedOrganization] = useState<string | null>(
+    filters.organization ? filters.organization : null,
   )
   const [selectedFormat, setSelectedFormat] = useState(filters.format || "all")
   const [selectedPricing, setSelectedPricing] = useState(filters.pricing_type || "all")
@@ -119,12 +125,16 @@ export default function FrontendCoursesListPage({
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   // Perform search with debouncing
-  const performSearch = useCallback(async (query: string, topicId: number | null, format: string, pricing: string) => {
+  const performSearch = useCallback(async (query: string, topicId: number | null, format: string, pricing: string, organization: string) => {
     setIsSearching(true)
 
     const params: any = {}
     if (query) params.search = query
     if (topicId) params.topic_id = topicId.toString()
+    if (organization) {
+      params.organization = organization
+      setSelectedOrganization(params.organization)
+    }
     if (format !== "all") params.format = format
     if (pricing !== "all") params.pricing_type = pricing
 
@@ -139,11 +149,11 @@ export default function FrontendCoursesListPage({
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      performSearch(searchQuery, selectedTopicId, selectedFormat, selectedPricing)
+      performSearch(searchQuery, selectedTopicId, selectedFormat, selectedPricing, selectedOrganization)
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedTopicId, selectedFormat, selectedPricing, performSearch])
+  }, [searchQuery, selectedTopicId, selectedFormat, selectedPricing, selectedOrganization, performSearch])
 
   // Close search/filters when clicking outside
   useEffect(() => {
@@ -352,7 +362,7 @@ export default function FrontendCoursesListPage({
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
+                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
                     >
                       {/* Topic Filter */}
                       <div>
@@ -366,6 +376,22 @@ export default function FrontendCoursesListPage({
                           {topics.map((topic) => (
                             <option key={topic.id} value={topic.id}>
                               {topic.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Topic</Label>
+                        <select
+                          value={selectedOrganization || ""}
+                          onChange={(e) => setSelectedOrganization(e.target.value ? e.target.value : null)}
+                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">All Organization</option>
+                          {organizations.map((organization) => (
+                            <option key={organization.slug} value={organization.slug}>
+                              {organization.name}
                             </option>
                           ))}
                         </select>
@@ -499,15 +525,12 @@ export default function FrontendCoursesListPage({
                       <Avatar className="w-8 h-8">
                         <AvatarImage src={`/placeholder.svg?height=32&width=32&query=${course.organization.name}`} />
                         <AvatarFallback className="text-xs">
-                          {course.organization.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
+                          {course.organization.name}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
-                          {course.organization.name}
+                          {course?.organization_name ? course?.organization_name:course?.organization.name}
                         </p>
                         <p className="text-xs text-slate-500 dark:text-slate-400">Organization</p>
                       </div>
@@ -651,11 +674,10 @@ export default function FrontendCoursesListPage({
                         variant={initialCourses.current_page === pageNum ? "default" : "outline"}
                         size="sm"
                         onClick={() => handlePageChange(pageNum)}
-                        className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full text-xs sm:text-sm ${
-                          initialCourses.current_page === pageNum
-                            ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-                            : "hover:bg-blue-50 dark:hover:bg-blue-900"
-                        }`}
+                        className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full text-xs sm:text-sm ${initialCourses.current_page === pageNum
+                          ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
+                          : "hover:bg-blue-50 dark:hover:bg-blue-900"
+                          }`}
                       >
                         {pageNum}
                       </Button>

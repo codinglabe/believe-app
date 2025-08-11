@@ -328,7 +328,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function organization(): HasOne
     {
-        return $this->hasOne(Organization::class);
+        return $this->hasOne(Organization::class, 'user_id');
     }
 
     public function getAvatarUrlAttribute(): string
