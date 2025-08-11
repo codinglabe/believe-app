@@ -18,8 +18,8 @@ class MessageSent implements ShouldBroadcast
     public function __construct(ChatMessage $message)
     {
         $this->message = $message->loadMissing([
-            'user',
-            'replyToMessage.user',
+            'user.organization',
+            'replyToMessage.user.organization',
             'chatRoom'
         ]);
     }
@@ -37,7 +37,7 @@ class MessageSent implements ShouldBroadcast
 
     public function broadcastAs()
     {
-        return 'message.sent';
+        return 'MessageSent';
     }
 
     public function broadcastWith()
@@ -45,18 +45,23 @@ class MessageSent implements ShouldBroadcast
         return [
             'message' => [
                 'id' => $this->message->id,
-                'content' => $this->message->message,
-                'attachments' => $this->message->attachments,
+                'message' => $this->message->message,
+                'attachments' => $this->message->attachments ?? [],
                 'created_at' => $this->message->created_at->toISOString(),
                 'is_edited' => $this->message->is_edited,
                 'user' => [
                     'id' => $this->message->user->id,
                     'name' => $this->message->user->name,
-                    'avatar' => $this->message->user->avatar_url,
+                    'avatar' => $this->message->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
+                    'role' => $this->message->user->role,
+                    'organization' => $this->message->user->organization ? [
+                        'id' => $this->message->user->organization->id,
+                        'name' => $this->message->user->organization->name
+                    ] : null,
                 ],
                 'reply_to_message' => $this->message->replyToMessage ? [
                     'id' => $this->message->replyToMessage->id,
-                    'content' => $this->message->replyToMessage->message,
+                    'message' => $this->message->replyToMessage->message,
                     'user' => [
                         'name' => $this->message->replyToMessage->user->name
                     ]

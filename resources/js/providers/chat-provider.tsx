@@ -143,6 +143,17 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setActiveUsers(allUsers.filter(u => u.is_online));
   }, [allUsers]);
 
+    const markRoomAsRead = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/mark-as-read`);
+      setChatRooms(prev => prev.map(room =>
+        room.id === roomId ? { ...room, unread_count: 0 } : room
+      ));
+    } catch (error) {
+      console.error('Error marking room as read:', error);
+    }
+  }, []);
+
   const fetchMessages = useCallback(async (roomId: number, page: number = 1, append: boolean = false) => {
     try {
       const { data } = await api.get<{
@@ -164,111 +175,212 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // Real-time event handling
-  useEffect(() => {
-    if (!window.Echo || !activeRoom) {
-      console.warn("Echo not initialized or no active room");
-      return;
-    }
-
-    let channelName: string;
-    let channel: any;
-
-    switch (activeRoom.type) {
-      case 'public':
-        channelName = `public-chat.${activeRoom.id}`;
-        channel = window.Echo.channel(channelName);
-        break;
-      case 'private':
-        channelName = `private-chat.${activeRoom.id}`;
-        channel = window.Echo.private(channelName);
-        break;
-      case 'direct':
-        channelName = `direct-chat.${activeRoom.id}`;
-        channel = window.Echo.private(channelName);
-        break;
-      default:
-        return;
-    }
-
-    // Clear existing state when changing rooms
-    setMessages([]);
-    setCurrentPage(1);
-    setTypingUsers([]);
-    setReplyingToMessage(null);
-
-    // Load initial messages
-    fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
-
-    // Message listener
-    channel.listen('.message.sent', (e: { message: ChatMessage }) => {
-      setMessages(prev => [...prev, e.message]);
-      if (e.message.user.id !== currentUser.id) {
-        markRoomAsRead(activeRoom.id);
-      }
-    });
-
-    // Typing indicator listener
-    channel.listen('.user.typing', (e: { user: User; is_typing: boolean }) => {
-      setTypingUsers(prev =>
-        e.is_typing
-          ? [...prev.filter(u => u.id !== e.user.id), e.user]
-          : prev.filter(u => u.id !== e.user.id)
-      );
-    });
-
-    // Presence channel for private/direct chats
-    if (activeRoom.type !== 'public') {
-      const presenceChannel = window.Echo.join(`presence-chat.${activeRoom.id}`);
-
-      presenceChannel
-        .here((users: User[]) => setActiveUsers(users))
-        .joining((user: User) => setActiveUsers(prev => [...prev, user]))
-        .leaving((user: User) => setActiveUsers(prev => prev.filter(u => u.id !== user.id)));
-    }
-
-    return () => {
-      if (window.Echo) {
-        window.Echo.leave(channelName);
-        if (activeRoom.type !== 'public') {
-          window.Echo.leave(`presence-chat.${activeRoom.id}`);
+useEffect(() => {
+    // Wait for Echo to be available
+    const initializeEcho = () => {
+        if (!window.Echo) {
+            console.warn("Echo not initialized yet, retrying...");
+            setTimeout(initializeEcho, 100);
+            return;
         }
-      }
+
+        if (!activeRoom) {
+            console.warn("No active room selected");
+            return;
+        }
+
+        let channelName: string;
+        let channel: any;
+
+        switch (activeRoom.type) {
+            case 'public':
+                channelName = `public-chat.${activeRoom.id}`;
+                channel = window.Echo.channel(channelName);
+                break;
+            case 'private':
+                channelName = `private-chat.${activeRoom.id}`;
+                channel = window.Echo.private(channelName);
+                break;
+            case 'direct':
+                channelName = `direct-chat.${activeRoom.id}`;
+                channel = window.Echo.private(channelName);
+                break;
+            default:
+                return;
+        }
+
+        // Clear existing state when changing rooms
+        setMessages([]);
+        setCurrentPage(1);
+        setTypingUsers([]);
+        setReplyingToMessage(null);
+
+        // Load initial messages
+        fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
+
+        // Message listener
+        channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+            setMessages(prev => {
+                console.log("Received message:", e.message);
+                // Check if message already exists (from optimistic update)
+                const exists = prev.some(m => m.id === e.message.id);
+                return exists ? prev : [...prev, e.message];
+            });
+
+            if (e.message.user.id !== currentUser.id) {
+                markRoomAsRead(activeRoom.id);
+            }
+        });
+
+        // Typing indicator listener
+        channel.listen('.user.typing', (e: { user: User; is_typing: boolean }) => {
+            setTypingUsers(prev =>
+                e.is_typing
+                    ? [...prev.filter(u => u.id !== e.user.id), e.user]
+                    : prev.filter(u => u.id !== e.user.id)
+            );
+        });
+
+        // Add membership event listeners
+        channel.listen('.member.joined', (e: { user: User }) => {
+            setChatRooms(prev => prev.map(room =>
+            room.id === activeRoom.id
+                ? {
+                    ...room,
+                    members: [...room.members, e.user],
+                    is_member: room.id === activeRoom.id ? true : room.is_member
+                }
+                : room
+            ));
+
+            if (activeRoom.id === activeRoom?.id) {
+            setActiveRoom(prev => prev ? {
+                ...prev,
+                members: [...prev.members, e.user],
+                is_member: true
+            } : null);
+            }
+        });
+
+        channel.listen('.member.left', (e: { user_id: number }) => {
+            setChatRooms(prev => prev.map(room =>
+            room.id === activeRoom.id
+                ? {
+                    ...room,
+                    members: room.members.filter(m => m.id !== e.user_id),
+                    is_member: room.id === activeRoom.id
+                    ? room.members.some(m => m.id === currentUser.id && m.id !== e.user_id)
+                    : room.is_member
+                }
+                : room
+            ));
+
+            if (activeRoom.id === activeRoom?.id) {
+            setActiveRoom(prev => prev ? {
+                ...prev,
+                members: prev.members.filter(m => m.id !== e.user_id),
+                is_member: prev.members.some(m => m.id === currentUser.id && m.id !== e.user_id)
+            } : null);
+            }
+        });
+
+        // Presence channel for private/direct chats
+        if (activeRoom.type !== 'public') {
+            const presenceChannel = window.Echo.join(`presence-chat.${activeRoom.id}`);
+
+            presenceChannel
+                .here((users: User[]) => setActiveUsers(users))
+                .joining((user: User) => setActiveUsers(prev => [...prev, user]))
+                .leaving((user: User) => setActiveUsers(prev => prev.filter(u => u.id !== user.id)));
+        }
+
+        return () => {
+            if (window.Echo) {
+                window.Echo.leave(channelName);
+                if (activeRoom.type !== 'public') {
+                    window.Echo.leave(`presence-chat.${activeRoom.id}`);
+                }
+            }
+        };
     };
-  }, [activeRoom?.id, currentUser.id, fetchMessages]);
+
+    initializeEcho();
+}, [activeRoom?.id, currentUser.id, fetchMessages, markRoomAsRead]);
+
+const createRoom = useCallback(async (
+    name: string,
+    type: 'public' | 'private',
+    description?: string,
+    image?: File,
+    members?: number[]
+  ) => {
+    const formData = new FormData();
+    formData.append('name', name);
+    formData.append('type', type);
+    if (description) formData.append('description', description);
+    if (image) formData.append('image', image);
+    if (type === 'private' && members) {
+      members.forEach(id => formData.append('members[]', id.toString()));
+    }
+
+    try {
+      const { data } = await api.post<{ room: ChatRoom }>('/chat/rooms', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+        setActiveRoom(data.room);
+
+        // if (type === 'public' ||
+        //     (type === 'private' && members?.includes(currentUser.id))) {
+        // setChatRooms(prev => [data.room, ...prev]);
+        // }
+      toast.success('Room created successfully');
+    } catch (error) {
+      console.error('Error creating room:', error);
+      toast.error('Failed to create room');
+    }
+}, []);
 
 
   // Global room updates listener
-  useEffect(() => {
-    if (!window.Echo) return;
+useEffect(() => {
+  if (!window.Echo) {
+    console.error("Echo not initialized");
+    return;
+  }
 
-    const publicChannel = window.Echo.channel('chat-rooms');
-    const privateChannel = window.Echo.private(`user.${currentUser.id}`);
+  console.log("Setting up room listeners for user:", currentUser.id);
 
-    publicChannel.listen('RoomCreated', (e: { room: ChatRoom }) => {
-      setChatRooms(prev => {
-        if (e.room.type === 'public' || e.room.members.some(m => m.id === currentUser.id)) {
-          return !prev.some(r => r.id === e.room.id)
-            ? [e.room, ...prev].sort((a, b) =>
-                new Date(b.last_message?.created_at || b.created_at).getTime() -
-                new Date(a.last_message?.created_at || a.created_at).getTime()
-              )
-            : prev;
-        }
-        return prev;
-      });
+  // Public room listener
+  const publicChannel = window.Echo.channel('chat-rooms');
+  publicChannel.listen('.RoomCreated', (e: any) => {
+    console.log("Public room created:", e.room);
+    setChatRooms(prev => {
+      const exists = prev.some(r => r.id === e.room.id);
+      return exists ? prev : [e.room, ...prev];
     });
+  });
 
-    privateChannel.listen('RoomCreated', (e: { room: ChatRoom }) => {
-      setChatRooms(prev => !prev.some(r => r.id === e.room.id) ? [e.room, ...prev] : prev);
-    });
-
-    return () => {
-      if (window.Echo) {
-        window.Echo.leave('chat-rooms');
-        window.Echo.leave(`user.${currentUser.id}`);
+  // Private room listener
+  const privateChannel = window.Echo.private(`user.${currentUser.id}`);
+  privateChannel.listen('.RoomCreated', (e: any) => {
+    console.log("Private room received:", e.room);
+    setChatRooms(prev => {
+      const exists = prev.some(r => r.id === e.room.id);
+      if (!exists) {
+        console.log("Adding private room to list");
+        return [e.room, ...prev];
       }
-    };
-  }, [currentUser.id]);
+      return prev;
+    });
+  });
+
+  return () => {
+    publicChannel.stopListening('.RoomCreated');
+    privateChannel.stopListening('.RoomCreated');
+    window.Echo.leave('chat-rooms.public');
+    window.Echo.leave(`user.${currentUser.id}`);
+  };
+}, [currentUser.id]);
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -276,10 +388,18 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [activeRoom, hasMoreMessages, currentPage, fetchMessages]);
 
+    const deduplicateMessages = useCallback((messages: ChatMessage[]) => {
+    const seen = new Set();
+    return messages.filter(msg => {
+      const duplicate = seen.has(msg.id);
+      seen.add(msg.id);
+      return !duplicate;
+    });
+  }, []);
+
   const sendMessage = useCallback(async (message: string, attachments: File[] = [], replyToMessageId?: number) => {
     if (!activeRoom) return;
 
-    // Create optimistic message
     const tempId = Date.now();
     const optimisticMessage: ChatMessage = {
       id: tempId,
@@ -301,8 +421,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       chat_room_id: activeRoom.id
     };
 
-    // Add to UI immediately
-    setMessages(prev => [...prev, optimisticMessage]);
+    // setMessages(prev => deduplicateMessages([...prev, optimisticMessage]));
     setReplyingToMessage(null);
 
     const formData = new FormData();
@@ -311,23 +430,58 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (replyToMessageId) formData.append('reply_to_message_id', replyToMessageId.toString());
 
     try {
-      const { data } = await api.post<{ message: ChatMessage }>(
-        `/chat/rooms/${activeRoom.id}/messages`,
-        formData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
-      );
-
-      // Replace optimistic message with real one
-      setMessages(prev => prev.map(msg =>
-        msg.id === tempId ? data.message : msg
-      ));
+      await api.post(`/chat/rooms/${activeRoom.id}/messages`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
     } catch (error) {
       console.error('Error sending message:', error);
-      // Remove optimistic message if failed
       setMessages(prev => prev.filter(msg => msg.id !== tempId));
       toast.error('Failed to send message');
     }
-  }, [activeRoom, currentUser, messages]);
+  }, [activeRoom, currentUser, messages, deduplicateMessages]);
+
+  // Update your real-time event listener
+  useEffect(() => {
+    if (!window.Echo || !activeRoom) return;
+
+    const channelName = activeRoom.type === 'public'
+      ? `public-chat.${activeRoom.id}`
+      : `private-chat.${activeRoom.id}`;
+
+    const channel = activeRoom.type === 'public'
+      ? window.Echo.channel(channelName)
+      : window.Echo.private(channelName);
+
+    channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+      setMessages(prev => {
+        const existingMessage = prev.find(msg => msg.id === e.message.id);
+        if (existingMessage) return prev;
+
+        const optimisticMatch = prev.find(msg =>
+          msg.id > 1000000 && // Temporary ID
+          msg.user.id === e.message.user.id &&
+          msg.message === e.message.message
+        );
+
+        if (optimisticMatch) {
+          return deduplicateMessages([
+            ...prev.filter(msg => msg.id !== optimisticMatch.id),
+            e.message
+          ]);
+        }
+
+        return deduplicateMessages([...prev, e.message]);
+      });
+
+      if (e.message.user.id !== currentUser.id) {
+        markRoomAsRead(activeRoom.id);
+      }
+    });
+
+    return () => {
+      window.Echo.leave(channelName);
+    };
+  }, [activeRoom, currentUser.id, deduplicateMessages, markRoomAsRead]);
 
   const deleteMessage = useCallback(async (messageId: number) => {
     try {
@@ -337,34 +491,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Error deleting message:', error);
       toast.error('Failed to delete message');
-    }
-  }, []);
-
-  const createRoom = useCallback(async (
-    name: string,
-    type: 'public' | 'private',
-    description?: string,
-    image?: File,
-    members?: number[]
-  ) => {
-    const formData = new FormData();
-    formData.append('name', name);
-    formData.append('type', type);
-    if (description) formData.append('description', description);
-    if (image) formData.append('image', image);
-    if (type === 'private' && members) {
-      members.forEach(id => formData.append('members[]', id.toString()));
-    }
-
-    try {
-      const { data } = await api.post<{ room: ChatRoom }>('/chat/rooms', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      setActiveRoom(data.room);
-      toast.success('Room created successfully');
-    } catch (error) {
-      console.error('Error creating room:', error);
-      toast.error('Failed to create room');
     }
   }, []);
 
@@ -412,17 +538,28 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [allUsers, activeRoom?.id]);
 
   const joinRoom = useCallback(async (roomId: number) => {
-    try {
-      await api.post(`/chat/rooms/${roomId}/join`);
-      setChatRooms(prev => prev.map(room =>
-        room.id === roomId ? { ...room, is_member: true } : room
-      ));
-      toast.success('Joined room successfully');
-    } catch (error) {
-      console.error('Error joining room:', error);
-      toast.error('Failed to join room');
+  try {
+    await api.post(`/chat/rooms/${roomId}/join`);
+
+    // Optimistically update the UI
+    setChatRooms(prev => prev.map(room =>
+      room.id === roomId ? { ...room, is_member: true } : room
+    ));
+
+    if (activeRoom?.id === roomId) {
+      setActiveRoom(prev => prev ? {
+        ...prev,
+        is_member: true,
+        members: [...prev.members, currentUser]
+      } : null);
     }
-  }, []);
+
+    toast.success('Joined room successfully');
+  } catch (error) {
+    console.error('Error joining room:', error);
+    toast.error('Failed to join room');
+  }
+}, [activeRoom?.id, currentUser]);
 
   const leaveRoom = useCallback(async (roomId: number) => {
     try {
@@ -447,17 +584,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       console.error('Error setting typing status:', error);
     }
   }, 300);
-
-  const markRoomAsRead = useCallback(async (roomId: number) => {
-    try {
-      await api.post(`/chat/rooms/${roomId}/mark-as-read`);
-      setChatRooms(prev => prev.map(room =>
-        room.id === roomId ? { ...room, unread_count: 0 } : room
-      ));
-    } catch (error) {
-      console.error('Error marking room as read:', error);
-    }
-  }, []);
 
   // Auto-scroll handling
   useEffect(() => {

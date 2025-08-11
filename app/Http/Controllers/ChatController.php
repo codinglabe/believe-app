@@ -2,6 +2,7 @@
 // app/Http/Controllers/ChatController.php
 namespace App\Http\Controllers;
 
+use App\Events\MemberJoined;
 use App\Events\MessageSent;
 use App\Events\RoomCreated;
 use App\Events\UserTyping;
@@ -202,7 +203,7 @@ class ChatController extends Controller
         // Mark message as read by sender
         $message->reads()->attach(auth()->id());
 
-        $haha = broadcast(new MessageSent($message))->toOthers();
+        broadcast(new MessageSent($message))->toOthers();
 
         return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }
@@ -282,8 +283,10 @@ class ChatController extends Controller
             return $room;
         });
 
+        $room->load('members');
+
         // Broadcast the new room
-        broadcast(new RoomCreated($room));
+        broadcast(new RoomCreated($room))->toOthers();
 
         return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
     }
@@ -323,8 +326,10 @@ class ChatController extends Controller
             return $room;
         });
 
+        $room->load('members');
+
         // Broadcast the new room
-        broadcast(new RoomCreated($room));
+        broadcast(new RoomCreated($room))->toOthers();
 
         return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
     }
@@ -340,6 +345,8 @@ class ChatController extends Controller
         }
 
         $chatRoom->members()->attach(auth()->id());
+
+        broadcast(new MemberJoined($chatRoom, auth()->user()));
 
         return response()->json(['message' => 'Joined room successfully.']);
     }

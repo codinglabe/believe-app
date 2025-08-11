@@ -17,7 +17,7 @@ class UserTyping implements ShouldBroadcast
     public $roomId;
     public $isTyping;
 
-    public function __construct(User $user, $roomId, $isTyping)
+    public function __construct(User $user, int $roomId, bool $isTyping)
     {
         $this->user = $user;
         $this->roomId = $roomId;
@@ -31,7 +31,7 @@ class UserTyping implements ShouldBroadcast
 
     public function broadcastAs()
     {
-        return 'user.typing';
+        return 'UserTyping';
     }
 
     public function broadcastWith()
@@ -40,10 +40,10 @@ class UserTyping implements ShouldBroadcast
             'user' => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
-                'avatar' => $this->user->avatar_url,
+                'avatar' => $this->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
             ],
+            'room_id' => $this->roomId,
             'is_typing' => $this->isTyping,
-            'room_id' => $this->roomId
         ];
     }
 }

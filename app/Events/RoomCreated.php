@@ -28,7 +28,12 @@ class RoomCreated implements ShouldBroadcast
             return new Channel('chat-rooms');
         }
 
-        return new PrivateChannel('users.' . $this->room->created_by);
+        // Explicitly return array of private channels
+        $channels = [];
+        foreach ($this->room->members as $member) {
+            $channels[] = new PrivateChannel('user.' . $member->id);
+        }
+        return $channels;
     }
 
     public function broadcastAs()
@@ -36,10 +41,29 @@ class RoomCreated implements ShouldBroadcast
         return 'RoomCreated';
     }
 
-    public function broadcastWith()
+    public function broadcastWith(): array
     {
         return [
-            'room' => $this->room->load(['members', 'latestMessage.user'])
+            'room' => [
+                'id' => $this->room->id,
+                'name' => $this->room->name,
+                'type' => $this->room->type,
+                'description' => $this->room->description,
+                'image_url' => $this->room->image_url,
+                'created_at' => $this->room->created_at->toISOString(),
+                'updated_at' => $this->room->updated_at->toISOString(),
+                'members' => $this->room->members->map(function ($member) {
+                    return [
+                        'id' => $member->id,
+                        'name' => $member->name,
+                        'avatar_url' => $member->avatar_url,
+                        'is_online' => $member->is_online,
+                    ];
+                })->toArray(),
+                'is_member' => true,
+                'created_by' => $this->room->created_by,
+                'latest_message' => null,
+            ]
         ];
     }
 }

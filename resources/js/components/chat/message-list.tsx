@@ -15,6 +15,34 @@ export function MessageList() {
   const [isInitialLoad, setIsInitialLoad] = useState(true)
   const prevMessagesLength = useRef(messages.length)
 
+  // Normalize message structure
+  const normalizeMessage = useCallback((message: any) => {
+    return {
+      ...message,
+      message: message.content || message.message,
+      user: {
+        ...message.user,
+        avatar_url: message.user.avatar || message.user.avatar_url
+      }
+    }
+  }, [])
+
+  // Check for duplicate message IDs in development
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'development') {
+      const messageIds = messages.map(m => m.id)
+      const uniqueIds = new Set(messageIds)
+      if (messageIds.length !== uniqueIds.size) {
+        console.warn('Duplicate message IDs detected. Please ensure all messages have unique IDs.')
+      }
+    }
+  }, [messages])
+
+  // Ensure messages have unique keys by adding index as fallback
+  const getMessageKey = (message: { id: string | number }, index: number) => {
+    return `${message.id}-${index}`
+  }
+
   // Determine if user is near the bottom of the scroll area
   const checkIfNearBottom = useCallback(() => {
     if (!scrollAreaRef.current) return true
@@ -27,11 +55,8 @@ export function MessageList() {
   const handleScroll = useCallback(() => {
     if (!scrollAreaRef.current) return
 
-    // Update near bottom state
     const nearBottom = checkIfNearBottom()
     setIsNearBottom(nearBottom)
-
-    // Show load button when scrolling up and not near bottom
     setShowLoadButton(!nearBottom && hasMoreMessages)
   }, [hasMoreMessages, checkIfNearBottom])
 
@@ -44,7 +69,6 @@ export function MessageList() {
     loadMoreMessages().then(() => {
       requestAnimationFrame(() => {
         if (scrollAreaRef.current) {
-          // Maintain scroll position after loading
           scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight - scrollHeightBefore
         }
       })
@@ -115,13 +139,16 @@ export function MessageList() {
         )}
 
         <div className="flex flex-col gap-4">
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              message={message}
-              isOwnMessage={message.user.id === currentUser.id}
-            />
-          ))}
+          {messages.map((message, index) => {
+            const normalizedMessage = normalizeMessage(message)
+            return (
+              <ChatMessage
+                key={getMessageKey(message, index)}
+                message={normalizedMessage}
+                isOwnMessage={message.user.id === currentUser.id}
+              />
+            )
+          })}
         </div>
 
         {loadingMessages && messages.length === 0 && (
