@@ -63,6 +63,7 @@ class HandleInertiaRequests extends Middleware
                     "dob" => $user->dob,
                     'joined' => $user->created_at->format('F Y'),
                     "email_verified_at" => $user->email_verified_at,
+                    "ownership_verified_at" => $user->ownership_verified_at,
                     'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
                     "organization" => $user->organization ? [
                         'name' => $user->organization->name,

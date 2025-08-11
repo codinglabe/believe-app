@@ -15,6 +15,10 @@ export function ChatArea() {
   const { activeRoom, currentUser, typingUsers, leaveRoom, joinRoom } = useChat()
   const [isDetailsPanelOpen, setIsDetailsPanelOpen] = React.useState(false)
 
+  // Calculate membership status reactively
+   const isMember = activeRoom?.is_member ||
+                 activeRoom?.members?.some(member => member.id === currentUser?.id);
+
   if (!activeRoom) {
     return (
       <div className="flex h-full items-center justify-center text-muted-foreground">
@@ -22,8 +26,6 @@ export function ChatArea() {
       </div>
     )
   }
-
-  const isMember = activeRoom.members.some(member => member.id === currentUser.id);
 
   // Determine chat header name for direct chats
   const chatHeaderName = activeRoom.type === 'direct'

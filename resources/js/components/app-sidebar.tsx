@@ -1,5 +1,5 @@
 import { NavMain } from '@/components/nav-main';
-import { Sidebar, SidebarContent, SidebarFooter, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
 import { Download, LayoutGrid, FileText, ShoppingCart, Shield, Settings, Package, AlignEndHorizontal, Network, HandCoins, GraduationCap, Text } from 'lucide-react';

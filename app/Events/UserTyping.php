@@ -5,7 +5,6 @@ namespace App\Events;
 use App\Models\User;
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
@@ -18,54 +17,30 @@ class UserTyping implements ShouldBroadcast
     public $roomId;
     public $isTyping;
 
-    /**
-     * Create a new event instance.
-     */
     public function __construct(User $user, int $roomId, bool $isTyping)
     {
-        $this->user = $user->load('organization'); // Load organization for the user
+        $this->user = $user;
         $this->roomId = $roomId;
         $this->isTyping = $isTyping;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
-     */
-    public function broadcastOn(): array
+    public function broadcastOn()
     {
-        // Broadcast to the specific chat room's presence channel
-        // This ensures typing indicators are only seen by members of that room
-        return [new PresenceChannel('presence-chat-room.' . $this->roomId)];
+        return new Channel("typing.{$this->roomId}");
     }
 
-    /**
-     * The event's broadcast name.
-     */
-    public function broadcastAs(): string
+    public function broadcastAs()
     {
-        return 'user.typing';
+        return 'UserTyping';
     }
 
-    /**
-     * Get the data to broadcast.
-     *
-     * @return array<string, mixed>
-     */
-    public function broadcastWith(): array
+    public function broadcastWith()
     {
         return [
             'user' => [
                 'id' => $this->user->id,
                 'name' => $this->user->name,
-                'avatar' => $this->user->avatar_url,
-                'is_online' => $this->user->is_online,
-                'role' => $this->user->role,
-                'organization' => $this->user->organization ? [
-                    'id' => $this->user->organization->id,
-                    'name' => $this->user->organization->name,
-                ] : null,
+                'avatar' => $this->user->avatar_url ?? '/placeholder.svg?height=32&width=32',
             ],
             'room_id' => $this->roomId,
             'is_typing' => $this->isTyping,

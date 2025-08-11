@@ -6,6 +6,7 @@ namespace App\Models;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -40,6 +41,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'login_status',
         'referral_code',
         'referred_by',
+        "is_verified",
+        "ownership_verified_at",
+        "verification_status",
+        'primary_bank_account_id',
+        'plaid_access_token',
+        'verification_metadata',
     ];
 
     /**
@@ -61,6 +68,8 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return [
             'email_verified_at' => 'datetime',
+            'ownership_verified_at' => 'datetime',
+            'verification_metadata' => 'array',
             'password' => 'hashed',
         ];
     }
@@ -363,8 +372,8 @@ class User extends Authenticatable implements MustVerifyEmail
     public function enrolledCourses()
     {
         return $this->belongsToMany(Course::class, 'enrollments')
-                    ->withPivot(['status', 'amount_paid', 'enrolled_at'])
-                    ->withTimestamps();
+            ->withPivot(['status', 'amount_paid', 'enrolled_at'])
+            ->withTimestamps();
     }
 
     /**
@@ -373,8 +382,56 @@ class User extends Authenticatable implements MustVerifyEmail
     public function isEnrolledIn(Course $course)
     {
         return $this->enrollments()
-                    ->where('course_id', $course->id)
-                    ->where('status', 'active')
-                    ->exists();
+            ->where('course_id', $course->id)
+            ->where('status', 'active')
+            ->exists();
+    }
+
+
+    public function organizations(): HasMany
+    {
+        return $this->hasMany(Organization::class);
+    }
+
+    public function bankAccounts(): HasMany
+    {
+        return $this->hasMany(BankAccount::class);
+    }
+
+
+    public function bankVerifications(): HasMany
+    {
+        return $this->hasMany(BankVerification::class);
+    }
+
+    public function primaryBankAccount(): HasOne
+    {
+        return $this->hasOne(BankAccount::class, 'id', 'primary_bank_account_id');
+    }
+
+    public function nonprofitVerifications(): HasMany
+    {
+        return $this->hasMany(NonprofitVerification::class);
+    }
+
+    public function latestVerification(): HasOne
+    {
+        return $this->hasOne(NonprofitVerification::class)->latestOfMany();
+    }
+
+    public function isOwnershipVerified(): bool
+    {
+        return $this->latestVerification && $this->latestVerification->verification_status === 'verified';
+    }
+
+    public function hasVerifiedBankAccount(): bool
+    {
+        return $this->bankAccounts()->where('is_verified', true)->exists();
+    }
+
+    public function getVerificationStatus(): string
+    {
+        $verification = $this->latestVerification;
+        return $verification ? $verification->verification_status : 'not_started';
     }
 }
