@@ -1,11 +1,12 @@
 import { Head, Link, usePage } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { type BreadcrumbItem } from '@/types';
-import { Plus, Search, Filter, Calendar, MapPin, Users, DollarSign, Edit, Trash2, Eye, EyeOff } from 'lucide-react';
+import { Plus, Search, Filter, Calendar, MapPin, Users, DollarSign, Edit, Trash2, Eye, EyeOff, X } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/frontend/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/frontend/ui/button';
 import { Input } from '@/components/frontend/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/frontend/ui/select';
 import { useState } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 
@@ -19,6 +20,13 @@ const breadcrumbs: BreadcrumbItem[] = [
         href: '/events',
     },
 ];
+
+type EventType = {
+    id: number;
+    name: string;
+    category: string;
+    description?: string;
+};
 
 type Event = {
     id: number;
@@ -38,6 +46,7 @@ type Event = {
     registration_fee?: number;
     requirements?: string;
     contact_info?: string;
+    event_type?: EventType;
     organization?: {
         id: number;
         name: string;
@@ -54,13 +63,15 @@ type Props = {
         per_page: number;
         total: number;
     };
+    eventTypes: EventType[];
     userRole: string;
 };
 
-export default function EventsIndex({ events, userRole }: Props) {
+export default function EventsIndex({ events, eventTypes, userRole }: Props) {
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState('all');
     const [visibilityFilter, setVisibilityFilter] = useState('all');
+    const [eventTypeFilter, setEventTypeFilter] = useState('all');
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -127,9 +138,17 @@ export default function EventsIndex({ events, userRole }: Props) {
         
         const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
         const matchesVisibility = visibilityFilter === 'all' || event.visibility === visibilityFilter;
+        const matchesEventType = eventTypeFilter === 'all' || event.event_type?.id.toString() === eventTypeFilter;
         
-        return matchesSearch && matchesStatus && matchesVisibility;
+        return matchesSearch && matchesStatus && matchesVisibility && matchesEventType;
     });
+
+    const clearAllFilters = () => {
+        setSearchTerm('');
+        setStatusFilter('all');
+        setVisibilityFilter('all');
+        setEventTypeFilter('all');
+    };
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -170,26 +189,65 @@ export default function EventsIndex({ events, userRole }: Props) {
                                 </div>
                             </div>
                             <div className="flex gap-2">
-                                <select
-                                    value={statusFilter}
-                                    onChange={(e) => setStatusFilter(e.target.value)}
-                                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+                                <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+                                    <SelectTrigger className="w-48">
+                                        <SelectValue placeholder="All Event Types" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Event Types</SelectItem>
+                                        {Object.entries(eventTypes.reduce((acc, eventType) => {
+                                            const category = eventType.category;
+                                            if (!acc[category]) {
+                                                acc[category] = [];
+                                            }
+                                            acc[category].push(eventType);
+                                            return acc;
+                                        }, {} as Record<string, EventType[]>)).map(([category, types]) => (
+                                            <div key={category}>
+                                                <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                                    {category}
+                                                </div>
+                                                {types.map((type) => (
+                                                    <SelectItem key={type.id} value={type.id.toString()}>
+                                                        {type.name}
+                                                    </SelectItem>
+                                                ))}
+                                            </div>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger className="w-32">
+                                        <SelectValue placeholder="All Status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="upcoming">Upcoming</SelectItem>
+                                        <SelectItem value="ongoing">Ongoing</SelectItem>
+                                        <SelectItem value="completed">Completed</SelectItem>
+                                        <SelectItem value="cancelled">Cancelled</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
+                                    <SelectTrigger className="w-32">
+                                        <SelectValue placeholder="All Visibility" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Visibility</SelectItem>
+                                        <SelectItem value="public">Public</SelectItem>
+                                        <SelectItem value="private">Private</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <Button
+                                    onClick={clearAllFilters}
+                                    variant="outline"
+                                    size="sm"
+                                    className="px-3 py-2 border border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                    disabled={!searchTerm && statusFilter === 'all' && visibilityFilter === 'all' && eventTypeFilter === 'all'}
                                 >
-                                    <option value="all">All Status</option>
-                                    <option value="upcoming">Upcoming</option>
-                                    <option value="ongoing">Ongoing</option>
-                                    <option value="completed">Completed</option>
-                                    <option value="cancelled">Cancelled</option>
-                                </select>
-                                <select
-                                    value={visibilityFilter}
-                                    onChange={(e) => setVisibilityFilter(e.target.value)}
-                                    className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:border-blue-500 focus:outline-none dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-                                >
-                                    <option value="all">All Visibility</option>
-                                    <option value="public">Public</option>
-                                    <option value="private">Private</option>
-                                </select>
+                                    <X className="h-4 w-4 mr-1" />
+                                    Clear
+                                </Button>
                             </div>
                         </div>
                     </CardContent>
@@ -263,6 +321,13 @@ export default function EventsIndex({ events, userRole }: Props) {
                                             <span>{event.max_participants} participants</span>
                                         </div>
                                     )}
+                                    {event.event_type && (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                                {event.event_type.name}
+                                            </span>
+                                        </div>
+                                    )}
                                     {userRole === 'admin' && event.organization && (
                                         <div className="flex items-center gap-2">
                                             <span className="text-xs bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded">
@@ -311,12 +376,12 @@ export default function EventsIndex({ events, userRole }: Props) {
                                 No events found
                             </h3>
                             <p className="text-gray-600 dark:text-gray-300 mb-4">
-                                {searchTerm || statusFilter !== 'all' || visibilityFilter !== 'all'
+                                {searchTerm || statusFilter !== 'all' || visibilityFilter !== 'all' || eventTypeFilter !== 'all'
                                     ? 'Try adjusting your search or filters.'
                                     : 'Get started by creating your first event.'
                                 }
                             </p>
-                            {userRole === 'organization' && !searchTerm && statusFilter === 'all' && (
+                            {userRole === 'organization' && !searchTerm && statusFilter === 'all' && visibilityFilter === 'all' && eventTypeFilter === 'all' && (
                                 <Link href={route('events.create')}>
                                     <Button className="bg-blue-600 hover:bg-blue-700">
                                         <Plus className="h-4 w-4 mr-2" />

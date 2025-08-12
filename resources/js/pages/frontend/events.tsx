@@ -9,6 +9,7 @@ import { Link, router } from "@inertiajs/react"
 import { useState, useEffect, useCallback } from "react"
 import { debounce, pickBy } from "lodash"
 import { Badge } from "@/components/frontend/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import {
     MapPin,
     Calendar,
@@ -17,7 +18,15 @@ import {
     ChevronRight,
     Building,
     Users,
+    X,
 } from "lucide-react"
+
+interface EventType {
+    id: number;
+    name: string;
+    category: string;
+    description?: string;
+}
 
 interface Event {
     id: number;
@@ -36,6 +45,7 @@ interface Event {
     registration_fee?: number;
     requirements?: string;
     contact_info?: string;
+    event_type?: EventType;
     organization?: {
         id: number;
         name: string;
@@ -43,12 +53,22 @@ interface Event {
     };
 }
 
-interface EventsPageProps {
-    events: Event[];
-    search?: string;
+interface Organization {
+    id: number;
+    name: string;
 }
 
-export default function EventsPage({ events, search }: EventsPageProps) {
+interface EventsPageProps {
+    events: Event[];
+    eventTypes: EventType[];
+    organizations: Organization[];
+    search?: string;
+    status?: string;
+    eventTypeId?: string;
+    organizationId?: string;
+}
+
+export default function EventsPage({ events, eventTypes, organizations, search, status, eventTypeId, organizationId }: EventsPageProps) {
     const [currentPage, setCurrentPage] = useState(1)
     const eventsPerPage = 6
 
@@ -62,13 +82,17 @@ export default function EventsPage({ events, search }: EventsPageProps) {
     const [filters, setFilters] = useState<{
         search: string
         status: string
+        event_type_id: string
+        organization_id: string
     }>({
         search: search || '',
-        status: ''
+        status: status || 'all',
+        event_type_id: eventTypeId || 'all',
+        organization_id: organizationId || 'all'
     })
 
     const statusOptions = [
-        { value: '', label: 'All Statuses' },
+        { value: 'all', label: 'All Statuses' },
         { value: 'upcoming', label: 'Upcoming' },
         { value: 'ongoing', label: 'Ongoing' },
         { value: 'completed', label: 'Completed' },
@@ -86,6 +110,29 @@ export default function EventsPage({ events, search }: EventsPageProps) {
         setFilters((prev) => ({
             ...prev,
             status: e.target.value
+        }))
+    }
+
+    const handleEventTypeChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            event_type_id: value
+        }))
+    }
+
+    const clearAllFilters = () => {
+        setFilters({
+            search: '',
+            status: 'all',
+            event_type_id: 'all',
+            organization_id: 'all'
+        })
+    }
+
+    const handleOrganizationChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            organization_id: value
         }))
     }
 
@@ -138,24 +185,80 @@ export default function EventsPage({ events, search }: EventsPageProps) {
                         <div className="flex-1">
                             <Input
                                 type="text"
-                                placeholder="Search events by name or location..."
+                                placeholder="Search events by name or address location city state"
                                 value={filters.search}
                                 onChange={handleSearchChange}
                                 className="w-full p-3 border rounded-lg"
                             />
                         </div>
                         <div className="lg:w-48">
-                            <select
-                                value={filters.status}
-                                onChange={handleStatusChange}
-                                className="w-full p-3 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            <Select value={filters.event_type_id} onValueChange={handleEventTypeChange}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="All Event Types" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Event Types</SelectItem>
+                                    {Object.entries(eventTypes.reduce((acc, eventType) => {
+                                        const category = eventType.category;
+                                        if (!acc[category]) {
+                                            acc[category] = [];
+                                        }
+                                        acc[category].push(eventType);
+                                        return acc;
+                                    }, {} as Record<string, EventType[]>)).map(([category, types]) => (
+                                        <div key={category}>
+                                            <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                                {category}
+                                            </div>
+                                            {types.map((type) => (
+                                                <SelectItem key={type.id} value={type.id.toString()}>
+                                                    {type.name}
+                                                </SelectItem>
+                                            ))}
+                                        </div>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="lg:w-48">
+                            <Select value={filters.organization_id} onValueChange={handleOrganizationChange}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="All Organizations" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="all">All Organizations</SelectItem>
+                                    {organizations.map((organization) => (
+                                        <SelectItem key={organization.id} value={organization.id.toString()}>
+                                            {organization.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="lg:w-48">
+                            <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                                <SelectTrigger className="w-full">
+                                    <SelectValue placeholder="All Statuses" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {statusOptions.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="lg:w-auto">
+                            <Button
+                                onClick={clearAllFilters}
+                                variant="outline"
+                                className="w-full lg:w-auto px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all'}
                             >
-                                {statusOptions.map((option) => (
-                                    <option key={option.value} value={option.value}>
-                                        {option.label}
-                                    </option>
-                                ))}
-                            </select>
+                                <X className="h-4 w-4 mr-2" />
+                                Clear Filters
+                            </Button>
                         </div>
                     </div>
 
@@ -228,6 +331,7 @@ export default function EventsPage({ events, search }: EventsPageProps) {
                                                                 </div>
                                                             )}
 
+                                                           
                                                             {event.organization && (
                                                                 <div className="flex items-center text-sm">
                                                                     <Building className="h-4 w-4 mr-2 text-muted-foreground" />
@@ -238,33 +342,16 @@ export default function EventsPage({ events, search }: EventsPageProps) {
                                                     </CardContent>
 
                                                     <CardFooter className="flex justify-between items-center">
+                                                        <div className="flex items-center gap-2">
+                                                            {event.event_type && (
+                                                                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
+                                                                    {event.event_type.name}
+                                                                </span>
+                                                            )}
+                                                        </div>
                                                         <Link href={route('viewEvent', event.id)} className="text-primary hover:underline text-sm font-medium">
                                                             View details
                                                         </Link>
-
-                                                        {event.status === 'upcoming' && (
-                                                            <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                                                                Register Now
-                                                            </Button>
-                                                        )}
-
-                                                        {event.status === 'ongoing' && (
-                                                            <Badge variant="secondary" className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                                                                Happening Now
-                                                            </Badge>
-                                                        )}
-
-                                                        {event.status === 'completed' && (
-                                                            <Badge variant="secondary" className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">
-                                                                Completed
-                                                            </Badge>
-                                                        )}
-
-                                                        {event.status === 'cancelled' && (
-                                                            <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                                                                Cancelled
-                                                            </Badge>
-                                                        )}
                                                     </CardFooter>
                                                 </Card>
                                             ))}
@@ -325,7 +412,7 @@ export default function EventsPage({ events, search }: EventsPageProps) {
                                         <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
                                         <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No events found</h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            {filters.search || filters.status 
+                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all')
                                                 ? "Try adjusting your search criteria or filters."
                                                 : "No events are currently available."
                                             }

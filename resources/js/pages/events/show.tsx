@@ -40,6 +40,12 @@ type Event = {
     registration_fee?: number;
     requirements?: string;
     contact_info?: string;
+    event_type?: {
+        id: number;
+        name: string;
+        category: string;
+        description?: string;
+    };
     organization?: {
         id: number;
         name: string;
@@ -232,6 +238,23 @@ export default function ShowEvent({ event, userRole }: Props) {
                                         </p>
                                     </div>
                                 </div>
+
+                                {event.event_type && (
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-5 w-5 text-gray-500 flex items-center justify-center">
+                                            <span className="text-xs font-bold">🎯</span>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm text-gray-500 dark:text-gray-400">Event Type</p>
+                                            <p className="font-medium text-gray-900 dark:text-white">
+                                                {event.event_type.name}
+                                            </p>
+                                            <p className="text-xs text-gray-500 dark:text-gray-400">
+                                                {event.event_type.category}
+                                            </p>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {event.max_participants && (
                                     <div className="flex items-center gap-3">
