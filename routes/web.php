@@ -42,12 +42,15 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\TopicController;
+use Illuminate\Support\Facades\Broadcast;
 
 Route::get('/test-broadcast', function () {
     $message = App\Models\ChatMessage::first();
     event(new App\Events\MessageSent($message));
     return "Event fired for message: " . $message;
 });
+
+Broadcast::routes(['middleware' => ['auth']]);
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 

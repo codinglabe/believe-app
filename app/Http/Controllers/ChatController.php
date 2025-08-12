@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Events\MemberJoined;
 use App\Events\MessageSent;
 use App\Events\RoomCreated;
+use App\Events\RoomUpdated;
 use App\Events\UserTyping;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
@@ -20,6 +21,17 @@ class ChatController extends Controller
     public function index()
     {
         $user = auth()->user();
+
+            // Get all direct chat rooms the user is a member of
+            $directChatRooms = $user->chatRooms()
+                ->where('type', 'direct')
+                ->with('members')
+                ->get();
+
+                    // Get IDs of users the current user already has direct chats with
+            $existingDirectChatUserIds = $directChatRooms->flatMap(function ($room) use ($user) {
+                return $room->members->where('id', '!=', $user->id)->pluck('id');
+            })->unique()->values()->all();
 
         // Get chat rooms the user is a member of
         $userChatRooms = $user->chatRooms()
@@ -77,14 +89,21 @@ class ChatController extends Controller
             })
             ->values();
 
-        $allUsers = User::with('organization')->get()->map(function ($user) {
+        $allUsers = User::with('organization')
+        ->where('id', '!=', $user->id)
+        ->whereNotIn('id', $existingDirectChatUserIds)
+        ->get()
+        ->map(function ($user) {
             return [
                 'id' => $user->id,
                 'name' => $user->name,
                 'avatar' => $user->avatar_url,
                 'is_online' => $user->is_online,
                 'role' => $user->role,
-                'organization' => $user->organization ? ['id' => $user->organization->id, 'name' => $user->organization->name] : null,
+                'organization' => $user->organization ? [
+                    'id' => $user->organization->id,
+                    'name' => $user->organization->name
+                ] : null,
             ];
         });
 
@@ -103,6 +122,120 @@ class ChatController extends Controller
             'currentUser' => $currentUser,
         ]);
     }
+
+
+
+//     public function index()
+// {
+//     $user = auth()->user();
+
+//     // Get all direct chat rooms the user is a member of
+//     $directChatRooms = $user->chatRooms()
+//         ->where('type', 'direct')
+//         ->with('members')
+//         ->get();
+
+//     // Get IDs of users the current user already has direct chats with
+//     $existingDirectChatUserIds = $directChatRooms->flatMap(function ($room) use ($user) {
+//         return $room->members->where('id', '!=', $user->id)->pluck('id');
+//     })->unique()->values()->all();
+
+//     // Get chat rooms the user is a member of (excluding direct chats for this query)
+//     $userChatRooms = $user->chatRooms()
+//         ->with(['members.organization', 'latestMessage.user'])
+//         ->where('is_active', true)
+//         ->where('type', '!=', 'direct') // Exclude direct chats from this query
+//         ->get();
+
+//     // Get public chat rooms that user is NOT a member of
+//     $publicRooms = ChatRoom::where('type', 'public')
+//         ->where('is_active', true)
+//         ->whereDoesntHave('members', function ($query) use ($user) {
+//             $query->where('user_id', $user->id);
+//         })
+//         ->with(['members.organization', 'latestMessage.user'])
+//         ->get();
+
+//     // Combine and remove duplicates
+//     $allRooms = $userChatRooms->merge($publicRooms)->unique('id');
+
+//     $chatRooms = $allRooms->map(function ($room) use ($user) {
+//             $latestMessage = $room->latestMessage->first();
+//             $isMember = $room->members->contains('id', $user->id);
+
+//             return [
+//                 'id' => $room->id,
+//                 'name' => $room->name,
+//                 'type' => $room->type,
+//                 'image' => $room->image_url,
+//                 'description' => $room->description,
+//                 'created_at' => $room->created_at->toISOString(),
+//                 'last_message' => $latestMessage ? [
+//                     'message' => $latestMessage->message ?? '',
+//                     'created_at' => $latestMessage->created_at->toISOString() ?? "",
+//                     'user_name' => $latestMessage->user->name ?? "",
+//                 ] : null,
+//                 'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $user->id)->whereDoesntHave('reads', function ($query) use ($user) {
+//                     $query->where('user_id', $user->id);
+//                 })->count() : 0, // Only count unread if user is a member
+//                 'members' => $room->members->map(function ($member) {
+//                     return [
+//                         'id' => $member->id,
+//                         'name' => $member->name,
+//                         'avatar' => $member->avatar_url,
+//                         'is_online' => $member->is_online,
+//                         'role' => $member->role,
+//                         'organization' => $member->organization ? ['id' => $member->organization->id, 'name' => $member->organization->name] : null,
+//                     ];
+//                 }),
+//                 'is_member' => $isMember,
+//                 'created_by' => $room->created_by,
+//             ];
+//         })
+//             ->sortByDesc(function ($room) {
+//                 return $room['last_message']['created_at'] ?? $room['created_at'];
+//             })
+//             ->values();
+
+//     // Get all users EXCEPT:
+//     // 1. The current user
+//     // 2. Users who already have direct chats with current user
+//     $allUsers = User::with('organization')
+//         ->where('id', '!=', $user->id)
+//         ->whereNotIn('id', $existingDirectChatUserIds)
+//         ->get()
+//         ->map(function ($user) {
+//             return [
+//                 'id' => $user->id,
+//                 'name' => $user->name,
+//                 'avatar' => $user->avatar_url,
+//                 'is_online' => $user->is_online,
+//                 'role' => $user->role,
+//                 'organization' => $user->organization ? [
+//                     'id' => $user->organization->id,
+//                     'name' => $user->organization->name
+//                 ] : null,
+//             ];
+//         });
+
+//     $currentUser = [
+//         'id' => $user->id,
+//         'name' => $user->name,
+//         'avatar' => $user->avatar_url,
+//         'is_online' => $user->is_online,
+//         'role' => $user->role,
+//         'organization' => $user->organization ? [
+//             'id' => $user->organization->id,
+//             'name' => $user->organization->name
+//         ] : null,
+//     ];
+
+//     return Inertia::render('chat/index', [
+//         'chatRooms' => $chatRooms,
+//         'allUsers' => $allUsers,
+//         'currentUser' => $currentUser,
+//     ]);
+// }
 
     public function getMessages(Request $request, ChatRoom $chatRoom)
     {
@@ -203,7 +336,7 @@ class ChatController extends Controller
         // Mark message as read by sender
         $message->reads()->attach(auth()->id());
 
-        broadcast(new MessageSent($message))->toOthers();
+        broadcast(new MessageSent($message));
 
         return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }
@@ -302,13 +435,12 @@ class ChatController extends Controller
 
         // Check if a direct chat already exists between these two users
         $existingRoom = ChatRoom::where('type', 'direct')
-            ->whereHas('members', function ($query) use ($user1) {
-                $query->where('user_id', $user1->id);
-            })
-            ->whereHas('members', function ($query) use ($user2) {
-                $query->where('user_id', $user2->id);
-            }, '=', 2) // Ensure only these two members
+            ->whereHas('members', function ($query) use ($user1, $user2) {
+                $query->whereIn('user_id', [$user1->id, $user2->id]);
+            }, '=', 2)
             ->first();
+
+        // dd($existingRoom);
 
         if ($existingRoom) {
             return response()->json(['room' => $existingRoom->load('members.organization', 'latestMessage.user')]);

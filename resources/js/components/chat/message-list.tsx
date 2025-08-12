@@ -61,19 +61,22 @@ export function MessageList() {
   }, [hasMoreMessages, checkIfNearBottom])
 
   // Load more messages with smooth transition
-  const handleLoadMore = useCallback(() => {
-    if (!scrollAreaRef.current || loadingMessages) return
+const handleLoadMore = useCallback(async () => {
+  if (!scrollAreaRef.current || loadingMessages) return;
 
-    const scrollHeightBefore = scrollAreaRef.current.scrollHeight
+  const scrollHeightBefore = scrollAreaRef.current.scrollHeight;
 
-    loadMoreMessages().then(() => {
-      requestAnimationFrame(() => {
-        if (scrollAreaRef.current) {
-          scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight - scrollHeightBefore
-        }
-      })
-    })
-  }, [loadingMessages, loadMoreMessages])
+  try {
+    await loadMoreMessages();
+    requestAnimationFrame(() => {
+      if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTop = scrollAreaRef.current.scrollHeight - scrollHeightBefore;
+      }
+    });
+  } catch (error) {
+    console.error('Failed to load more messages:', error);
+  }
+}, [loadingMessages, loadMoreMessages]);
 
   // Scroll behavior for new messages
   useEffect(() => {

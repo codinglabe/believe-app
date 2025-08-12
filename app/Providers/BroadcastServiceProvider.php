@@ -26,10 +26,9 @@ class BroadcastServiceProvider extends ServiceProvider
      */
     public function boot()
     {
-        Broadcast::routes(['middleware' => ['auth']]);
-
-        // Add debug logging
-        \Log::info('Broadcast routes registered');
+        Broadcast::routes([
+            'middleware' => ['auth'] // Adjust based on your auth middleware
+        ]);
 
         require base_path('routes/channels.php');
     }

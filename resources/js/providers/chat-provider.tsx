@@ -69,7 +69,19 @@ export interface ChatMessage {
     message: string;
     user: { name: string };
   };
-  chat_room_id: number;
+    chat_room_id: number;
+    room_update: RoomUpdate;
+}
+
+export interface LastMessage {
+  message: string;
+  created_at: string;
+  user_name: string;
+}
+
+export interface RoomUpdate {
+  room_id: number;
+  last_message: LastMessage;
 }
 
 export interface ChatRoom {
@@ -89,6 +101,8 @@ export interface ChatRoom {
   created_by: number;
   created_at: string;
 }
+
+
 
 interface ChatContextType {
   chatRooms: ChatRoom[];
@@ -129,14 +143,69 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentPage, setCurrentPage] = useState(1);
   const [typingUsers, setTypingUsers] = useState<User[]>([]);
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>(props.allUsers || []);
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-  const allUsers = (props.allUsers as User[]) || [];
+//   const allUsers = (props.allUsers as User[]) || [];
   const currentUser = (props.currentUser as User);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
     const isScrolledToBottomRef = useRef(true);
+
+
+    useEffect(() => {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+console.log('CSRF Token:', csrfToken); // Debug token
+
+window.Echo = new Echo({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY || 'fallback_key',
+    wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
+    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    forceTLS: false, // Disable for local testing
+    enabledTransports: ['ws', 'wss'],
+    authEndpoint: '/broadcasting/auth',
+    auth: {
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`, // If using API auth
+        },
+    },
+});
+    }, []);
+
+      const addMembers = useCallback(async (roomId: number, memberIds: number[]) => {
+    try {
+      const { data } = await api.post(`/chat/rooms/${roomId}/members`, { members: memberIds });
+
+      setChatRooms(prev => prev.map(room => {
+        if (room.id === roomId) {
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !room.members.some(m => m.id === user.id)
+          );
+          return { ...room, members: [...room.members, ...newMembers] };
+        }
+        return room;
+      }));
+
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(prev => {
+          if (!prev) return null;
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !prev.members.some(m => m.id === user.id)
+          );
+          return { ...prev, members: [...prev.members, ...newMembers] };
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error adding members:', error);
+      toast.error('Failed to add members');
+      throw error;
+    }
+  }, [allUsers, activeRoom?.id]);
 
   // Initialize active users
   useEffect(() => {
@@ -173,6 +242,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error('Failed to load messages');
     }
   }, []);
+
+    useEffect(() => {
+  if (!window.Echo || !currentUser?.id) return;
+
+  const privateChannel = window.Echo.private(`user.${currentUser.id}`);
+
+  privateChannel.listen('.MessageSent', (e: any) => {
+    // Handle room updates
+    if (e.room_update) {
+      setChatRooms(prev => {
+        const updatedRooms = prev.map(room =>
+          room.id === e.room_update.room_id ? {
+            ...room,
+            last_message: e.room_update.last_message,
+            unread_count: activeRoom?.id === e.room_update.room_id ? 0 : room.unread_count + 1
+          } : room
+        );
+
+        // Sort rooms by last message time
+        return [...updatedRooms].sort((a, b) => {
+          const timeA = a.last_message?.created_at || a.created_at;
+          const timeB = b.last_message?.created_at || b.created_at;
+          return new Date(timeB).getTime() - new Date(timeA).getTime();
+        });
+      });
+    }
+
+    // Handle message if in active room
+    if (activeRoom?.id === e.message?.chat_room_id) {
+      setMessages(prev => [...prev, e.message]);
+    }
+  });
+
+  return () => {
+    privateChannel.stopListening('.MessageSent');
+    window.Echo.leave(`user.${currentUser.id}`);
+  };
+    }, [currentUser?.id, activeRoom?.id]);
 
   // Real-time event handling
 useEffect(() => {
@@ -219,7 +326,7 @@ useEffect(() => {
         fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
 
         // Message listener
-        channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+        channel.listen('.MessageSent', (e: { message: ChatMessage }) => {
             setMessages(prev => {
                 console.log("Received message:", e.message);
                 // Check if message already exists (from optimistic update)
@@ -380,7 +487,7 @@ useEffect(() => {
     window.Echo.leave('chat-rooms.public');
     window.Echo.leave(`user.${currentUser.id}`);
   };
-}, [currentUser.id]);
+}, [currentUser.id, addMembers]);
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -444,6 +551,7 @@ useEffect(() => {
   useEffect(() => {
     if (!window.Echo || !activeRoom) return;
 
+
     const channelName = activeRoom.type === 'public'
       ? `public-chat.${activeRoom.id}`
       : `private-chat.${activeRoom.id}`;
@@ -452,7 +560,7 @@ useEffect(() => {
       ? window.Echo.channel(channelName)
       : window.Echo.private(channelName);
 
-    channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+    channel.listen('.MessageSent', (e: { message: ChatMessage }) => {
       setMessages(prev => {
         const existingMessage = prev.find(msg => msg.id === e.message.id);
         if (existingMessage) return prev;
@@ -472,6 +580,24 @@ useEffect(() => {
 
         return deduplicateMessages([...prev, e.message]);
       });
+
+        // setChatRooms(prev => prev.map(room => {
+        //     if (room.id === e.message.chat_room_id) {
+        //     return {
+        //         ...room,
+        //         last_message: {
+        //         message: e.message.message,
+        //         created_at: e.message.created_at,
+        //         user_name: e.message.user.name
+        //         },
+        //         unread_count:
+        //         activeRoom?.id === e.message.chat_room_id
+        //             ? 0 // If this is the active room, no unread
+        //             : room.unread_count + 1 // Otherwise increment unread count
+        //     };
+        //     }
+        //     return room;
+        // }));
 
       if (e.message.user.id !== currentUser.id) {
         markRoomAsRead(activeRoom.id);
@@ -494,48 +620,34 @@ useEffect(() => {
     }
   }, []);
 
-  const createDirectChat = useCallback(async (userId: number) => {
-    try {
-      const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
-      setActiveRoom(data.room);
-      toast.success('Direct chat started');
-    } catch (error) {
-      console.error('Error creating direct chat:', error);
-      toast.error('Failed to start direct chat');
-    }
-  }, []);
+//   const createDirectChat = useCallback(async (userId: number) => {
+//     try {
+//       const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
+//       setActiveRoom(data.room);
+//       toast.success('Direct chat started');
+//     } catch (error) {
+//       console.error('Error creating direct chat:', error);
+//       toast.error('Failed to start direct chat');
+//     }
+//   }, []);
 
-  const addMembers = useCallback(async (roomId: number, memberIds: number[]) => {
-    try {
-      const { data } = await api.post(`/chat/rooms/${roomId}/members`, { members: memberIds });
+const createDirectChat = useCallback(async (userId: number) => {
+    // 1. Immediately remove the user from the list
+    setAllUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
 
-      setChatRooms(prev => prev.map(room => {
-        if (room.id === roomId) {
-          const newMembers = allUsers.filter(user =>
-            memberIds.includes(user.id) && !room.members.some(m => m.id === user.id)
-          );
-          return { ...room, members: [...room.members, ...newMembers] };
-        }
-        return room;
-      }));
+    // 2. Create the chat room with the backend
+    const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
 
-      if (activeRoom?.id === roomId) {
-        setActiveRoom(prev => {
-          if (!prev) return null;
-          const newMembers = allUsers.filter(user =>
-            memberIds.includes(user.id) && !prev.members.some(m => m.id === user.id)
-          );
-          return { ...prev, members: [...prev.members, ...newMembers] };
-        });
-      }
+    // 3. Update the active chat room
+    setActiveRoom(data.room);
 
-      return data;
-    } catch (error) {
-      console.error('Error adding members:', error);
-      toast.error('Failed to add members');
-      throw error;
-    }
-  }, [allUsers, activeRoom?.id]);
+    // 4. Add the new chat to your rooms list
+    setChatRooms(prevRooms => [data.room, ...prevRooms]);
+
+    toast.success('Chat started successfully');
+}, [allUsers]); // Important: include allUsers in dependencies
+
+
 
   const joinRoom = useCallback(async (roomId: number) => {
   try {
