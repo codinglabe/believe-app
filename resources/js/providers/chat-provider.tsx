@@ -143,11 +143,10 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [currentPage, setCurrentPage] = useState(1);
   const [typingUsers, setTypingUsers] = useState<User[]>([]);
   const [activeUsers, setActiveUsers] = useState<User[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>(props.allUsers || []);
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null);
   const [searchQuery, setSearchQuery] = useState<string>('');
 
-//   const allUsers = (props.allUsers as User[]) || [];
+  const allUsers = (props.allUsers as User[]) || [];
   const currentUser = (props.currentUser as User);
 
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -235,6 +234,7 @@ window.Echo = new Echo({
         const newMessages = data.messages.filter(msg => !prev.some(pMsg => pMsg.id === msg.id));
         return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse();
       });
+
       setHasMoreMessages(data.has_more);
       setCurrentPage(data.current_page);
     } catch (error) {
@@ -448,6 +448,21 @@ const createRoom = useCallback(async (
 }, []);
 
 
+const leaveRoom = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/leave`);
+      setChatRooms(prev => prev.filter(room => room.id !== roomId));
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(null);
+        setMessages([]);
+      }
+      toast.success('Left room successfully');
+    } catch (error) {
+      console.error('Error leaving room:', error);
+      toast.error('Failed to leave room');
+    }
+  }, [activeRoom?.id]);
+
   // Global room updates listener
 useEffect(() => {
   if (!window.Echo) {
@@ -487,7 +502,7 @@ useEffect(() => {
     window.Echo.leave('chat-rooms.public');
     window.Echo.leave(`user.${currentUser.id}`);
   };
-}, [currentUser.id, addMembers]);
+}, [currentUser.id, addMembers, leaveRoom]);
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -581,24 +596,6 @@ useEffect(() => {
         return deduplicateMessages([...prev, e.message]);
       });
 
-        // setChatRooms(prev => prev.map(room => {
-        //     if (room.id === e.message.chat_room_id) {
-        //     return {
-        //         ...room,
-        //         last_message: {
-        //         message: e.message.message,
-        //         created_at: e.message.created_at,
-        //         user_name: e.message.user.name
-        //         },
-        //         unread_count:
-        //         activeRoom?.id === e.message.chat_room_id
-        //             ? 0 // If this is the active room, no unread
-        //             : room.unread_count + 1 // Otherwise increment unread count
-        //     };
-        //     }
-        //     return room;
-        // }));
-
       if (e.message.user.id !== currentUser.id) {
         markRoomAsRead(activeRoom.id);
       }
@@ -620,33 +617,16 @@ useEffect(() => {
     }
   }, []);
 
-//   const createDirectChat = useCallback(async (userId: number) => {
-//     try {
-//       const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
-//       setActiveRoom(data.room);
-//       toast.success('Direct chat started');
-//     } catch (error) {
-//       console.error('Error creating direct chat:', error);
-//       toast.error('Failed to start direct chat');
-//     }
-//   }, []);
-
-const createDirectChat = useCallback(async (userId: number) => {
-    // 1. Immediately remove the user from the list
-    setAllUsers(prevUsers => prevUsers.filter(user => user.id !== userId));
-
-    // 2. Create the chat room with the backend
-    const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
-
-    // 3. Update the active chat room
-    setActiveRoom(data.room);
-
-    // 4. Add the new chat to your rooms list
-    setChatRooms(prevRooms => [data.room, ...prevRooms]);
-
-    toast.success('Chat started successfully');
-}, [allUsers]); // Important: include allUsers in dependencies
-
+  const createDirectChat = useCallback(async (userId: number) => {
+    try {
+      const { data } = await api.post<{ room: ChatRoom }>('/chat/direct-chat', { user_id: userId });
+      setActiveRoom(data.room);
+      toast.success('Direct chat started');
+    } catch (error) {
+      console.error('Error creating direct chat:', error);
+      toast.error('Failed to start direct chat');
+    }
+  }, []);
 
 
   const joinRoom = useCallback(async (roomId: number) => {
@@ -673,20 +653,6 @@ const createDirectChat = useCallback(async (userId: number) => {
   }
 }, [activeRoom?.id, currentUser]);
 
-  const leaveRoom = useCallback(async (roomId: number) => {
-    try {
-      await api.post(`/chat/rooms/${roomId}/leave`);
-      setChatRooms(prev => prev.filter(room => room.id !== roomId));
-      if (activeRoom?.id === roomId) {
-        setActiveRoom(null);
-        setMessages([]);
-      }
-      toast.success('Left room successfully');
-    } catch (error) {
-      console.error('Error leaving room:', error);
-      toast.error('Failed to leave room');
-    }
-  }, [activeRoom]);
 
   const setTypingStatus = useDebounce(async (isTyping: boolean) => {
     if (!activeRoom) return;

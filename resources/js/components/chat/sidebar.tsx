@@ -159,7 +159,8 @@ export function Sidebar() {
                   key={room?.id}
                   room={room}
                   isActive={activeRoom?.id === room?.id}
-                  onClick={() => room?.id && setActiveRoom(room)}
+                      onClick={() => room?.id && setActiveRoom(room)}
+                      currentUser={currentUser}
                 />
               ))
             ) : (

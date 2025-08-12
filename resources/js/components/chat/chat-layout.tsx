@@ -39,8 +39,18 @@ export function ChatLayout() {
   if (isMobile) {
     return (
       <Sheet>
-        <div className="h-screen flex flex-col">
-          {activeRoom ? (
+            <div className="h-screen flex flex-col">
+
+                {activeRoom ? (
+                    <>
+                    <div className="flex items-center p-4 border-b">
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Open sidebar">
+                  <Menu className="h-5 w-5" />
+                </Button>
+              </SheetTrigger>
+              <h1 className="ml-3 text-lg font-semibold">Messages</h1>
+            </div>
             <ChatArea
               mobileMenuButton={
                 <SheetTrigger asChild>
@@ -50,7 +60,8 @@ export function ChatLayout() {
                 </SheetTrigger>
               }
               toggleDetailsPanel={() => setShowDetailsPanel(true)}
-            />
+                        />
+                        </>
           ) : (
             <div className="flex items-center p-4 border-b">
               <SheetTrigger asChild>
