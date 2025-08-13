@@ -549,6 +549,14 @@ export default function Navbar() {
                           Profile
                         </Button>
                       </Link>
+                    {(auth?.user?.role === "user") && (
+                        <Link href={route("chat.index")}>
+                        <Button variant="ghost" className="w-full justify-start">
+                          <Text className="mr-2 h-4 w-4" />
+                          Chat
+                        </Button>
+                      </Link>
+                    )}
                       <Button variant="ghost" className="w-full justify-start">
                         <Settings className="mr-2 h-4 w-4" />
                         Settings
