@@ -270,9 +270,9 @@ window.Echo = new Echo({
     }
 
     // Handle message if in active room
-    if (activeRoom?.id === e.message?.chat_room_id) {
-      setMessages(prev => [...prev, e.message]);
-    }
+    // if (activeRoom?.id === e.message?.chat_room_id) {
+    //   setMessages(prev => [...prev, e.message]);
+    // }
   });
 
   return () => {

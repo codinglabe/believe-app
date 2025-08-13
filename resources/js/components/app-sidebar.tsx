@@ -131,7 +131,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Chat',
         href: '/chat',
         icon: Text,
-        role: "organization" // Now properly checks role
+        // role: "organization" // Now properly checks role
     },
     {
         title: 'Settings',
