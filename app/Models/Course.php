@@ -9,6 +9,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Casts\Attribute;
 use Illuminate\Support\Facades\Storage;
 use Carbon\Carbon;
+use App\Models\User;
+use App\Models\Meeting;
+use App\Models\MeetingLink;
+use App\Models\Enrollment;
 
 class Course extends Model
 {
@@ -89,9 +93,16 @@ class Course extends Model
     {
         return $this->hasMany(Enrollment::class);
     }
+
     public function activeEnrollments(): HasMany
     {
         return $this->hasMany(Enrollment::class)->where('status', Enrollment::STATUS_ACTIVE);
+    }
+
+    // Meeting relationships
+    public function meetings(): HasMany
+    {
+        return $this->hasMany(Meeting::class);
     }
 
     // Accessors
@@ -230,5 +241,184 @@ class Course extends Model
         return $this->enrollments()
             ->where('user_id', $userId)
             ->first();
+    }
+
+    // Meeting-related methods
+    public function createDefaultMeeting(): Meeting
+    {
+        $meetingTitle = "Live Session: " . $this->name;
+
+        // Parse date, then set the time correctly
+        $scheduledAt = Carbon::parse($this->start_date)
+            ->setTimeFromTimeString($this->start_time);
+
+        // Calculate duration based on course duration
+        $durationMinutes = match ($this->duration) {
+            '1_session' => 90,
+            '1_week', '2_weeks' => 120,
+            '1_month', '6_weeks', '3_months' => 90,
+            default => 90,
+        };
+
+        $meeting = $this->meetings()->create([
+            'instructor_id' => $this->organization_id,
+            'title' => $meetingTitle,
+            'description' => "Live session for " . $this->name,
+            'meeting_id' => Meeting::generateMeetingId(),
+            'scheduled_at' => $scheduledAt,
+            'duration_minutes' => $durationMinutes,
+            'status' => 'scheduled',
+            'max_participants' => $this->max_participants,
+            'is_recording_enabled' => true,
+            'is_chat_enabled' => true,
+            'is_screen_share_enabled' => true,
+        ]);
+
+        // Generate meeting links
+        $meeting->generateLinks();
+
+        return $meeting;
+    }
+
+    public function getActiveMeeting(): ?Meeting
+    {
+        return $this->meetings()
+            ->where('status', 'active')
+            ->first();
+    }
+
+    public function getUpcomingMeetings()
+    {
+        return $this->meetings()
+            ->where('status', 'scheduled')
+            ->where('scheduled_at', '>', now())
+            ->orderBy('scheduled_at', 'asc')
+            ->get();
+    }
+
+    public function generateMeetingLinksForNewEnrollment(User $user): void
+    {
+        try {
+            // First, ensure we have at least one meeting for this course
+            if ($this->meetings()->count() === 0) {
+                $this->createDefaultMeeting();
+            }
+
+            // Generate student links for all scheduled meetings
+            $scheduledMeetings = $this->meetings()
+                ->where('status', 'scheduled')
+                ->get();
+
+            foreach ($scheduledMeetings as $meeting) {
+                // Check if link already exists
+                $existingLink = $meeting->meetingLinks()
+                    ->where('user_id', $user->id)
+                    ->where('role', 'student')
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$existingLink) {
+                    MeetingLink::generateStudentLink($meeting, $user);
+                }
+            }
+
+            // Also ensure all previously enrolled users have links for new meetings
+            $this->ensureMeetingLinksForAllEnrolledUsers();
+        } catch (\Exception $e) {
+            \Log::error('Failed to generate meeting links for enrollment', [
+                'course_id' => $this->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    public function deactivateMeetingLinksForUser(User $user): void
+    {
+        try {
+            // Deactivate all meeting links for this user in this course
+            $meetingIds = $this->meetings()->pluck('id');
+
+            MeetingLink::whereIn('meeting_id', $meetingIds)
+                ->where('user_id', $user->id)
+                ->update(['is_active' => false]);
+        } catch (\Exception $e) {
+            \Log::error('Failed to deactivate meeting links for user', [
+                'course_id' => $this->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Ensure all enrolled users have meeting links for all scheduled meetings
+     */
+    public function ensureMeetingLinksForAllEnrolledUsers(): void
+    {
+        try {
+            $enrolledUsers = $this->activeEnrollments()
+                ->with('user')
+                ->get()
+                ->pluck('user');
+
+            $scheduledMeetings = $this->meetings()
+                ->where('status', 'scheduled')
+                ->get();
+
+            foreach ($enrolledUsers as $user) {
+                foreach ($scheduledMeetings as $meeting) {
+                    $existingLink = $meeting->meetingLinks()
+                        ->where('user_id', $user->id)
+                        ->where('role', 'student')
+                        ->where('is_active', true)
+                        ->first();
+
+                    if (!$existingLink) {
+                        MeetingLink::generateStudentLink($meeting, $user);
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to ensure meeting links for all enrolled users', [
+                'course_id' => $this->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+    }
+
+    /**
+     * Get meeting links for a specific user
+     */
+    public function getMeetingLinksForUser(User $user): array
+    {
+        $meetingLinks = [];
+
+        try {
+            $meetings = $this->meetings()
+                ->where('status', 'scheduled')
+                ->orderBy('scheduled_at', 'asc')
+                ->get();
+
+            foreach ($meetings as $meeting) {
+                $studentLink = $meeting->getStudentLink($user);
+                if ($studentLink && $studentLink->is_active) {
+                    $meetingLinks[] = [
+                        'meeting' => $meeting,
+                        'join_url' => $studentLink->getJoinUrl(),
+                        'link_id' => $studentLink->id,
+                        'expires_at' => $studentLink->expires_at,
+                    ];
+                }
+            }
+        } catch (\Exception $e) {
+            \Log::error('Failed to get meeting links for user', [
+                'course_id' => $this->id,
+                'user_id' => $user->id,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return $meetingLinks;
     }
 }

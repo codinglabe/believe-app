@@ -95,3 +95,51 @@ export interface PaginationData<T> {
 export interface PageProps {
   transactions: PaginationData<Transaction>
 }
+
+
+export interface Meeting {
+  id: number
+  meeting_id: string
+  title: string
+  description: string
+  scheduled_at: string
+  duration_minutes: number
+  status: string
+  course: {
+    id: number
+    name: string
+    slug: string
+  }
+  instructor: {
+    id: number
+    name: string
+    email: string
+  }
+}
+
+export interface MeetingLink {
+  id: number
+  token: string
+  role: "host" | "student" | "organization" | "user"
+  expires_at: string
+}
+
+export interface Participant {
+  id: number
+  user: User
+  role: "host" | "student" | "organization" | "user"
+  status: string
+  is_muted: boolean
+  is_video_enabled: boolean
+  joined_at: string
+}
+
+export interface ChatMessage {
+  id: number
+  user: User
+  content: string
+  timestamp: string
+  type: "text" | "emoji" | "highlight" | "system"
+  meeting_id: number
+  created_at: string
+}
