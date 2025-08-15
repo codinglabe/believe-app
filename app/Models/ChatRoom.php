@@ -68,4 +68,9 @@ class ChatRoom extends Model
             ->where('user_id', '!=', $user->id)
             ->count();
     }
+
+    public function topics(): BelongsToMany
+    {
+        return $this->belongsToMany(ChatRoomTopic::class, 'chat_room_topic');
+    }
 }
