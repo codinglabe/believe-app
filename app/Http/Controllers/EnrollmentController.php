@@ -103,6 +103,9 @@ class EnrollmentController extends Controller
                 // Update course enrolled count
                 $course->increment('enrolled');
 
+                // Generate meeting links for the newly enrolled user
+                $course->generateMeetingLinksForNewEnrollment($user);
+
                 DB::commit();
 
                 return redirect()->route('courses.enrollment.success', $enrollment->id)
@@ -176,12 +179,25 @@ class EnrollmentController extends Controller
 
         // Handle free enrollment success
         if ($enrollmentId && !$sessionId) {
-            $enrollment = Enrollment::with(['course', 'user'])->findOrFail($enrollmentId);
+            $enrollment = Enrollment::with(['course.meetings', 'user'])->findOrFail($enrollmentId);
+
+            // Get meeting links for enrolled user
+            $meetingLinks = [];
+            foreach ($enrollment->course->meetings as $meeting) {
+                $studentLink = $meeting->getStudentLink($enrollment->user);
+                if ($studentLink) {
+                    $meetingLinks[] = [
+                        'meeting' => $meeting,
+                        'join_url' => $studentLink->getJoinUrl(),
+                    ];
+                }
+            }
 
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
-                'type' => 'free'
+                'type' => 'free',
+                'meetingLinks' => $meetingLinks,
             ]);
         }
 
@@ -199,6 +215,7 @@ class EnrollmentController extends Controller
             $enrollment = Enrollment::with([
                 'course.organization',
                 'course.topic',
+                'course.meetings',
                 'user'
             ])->findOrFail($session->metadata->enrollment_id);
 
@@ -229,12 +246,28 @@ class EnrollmentController extends Controller
             // Update course enrolled count
             $enrollment->course->increment('enrolled');
 
+            // Generate meeting links for the newly enrolled user
+            $enrollment->course->generateMeetingLinksForNewEnrollment($enrollment->user);
+
+            // Get meeting links for enrolled user
+            $meetingLinks = [];
+            foreach ($enrollment->course->meetings as $meeting) {
+                $studentLink = $meeting->getStudentLink($enrollment->user);
+                if ($studentLink) {
+                    $meetingLinks[] = [
+                        'meeting' => $meeting,
+                        'join_url' => $studentLink->getJoinUrl(),
+                    ];
+                }
+            }
+
             DB::commit();
 
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
-                'type' => 'paid'
+                'type' => 'paid',
+                'meetingLinks' => $meetingLinks,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -333,6 +366,9 @@ class EnrollmentController extends Controller
             // Decrease course enrolled count
             $course->decrement('enrolled');
 
+            // Deactivate meeting links for this user
+            $course->deactivateMeetingLinksForUser($user);
+
             DB::commit();
 
             return redirect()->route('courses.show', $course->slug)
@@ -416,6 +452,9 @@ class EnrollmentController extends Controller
             // Decrease course enrolled count
             $course->decrement('enrolled');
 
+            // Deactivate meeting links for this user
+            $course->deactivateMeetingLinksForUser($user);
+
             DB::commit();
 
             return redirect()->route('courses.show', $course->slug)
@@ -453,6 +492,32 @@ class EnrollmentController extends Controller
         }
 
         $enrollments = $query->orderBy('enrolled_at', 'desc')->paginate(10);
+
+        // Add meeting information for active enrollments
+        $enrollments->getCollection()->transform(function ($enrollment) use ($user) {
+            if ($enrollment->status === 'active') {
+                $course = $enrollment->course;
+                $activeMeeting = $course->getActiveMeeting();
+                $upcomingMeetings = $course->getUpcomingMeetings();
+                
+                $enrollment->meeting_info = [
+                    'active_meeting' => $activeMeeting,
+                    'upcoming_meetings' => $upcomingMeetings,
+                ];
+
+                // Add join links
+                if ($activeMeeting) {
+                    $studentLink = $activeMeeting->getStudentLink($user);
+                    $enrollment->meeting_info['active_meeting']->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
+                }
+
+                foreach ($upcomingMeetings as $meeting) {
+                    $studentLink = $meeting->getStudentLink($user);
+                    $meeting->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
+                }
+            }
+            return $enrollment;
+        });
 
         // Calculate enrollment statistics
         $enrollmentStats = [

@@ -6,13 +6,17 @@ use App\Models\Course;
 use App\Models\Topic;
 use App\Models\Enrollment;
 use App\Models\Organization;
+use App\Models\Meeting;
+use App\Models\MeetingLink;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Crypt;
 
 class CourseController extends Controller
 {
@@ -84,8 +88,6 @@ class CourseController extends Controller
             'filters' => $filters,
         ]);
     }
-
-
 
     /**
      * Display a listing of courses for the admin view.
@@ -202,8 +204,6 @@ class CourseController extends Controller
         ];
     }
 
-
-
     /**
      * Show the form for creating a new course.
      */
@@ -221,6 +221,7 @@ class CourseController extends Controller
      */
     public function store(Request $request)
     {
+
         $validated = $request->validate([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
@@ -281,57 +282,266 @@ class CourseController extends Controller
             $counter++;
         }
 
-        Course::create([
-            // Auto-populated fields
-            'organization_id' => Auth::id(), // Current user's ID as organization
-            'user_id' => Auth::id(), // Current user's ID as creator
+        try {
+            DB::beginTransaction();
 
-            // Form data
-            'topic_id' => $validated['topic_id'],
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'description' => $validated['description'],
+            $course = Course::create([
+                // Auto-populated fields
+                'organization_id' => Auth::id(), // Current user's ID as organization
+                'user_id' => Auth::id(), // Current user's ID as creator
 
-            // Pricing
-            'pricing_type' => $validated['pricing_type'],
-            'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                // Form data
+                'topic_id' => $validated['topic_id'],
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
 
-            // Schedule & Format
-            'start_date' => $validated['start_date'],
-            'start_time' => $validated['start_time'],
-            'end_date' => $validated['end_date'],
-            'duration' => $validated['duration'],
-            'format' => $validated['format'],
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-            // Configuration
-            'max_participants' => $validated['max_participants'],
-            'language' => $validated['language'],
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'],
+                'duration' => $validated['duration'],
+                'format' => $validated['format'],
 
-            // Target Audience & Impact
-            'target_audience' => $validated['target_audience'],
-            'community_impact' => $validated['community_impact'],
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
 
-            // Course Content
-            'learning_outcomes' => $validated['learning_outcomes'],
-            'prerequisites' => $validated['prerequisites'] ?? [],
-            'materials_needed' => $validated['materials_needed'] ?? [],
-            'accessibility_features' => $validated['accessibility_features'] ?? [],
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
 
-            // Settings
-            'certificate_provided' => $validated['certificate_provided'] ?? false,
-            'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-            // Media
-            'image' => $imagePath,
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-            // Defaults
-            'enrolled' => 0,
-            'rating' => 0.0,
-            'total_reviews' => 0,
-            'last_updated' => now(),
+                // Media
+                'image' => $imagePath,
+
+                // Defaults
+                'enrolled' => 0,
+                'rating' => 0.0,
+                'total_reviews' => 0,
+                'last_updated' => now(),
+            ]);
+
+            // Create default meeting for the course
+            $course->createDefaultMeeting();
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully with meeting links!');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create course: ' . $e->getMessage());
+            
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to create course. Please try again.']);
+        }
+    }
+
+    /**
+     * Auto-create meeting with unique hashed links when course is created
+     */
+    private function createMeetingWithLinks(Course $course)
+    {
+        // Calculate meeting start time (course start date + start time)
+        $meetingDateTime = \Carbon\Carbon::parse($course->start_date . ' ' . $course->start_time);
+        
+        // Create meeting
+        $meeting = Meeting::create([
+            'course_id' => $course->id,
+            'instructor_id' => $course->user_id,
+            'title' => $course->name . ' - Live Session',
+            'description' => 'Live meeting for ' . $course->name,
+            'scheduled_at' => $meetingDateTime,
+            'duration_minutes' => $this->calculateMeetingDuration($course->duration),
+            'status' => 'scheduled',
+            'max_participants' => $course->max_participants,
+            'is_recording_enabled' => true,
+            'is_chat_enabled' => true,
+            'is_screen_share_enabled' => true,
         ]);
 
-        return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
+        // Generate unique host link for course creator
+        $this->generateHostLink($meeting, $course->user_id);
+
+        // Generate unique links for existing enrolled students (if any)
+        $enrolledStudents = $course->activeEnrollments()->with('user')->get();
+        foreach ($enrolledStudents as $enrollment) {
+            $this->generateStudentLink($meeting, $enrollment->user_id);
+        }
+
+        Log::info('Auto-created meeting with links for course', [
+            'course_id' => $course->id,
+            'meeting_id' => $meeting->meeting_id,
+            'instructor_id' => $course->user_id,
+            'enrolled_students' => $enrolledStudents->count(),
+        ]);
+
+        return $meeting;
+    }
+
+    /**
+     * Generate unique hashed host link
+     */
+    private function generateHostLink(Meeting $meeting, $userId)
+    {
+        // Create unique payload for host
+        $payload = [
+            'meeting_id' => $meeting->id,
+            'user_id' => $userId,
+            'role' => 'host',
+            'course_id' => $meeting->course_id,
+            'timestamp' => now()->timestamp,
+            'expires_at' => $meeting->scheduled_at->addHours(6)->timestamp, // Link expires 6 hours after meeting
+        ];
+
+        // Generate hashed token
+        $hashedToken = $this->generateHashedToken($payload);
+
+        // Store in database
+        MeetingLink::create([
+            'meeting_id' => $meeting->id,
+            'user_id' => $userId,
+            'role' => 'host',
+            'hashed_token' => $hashedToken,
+            'expires_at' => $meeting->scheduled_at->addHours(6),
+            'is_active' => true,
+        ]);
+
+        return $hashedToken;
+    }
+
+    /**
+     * Generate unique hashed student link
+     */
+    private function generateStudentLink(Meeting $meeting, $userId)
+    {
+        // Create unique payload for student
+        $payload = [
+            'meeting_id' => $meeting->id,
+            'user_id' => $userId,
+            'role' => 'student',
+            'course_id' => $meeting->course_id,
+            'timestamp' => now()->timestamp,
+            'expires_at' => $meeting->scheduled_at->addHours(4)->timestamp, // Link expires 4 hours after meeting
+        ];
+
+        // Generate hashed token
+        $hashedToken = $this->generateHashedToken($payload);
+
+        // Store in database
+        MeetingLink::create([
+            'meeting_id' => $meeting->id,
+            'user_id' => $userId,
+            'role' => 'student',
+            'hashed_token' => $hashedToken,
+            'expires_at' => $meeting->scheduled_at->addHours(4),
+            'is_active' => true,
+        ]);
+
+        return $hashedToken;
+    }
+
+    /**
+     * Generate secure hashed token
+     */
+    private function generateHashedToken(array $payload)
+    {
+        // Add random salt for extra security
+        $payload['salt'] = Str::random(32);
+        
+        // Encrypt the payload
+        $encryptedPayload = Crypt::encrypt($payload);
+        
+        // Create a URL-safe hash
+        $hashedToken = base64_encode(hash('sha256', $encryptedPayload . config('app.key'), true));
+        
+        // Make it URL-safe
+        return str_replace(['+', '/', '='], ['-', '_', ''], $hashedToken);
+    }
+
+    /**
+     * Decode and validate hashed token
+     */
+    public function decodeHashedToken($hashedToken)
+    {
+        try {
+            // Convert back from URL-safe format
+            $hashedToken = str_replace(['-', '_'], ['+', '/'], $hashedToken);
+            
+            // Find the meeting link in database
+            $meetingLink = MeetingLink::where('hashed_token', $hashedToken)
+                ->where('is_active', true)
+                ->where('expires_at', '>', now())
+                ->first();
+
+            if (!$meetingLink) {
+                return null;
+            }
+
+            // Additional validation can be added here
+            return [
+                'meeting_id' => $meetingLink->meeting_id,
+                'user_id' => $meetingLink->user_id,
+                'role' => $meetingLink->role,
+                'meeting_link' => $meetingLink,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Failed to decode meeting token', [
+                'token' => $hashedToken,
+                'error' => $e->getMessage()
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Generate student link when user enrolls in course
+     */
+    public function generateLinkForNewEnrollment($courseId, $userId)
+    {
+        $course = Course::with('meeting')->find($courseId);
+        
+        if ($course && $course->meeting) {
+            $this->generateStudentLink($course->meeting, $userId);
+            
+            Log::info('Generated meeting link for new enrollment', [
+                'course_id' => $courseId,
+                'user_id' => $userId,
+                'meeting_id' => $course->meeting->id,
+            ]);
+        }
+    }
+
+    /**
+     * Calculate meeting duration based on course duration
+     */
+    private function calculateMeetingDuration($courseDuration)
+    {
+        return match($courseDuration) {
+            '1_session' => 180, // 3 hours
+            '1_week' => 120,    // 2 hours
+            '2_weeks' => 120,   // 2 hours
+            '1_month' => 90,    // 1.5 hours
+            '6_weeks' => 90,    // 1.5 hours
+            '3_months' => 60,   // 1 hour
+            default => 120,     // 2 hours default
+        };
     }
 
     /**
@@ -373,12 +583,38 @@ class CourseController extends Controller
             $status = 'available';
         }
 
+        // Get meeting information if user is enrolled
+        $meetingInfo = null;
+        if ($userEnrollment && $userEnrollment->status === 'active') {
+            $activeMeeting = $course->getActiveMeeting();
+            $upcomingMeetings = $course->getUpcomingMeetings();
+            
+            if ($activeMeeting || $upcomingMeetings->count() > 0) {
+                $meetingInfo = [
+                    'active_meeting' => $activeMeeting,
+                    'upcoming_meetings' => $upcomingMeetings,
+                ];
+
+                // Add join links for the user
+                if ($activeMeeting) {
+                    $studentLink = $activeMeeting->getStudentLink(Auth::user());
+                    $meetingInfo['active_meeting']->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
+                }
+
+                foreach ($upcomingMeetings as $meeting) {
+                    $studentLink = $meeting->getStudentLink(Auth::user());
+                    $meeting->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
+                }
+            }
+        }
+
         return Inertia::render('frontend/course/Show', [
             'course' => $course,
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
             'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started',
+            'meetingInfo' => $meetingInfo,
         ]);
     }
 
@@ -392,7 +628,7 @@ class CourseController extends Controller
             abort(403, 'Unauthorized access to this course.');
         }
 
-        $course->load(['topic', 'organization', 'creator']);
+        $course->load(['topic', 'organization', 'creator', 'meetings']);
 
         // Get enrollment statistics
         $enrollmentStats = [
@@ -425,11 +661,28 @@ class CourseController extends Controller
             ->limit(10)
             ->get();
 
+        // Get meeting statistics
+        $meetingStats = [
+            'total_meetings' => $course->meetings()->count(),
+            'scheduled_meetings' => $course->meetings()->where('status', 'scheduled')->count(),
+            'active_meetings' => $course->meetings()->where('status', 'active')->count(),
+            'completed_meetings' => $course->meetings()->where('status', 'ended')->count(),
+        ];
+
+        // Get host links for meetings
+        $meetings = $course->meetings()->with('meetingLinks')->get();
+        foreach ($meetings as $meeting) {
+            $hostLink = $meeting->getHostLink();
+            $meeting->host_join_url = $hostLink ? $hostLink->getJoinUrl() : null;
+        }
+
         return Inertia::render('admin/course/Show', [
             'course' => $course,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
             'recentEnrollments' => $recentEnrollments,
+            'meetingStats' => $meetingStats,
+            'meetings' => $meetings,
         ]);
     }
 
@@ -550,50 +803,77 @@ class CourseController extends Controller
             }
         }
 
-        $course->update([
-            // Note: organization_id and user_id are NOT updated - they remain as originally set
-            'topic_id' => $validated['topic_id'],
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'description' => $validated['description'],
+        try {
+            DB::beginTransaction();
 
-            // Pricing
-            'pricing_type' => $validated['pricing_type'],
-            'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+            // Check if schedule changed and update meetings accordingly
+            $scheduleChanged = $course->start_date !== $validated['start_date'] || 
+                             $course->start_time !== $validated['start_time'];
 
-            // Schedule & Format
-            'start_date' => $validated['start_date'],
-            'start_time' => $validated['start_time'],
-            'end_date' => $validated['end_date'],
-            'duration' => $validated['duration'],
-            'format' => $validated['format'],
+            $course->update([
+                // Note: organization_id and user_id are NOT updated - they remain as originally set
+                'topic_id' => $validated['topic_id'],
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
 
-            // Configuration
-            'max_participants' => $validated['max_participants'],
-            'language' => $validated['language'],
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-            // Target Audience & Impact
-            'target_audience' => $validated['target_audience'],
-            'community_impact' => $validated['community_impact'],
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'],
+                'duration' => $validated['duration'],
+                'format' => $validated['format'],
 
-            // Course Content
-            'learning_outcomes' => $validated['learning_outcomes'],
-            'prerequisites' => $validated['prerequisites'] ?? [],
-            'materials_needed' => $validated['materials_needed'] ?? [],
-            'accessibility_features' => $validated['accessibility_features'] ?? [],
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
 
-            // Settings
-            'certificate_provided' => $validated['certificate_provided'] ?? false,
-            'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
 
-            // Media
-            'image' => $imagePath,
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-            // Update timestamp
-            'last_updated' => now(),
-        ]);
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-        return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+                // Media
+                'image' => $imagePath,
+
+                // Update timestamp
+                'last_updated' => now(),
+            ]);
+
+            // Update meeting schedules if course schedule changed
+            if ($scheduleChanged) {
+                $scheduledAt = \Carbon\Carbon::parse($validated['start_date'] . ' ' . $validated['start_time']);
+                
+                $course->meetings()
+                    ->where('status', 'scheduled')
+                    ->update(['scheduled_at' => $scheduledAt]);
+            }
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update course: ' . $e->getMessage());
+            
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to update course. Please try again.']);
+        }
     }
 
     /**
@@ -607,15 +887,22 @@ class CourseController extends Controller
         }
 
         try {
+            DB::beginTransaction();
+
             // Delete image if exists
             if ($course->image && Storage::disk('public')->exists($course->image)) {
                 Storage::disk('public')->delete($course->image);
             }
 
+            // Note: Meetings, meeting links, and related data will be cascade deleted
+            // due to foreign key constraints
             $course->delete();
+
+            DB::commit();
 
             return redirect()->route('admin.courses.index')->with('success', 'Course deleted successfully!');
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error("Error deleting course: " . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
         }
