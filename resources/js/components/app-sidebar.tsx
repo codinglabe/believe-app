@@ -128,10 +128,16 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "role.management.read"
     },
     {
+        title: 'Chat Group Topics',
+        href: '/chat-group-topics',
+        icon: Text,
+        role: "admin" // Now properly checks role
+    },
+    {
         title: 'Chat',
         href: '/chat',
         icon: Text,
-        role: "organization" // Now properly checks role
+        // role: "organization" // Now properly checks role
     },
     {
         title: 'Settings',

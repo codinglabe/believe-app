@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Course;
 use App\Models\Topic;
 use App\Models\Enrollment;
+use App\Models\Organization;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
@@ -20,18 +21,27 @@ class CourseController extends Controller
      */
     public function publicIndex(Request $request)
     {
-        $filters = $request->only(['search', 'topic_id', 'format', 'pricing_type']);
+        $filters = $request->only(['search', 'topic_id', 'format', 'pricing_type', 'organization']);
 
         $courses = Course::query()
-            ->with(['topic', 'organization', 'creator'])
+            ->with(['topic', 'organization.organization', 'creator'])
             ->when($filters['search'] ?? null, function ($query, $search) {
-                $query->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('target_audience', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%');
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%' . $search . '%')
+                        ->orWhere('target_audience', 'like', '%' . $search . '%')
+                        ->orWhere('description', 'like', '%' . $search . '%');
+                });
             })
             ->when($filters['topic_id'] ?? null, function ($query, $topicId) {
                 if ($topicId !== 'all') {
                     $query->where('topic_id', $topicId);
+                }
+            })
+            ->when($filters['organization'] ?? null, function ($query, $organization) {
+                if ($organization !== 'all') {
+                    $query->whereHas('organization', function ($query) use ($organization) {
+                        $query->where('slug', $organization);
+                    });
                 }
             })
             ->when($filters['format'] ?? null, function ($query, $format) {
@@ -48,14 +58,34 @@ class CourseController extends Controller
             ->paginate(9)
             ->withQueryString();
 
+        // Add 'organization_name' attribute to each course for frontend
+        $courses->getCollection()->transform(function ($course) {
+            $course->organization_name = optional($course->organization->organization)->name;
+            return $course;
+        });
+
         $topics = Topic::orderBy('name')->get(['id', 'name']);
+
+        $organizations = Organization::with('user:id,slug')
+            ->orderBy('name')
+            ->get()
+            ->map(function ($org) {
+                return [
+                    'id' => $org->id,
+                    'name' => $org->name,
+                    'slug' => $org->user->slug ?? null,
+                ];
+            });
 
         return Inertia::render('frontend/course/Index', [
             'courses' => $courses,
             'topics' => $topics,
+            'organizations' => $organizations,
             'filters' => $filters,
         ]);
     }
+
+
 
     /**
      * Display a listing of courses for the admin view.

@@ -42,6 +42,7 @@ class DatabaseSeeder extends Seeder
             ExistingUserReferralGenerate::class,
             PositionCategoriesAndJobPositionsSeeder::class,
             EventTypesTableSeeder::class,
+            ChatRoomsSeeder::class,
         ]);
     }
 }

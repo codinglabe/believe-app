@@ -328,7 +328,7 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function organization(): HasOne
     {
-        return $this->hasOne(Organization::class);
+        return $this->hasOne(Organization::class, 'user_id');
     }
 
     public function getAvatarUrlAttribute(): string
@@ -433,5 +433,10 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         $verification = $this->latestVerification;
         return $verification ? $verification->verification_status : 'not_started';
+    }
+
+    public function topics(): BelongsToMany
+    {
+        return $this->belongsToMany(ChatTopic::class, 'user_interested_topic');
     }
 }

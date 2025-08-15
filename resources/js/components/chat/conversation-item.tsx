@@ -10,18 +10,18 @@ import { Badge } from "@/components/chat/ui/badge"
 interface ConversationItemProps {
   room: ChatRoom
   isActive: boolean
-  onClick: () => void
+    onClick: () => void
+    currentUser: any;
 }
 
-export function ConversationItem({ room, isActive, onClick }: ConversationItemProps) {
+export function ConversationItem({ room, isActive, onClick,  currentUser}: ConversationItemProps) {
   const displayAvatar = room.type === 'direct'
-    ? room.members.find(member => member.id !== room.created_by)?.avatar // For direct, show other user's avatar
-    : room.image;
+  ? room.members.find(member => member.id !== currentUser.id)?.avatar // Always find non-current user
+  : room.image;
 
-  const displayName = room.type === 'direct'
-    ? room.members.find(member => member.id !== room.created_by)?.name || 'Direct Chat'
-    : room.name;
-
+const displayName = room.type === 'direct'
+  ? room.members.find(member => member.id !== currentUser.id)?.name || 'Direct Chat'
+  : room.name;
   const lastMessageTime = room.last_message?.created_at
     ? formatDistanceToNowStrict(new Date(room.last_message.created_at), { addSuffix: true })
     : null;
@@ -30,7 +30,7 @@ export function ConversationItem({ room, isActive, onClick }: ConversationItemPr
     <div
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
-        isActive ? "bg-primary text-primary-foreground" : "hover:bg-accent",
+        isActive ? "bg-gray-300 text-primary-foreground" : "hover:bg-accent",
       )}
       onClick={onClick}
     >

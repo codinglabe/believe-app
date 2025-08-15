@@ -16,6 +16,7 @@ use App\Http\Controllers\ProductController;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\ChatTopicController;
 use App\Http\Controllers\DonationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ManageDataController;
@@ -42,12 +43,15 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\TopicController;
+use Illuminate\Support\Facades\Broadcast;
 
 Route::get('/test-broadcast', function () {
     $message = App\Models\ChatMessage::first();
     event(new App\Events\MessageSent($message));
     return "Event fired for message: " . $message;
 });
+
+Broadcast::routes(['middleware' => ['auth']]);
 
 Route::get('/', [HomeController::class, "index"])->name('home');
 
@@ -110,6 +114,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
     return Inertia::render('frontend/profile');
 });
 
+Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index', 'store', 'update', 'destroy']);
 
 Route::prefix("chat")->middleware(['auth', 'verified'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');

@@ -69,7 +69,19 @@ export interface ChatMessage {
     message: string;
     user: { name: string };
   };
-  chat_room_id: number;
+    chat_room_id: number;
+    room_update: RoomUpdate;
+}
+
+export interface LastMessage {
+  message: string;
+  created_at: string;
+  user_name: string;
+}
+
+export interface RoomUpdate {
+  room_id: number;
+  last_message: LastMessage;
 }
 
 export interface ChatRoom {
@@ -89,6 +101,8 @@ export interface ChatRoom {
   created_by: number;
   created_at: string;
 }
+
+
 
 interface ChatContextType {
   chatRooms: ChatRoom[];
@@ -138,6 +152,60 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const messagesContainerRef = useRef<HTMLDivElement>(null);
     const isScrolledToBottomRef = useRef(true);
 
+
+    useEffect(() => {
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
+console.log('CSRF Token:', csrfToken); // Debug token
+
+window.Echo = new Echo({
+    broadcaster: 'reverb',
+    key: import.meta.env.VITE_REVERB_APP_KEY || 'fallback_key',
+    wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
+    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    forceTLS: false, // Disable for local testing
+    enabledTransports: ['ws', 'wss'],
+    authEndpoint: '/broadcasting/auth',
+    auth: {
+        headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`, // If using API auth
+        },
+    },
+});
+    }, []);
+
+      const addMembers = useCallback(async (roomId: number, memberIds: number[]) => {
+    try {
+      const { data } = await api.post(`/chat/rooms/${roomId}/members`, { members: memberIds });
+
+      setChatRooms(prev => prev.map(room => {
+        if (room.id === roomId) {
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !room.members.some(m => m.id === user.id)
+          );
+          return { ...room, members: [...room.members, ...newMembers] };
+        }
+        return room;
+      }));
+
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(prev => {
+          if (!prev) return null;
+          const newMembers = allUsers.filter(user =>
+            memberIds.includes(user.id) && !prev.members.some(m => m.id === user.id)
+          );
+          return { ...prev, members: [...prev.members, ...newMembers] };
+        });
+      }
+
+      return data;
+    } catch (error) {
+      console.error('Error adding members:', error);
+      toast.error('Failed to add members');
+      throw error;
+    }
+  }, [allUsers, activeRoom?.id]);
+
   // Initialize active users
   useEffect(() => {
     setActiveUsers(allUsers.filter(u => u.is_online));
@@ -166,6 +234,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const newMessages = data.messages.filter(msg => !prev.some(pMsg => pMsg.id === msg.id));
         return append ? [...newMessages.reverse(), ...prev] : newMessages.reverse();
       });
+
       setHasMoreMessages(data.has_more);
       setCurrentPage(data.current_page);
     } catch (error) {
@@ -173,6 +242,44 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error('Failed to load messages');
     }
   }, []);
+
+    useEffect(() => {
+  if (!window.Echo || !currentUser?.id) return;
+
+  const privateChannel = window.Echo.private(`user.${currentUser.id}`);
+
+  privateChannel.listen('.MessageSent', (e: any) => {
+    // Handle room updates
+    if (e.room_update) {
+      setChatRooms(prev => {
+        const updatedRooms = prev.map(room =>
+          room.id === e.room_update.room_id ? {
+            ...room,
+            last_message: e.room_update.last_message,
+            unread_count: activeRoom?.id === e.room_update.room_id ? 0 : room.unread_count + 1
+          } : room
+        );
+
+        // Sort rooms by last message time
+        return [...updatedRooms].sort((a, b) => {
+          const timeA = a.last_message?.created_at || a.created_at;
+          const timeB = b.last_message?.created_at || b.created_at;
+          return new Date(timeB).getTime() - new Date(timeA).getTime();
+        });
+      });
+    }
+
+    // Handle message if in active room
+    // if (activeRoom?.id === e.message?.chat_room_id) {
+    //   setMessages(prev => [...prev, e.message]);
+    // }
+  });
+
+  return () => {
+    privateChannel.stopListening('.MessageSent');
+    window.Echo.leave(`user.${currentUser.id}`);
+  };
+    }, [currentUser?.id, activeRoom?.id]);
 
   // Real-time event handling
 useEffect(() => {
@@ -219,7 +326,7 @@ useEffect(() => {
         fetchMessages(activeRoom.id).then(() => markRoomAsRead(activeRoom.id));
 
         // Message listener
-        channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+        channel.listen('.MessageSent', (e: { message: ChatMessage }) => {
             setMessages(prev => {
                 console.log("Received message:", e.message);
                 // Check if message already exists (from optimistic update)
@@ -341,6 +448,21 @@ const createRoom = useCallback(async (
 }, []);
 
 
+const leaveRoom = useCallback(async (roomId: number) => {
+    try {
+      await api.post(`/chat/rooms/${roomId}/leave`);
+      setChatRooms(prev => prev.filter(room => room.id !== roomId));
+      if (activeRoom?.id === roomId) {
+        setActiveRoom(null);
+        setMessages([]);
+      }
+      toast.success('Left room successfully');
+    } catch (error) {
+      console.error('Error leaving room:', error);
+      toast.error('Failed to leave room');
+    }
+  }, [activeRoom?.id]);
+
   // Global room updates listener
 useEffect(() => {
   if (!window.Echo) {
@@ -380,7 +502,7 @@ useEffect(() => {
     window.Echo.leave('chat-rooms.public');
     window.Echo.leave(`user.${currentUser.id}`);
   };
-}, [currentUser.id]);
+}, [currentUser.id, addMembers, leaveRoom]);
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -444,6 +566,7 @@ useEffect(() => {
   useEffect(() => {
     if (!window.Echo || !activeRoom) return;
 
+
     const channelName = activeRoom.type === 'public'
       ? `public-chat.${activeRoom.id}`
       : `private-chat.${activeRoom.id}`;
@@ -452,7 +575,7 @@ useEffect(() => {
       ? window.Echo.channel(channelName)
       : window.Echo.private(channelName);
 
-    channel.listen('.message.sent', (e: { message: ChatMessage }) => {
+    channel.listen('.MessageSent', (e: { message: ChatMessage }) => {
       setMessages(prev => {
         const existingMessage = prev.find(msg => msg.id === e.message.id);
         if (existingMessage) return prev;
@@ -505,37 +628,6 @@ useEffect(() => {
     }
   }, []);
 
-  const addMembers = useCallback(async (roomId: number, memberIds: number[]) => {
-    try {
-      const { data } = await api.post(`/chat/rooms/${roomId}/members`, { members: memberIds });
-
-      setChatRooms(prev => prev.map(room => {
-        if (room.id === roomId) {
-          const newMembers = allUsers.filter(user =>
-            memberIds.includes(user.id) && !room.members.some(m => m.id === user.id)
-          );
-          return { ...room, members: [...room.members, ...newMembers] };
-        }
-        return room;
-      }));
-
-      if (activeRoom?.id === roomId) {
-        setActiveRoom(prev => {
-          if (!prev) return null;
-          const newMembers = allUsers.filter(user =>
-            memberIds.includes(user.id) && !prev.members.some(m => m.id === user.id)
-          );
-          return { ...prev, members: [...prev.members, ...newMembers] };
-        });
-      }
-
-      return data;
-    } catch (error) {
-      console.error('Error adding members:', error);
-      toast.error('Failed to add members');
-      throw error;
-    }
-  }, [allUsers, activeRoom?.id]);
 
   const joinRoom = useCallback(async (roomId: number) => {
   try {
@@ -561,20 +653,6 @@ useEffect(() => {
   }
 }, [activeRoom?.id, currentUser]);
 
-  const leaveRoom = useCallback(async (roomId: number) => {
-    try {
-      await api.post(`/chat/rooms/${roomId}/leave`);
-      setChatRooms(prev => prev.filter(room => room.id !== roomId));
-      if (activeRoom?.id === roomId) {
-        setActiveRoom(null);
-        setMessages([]);
-      }
-      toast.success('Left room successfully');
-    } catch (error) {
-      console.error('Error leaving room:', error);
-      toast.error('Failed to leave room');
-    }
-  }, [activeRoom]);
 
   const setTypingStatus = useDebounce(async (isTyping: boolean) => {
     if (!activeRoom) return;
