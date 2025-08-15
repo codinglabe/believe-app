@@ -45,11 +45,11 @@ use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\TopicController;
 use Illuminate\Support\Facades\Broadcast;
 
-Route::get('/test-broadcast', function () {
-    $message = App\Models\ChatMessage::first();
-    event(new App\Events\MessageSent($message));
-    return "Event fired for message: " . $message;
-});
+// Route::get('/test-broadcast', function () {
+//     $message = App\Models\ChatMessage::first();
+//     event(new App\Events\MessageSent($message));
+//     return "Event fired for message: " . $message;
+// });
 
 Broadcast::routes(['middleware' => ['auth']]);
 
@@ -108,6 +108,10 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+
+    Route::get("/profile/topics/select", [\App\Http\Controllers\UsersInterestedTopicsController::class, 'userSelect'])
+        ->name('topics.select')
+        ->middleware('topics.selected');
 });
 
 Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
@@ -116,7 +120,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
 
 Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index', 'store', 'update', 'destroy']);
 
-Route::prefix("chat")->middleware(['auth', 'verified'])->name("chat.")->group(function () {
+Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
     Route::get("/rooms/{chatRoom}/messages", [ChatController::class, 'getMessages'])->name('messages');
     Route::post("/rooms/{chatRoom}/messages", [ChatController::class, 'sendMessage'])->name('send-message');

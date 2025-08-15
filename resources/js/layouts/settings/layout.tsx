@@ -201,6 +201,16 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                         >
                           <Shield className="h-4 w-4" />
                           Referral Link
+                                              </Link>
+                        <Link
+                          href={route("auth.topics.select")}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "referral"
+                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                            }`}
+                        >
+                          <Shield className="h-4 w-4" />
+                          Interested Topics
                         </Link>
                       </div>
                     </nav>

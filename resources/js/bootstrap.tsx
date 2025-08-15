@@ -4,7 +4,6 @@ import Pusher from 'pusher-js';
 window.Pusher = Pusher;
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-console.log('CSRF Tokensss:', csrfToken); // Debug token
 
 window.Echo = new Echo({
     broadcaster: 'reverb',

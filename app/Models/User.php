@@ -6,7 +6,6 @@ namespace App\Models;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
@@ -435,8 +434,14 @@ class User extends Authenticatable implements MustVerifyEmail
         return $verification ? $verification->verification_status : 'not_started';
     }
 
-    public function topics(): BelongsToMany
+    // User.php
+    public function interestedTopics(): BelongsToMany
     {
-        return $this->belongsToMany(ChatTopic::class, 'user_interested_topic');
+        return $this->belongsToMany(
+            ChatTopic::class,
+            'user_interested_topics', // Note: Check if this is the correct table name (you had a typo in your message)
+            'user_id',
+            'topic_id'
+        )->withTimestamps();
     }
 }

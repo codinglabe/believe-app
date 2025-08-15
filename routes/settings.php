@@ -21,6 +21,10 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     Route::get('settings/appearance', function () {
         return Inertia::render('settings/appearance');
     })->name('appearance');
+
+    Route::get("settings/topics/select", [\App\Http\Controllers\UsersInterestedTopicsController::class, 'orgSelect'])
+        ->name('auth.topics.select')
+        ->middleware('topics.selected');
 });
 
 Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
