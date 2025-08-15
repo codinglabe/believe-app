@@ -258,10 +258,27 @@ class EventController extends Controller
         $status = $request->input('status');
         $eventTypeId = $request->input('event_type_id');
         $organizationId = $request->input('organization_id');
+        $locationFilter = $request->input('location_filter');
         
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
         $organizations = Organization::orderBy('name')->get();
+
+        // Get unique locations for the dropdown (combining location, city, state, zip)
+        $locations = Event::query()
+            ->selectRaw('DISTINCT CONCAT_WS(", ", 
+                NULLIF(location, ""), 
+                NULLIF(city, ""), 
+                NULLIF(state, ""), 
+                NULLIF(zip, "")
+            ) as full_location')
+            ->whereNotNull('location')
+            ->where('location', '!=', '')
+            ->orderBy('full_location')
+            ->pluck('full_location')
+            ->filter()
+            ->unique()
+            ->values();
 
         $events = Event::query()
             ->with(['organization', 'eventType'])
@@ -278,6 +295,13 @@ class EventController extends Controller
                 $query->where('event_type_id', $eventTypeId);
             })->when($organizationId && $organizationId !== 'all', function ($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
+            })->when($locationFilter && $locationFilter !== 'all', function ($query) use ($locationFilter) {
+                $query->whereRaw('CONCAT_WS(", ", 
+                    NULLIF(location, ""), 
+                    NULLIF(city, ""), 
+                    NULLIF(state, ""), 
+                    NULLIF(zip, "")
+                ) = ?', [$locationFilter]);
             });
 
         // Only show public events to non-authenticated users or non-admin users
@@ -291,10 +315,12 @@ class EventController extends Controller
             'events' => $events,
             'eventTypes' => $eventTypes,
             'organizations' => $organizations,
+            'locations' => $locations,
             'search' => $search,
             'status' => $status,
             'eventTypeId' => $eventTypeId,
             'organizationId' => $organizationId,
+            'locationFilter' => $locationFilter,
         ]);
 
     }
