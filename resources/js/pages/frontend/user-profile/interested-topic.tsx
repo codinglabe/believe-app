@@ -1,224 +1,182 @@
 "use client"
 
 import type React from "react"
-
+import type { PageProps } from "@/types"
+import { useState, type FormEventHandler } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { useState } from "react"
-import { Button } from "@/components/frontend/ui/button"
-import { Input } from "@/components/frontend/ui/input"
-import { Label } from "@/components/frontend/ui/label"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
-import { Save, X, Upload, CheckCircle, Calendar } from "lucide-react"
-import { useForm, usePage } from "@inertiajs/react"
-import { toast } from "sonner"
-import { Transition } from "@headlessui/react"
-import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
+import { useForm } from "@inertiajs/react"
 
-interface User {
+interface Topic {
   id: number
   name: string
-  email: string
-  phone?: string
-  dob?: string
-  image?: string
+  description?: string
 }
 
-interface PageProps {
-  auth: {
-    user: User
-  }
+interface Props extends PageProps {
+  topics: Topic[]
+  initialSelected: number[]
 }
 
-export default function ProfileEdit() {
-  const { auth } = usePage<PageProps>().props
-  const user = auth.user
-
-  const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
-    name: user.name || "",
-    email: user.email || "",
-    phone: user.phone || "",
-    dob: user.dob || "",
-    image: null as File | null,
+export default function TopicSelectPage({ topics, initialSelected }: Props) {
+  const { data, setData, post, processing, errors } = useForm({
+    topics: initialSelected ?? [],
   })
 
-  const [previewUrl, setPreviewUrl] = useState( user.image)
+  const [selectedTopics, setSelectedTopics] = useState<number[]>(data.topics)
+  const [showSuccess, setShowSuccess] = useState(false)
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const toggleTopic = (topicId: number) => {
+    const updated = selectedTopics.includes(topicId)
+      ? selectedTopics.filter(id => id !== topicId)
+      : [...selectedTopics, topicId]
+
+    setSelectedTopics(updated)
+    setData("topics", updated)
+    setShowSuccess(false) // Hide success message when changing selection
+  }
+
+  const handleSubmit: FormEventHandler = (e) => {
     e.preventDefault()
-
-    const formData = new FormData()
-    formData.append("name", data.name)
-    formData.append("email", data.email)
-    formData.append("phone", data.phone)
-    formData.append("dob", data.dob)
-    if (data.image) {
-      formData.append("image", data.image)
-    }
-    formData.append("_method", "PUT")
-
-    post(route("user.profile.update"), {
-        data: formData,
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: () => {
-            console.log("Profile updated successfully");
-        toast.success("Profile updated successfully!")
-      },
-      onError: () => {
-        toast.error("Failed to update profile. Please try again.")
-      },
+    post('/user/topics/store', {
+      onSuccess: () => {
+        setShowSuccess(true)
+        setTimeout(() => setShowSuccess(false), 3000) // Hide after 3 seconds
+      }
     })
   }
 
-  const handleCancel = () => {
-    reset()
-    setPreviewUrl(null)
-    window.history.back()
-  }
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setData("image", file)
-      const url = URL.createObjectURL(file)
-      setPreviewUrl(url)
-    }
-  }
-
   return (
-      <ProfileLayout title="Edit Profile" description="Update your personal information and preferences">
-           {/* Success Message */}
-        <Transition
-          show={recentlySuccessful}
-          enter="transition ease-in-out"
-          enterFrom="opacity-0"
-          leave="transition ease-in-out"
-              leaveTo="opacity-0"
-        >
-          <Alert className="border-green-200 mb-2 bg-green-50 dark:border-green-800 dark:bg-green-950">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-700 dark:text-green-400">
-              Profile updated successfully!
-            </AlertDescription>
-          </Alert>
-        </Transition>
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {/* image Upload */}
-        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-gray-900 dark:text-white text-lg">Profile Picture</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                <img
-                  src={previewUrl || "/placeholder.svg?height=80&width=80"}
-                  alt="Profile"
-                  className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 dark:border-gray-600"
-                />
-              </div>
-              <div>
-                <Label htmlFor="image" className="cursor-pointer">
-                  <div className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    <Upload className="h-4 w-4" />
-                    Upload New Picture
-                  </div>
-                  <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
-                </Label>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">JPG, PNG or GIF. Max size 2MB.</p>
-              </div>
-            </div>
-            {errors.image && <p className="text-red-600 text-sm mt-2">{errors.image}</p>}
-          </CardContent>
-        </Card>
+    <ProfileLayout title="Select Topics">
+      <div className="py-8 px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-8">
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+              {topics.length > 0 ? "Select Your Interests" : "No Topics Available"}
+            </h1>
+            <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
+              {topics.length > 0
+                ? "Choose the topics you're interested in to personalize your experience"
+                : "There are currently no topics available for selection. Please check back later."}
+            </p>
+          </div>
 
-        {/* Personal Information */}
-        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-gray-900 dark:text-white text-lg">Personal Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-                <Label htmlFor="name" className="text-gray-900 dark:text-white">
-                  Full Name *
-                </Label>
-                <Input
-                  id="name"
-                  value={data.name}
-                  onChange={(e) => setData("name", e.target.value)}
-                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                  required
-                />
-                {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
-              </div>
-            <div>
-              <Label htmlFor="email" className="text-gray-900 dark:text-white">
-                Email Address *
-              </Label>
-              <Input
-                id="email"
-                type="email"
-                value={data.email}
-                onChange={(e) => setData("email", e.target.value)}
-                className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                required
-              />
-              {errors.email && <p className="text-red-600 text-sm mt-1">{errors.email}</p>}
-            </div>
+          {topics.length > 0 ? (
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {showSuccess && (
+                <div className="p-4 text-sm text-green-700 bg-green-100 rounded-lg dark:bg-green-900/20 dark:text-green-300 border border-green-200 dark:border-green-800 flex items-center">
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                  </svg>
+                  Your interests have been successfully updated!
+                </div>
+              )}
 
-            <div>
-              <Label htmlFor="phone" className="text-gray-900 dark:text-white">
-                Phone Number
-              </Label>
-              <Input
-                id="phone"
-                type="tel"
-                value={data.phone}
-                onChange={(e) => setData("phone", e.target.value)}
-                className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                placeholder="+1 (555) 123-4567"
-              />
-              {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
+              {errors.topics && (
+                <div className="p-4 text-sm text-red-700 bg-red-100 rounded-lg dark:bg-red-900/20 dark:text-red-300 border border-red-200 dark:border-red-800 flex items-center">
+                  <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                  </svg>
+                  {errors.topics}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {topics.map(topic => {
+                  const isChecked = selectedTopics.includes(topic.id)
+                  return (
+                    <label
+                      key={topic.id}
+                      htmlFor={`topic-${topic.id}`}
+                      className={`flex items-start p-4 rounded-lg border transition-all cursor-pointer
+                        ${
+                          isChecked
+                            ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
+                            : "border-gray-200 hover:border-gray-300 bg-white dark:bg-gray-800 dark:border-gray-700 dark:hover:border-gray-600"
+                        }`}
+                    >
+                      <div className="flex items-center h-5">
+                        <input
+                          id={`topic-${topic.id}`}
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => toggleTopic(topic.id)}
+                          className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500
+                            dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:border-gray-600"
+                        />
                       </div>
+                      <div className="ml-3 text-sm">
+                        <span
+                          className={`block font-medium ${
+                            isChecked
+                              ? "text-blue-800 dark:text-blue-200"
+                              : "text-gray-700 dark:text-gray-300"
+                          }`}
+                        >
+                          {topic.name}
+                        </span>
+                        {topic.description && (
+                          <p
+                            className={`mt-1 ${
+                              isChecked
+                                ? "text-blue-600 dark:text-blue-300"
+                                : "text-gray-500 dark:text-gray-400"
+                            }`}
+                          >
+                            {topic.description}
+                          </p>
+                        )}
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
 
-                      {/* Date of Birth */}
-                                      <div>
-                                      <Label htmlFor="dob" className="text-gray-900 dark:text-white font-medium">
-                                          Date of Birth
-                                      </Label>
-                                      <div className="relative mt-1">
-                                          <Input
-                                          id="dob"
-                                          type="date"
-                                          value={data.dob}
-                                          onChange={(e) => setData("dob", e.target.value)}
-                                          className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                                          max={new Date().toISOString().split('T')[0]} // Prevent future dates
-                                          />
-                          </div>
-                          {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
-                                      </div>
-          </CardContent>
-        </Card>
+              <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4">
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  {selectedTopics.length > 0
+                    ? `You've selected ${selectedTopics.length} topic${selectedTopics.length !== 1 ? 's' : ''}`
+                    : "Please select at least one topic"}
+                </p>
 
-        {/* Action Buttons */}
-        <div className="flex gap-4 justify-end">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={handleCancel}
-            disabled={processing}
-            className="bg-transparent"
-          >
-            <X className="h-4 w-4 mr-2" />
-            Cancel
-          </Button>
-          <Button type="submit" disabled={processing} className="bg-blue-600 hover:bg-blue-700">
-            <Save className="h-4 w-4 mr-2" />
-            {processing ? "Saving..." : "Save Changes"}
-          </Button>
+                <button
+                  type="submit"
+                  disabled={processing || selectedTopics.length === 0}
+                  className={`px-6 py-3 rounded-md text-white font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 min-w-[180px]
+                    ${
+                      processing
+                        ? "bg-blue-400 dark:bg-blue-600 cursor-wait"
+                        : selectedTopics.length === 0
+                          ? "bg-gray-400 dark:bg-gray-600 cursor-not-allowed"
+                          : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-800"
+                    }`}
+                >
+                  {processing ? (
+                    <span className="flex items-center justify-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Saving...
+                    </span>
+                  ) : (
+                    "Update Interests"
+                  )}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="text-center py-12">
+              <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No topics available</h3>
+              <p className="mt-1 text-gray-500 dark:text-gray-400">
+                We couldn't find any topics for you to select at this time.
+              </p>
+            </div>
+          )}
         </div>
-      </form>
+      </div>
     </ProfileLayout>
   )
 }

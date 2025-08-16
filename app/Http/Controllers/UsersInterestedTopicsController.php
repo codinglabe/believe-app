@@ -10,10 +10,12 @@ class UsersInterestedTopicsController extends Controller
 {
     public function userSelect()
     {
-        $topics = ChatTopic::all();
-        return Inertia::render('Frontend/InterestedTopic', [
-            'topics' => $topics,
-            'initialSelected' => auth()->user()->topics->pluck('id')->toArray()
+        return Inertia::render('frontend/user-profile/interested-topic', [
+            'topics' => ChatTopic::active()->get(), // or ->get() if you want all
+            'initialSelected' => auth()->user()
+                ->interestedTopics
+                ->pluck('id')
+                ->toArray(),
         ]);
     }
 
@@ -22,7 +24,7 @@ class UsersInterestedTopicsController extends Controller
         $topics = ChatTopic::all();
         return Inertia::render('Settings/InterestedTopic', [
             'topics' => $topics,
-            'initialSelected' => auth()->user()->topics->pluck('id')->toArray()
+            'initialSelected' => auth()->user()->interestedTopics->pluck('id')->toArray()
         ]);
     }
 
@@ -30,11 +32,17 @@ class UsersInterestedTopicsController extends Controller
     {
         $request->validate([
             'topics' => 'required|array|min:1',
-            'topics.*' => 'exists:topics,id',
+            'topics.*' => 'exists:chat_topics,id',
+        ], [
+            'topics.required' => 'Please select at least one topic.',
+            'topics.min' => 'Please select at least one topic.',
+            'topics.*.exists' => 'One or more selected topics are invalid.',
         ]);
 
-        auth()->user()->topics()->sync($request->topics);
+        auth()->user()->interestedTopics()->sync($request->topics);
 
-        return redirect()->intended('/chat');
+        return redirect()
+            ->route("chat.index")
+            ->with('success', 'Your interests have been updated successfully!');
     }
 }

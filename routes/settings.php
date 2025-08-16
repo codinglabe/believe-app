@@ -4,6 +4,7 @@ use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
 use App\Http\Controllers\Settings\ReferralLinkController;
+use App\Http\Controllers\UsersInterestedTopicsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -22,7 +23,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         return Inertia::render('settings/appearance');
     })->name('appearance');
 
-    Route::get("settings/topics/select", [\App\Http\Controllers\UsersInterestedTopicsController::class, 'orgSelect'])
+    Route::get("settings/topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])
         ->name('auth.topics.select')
         ->middleware('topics.selected');
 });

@@ -22,15 +22,15 @@ class CheckTopicsSelected
             return $next($request);
         }
 
-        // if ($request->user() && !$request->user()->interestedTopics()->exists()) {
-        //     if($request->user()->hasRole("organization")){
-        //         return redirect()->route('auth.topics.select');
-        //     }elseif($request->user()->hasRole("user")){
-        //         return redirect()->route('user.topics.select');
-        //     }
+        if ($request->user() && !$request->user()->interestedTopics()->exists()) {
+            if($request->user()->hasRole("organization")){
+                return redirect()->route('auth.topics.select');
+            }elseif($request->user()->hasRole("user")){
+                return redirect()->route('user.topics.select');
+            }
 
-        //     return $next($request);
-        // }
+            return $next($request);
+        }
 
         return $next($request);
     }

@@ -7,6 +7,7 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\UsersInterestedTopicsController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -112,10 +113,12 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
 
-    Route::get("/profile/topics/select", [\App\Http\Controllers\UsersInterestedTopicsController::class, 'userSelect'])
-        ->name('topics.select')
-        ->middleware('topics.selected');
+    Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
+        ->name('topics.select');
 });
+
+Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
+    ->middleware(['auth', 'verified', 'role:user|organization']);
 
 Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');

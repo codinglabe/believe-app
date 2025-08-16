@@ -66,6 +66,13 @@ const navigationItems = [
     color: "from-blue-500 to-blue-600",
   },
   {
+    name: "Interested Topics",
+    href: "/profile/topics/select",
+    icon: BookOpen,
+    description: "Interested topics",
+    color: "from-green-400 to-blue-600",
+  },
+  {
     name: "Favorites",
     href: "/profile/favorites",
     icon: Heart,
@@ -369,7 +376,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           >
             <Card className="bg-white dark:bg-gray-800 shadow-xl border-0">
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-9 gap-3">
                   {navigationItems.map((item, index) => {
                     const isActive = currentPath === item.href
                     const Icon = item.icon

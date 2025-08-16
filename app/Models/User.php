@@ -434,14 +434,10 @@ class User extends Authenticatable implements MustVerifyEmail
         return $verification ? $verification->verification_status : 'not_started';
     }
 
-    // User.php
-    public function interestedTopics(): BelongsToMany
+    public function interestedTopics()
     {
-        return $this->belongsToMany(
-            ChatTopic::class,
-            'user_interested_topics', // Note: Check if this is the correct table name (you had a typo in your message)
-            'user_id',
-            'topic_id'
-        )->withTimestamps();
+        return $this->belongsToMany(ChatTopic::class, 'user_interested_topics', 'user_id', 'topic_id')
+            ->withTimestamps();
     }
+
 }
