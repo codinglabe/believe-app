@@ -24,6 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import TopicsCard from "@/components/admin/topics-card"
+import { router } from "@inertiajs/react"
 
 const showSuccessToast = (message: string) => {
   console.log("Success:", message)
@@ -179,29 +180,43 @@ export default function Dashboard({
   totalOrg = 5,
   orgInfo = mockOrganization,
   totalFav = 12,
-}: { totalOrg?: number; orgInfo?: any; totalFav?: number }) {
+   topics = []
+}: { totalOrg?: number; orgInfo?: any; totalFav?: number;  topics?: { id: number; name: string }[] }) {
   const auth = mockAuth
   const organization = orgInfo
-  const userRole = auth.user?.role // 'admin' or 'organization'
+    const userRole = auth.user?.role // 'admin' or 'organization'
 
-  const [userTopics, setUserTopics] = useState([
-    { id: 1, name: "Environmental Conservation", color: "bg-green-500" },
-    { id: 2, name: "Education & Literacy", color: "bg-blue-500" },
-    { id: 3, name: "Healthcare Access", color: "bg-red-500" },
-    { id: 4, name: "Community Development", color: "bg-purple-500" },
-    { id: 5, name: "Youth Programs", color: "bg-yellow-500" },
-    { id: 6, name: "Senior Care", color: "bg-indigo-500" },
-    { id: 7, name: "Food Security", color: "bg-orange-500" },
-    { id: 8, name: "Mental Health", color: "bg-pink-500" },
-    { id: 9, name: "Technology Access", color: "bg-cyan-500" },
-    { id: 10, name: "Arts & Culture", color: "bg-teal-500" },
-    { id: 11, name: "Animal Welfare", color: "bg-emerald-500" },
-    { id: 12, name: "Disaster Relief", color: "bg-rose-500" },
-  ])
+  // Transform the topics from backend to include colors
+  const [userTopics, setUserTopics] = useState(
+    topics.map(topic => ({
+      id: topic.id,
+      name: topic.name,
+      color: getColorForTopic(topic.id) // Generate consistent color based on ID
+    }))
+  );
 
-  const handleDeleteTopic = (topicId: number) => {
-    setUserTopics((prev) => prev.filter((topic) => topic.id !== topicId))
+  // Helper function to generate consistent colors based on topic ID
+  function getColorForTopic(id: number) {
+    const colors = [
+      "bg-green-500", "bg-blue-500", "bg-red-500", "bg-purple-500",
+      "bg-yellow-500", "bg-indigo-500", "bg-orange-500", "bg-pink-500",
+      "bg-cyan-500", "bg-teal-500", "bg-emerald-500", "bg-rose-500"
+    ];
+    return colors[id % colors.length];
   }
+
+  // Update the handleDeleteTopic to make an API call
+  const handleDeleteTopic = async (topicId: number) => {
+        router.delete(`/chat/user/topics/${topicId}`, {
+            onSuccess: () => {
+                setUserTopics((prev) => prev.filter((topic) => topic.id !== topicId));
+                // showSuccessToast("Topic removed successfully");
+            },
+            onError: () => {
+                showErrorToast("Failed to remove topic");
+            }
+        });
+};
 
   const commonStats = {
     totalDonations: 12540,
@@ -326,7 +341,7 @@ export default function Dashboard({
           </h1>
           <VerificationBanner user={auth?.user} />
           <p className="text-muted-foreground mt-2">
-            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization.ein}
+            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
           </p>
         </div>
 
@@ -364,13 +379,13 @@ export default function Dashboard({
           )}
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          <div className="lg:col-span-1">
+              {userRole == "organization" && (
+        <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-3">
+          <div className="col-span-3 xl:col-span-2 2xl:col-span-1">
             <TopicsCard topics={userTopics} onDeleteTopic={handleDeleteTopic} />
           </div>
-
-          <div className="lg:col-span-2">{/* Placeholder for additional cards */}</div>
-        </div>
+                  </div>
+        )}
 
         {userRole === "organization" && (
           <div className="mx-auto w-full px-0 py-8">
@@ -412,12 +427,12 @@ export default function Dashboard({
                       </CardHeader>
                       <CardContent>
                         <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
-                          {organization.description}
+                          {organization?.description}
                         </p>
 
                         <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 rounded-r-lg">
                           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Our Mission</h3>
-                          <p className="text-gray-700 dark:text-gray-300">{organization.mission}</p>
+                          <p className="text-gray-700 dark:text-gray-300">{organization?.mission}</p>
                         </div>
                       </CardContent>
                     </Card>
@@ -500,30 +515,30 @@ export default function Dashboard({
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">EIN</span>
-                              <div className="font-mono text-gray-900 dark:text-white">{organization.ein}</div>
+                              <div className="font-mono text-gray-900 dark:text-white">{organization?.ein}</div>
                             </div>
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Classification</span>
-                              <div className="text-gray-900 dark:text-white">{organization.classification}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.classification}</div>
                             </div>
                           </div>
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Legal Name</span>
-                            <div className="text-gray-900 dark:text-white">{organization.name}</div>
+                            <div className="text-gray-900 dark:text-white">{organization?.name}</div>
                           </div>
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">In Care Of</span>
-                            <div className="text-gray-900 dark:text-white">{organization.ico || "N/A"}</div>
+                            <div className="text-gray-900 dark:text-white">{organization?.ico || "N/A"}</div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Address</span>
-                              <div className="text-gray-900 dark:text-white">{organization.street}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.street}</div>
                               <div className="text-gray-900 dark:text-white">
-                                {organization.city}, {organization.state} {organization.zip}
+                                {organization?.city}, {organization?.state} {organization?.zip}
                               </div>
                             </div>
                           </div>
@@ -531,18 +546,18 @@ export default function Dashboard({
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Ruling Year</span>
-                              <div className="text-gray-900 dark:text-white">{organization.ruling}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.ruling}</div>
                             </div>
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Tax Deductible</span>
-                              <div className="text-gray-900 dark:text-white">{organization.deductibility || "Yes"}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.deductibility || "Yes"}</div>
                             </div>
                           </div>
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Organization Type</span>
-                              <div className="text-gray-900 dark:text-white">{organization.organization}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.organization}</div>
                             </div>
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">Status</span>
@@ -551,7 +566,7 @@ export default function Dashboard({
                                 variant="secondary"
                                 className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
                               >
-                                {organization.status}
+                                {organization?.status}
                               </Badge>
                             </div>
                           </div>
@@ -559,7 +574,7 @@ export default function Dashboard({
                           <div className="grid grid-cols-2 gap-4">
                             <div>
                               <span className="text-sm text-gray-600 dark:text-gray-300">NTEE Code</span>
-                              <div className="text-gray-900 dark:text-white">{organization.ntee_code || "N/A"}</div>
+                              <div className="text-gray-900 dark:text-white">{organization?.ntee_code || "N/A"}</div>
                             </div>
                           </div>
                         </CardContent>
@@ -575,32 +590,32 @@ export default function Dashboard({
                         <CardContent className="space-y-4">
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Primary Contact</span>
-                            <div className="text-gray-900 dark:text-white">{organization.contact_name}</div>
-                            <div className="text-sm text-gray-600 dark:text-gray-300">{organization.contact_title}</div>
+                            <div className="text-gray-900 dark:text-white">{organization?.contact_name}</div>
+                            <div className="text-sm text-gray-600 dark:text-gray-300">{organization?.contact_title}</div>
                           </div>
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Email</span>
                             <div className="text-blue-600 hover:underline">
-                              <a href={`mailto:${organization.email}`}>{organization.email}</a>
+                              <a href={`mailto:${organization?.email}`}>{organization?.email}</a>
                             </div>
                           </div>
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Phone</span>
-                            <div className="text-gray-900 dark:text-white">{organization.phone}</div>
+                            <div className="text-gray-900 dark:text-white">{organization?.phone}</div>
                           </div>
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Website</span>
                             <div className="text-blue-600 hover:underline">
                               <a
-                                href={organization.website}
+                                href={organization?.website}
                                 target="_blank"
                                 className="flex items-center gap-1"
                                 rel="noreferrer"
                               >
-                                {organization.website}
+                                {organization?.website}
                                 <ExternalLink className="h-3 w-3" />
                               </a>
                             </div>
@@ -608,7 +623,7 @@ export default function Dashboard({
 
                           <div>
                             <span className="text-sm text-gray-600 dark:text-gray-300">Founded</span>
-                            <div className="text-gray-900 dark:text-white">{organization.ruling}</div>
+                            <div className="text-gray-900 dark:text-white">{organization?.ruling}</div>
                           </div>
 
                           <div>
@@ -772,31 +787,31 @@ export default function Dashboard({
                               <div className="space-y-3">
                                 <div className="flex items-center gap-3">
                                   <Mail className="h-4 w-4 text-gray-500" />
-                                  <a href={`mailto:${organization.email}`} className="text-blue-600 hover:underline">
-                                    {organization.email}
+                                  <a href={`mailto:${organization?.email}`} className="text-blue-600 hover:underline">
+                                    {organization?.email}
                                   </a>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <Phone className="h-4 w-4 text-gray-500" />
-                                  <span className="text-gray-600 dark:text-gray-300">{organization.phone}</span>
+                                  <span className="text-gray-600 dark:text-gray-300">{organization?.phone}</span>
                                 </div>
                                 <div className="flex items-center gap-3">
                                   <Globe className="h-4 w-4 text-gray-500" />
                                   <a
-                                    href={organization.website}
+                                    href={organization?.website}
                                     target="_blank"
                                     className="text-blue-600 hover:underline"
                                     rel="noreferrer"
                                   >
-                                    {organization.website}
+                                    {organization?.website}
                                   </a>
                                 </div>
                                 <div className="flex items-start gap-3">
                                   <MapPin className="h-4 w-4 text-gray-500 mt-1" />
                                   <div>
-                                    <div className="text-gray-600 dark:text-gray-300">{organization.street}</div>
+                                    <div className="text-gray-600 dark:text-gray-300">{organization?.street}</div>
                                     <div className="text-gray-600 dark:text-gray-300">
-                                      {organization.city}, {organization.state} {organization.zip}
+                                      {organization?.city}, {organization?.state} {organization?.zip}
                                     </div>
                                   </div>
                                 </div>
@@ -805,9 +820,9 @@ export default function Dashboard({
 
                             <div>
                               <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Primary Contact</h4>
-                              <div className="text-gray-600 dark:text-gray-300">{organization.contact_name}</div>
+                              <div className="text-gray-600 dark:text-gray-300">{organization?.contact_name}</div>
                               <div className="text-sm text-gray-500 dark:text-gray-400">
-                                {organization.contact_title}
+                                {organization?.contact_title}
                               </div>
                             </div>
                           </div>

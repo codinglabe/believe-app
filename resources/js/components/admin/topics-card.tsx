@@ -1,11 +1,10 @@
 "use client"
 
-import { useState } from "react"
-import { Tag, Plus } from "lucide-react"
+import { Tag } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import TopicsModal from "./topics-modal"
+import { useState } from "react"
 
 interface Topic {
   id: number
@@ -52,7 +51,6 @@ export default function TopicsCard({ topics, onDeleteTopic }: TopicsCardProps) {
             </div>
           ) : (
             <>
-              {/* Topics Grid */}
               <div className="grid grid-cols-2 gap-2">
                 {visibleTopics.map((topic) => (
                   <div
@@ -65,22 +63,17 @@ export default function TopicsCard({ topics, onDeleteTopic }: TopicsCardProps) {
                 ))}
               </div>
 
-              {/* More Button */}
               {remainingCount > 0 && (
                 <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <button
                     onClick={() => setIsModalOpen(true)}
-                    className="w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20"
+                    className="w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:text-blue-400 dark:hover:bg-blue-900/20 text-sm font-medium py-2 px-1 rounded flex items-center justify-center"
                   >
-                    <Plus className="h-4 w-4 mr-1" />
-                    View {remainingCount} more topic{remainingCount !== 1 ? "s" : ""}
-                  </Button>
+                    <span>View {remainingCount} more topic{remainingCount !== 1 ? "s" : ""}</span>
+                  </button>
                 </div>
               )}
 
-              {/* Quick Stats */}
               <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div className="text-xs text-gray-500 dark:text-gray-400">Total: {topics.length} topics</div>
                 <Badge
@@ -95,7 +88,6 @@ export default function TopicsCard({ topics, onDeleteTopic }: TopicsCardProps) {
         </CardContent>
       </Card>
 
-      {/* Modal */}
       <TopicsModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}

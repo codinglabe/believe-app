@@ -258,30 +258,49 @@ export default function TopicsIndex() {
 
                         {/* Pagination */}
                         {topics.last_page > 1 && (
-                            <motion.div className="mt-6 flex justify-center" variants={itemVariants}>
-                                <Pagination>
-                                    <PaginationContent>
-                                        {topics.links.map((link, index) => (
-                                            <PaginationItem key={index}>
-                                                {link.url ? (
-                                                    <PaginationLink href={link.url} isActive={link.active} size="icon">
-                                                        {link.label.includes("Previous") ? (
-                                                            <PaginationPrevious size="icon" />
-                                                        ) : link.label.includes("Next") ? (
-                                                            <PaginationNext size="icon" />
-                                                        ) : (
-                                                            link.label
-                                                        )}
-                                                    </PaginationLink>
-                                                ) : (
-                                                    <PaginationEllipsis />
-                                                )}
-                                            </PaginationItem>
-                                        ))}
-                                    </PaginationContent>
-                                </Pagination>
-                            </motion.div>
-                        )}
+    <motion.div className="mt-6 flex justify-center" variants={itemVariants}>
+        <div className="flex items-center gap-1">
+            {/* Previous Page Button */}
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.get(topics.prev_page_url || '')}
+                disabled={!topics.prev_page_url}
+                className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+                Previous
+            </Button>
+
+            {/* Page Numbers */}
+            {Array.from({ length: topics.last_page }, (_, i) => i + 1).map((page) => (
+                <Button
+                    key={page}
+                    variant={page === topics.current_page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => router.get(route("chat-group-topics.index", { page }))}
+                    className={
+                        page === topics.current_page
+                            ? "bg-primary text-white dark:text-black"
+                            : "bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }
+                >
+                    {page}
+                </Button>
+            ))}
+
+            {/* Next Page Button */}
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.get(topics.next_page_url || '')}
+                disabled={!topics.next_page_url}
+                className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+                Next
+            </Button>
+        </div>
+    </motion.div>
+)}
                     </motion.div>
                 </div>
             </div>

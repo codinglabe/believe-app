@@ -139,6 +139,9 @@ Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name
     Route::post("/rooms/{chatRoom}/mark-as-read", [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
     Route::post("/rooms/{chatRoom}/members", [ChatController::class, 'addMembers'])->name('add-members');
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
+
+    Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
+    Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 
 Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.selected'])->group(function () {

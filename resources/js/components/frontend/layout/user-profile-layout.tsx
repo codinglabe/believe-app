@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import {
@@ -32,12 +32,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/av
 import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Link, usePage } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 
 interface ProfileLayoutProps {
   children: React.ReactNode
   title: string
   description?: string
+}
+
+interface Topic {
+  id: number;
+  name: string;
+  color: string;
 }
 
 interface PageProps {
@@ -129,25 +135,55 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   const { auth } = usePage<PageProps>().props
   const user = auth.user
   const [copied, setCopied] = useState(false)
-  const [showBalance, setShowBalance] = useState(false)
+    const [showBalance, setShowBalance] = useState(false)
+    const [topics, setTopics] = useState<Topic[]>([]);
   const [addFundsAmount, setAddFundsAmount] = useState("")
   const [withdrawAmount, setWithdrawAmount] = useState("")
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
 
-  const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
-  const [selectedTopics, setSelectedTopics] = useState([
-    { id: 1, name: "Technology", color: "bg-blue-500" },
-    { id: 2, name: "Education", color: "bg-green-500" },
-    { id: 3, name: "Healthcare", color: "bg-red-500" },
-    { id: 4, name: "Environment", color: "bg-emerald-500" },
-    { id: 5, name: "Arts & Culture", color: "bg-purple-500" },
-    { id: 6, name: "Social Justice", color: "bg-orange-500" },
-    { id: 7, name: "Animal Welfare", color: "bg-pink-500" },
-    { id: 8, name: "Community Development", color: "bg-indigo-500" },
-    { id: 9, name: "Mental Health", color: "bg-teal-500" },
-    { id: 10, name: "Youth Programs", color: "bg-yellow-500" },
-  ])
+    const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
+     const [loading, setLoading] = useState(true);
+
+    // Fetch topics on component mount
+  useEffect(() => {
+    const fetchTopics = async () => {
+      try {
+        const response = await fetch('/chat/user/topics', {
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include' // Important for sessions/cookies
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+          setTopics(data || []);
+        } else {
+          console.error('Failed to fetch topics');
+        }
+      } catch (error) {
+        console.error('Error fetching topics:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTopics();
+  }, []);
+
+  const handleDeleteTopic = (topicId: number) => {
+    if (confirm('Are you sure you want to remove this topic?')) {
+      router.delete(`/chat/user/topics/${topicId}`, {
+        preserveScroll: true,
+          onSuccess: () => {
+            setTopics(prevTopics => prevTopics.filter(topic => topic.id !== topicId))
+          // Inertia will automatically re-render the page with updated data
+        }
+      });
+    }
+  };
 
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
 
@@ -155,10 +191,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
     navigator.clipboard.writeText(user?.referral_link || "")
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleDeleteTopic = (topicId: number) => {
-    setSelectedTopics((prev) => prev.filter((topic) => topic.id !== topicId))
   }
 
   const handleAddFunds = () => {
@@ -394,13 +426,13 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                       </h3>
                       <div className="flex items-center gap-2">
                         <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
-                          {selectedTopics.length} Active
+                          {topics.length} Active
                         </Badge>
                       </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-2 mb-4">
-                      {selectedTopics.slice(0, 4).map((topic) => (
+                      {topics.slice(0, 4).map((topic) => (
                         <div
                           key={topic.id}
                           className="group relative flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all duration-200"
@@ -419,13 +451,13 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                       ))}
                     </div>
 
-                    {selectedTopics.length > 4 && (
+                    {topics.length > 4 && (
                       <Button
                         onClick={() => setIsTopicsModalOpen(true)}
                         variant="outline"
                         className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-900/20 transition-all duration-300"
                       >
-                        View {selectedTopics.length - 4} more topics
+                        View {topics.length - 4} more topics
                       </Button>
                     )}
                   </div>
@@ -582,11 +614,11 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Tag className="w-5 h-5 text-emerald-600" />
-                Your Interested Topics ({selectedTopics.length})
+                Your Interested Topics ({topics.length})
               </DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-              {selectedTopics.map((topic) => (
+              {topics.map((topic) => (
                 <motion.div
                   key={topic.id}
                   initial={{ opacity: 0, scale: 0.9 }}
@@ -605,7 +637,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 </motion.div>
               ))}
             </div>
-            {selectedTopics.length === 0 && (
+            {topics.length === 0 && (
               <div className="text-center py-8">
                 <Tag className="w-12 h-12 text-gray-400 mx-auto mb-3" />
                 <p className="text-gray-500 dark:text-gray-400">No topics selected yet.</p>
