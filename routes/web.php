@@ -141,7 +141,7 @@ Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 });
 
-Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
     // Chunked Upload Routes
@@ -292,7 +292,7 @@ Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->n
 //     Route::post('/verification/ownership/retry', [OwnershipVerificationController::class, 'retry'])->name('verification.retry');
 // });
 // Enrollment routes (require authentication)
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth' , 'topics.selected'])->group(function () {
     Route::get('/courses/{course:slug}/enroll', [EnrollmentController::class, 'show'])->name('courses.enroll');
     Route::post('/courses/{course:slug}/enroll', [EnrollmentController::class, 'store'])->name('courses.enroll.store');
     Route::post('/courses/{course:slug}/cancel', [EnrollmentController::class, 'cancel'])->name('courses.cancel');
@@ -301,7 +301,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
 });
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
     Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
         Route::get('/', [CourseController::class, 'adminIndex'])->name('index');
@@ -317,7 +317,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
 });
 // Meeting routes
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'topics.selected'])->group(function () {
     // Meeting management
     Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
     Route::get('/meetings/create', [MeetingController::class, 'create'])->name('meetings.create');
@@ -365,7 +365,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // Plaid Verification routes
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/verification/ownership', [PlaidVerificationController::class, 'show'])->name('verification.ownership');
     Route::get('/verification/results', [PlaidVerificationController::class, 'results'])->name('verification.results');
     Route::post('/verification/download-certificate', [PlaidVerificationController::class, 'downloadCertificate'])->name('verification.download-certificate');
@@ -373,7 +373,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // Plaid API routes
-Route::middleware(['auth'])->prefix('api/plaid')->group(function () {
+Route::middleware(['auth', 'topics.selected'])->prefix('api/plaid')->group(function () {
     Route::post('/create-link-token', [PlaidVerificationController::class, 'createLinkToken']);
     Route::post('/exchange-token', [PlaidVerificationController::class, 'exchangeToken']);
     Route::post('/verify-ownership', [PlaidVerificationController::class, 'verifyOwnership']);
@@ -386,7 +386,7 @@ Route::post('/api/plaid/webhook', function () {
 });
 
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // NodeShare routes
     Route::resource('node-shares', NodeShareController::class);
 
@@ -416,7 +416,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 
 // route for donation
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');

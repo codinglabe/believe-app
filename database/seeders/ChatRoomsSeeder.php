@@ -15,65 +15,9 @@ class ChatRoomsSeeder extends Seeder
         $now = Carbon::now();
         $userId = 1; // Assuming user with ID 1 is the admin/creator
 
-        // Define the main topic categories
-        $mainTopics = [
-            'Educational' => [
-                'description' => 'Groups focused on learning and knowledge sharing',
-                'rooms' => [
-                    'Education & Youth Services',
-                    'Food Security & Hunger Relief',
-                    'Affordable Housing & Homelessness',
-                    'Mental Health Advocacy',
-                    'Environmental Sustainability & Climate Justice',
-                    'Healthcare Access & Wellness',
-                    'Data, Impact Measurement & Reporting',
-                    'AI & Innovation for Nonprofits',
-                ]
-            ],
-            'Professional' => [
-                'description' => 'Groups for career development and professional networking',
-                'rooms' => [
-                    'General Nonprofit Operations',
-                    'Fundraising Strategies & Grants',
-                    '501(c)(3) Compliance & Legal Help',
-                    'Board Development & Governance',
-                    'Nonprofit Tech & Digital Tools',
-                    'CRM & Donor Management Systems',
-                    'Nonprofit Finance & Accounting',
-                    'Grant Writers United',
-                    'Small Nonprofit Leadership Circle',
-                    'Startup Nonprofits & Founders Forum',
-                    'Global Nonprofit Exchange (International Work)',
-                    'Partnerships & Cross-Sector Collaboration',
-                    'Women in Nonprofit Leadership',
-                    'Corporate Social Responsibility Partnerships',
-                ]
-            ],
-            'Cultural' => [
-                'description' => 'Groups focused on cultural exchange and diversity',
-                'rooms' => [
-                    'Racial Equity & Social Justice',
-                    'Faith-Based Nonprofit Networks',
-                    'Youth-Led Nonprofit Organizations',
-                ]
-            ],
-            'Social' => [
-                'description' => 'Groups for social interaction and community building',
-                'rooms' => [
-                    'Volunteer Recruitment & Retention',
-                    'Marketing & Social Media for Nonprofits',
-                    'Event Planning for Nonprofits',
-                    'Animal Welfare & Rescue',
-                    'Disaster Relief & Emergency Response',
-                    'Nonprofit Storytelling & Communications',
-                ]
-            ]
-        ];
-
-        // First create all rooms with their descriptions
-        $allRooms = [
+        // Define all topics with their descriptions
+        $topics = [
             // General Nonprofit Operations
-            'General Nonprofit Operations' => 'Discussions about general nonprofit management and operations',
             'Fundraising Strategies & Grants' => 'Share and learn about fundraising techniques and grant opportunities',
             '501(c)(3) Compliance & Legal Help' => 'Discuss legal compliance and 501(c)(3) requirements',
             'Board Development & Governance' => 'Topics related to nonprofit board management and governance',
@@ -110,10 +54,21 @@ class ChatRoomsSeeder extends Seeder
             'Corporate Social Responsibility Partnerships' => 'Building partnerships between nonprofits and corporations',
         ];
 
-        // First create all rooms
-        foreach ($allRooms as $roomName => $description) {
-            ChatRoom::updateOrCreate(
-                ['name' => $roomName],
+        foreach ($topics as $name => $description) {
+            // Create or update the topic
+            $topic = ChatTopic::updateOrCreate(
+                ['name' => $name],
+                [
+                    'description' => $description,
+                    'is_active' => true,
+                    'created_at' => $now,
+                    'updated_at' => $now
+                ]
+            );
+
+            // Create or update the corresponding chat room
+            $room = ChatRoom::updateOrCreate(
+                ['name' => $name],
                 [
                     'description' => $description,
                     'type' => 'public',
@@ -123,35 +78,18 @@ class ChatRoomsSeeder extends Seeder
                     'updated_at' => $now
                 ]
             );
-        }
 
-        // Then create topics and associate rooms
-        foreach ($mainTopics as $topicName => $topicData) {
-            $topic = ChatTopic::updateOrCreate(
-                ['name' => $topicName],
+            // Create the relationship between topic and room
+            ChatRoomTopic::updateOrCreate(
                 [
-                    'description' => $topicData['description'],
-                    'is_active' => true,
+                    'chat_room_id' => $room->id,
+                    'topic_id' => $topic->id
+                ],
+                [
                     'created_at' => $now,
                     'updated_at' => $now
                 ]
             );
-
-            foreach ($topicData['rooms'] as $roomName) {
-                $room = ChatRoom::where('name', $roomName)->first();
-                if ($room) {
-                    ChatRoomTopic::updateOrCreate(
-                        [
-                            'chat_room_id' => $room->id,
-                            'topic_id' => $topic->id
-                        ],
-                        [
-                            'created_at' => $now,
-                            'updated_at' => $now
-                        ]
-                    );
-                }
-            }
         }
     }
 }

@@ -114,7 +114,7 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                         >
                           {topic.name}
                         </span>
-                        {topic.description && (
+                        {/* {topic.description && (
                           <p
                             className={`mt-1 ${
                               isChecked
@@ -124,7 +124,7 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                           >
                             {topic.description}
                           </p>
-                        )}
+                        )} */}
                       </div>
                     </label>
                   )

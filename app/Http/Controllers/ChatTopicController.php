@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ChatRoom;
+use App\Models\ChatRoomTopic;
 use App\Models\ChatTopic;
 use App\Models\Topic;
 use Illuminate\Http\Request;
@@ -41,7 +43,19 @@ class ChatTopicController extends Controller
             'description' => 'nullable|string',
         ]);
 
-        ChatTopic::create($validated);
+        $chatTopic =  ChatTopic::create($validated);
+
+        $chatRoom =  ChatRoom::create([
+            'name' => $validated['name'],
+            'description' => $validated['description'],
+            'type' => "public",
+            'created_by' => auth()->id(),
+        ]);
+
+        ChatRoomTopic::create([
+            'chat_room_id' => $chatRoom->id,
+            'topic_id' => $chatTopic->id,
+        ]);
 
         return redirect()->route('chat-group-topics.index')->with('success', 'Topic created successfully!');
     }
@@ -59,6 +73,20 @@ class ChatTopicController extends Controller
         ]);
 
         $topic->update($validated);
+
+        // Find the associated room through the pivot table
+        $roomTopic = ChatRoomTopic::where('topic_id', $topic->id)->first();
+
+        if ($roomTopic) {
+            // Update the associated room
+            $room = ChatRoom::find($roomTopic->chat_room_id);
+            if ($room) {
+                $room->update([
+                    'name' => $validated['name'],
+                    'description' => $validated['description'],
+                ]);
+            }
+        }
 
         return redirect()->route('chat-group-topics.index')->with('success', 'Topic updated successfully!');
     }
