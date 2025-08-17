@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class ChatRoom extends Model
 {
@@ -71,6 +72,14 @@ class ChatRoom extends Model
 
     public function topics(): BelongsToMany
     {
-        return $this->belongsToMany(ChatRoomTopic::class, 'chat_room_topic');
+        return $this->belongsToMany(ChatTopic::class, 'chat_room_topics', 'chat_room_id', 'topic_id')
+            ->withTimestamps();
+    }
+
+    public function scopeWithTopic($query, $topicId)
+    {
+        return $query->whereHas('topics', function ($q) use ($topicId) {
+            $q->where('chat_topics.id', $topicId);
+        });
     }
 }

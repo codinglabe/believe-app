@@ -59,7 +59,6 @@ export function Sidebar() {
   const handleUserClick = async (userId: number) => {
     try {
       const room = await createDirectChat(userId)
-      setActiveRoom(room)
       setShowUsers(false)
       setSearchQuery("")
     } catch (error) {
@@ -67,7 +66,7 @@ export function Sidebar() {
     }
   }
 
-  const canCreateGroups = currentUser?.role === "organization" || currentUser?.role === "admin"
+  const canCreateGroups = currentUser?.role === "organization" || currentUser?.role === "admin" || currentUser?.role === "user"
 
   return (
     <div className="flex h-full flex-col border-r">

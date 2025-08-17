@@ -138,6 +138,7 @@ Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name
     Route::post("/rooms/{chatRoom}/typing", [ChatController::class, 'setTypingStatus'])->name('typing'); // Renamed function
     Route::post("/rooms/{chatRoom}/mark-as-read", [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
     Route::post("/rooms/{chatRoom}/members", [ChatController::class, 'addMembers'])->name('add-members');
+    Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 });
 
 Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {

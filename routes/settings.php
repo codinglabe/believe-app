@@ -24,8 +24,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
     })->name('appearance');
 
     Route::get("settings/topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])
-        ->name('auth.topics.select')
-        ->middleware('topics.selected');
+        ->name('auth.topics.select');
 });
 
 Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');

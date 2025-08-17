@@ -48,7 +48,8 @@ interface User {
   avatar_url: string
   is_online: boolean
   role: string
-  organization?: Organization | null
+    organization?: Organization | null
+    interestedTopics?: any[]
 }
 
 interface Attachment {
@@ -100,7 +101,8 @@ export interface ChatRoom {
   members: User[]
   is_member: boolean
   created_by: number
-  created_at: string
+    created_at: string
+  topics?: ChatTopic[]
 }
 
 interface ChatContextType {
@@ -120,6 +122,7 @@ interface ChatContextType {
     description?: string,
     image?: File,
     members?: number[],
+    topic_id: string,
   ) => Promise<void>
   createDirectChat: (userId: number) => Promise<void>
   joinRoom: (roomId: number) => Promise<void>
@@ -134,7 +137,14 @@ interface ChatContextType {
   setReplyingToMessage: React.Dispatch<React.SetStateAction<ChatMessage | null>>
   addMembers: (roomId: number, memberIds: number[]) => Promise<void>
   searchQuery: string
-  setSearchQuery: React.Dispatch<React.SetStateAction<string>>
+    setSearchQuery: React.Dispatch<React.SetStateAction<string>>
+    allTopics: ChatTopic[];
+}
+
+export interface ChatTopic {
+  id: number
+  name: string
+  description?: string
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined)
@@ -149,13 +159,27 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [typingUsers, setTypingUsers] = useState<User[]>([])
   const [activeUsers, setActiveUsers] = useState<User[]>([])
   const [replyingToMessage, setReplyingToMessage] = useState<ChatMessage | null>(null)
-  const [searchQuery, setSearchQuery] = useState<string>("")
+    const [searchQuery, setSearchQuery] = useState<string>("")
+    const [allTopics, setAllTopics] = useState<ChatTopic[]>([]);
 
   const allUsers = (props.allUsers as User[]) || []
   const currentUser = props.currentUser as User
 
   const messagesContainerRef = useRef<HTMLDivElement>(null)
-  const isScrolledToBottomRef = useRef(true)
+    const isScrolledToBottomRef = useRef(true)
+
+    useEffect(() => {
+  const fetchTopics = async () => {
+    try {
+      const response = await axios.get('/chat/topics');
+      setAllTopics(response.data.topics);
+    } catch (error) {
+      console.error('Error fetching topics:', error);
+    }
+  };
+
+  fetchTopics();
+}, []);
 
   const addMembers = useCallback(
     async (roomId: number, memberIds: number[]) => {
@@ -258,9 +282,9 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Handle message if in active room
-      // if (activeRoom?.id === e.message?.chat_room_id) {
-      //   setMessages(prev => [...prev, e.message]);
-      // }
+    //   if (activeRoom?.id === e.message?.chat_room_id) {
+    //     setMessages(prev => [...prev, e.message]);
+    //   }
 
         if (e.message && activeRoom?.id === e.message?.chat_room_id && activeRoom?.type === "direct") {
         setMessages((prev) => {
@@ -270,11 +294,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return deduplicateMessages([...prev, e.message])
         })
 
-        // Mark as read if message is from another user
-        if (e.message.user.id !== currentUser.id) {
-          markRoomAsRead(activeRoom.id)
+            // Mark as read if message is from another user
+            if (e.message.user.id !== currentUser.id) {
+            markRoomAsRead(activeRoom.id)
+            }
         }
-      }
     })
 
     return () => {
@@ -330,7 +354,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Message listener
       channel.listen(".MessageSent", (e: { message: ChatMessage }) => {
         setMessages((prev) => {
-          console.log("Received message:", e.message)
           // Check if message already exists (from optimistic update)
           const exists = prev.some((m) => m.id === e.message.id)
           return exists ? prev : [...prev, e.message]
@@ -419,10 +442,11 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [activeRoom, currentUser.id, fetchMessages, markRoomAsRead])
 
   const createRoom = useCallback(
-    async (name: string, type: "public" | "private", description?: string, image?: File, members?: number[]) => {
-      const formData = new FormData()
+    async (name: string, type: "public" | "private", description?: string, image?: File, members?: number[], topic_id: string) => {
+          const formData = new FormData()
       formData.append("name", name)
-      formData.append("type", type)
+          formData.append("type", type)
+          formData.append('topic_id', topic_id);
       if (description) formData.append("description", description)
       if (image) formData.append("image", image)
       if (type === "private" && members) {
@@ -433,7 +457,13 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const { data } = await api.post<{ room: ChatRoom }>("/chat/rooms", formData, {
           headers: { "Content-Type": "multipart/form-data" },
         })
-        setActiveRoom(data.room)
+
+          console.log("Room created:", data.room)
+        //   setActiveRoom(data.room)
+          setActiveRoom({
+                ...data.room,
+                topics: data.room.topics || [] // Ensure topics exists
+            })
 
         // if (type === 'public' ||
         //     (type === 'private' && members?.includes(currentUser.id))) {
@@ -477,18 +507,30 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // Public room listener
     const publicChannel = echo.channel("chat-rooms")
-    publicChannel.listen(".RoomCreated", (e: any) => {
-      console.log("Public room created:", e.room)
-      setChatRooms((prev) => {
-        const exists = prev.some((r) => r.id === e.room.id)
-        return exists ? prev : [e.room, ...prev]
-      })
-    })
+   publicChannel.listen(".RoomCreated", (e: any) => {
+    console.log("Public room created:", e.room);
+
+    if (e.room?.type === 'public') {
+        const isAdmin = currentUser?.role === 'admin';
+        const userTopics = currentUser?.interestedTopics || [];
+        const roomTopics = e.room?.topics || [];
+
+        const isInterested = userTopics.some(topic =>
+            roomTopics.some(roomTopic => roomTopic?.id === topic?.id)
+        );
+
+        if (isAdmin || isInterested) {
+            setChatRooms(prev => {
+                const exists = prev.some(r => r?.id === e.room?.id);
+                return exists ? prev : [e.room, ...prev];
+            });
+        }
+    }
+});
 
     // Private room listener
     const privateChannel = echo.private(`user.${currentUser.id}`)
     privateChannel.listen(".RoomCreated", (e: any) => {
-      console.log("Private room received:", e.room)
       setChatRooms((prev) => {
         const exists = prev.some((r) => r.id === e.room.id)
         if (!exists) {
@@ -505,7 +547,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       echo.leave("chat-rooms.public")
       echo.leave(`user.${currentUser.id}`)
     }
-  }, [currentUser.id, addMembers, leaveRoom])
+  }, [currentUser.id, addMembers, leaveRoom, activeRoom])
 
   const loadMoreMessages = useCallback(() => {
     if (activeRoom && hasMoreMessages) {
@@ -521,6 +563,19 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return !duplicate
     })
   }, [])
+
+      const createDirectChat = useCallback(async (userId: number) => {
+    try {
+        const { data } = await api.post<{ room: ChatRoom }>("/chat/direct-chat", { user_id: userId })
+        console.log("Direct chat created:", data.room)
+      setActiveRoom(data.room)
+        toast.success("Direct chat started")
+        return data.room // Return the room data
+    } catch (error) {
+      console.error("Error creating direct chat:", error)
+      toast.error("Failed to start direct chat")
+    }
+      }, [])
 
   const sendMessage = useCallback(
     async (message: string, attachments: File[] = [], replyToMessageId?: number) => {
@@ -618,17 +673,6 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [])
 
-  const createDirectChat = useCallback(async (userId: number) => {
-    try {
-      const { data } = await api.post<{ room: ChatRoom }>("/chat/direct-chat", { user_id: userId })
-      setActiveRoom(data.room)
-      toast.success("Direct chat started")
-    } catch (error) {
-      console.error("Error creating direct chat:", error)
-      toast.error("Failed to start direct chat")
-    }
-  }, [])
-
   const joinRoom = useCallback(
     async (roomId: number) => {
       try {
@@ -714,6 +758,7 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addMembers,
         searchQuery,
         setSearchQuery,
+        allTopics
       }}
     >
       {children}

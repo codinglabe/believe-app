@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/chat/ui/checkbox"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/chat/ui/dialog"
 import { Label } from "@/components/chat/ui/label"
 import toast from "react-hot-toast"
+import { Badge } from "./ui/badge"
 
 interface ChatDetailsPanelProps {
   room: ChatRoom
@@ -22,6 +23,8 @@ export function ChatDetailsPanel({ room, onClose }: ChatDetailsPanelProps) {
   const [isAddMembersDialogOpen, setIsAddMembersDialogOpen] = useState(false)
   const [selectedMembersToAdd, setSelectedMembersToAdd] = useState<number[]>([])
 
+
+    console.log("ChatDetailsPanel", room.topics)
   const isCreator = room.created_by === currentUser.id
   const isAdmin = currentUser.role === "admin" || currentUser.role === "organization" // Assuming organization role can manage groups
 
@@ -70,7 +73,16 @@ export function ChatDetailsPanel({ room, onClose }: ChatDetailsPanelProps) {
         {room.description && <p className="text-sm text-muted-foreground text-center">{room.description}</p>}
         <p className="text-sm text-muted-foreground">
           {room.type === "public" ? "Public Group" : room.type === "private" ? "Private Group" : "Direct Message"}
-        </p>
+              </p>
+              {room.topics && room.topics.length > 0 && (
+          <div className="flex flex-wrap gap-2 justify-center">
+            {room.topics.map(topic => (
+              <Badge key={topic.id} variant="secondary">
+                {topic.name}
+              </Badge>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="flex-1 py-4 overflow-y-auto">

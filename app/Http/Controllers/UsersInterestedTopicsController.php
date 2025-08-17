@@ -22,7 +22,7 @@ class UsersInterestedTopicsController extends Controller
     public function orgSelect()
     {
         $topics = ChatTopic::all();
-        return Inertia::render('Settings/InterestedTopic', [
+        return Inertia::render('settings/interested-topic', [
             'topics' => $topics,
             'initialSelected' => auth()->user()->interestedTopics->pluck('id')->toArray()
         ]);

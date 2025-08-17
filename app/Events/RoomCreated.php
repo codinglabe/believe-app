@@ -63,6 +63,13 @@ class RoomCreated implements ShouldBroadcast
                 'is_member' => true,
                 'created_by' => $this->room->created_by,
                 'latest_message' => null,
+                'topics' => $this->room->topics->map(function ($topic) {
+                    return [
+                        'id' => $topic->id,
+                        'name' => $topic->name,
+                        'description' => $topic->description,
+                    ];
+                })->toArray(),
             ]
         ];
     }
