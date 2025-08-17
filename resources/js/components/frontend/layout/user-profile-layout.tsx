@@ -23,6 +23,8 @@ import {
   Settings,
   Star,
   Activity,
+  X,
+  Tag,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -133,6 +135,20 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
 
+  const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
+  const [selectedTopics, setSelectedTopics] = useState([
+    { id: 1, name: "Technology", color: "bg-blue-500" },
+    { id: 2, name: "Education", color: "bg-green-500" },
+    { id: 3, name: "Healthcare", color: "bg-red-500" },
+    { id: 4, name: "Environment", color: "bg-emerald-500" },
+    { id: 5, name: "Arts & Culture", color: "bg-purple-500" },
+    { id: 6, name: "Social Justice", color: "bg-orange-500" },
+    { id: 7, name: "Animal Welfare", color: "bg-pink-500" },
+    { id: 8, name: "Community Development", color: "bg-indigo-500" },
+    { id: 9, name: "Mental Health", color: "bg-teal-500" },
+    { id: 10, name: "Youth Programs", color: "bg-yellow-500" },
+  ])
+
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
 
   const handleCopy = () => {
@@ -141,16 +157,16 @@ export default function ProfileLayout({ children, title, description }: ProfileL
     setTimeout(() => setCopied(false), 2000)
   }
 
+  const handleDeleteTopic = (topicId: number) => {
+    setSelectedTopics((prev) => prev.filter((topic) => topic.id !== topicId))
+  }
+
   const handleAddFunds = () => {
-    console.log("Adding funds:", addFundsAmount)
-    setAddFundsAmount("")
-    setIsAddFundsOpen(false)
+    // Implementation for adding funds
   }
 
   const handleWithdraw = () => {
-    console.log("Withdrawing:", withdrawAmount)
-    setWithdrawAmount("")
-    setIsWithdrawOpen(false)
+    // Implementation for withdrawing funds
   }
 
   return (
@@ -316,55 +332,106 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             </Card>
           </motion.div>
 
-          {/* Referral Section */}
+          {/* Referral and Topics Section */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
             className="mb-8"
           >
-            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-700 shadow-xl">
-              <CardContent className="p-6">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                      <Award className="w-5 h-5 mr-2 text-indigo-600" />
-                      Share Your Referral Link
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-300 mb-4">
-                      Invite friends and earn rewards when they join our community. Both you and your friends will
-                      receive special bonuses!
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 relative">
-                        <Input
-                          type="text"
-                          value={user?.referral_link || ""}
-                          readOnly
-                          className="pr-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 font-mono text-sm"
-                        />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Referral Section */}
+              <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-700 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                        <Award className="w-5 h-5 mr-2 text-indigo-600" />
+                        Share Your Referral Link
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-300 mb-4">
+                        Invite friends and earn rewards when they join our community.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 relative">
+                          <Input
+                            type="text"
+                            value={user?.referral_link || ""}
+                            readOnly
+                            className="pr-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 font-mono text-sm"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleCopy}
+                          className="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 hover:scale-105"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 mr-2" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 mr-2" />
+                              Copy Link
+                            </>
+                          )}
+                        </Button>
                       </div>
-                      <Button
-                        onClick={handleCopy}
-                        className="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 hover:scale-105"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-4 h-4 mr-2" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copy Link
-                          </>
-                        )}
-                      </Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Topics Section */}
+              <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200 dark:border-emerald-700 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                        <Tag className="w-5 h-5 mr-2 text-emerald-600" />
+                        Your Interested Topics
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                          {selectedTopics.length} Active
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {selectedTopics.slice(0, 4).map((topic) => (
+                        <div
+                          key={topic.id}
+                          className="group relative flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className={`w-3 h-3 rounded-full ${topic.color}`}></div>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
+                            {topic.name}
+                          </span>
+                          <button
+                            onClick={() => handleDeleteTopic(topic.id)}
+                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-all duration-200"
+                          >
+                            <X className="w-3 h-3 text-red-500" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {selectedTopics.length > 4 && (
+                      <Button
+                        onClick={() => setIsTopicsModalOpen(true)}
+                        variant="outline"
+                        className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-900/20 transition-all duration-300"
+                      >
+                        View {selectedTopics.length - 4} more topics
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </motion.div>
 
           {/* Navigation */}
@@ -506,6 +573,44 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Topics Modal */}
+        <Dialog open={isTopicsModalOpen} onOpenChange={setIsTopicsModalOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Tag className="w-5 h-5 text-emerald-600" />
+                Your Interested Topics ({selectedTopics.length})
+              </DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              {selectedTopics.map((topic) => (
+                <motion.div
+                  key={topic.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="group relative flex items-center gap-3 p-4 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
+                >
+                  <div className={`w-4 h-4 rounded-full ${topic.color} shadow-lg`}></div>
+                  <span className="font-medium text-gray-800 dark:text-gray-200 flex-1">{topic.name}</span>
+                  <button
+                    onClick={() => handleDeleteTopic(topic.id)}
+                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 hover:scale-110"
+                  >
+                    <X className="w-4 h-4 text-red-500" />
+                  </button>
+                </motion.div>
+              ))}
+            </div>
+            {selectedTopics.length === 0 && (
+              <div className="text-center py-8">
+                <Tag className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500 dark:text-gray-400">No topics selected yet.</p>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>
