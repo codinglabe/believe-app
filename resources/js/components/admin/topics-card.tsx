@@ -1,10 +1,11 @@
 "use client"
 
-import { Tag } from "lucide-react"
+import { Tag, MessageCircle } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import TopicsModal from "./topics-modal"
 import { useState } from "react"
+import { router } from "@inertiajs/react"
 
 interface Topic {
   id: number
@@ -19,6 +20,11 @@ interface TopicsCardProps {
 
 export default function TopicsCard({ topics, onDeleteTopic }: TopicsCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false)
+
+  const navigateToChat = (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent events
+    router.get(route("chat.index", { topic: topicId }));
+  };
 
   // Show only first 6 topics in the card
   const visibleTopics = topics.slice(0, 6)
@@ -55,10 +61,19 @@ export default function TopicsCard({ topics, onDeleteTopic }: TopicsCardProps) {
                 {visibleTopics.map((topic) => (
                   <div
                     key={topic.id}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors"
+                    className="flex items-center gap-2 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-700/50 transition-colors group"
                   >
                     <div className={`w-2 h-2 rounded-full ${topic.color} flex-shrink-0`} />
-                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate">{topic.name}</span>
+                    <span className="text-xs font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
+                      {topic.name}
+                    </span>
+                    <button
+                      onClick={(e) => navigateToChat(topic.id, e)}
+                      className="opacity-100 p-1 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-all duration-200"
+                      title="Go to chat"
+                    >
+                      <MessageCircle className="w-3 h-3 text-blue-500" />
+                    </button>
                   </div>
                 ))}
               </div>

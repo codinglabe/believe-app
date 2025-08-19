@@ -25,6 +25,8 @@ import {
   Activity,
   X,
   Tag,
+  Text,
+  MessageCircle, // Added MessageCircle icon
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -74,10 +76,10 @@ const navigationItems = [
     color: "from-blue-500 to-blue-600",
   },
   {
-    name: "Interested Topics",
+    name: "Groups Chat",
     href: "/profile/topics/select",
-    icon: BookOpen,
-    description: "Interested topics",
+    icon: Text,
+    description: "Groups Chat",
     color: "from-green-400 to-blue-600",
   },
   {
@@ -183,6 +185,11 @@ export default function ProfileLayout({ children, title, description }: ProfileL
         }
       });
     }
+  };
+
+  const navigateToChat = (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent events
+    router.get(route("chat.index", { topic: topicId }));
   };
 
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
@@ -421,8 +428,8 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                   <div className="flex flex-col gap-4">
                     <div className="flex items-center justify-between">
                       <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                        <Tag className="w-5 h-5 mr-2 text-emerald-600" />
-                        Your Interested Topics
+                        <Text className="w-5 h-5 mr-2 text-emerald-600" />
+                        Your Groups Chat
                       </h3>
                       <div className="flex items-center gap-2">
                         <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
@@ -441,12 +448,21 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                           <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
                             {topic.name}
                           </span>
-                          <button
-                            onClick={() => handleDeleteTopic(topic.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-all duration-200"
-                          >
-                            <X className="w-3 h-3 text-red-500" />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => navigateToChat(topic.id, e)}
+                              className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-all duration-200"
+                              title="Go to chat"
+                            >
+                              <MessageCircle className="w-3 h-3 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTopic(topic.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-all duration-200"
+                            >
+                              <X className="w-3 h-3 text-red-500" />
+                            </button>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -614,7 +630,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-xl">
                 <Tag className="w-5 h-5 text-emerald-600" />
-                Your Interested Topics ({topics.length})
+                Your Groups Chat ({topics.length})
               </DialogTitle>
             </DialogHeader>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
@@ -628,12 +644,21 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 >
                   <div className={`w-4 h-4 rounded-full ${topic.color} shadow-lg`}></div>
                   <span className="font-medium text-gray-800 dark:text-gray-200 flex-1">{topic.name}</span>
-                  <button
-                    onClick={() => handleDeleteTopic(topic.id)}
-                    className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 hover:scale-110"
-                  >
-                    <X className="w-4 h-4 text-red-500" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => navigateToChat(topic.id, e)}
+                      className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all duration-200 hover:scale-110"
+                      title="Go to chat"
+                    >
+                      <MessageCircle className="w-4 h-4 text-blue-500" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTopic(topic.id)}
+                      className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 hover:scale-110"
+                    >
+                      <X className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
                 </motion.div>
               ))}
             </div>

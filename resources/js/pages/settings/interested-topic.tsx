@@ -1,10 +1,10 @@
 "use client"
 import type { PageProps } from "@/types"
 import { useState, type FormEventHandler } from "react"
-import { Head, useForm } from "@inertiajs/react"
+import { Head, useForm, router } from "@inertiajs/react"
 import SettingsLayout from "@/layouts/settings/layout"
 import { motion, AnimatePresence } from "framer-motion"
-import { Sparkles, Check, Search, Filter } from "lucide-react"
+import { Sparkles, Check, Search, Filter, MessageCircle } from "lucide-react"
 
 interface Topic {
   id: number
@@ -48,6 +48,10 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
     })
   }
 
+  const navigateToChat = (topicId: number) => {
+    router.get(route("chat.index", { topic: topicId }))
+  }
+
   return (
     <SettingsLayout activeTab="interested-topic">
       <Head title="Interested Topic" />
@@ -68,7 +72,7 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               animate={{ opacity: 1, y: 0 }}
               className="text-4xl md:text-5xl font-bold bg-gradient-to-r from-gray-900 via-blue-800 to-purple-800 dark:from-white dark:via-blue-200 dark:to-purple-200 bg-clip-text text-transparent mb-4"
             >
-              {topics.length > 0 ? "Choose Your Interests" : "No Topics Available"}
+              {topics.length > 0 ? "Choose Your Groups chat" : "No Groups chat Available"}
             </motion.h1>
 
             <motion.p
@@ -78,8 +82,8 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               className="text-lg text-gray-600 dark:text-gray-300 max-w-3xl mx-auto leading-relaxed"
             >
               {topics.length > 0
-                ? "Discover content tailored to your passions. Select the topics that inspire you most and unlock a personalized experience."
-                : "There are currently no topics available for selection. Please check back later."}
+                ? "Discover content tailored to your passions. Select the Groups chat that inspire you most and unlock a personalized experience."
+                : "There are currently no Groups chat available for selection. Please check back later."}
             </motion.p>
 
             {topics.length > 0 && (
@@ -93,7 +97,7 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                   <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                   <input
                     type="text"
-                    placeholder="Search topics..."
+                    placeholder="Search Groups chat..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-12 pr-4 py-3 bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm border border-gray-200 dark:border-gray-700 rounded-2xl focus:ring-4 focus:ring-blue-500/20 focus:border-blue-500 dark:focus:border-blue-400 transition-all duration-200 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
@@ -191,14 +195,30 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                               <Sparkles className="w-5 h-5" />
                             </div>
 
-                            <div
-                              className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
-                                isChecked
-                                  ? "border-blue-500 bg-blue-500"
-                                  : "border-gray-300 dark:border-gray-600 group-hover:border-gray-400 dark:group-hover:border-gray-500"
-                              }`}
-                            >
-                              {isChecked && <Check className="w-4 h-4 text-white" />}
+                            <div className="flex items-center gap-2">
+                              {/* Chat icon button */}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  e.preventDefault()
+                                  navigateToChat(topic.id)
+                                }}
+                                className="p-1.5 rounded-lg bg-gray-100 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800/50 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-300 transition-all duration-200 group/chat"
+                                title="Go to chat"
+                              >
+                                <MessageCircle className="w-4 h-4 group-hover/chat:scale-110 transition-transform" />
+                              </button>
+
+                              <div
+                                className={`w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all duration-300 ${
+                                  isChecked
+                                    ? "border-blue-500 bg-blue-500"
+                                    : "border-gray-300 dark:border-gray-600 group-hover:border-gray-400 dark:group-hover:border-gray-500"
+                                }`}
+                              >
+                                {isChecked && <Check className="w-4 h-4 text-white" />}
+                              </div>
                             </div>
                           </div>
 
@@ -229,9 +249,9 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               {filteredTopics.length === 0 && searchTerm && (
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12">
                   <Search className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500 mb-4" />
-                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No topics found</h3>
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No Groups chat found</h3>
                   <p className="text-gray-500 dark:text-gray-400">
-                    Try adjusting your search terms or browse all available topics.
+                    Try adjusting your search terms or browse all available Groups chat.
                   </p>
                 </motion.div>
               )}
@@ -254,10 +274,10 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                       <p className="text-lg font-semibold text-gray-900 dark:text-white">
                         {selectedTopics.length > 0
                           ? `${selectedTopics.length} topic${selectedTopics.length !== 1 ? "s" : ""} selected`
-                          : "Select topics to get started"}
+                          : "Select Groups chat to get started"}
                       </p>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        Choose topics that match your interests
+                        Choose Groups chat that match your interests
                       </p>
                     </div>
                   </div>
@@ -305,9 +325,9 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               <div className="w-24 h-24 mx-auto mb-6 bg-gradient-to-br from-gray-100 to-gray-200 dark:from-gray-700 dark:to-gray-800 rounded-full flex items-center justify-center">
                 <Filter className="w-12 h-12 text-gray-400 dark:text-gray-500" />
               </div>
-              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No topics available</h3>
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No Groups chat available</h3>
               <p className="text-lg text-gray-500 dark:text-gray-400 max-w-md mx-auto">
-                We couldn't find any topics for you to select at this time. Please check back later.
+                We couldn't find any Groups chat for you to select at this time. Please check back later.
               </p>
             </motion.div>
           )}

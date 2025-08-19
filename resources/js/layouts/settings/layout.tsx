@@ -158,7 +158,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                             <Link href={route("auth.topics.select")}
                               className="flex items-center gap-2 px-3 py-2 text-sm">
                               <Shield className="h-4 w-4" />
-                                Interested Topics
+                                Groups Chat
                             </Link>
                           </TabsTrigger>
                         </TabsList>
@@ -217,7 +217,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                             }`}
                         >
                           <Shield className="h-4 w-4" />
-                          Interested Topics
+                          Groups Chat
                         </Link>
                       </div>
                     </nav>

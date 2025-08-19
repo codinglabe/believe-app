@@ -4,7 +4,8 @@ import type React from "react"
 import type { PageProps } from "@/types"
 import { useState, type FormEventHandler } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { useForm } from "@inertiajs/react"
+import { useForm, router } from "@inertiajs/react"
+import { MessageCircle } from "lucide-react"
 
 interface Topic {
   id: number
@@ -45,18 +46,23 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
     })
   }
 
+  const navigateToChat = (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation() // Prevent triggering the parent click event
+    router.get(route("chat.index", { topic: topicId }))
+  }
+
   return (
-    <ProfileLayout title="Select Topics">
+    <ProfileLayout title="Select Groups Chat">
       <div className="py-8 px-4 mx-auto max-w-7xl sm:px-6 lg:px-8">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-8">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              {topics.length > 0 ? "Select Your Interests" : "No Topics Available"}
+              {topics.length > 0 ? "Select Your Interests" : "No Groups Chat Available"}
             </h1>
             <p className="mt-4 text-lg text-gray-600 dark:text-gray-300">
               {topics.length > 0
-                ? "Choose the topics you're interested in to personalize your experience"
-                : "There are currently no topics available for selection. Please check back later."}
+                ? "Choose the Groups Chat you're interested in to personalize your experience"
+                : "There are currently no Groups Chat available for selection. Please check back later."}
             </p>
           </div>
 
@@ -84,9 +90,9 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                 {topics.map(topic => {
                   const isChecked = selectedTopics.includes(topic.id)
                   return (
-                    <label
+                    <div
                       key={topic.id}
-                      htmlFor={`topic-${topic.id}`}
+                      onClick={() => toggleTopic(topic.id)}
                       className={`flex items-start p-4 rounded-lg border transition-all cursor-pointer
                         ${
                           isChecked
@@ -99,21 +105,31 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                           id={`topic-${topic.id}`}
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => toggleTopic(topic.id)}
+                          onChange={() => {}} // Empty handler since we're handling click on parent
                           className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500
                             dark:focus:ring-blue-600 dark:ring-offset-gray-800 dark:border-gray-600"
                         />
                       </div>
-                      <div className="ml-3 text-sm">
-                        <span
-                          className={`block font-medium ${
-                            isChecked
-                              ? "text-blue-800 dark:text-blue-200"
-                              : "text-gray-700 dark:text-gray-300"
-                          }`}
-                        >
-                          {topic.name}
-                        </span>
+                      <div className="ml-3 text-sm flex-1">
+                        <div className="flex justify-between items-start">
+                          <span
+                            className={`block font-medium ${
+                              isChecked
+                                ? "text-blue-800 dark:text-blue-200"
+                                : "text-gray-700 dark:text-gray-300"
+                            }`}
+                          >
+                            {topic.name}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => navigateToChat(topic.id, e)}
+                            className="p-1.5 rounded-md bg-gray-100 dark:bg-gray-700 hover:bg-blue-100 dark:hover:bg-blue-800/50 text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-blue-300 transition-colors"
+                            title="Go to chat"
+                          >
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        </div>
                         {/* {topic.description && (
                           <p
                             className={`mt-1 ${
@@ -126,7 +142,7 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
                           </p>
                         )} */}
                       </div>
-                    </label>
+                    </div>
                   )
                 })}
               </div>
@@ -134,8 +150,8 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-4">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
                   {selectedTopics.length > 0
-                    ? `You've selected ${selectedTopics.length} topic${selectedTopics.length !== 1 ? 's' : ''}`
-                    : "Please select at least one topic"}
+                    ? `You've selected ${selectedTopics.length} Groups Chat${selectedTopics.length !== 1 ? 's' : ''}`
+                    : "Please select at least one Groups Chat"}
                 </p>
 
                 <button
@@ -169,9 +185,9 @@ export default function TopicSelectPage({ topics, initialSelected }: Props) {
               <svg className="mx-auto h-12 w-12 text-gray-400 dark:text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No topics available</h3>
+              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-white">No Groups Chat available</h3>
               <p className="mt-1 text-gray-500 dark:text-gray-400">
-                We couldn't find any topics for you to select at this time.
+                We couldn't find any Groups Chat for you to select at this time.
               </p>
             </div>
           )}

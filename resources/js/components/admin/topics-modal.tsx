@@ -1,6 +1,7 @@
 "use client"
-import { X, Tag, Trash2 } from "lucide-react"
+import { X, Tag, Trash2, MessageCircle } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { router } from "@inertiajs/react"
 
 interface Topic {
   id: number
@@ -16,6 +17,11 @@ interface TopicsModalProps {
 }
 
 export default function TopicsModal({ isOpen, onClose, topics, onDeleteTopic }: TopicsModalProps) {
+  const navigateToChat = (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent events
+    router.get(route("chat.index", { topic: topicId }));
+  };
+
   if (!isOpen) return null
 
   const handleDelete = (topicId: number, topicName: string) => {
@@ -54,7 +60,7 @@ export default function TopicsModal({ isOpen, onClose, topics, onDeleteTopic }: 
             {topics.map((topic) => (
               <div
                 key={topic.id}
-                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors"
+                className="flex items-center justify-between gap-3 p-3 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group"
               >
                 <div className="flex items-center gap-3 flex-1 min-w-0">
                   <div className={`w-3 h-3 rounded-full ${topic.color} flex-shrink-0`} />
@@ -62,15 +68,26 @@ export default function TopicsModal({ isOpen, onClose, topics, onDeleteTopic }: 
                     {topic.name}
                   </span>
                 </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleDelete(topic.id, topic.name)}
-                  className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
-                  title={`Remove ${topic.name}`}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={(e) => navigateToChat(topic.id, e)}
+                    className="h-7 w-7 p-0 hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:text-blue-600 dark:hover:text-blue-400"
+                    title="Go to chat"
+                  >
+                    <MessageCircle className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => handleDelete(topic.id, topic.name)}
+                    className="h-7 w-7 p-0 hover:bg-red-100 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400"
+                    title={`Remove ${topic.name}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
