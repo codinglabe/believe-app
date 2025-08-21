@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from "react"
+import { useState } from "react"
 import { Input } from "@/components/chat/ui/input"
 import { Button } from "@/components/chat/ui/button"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
@@ -9,15 +9,15 @@ import { GroupCreateDialog } from "@/components/chat/group-create-dialog"
 import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { PlusIcon, SearchIcon } from 'lucide-react'
-import { Link, usePage } from "@inertiajs/react"
 
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
-  return String(str || '').toLowerCase()
+  return String(str || "").toLowerCase()
 }
 
+type TabType = "groups" | "direct" | "users"
+
 export function Sidebar() {
-    const page = usePage().props;
   const {
     chatRooms = [],
     activeRoom,
@@ -25,24 +25,32 @@ export function Sidebar() {
     allUsers = [],
     currentUser,
     createDirectChat,
-    searchQuery = '',
+    searchQuery = "",
     setSearchQuery,
   } = useChat()
 
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
-  const [showUsers, setShowUsers] = useState(false)
+  const [activeTab, setActiveTab] = useState<TabType>("groups")
+
+  const getFilteredRooms = () => {
+    if (activeTab === "groups") {
+      return chatRooms.filter((room) => room.type === "public" || room.type === "private")
+    } else if (activeTab === "direct") {
+      return chatRooms.filter((room) => room.type === "direct")
+    }
+    return []
+  }
 
   // Safe filtering for rooms
-  const filteredRooms = chatRooms.filter((room) => {
+  const filteredRooms = getFilteredRooms().filter((room) => {
     const query = safeToLower(searchQuery).trim()
     if (!query) return true
 
     return (
       safeToLower(room.name).includes(query) ||
       safeToLower(room.last_message?.message).includes(query) ||
-      room.members?.some(member =>
-        safeToLower(member.name).includes(query)
-      ) || false
+      room.members?.some((member) => safeToLower(member.name).includes(query)) ||
+      false
     )
   })
 
@@ -59,33 +67,37 @@ export function Sidebar() {
   const handleUserClick = async (userId: number) => {
     try {
       const room = await createDirectChat(userId)
-      setShowUsers(false)
+      setActiveTab("direct")
       setSearchQuery("")
     } catch (error) {
       console.error("Failed to create direct chat:", error)
     }
   }
 
-  const canCreateGroups = currentUser?.role === "organization" || currentUser?.role === "admin" || currentUser?.role === "user"
+  // <CHANGE> Added null check for activeRoom to prevent TypeError
+  const getBreadcrumbText = () => {
+    if (!activeRoom) return "Chat"
+
+    if (activeRoom.type === "direct") {
+      return "Direct Chat"
+    } else if (activeRoom.type === "public" || activeRoom.type === "private") {
+      return "Groups Chat"
+    }
+    return "Chat"
+  }
+
+  const canCreateGroups =
+    currentUser?.role === "organization" || currentUser?.role === "admin" || currentUser?.role === "user"
 
   return (
     <div className="flex h-full flex-col border-r">
       {/* Header */}
-          <div className="flex items-center justify-between p-4 border-b">
+      <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-xl font-semibold">
-        {['admin', 'organization'].includes(page.auth.user.role) ? (
-            <Link href={route("dashboard")} className="underline">Dashboard</Link>
-        ) : (
-            <Link href={route("home")} className="underline">Home</Link>
-        )}
-        &nbsp;/ Chats
+          Dashboard / {getBreadcrumbText()}
         </h2>
         {canCreateGroups && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsGroupCreateOpen(true)}
-          >
+          <Button variant="ghost" size="icon" onClick={() => setIsGroupCreateOpen(true)}>
             <PlusIcon className="h-5 w-5" />
           </Button>
         )}
@@ -102,19 +114,27 @@ export function Sidebar() {
             onChange={(e) => setSearchQuery(e.target.value)}
           />
         </div>
-        <div className="flex gap-2 mt-3">
+        <div className="flex gap-1 mt-3">
           <Button
-            variant={!showUsers ? "default" : "outline"}
+            variant={activeTab === "groups" ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowUsers(false)}
+            onClick={() => setActiveTab("groups")}
             className="flex-1"
           >
-            Rooms
+            Groups
           </Button>
           <Button
-            variant={showUsers ? "default" : "outline"}
+            variant={activeTab === "direct" ? "default" : "outline"}
             size="sm"
-            onClick={() => setShowUsers(true)}
+            onClick={() => setActiveTab("direct")}
+            className="flex-1"
+          >
+            Direct
+          </Button>
+          <Button
+            variant={activeTab === "users" ? "default" : "outline"}
+            size="sm"
+            onClick={() => setActiveTab("users")}
             className="flex-1"
           >
             Users
@@ -124,7 +144,7 @@ export function Sidebar() {
 
       {/* Content */}
       <ScrollArea className="flex-1">
-        {showUsers ? (
+        {activeTab === "users" ? (
           <div className="p-2">
             {filteredUsers.length > 0 ? (
               filteredUsers.map((user) => (
@@ -136,18 +156,12 @@ export function Sidebar() {
                   <UserAvatar user={user} className="h-8 w-8" />
                   <div className="flex-1">
                     <p className="font-medium">{user?.name}</p>
-                    {user?.organization && (
-                      <p className="text-sm text-muted-foreground">
-                        {user.organization.name}
-                      </p>
-                    )}
+                    {user?.organization && <p className="text-sm text-muted-foreground">{user.organization.name}</p>}
                   </div>
                 </div>
               ))
             ) : (
-              <p className="text-center text-muted-foreground py-4">
-                No users found
-              </p>
+              <p className="text-center text-muted-foreground py-4">No users found</p>
             )}
           </div>
         ) : (
@@ -158,13 +172,13 @@ export function Sidebar() {
                   key={room?.id}
                   room={room}
                   isActive={activeRoom?.id === room?.id}
-                      onClick={() => room?.id && setActiveRoom(room)}
-                      currentUser={currentUser}
+                  onClick={() => room?.id && setActiveRoom(room)}
+                  currentUser={currentUser}
                 />
               ))
             ) : (
               <p className="text-center text-muted-foreground py-4">
-                No chat rooms found
+                {activeTab === "groups" ? "No groups found" : "No direct chats found"}
               </p>
             )}
           </div>
@@ -172,10 +186,7 @@ export function Sidebar() {
       </ScrollArea>
 
       {/* Create Group Dialog */}
-      <GroupCreateDialog
-        open={isGroupCreateOpen}
-        onOpenChange={setIsGroupCreateOpen}
-      />
+      <GroupCreateDialog open={isGroupCreateOpen} onOpenChange={setIsGroupCreateOpen} />
     </div>
   )
 }

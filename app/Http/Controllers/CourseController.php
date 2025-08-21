@@ -345,7 +345,7 @@ class CourseController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create course: ' . $e->getMessage());
-            
+
             return redirect()->back()
                 ->withInput()
                 ->withErrors(['error' => 'Failed to create course. Please try again.']);
@@ -359,7 +359,7 @@ class CourseController extends Controller
     {
         // Calculate meeting start time (course start date + start time)
         $meetingDateTime = \Carbon\Carbon::parse($course->start_date . ' ' . $course->start_time);
-        
+
         // Create meeting
         $meeting = Meeting::create([
             'course_id' => $course->id,
@@ -463,13 +463,13 @@ class CourseController extends Controller
     {
         // Add random salt for extra security
         $payload['salt'] = Str::random(32);
-        
+
         // Encrypt the payload
         $encryptedPayload = Crypt::encrypt($payload);
-        
+
         // Create a URL-safe hash
         $hashedToken = base64_encode(hash('sha256', $encryptedPayload . config('app.key'), true));
-        
+
         // Make it URL-safe
         return str_replace(['+', '/', '='], ['-', '_', ''], $hashedToken);
     }
@@ -482,7 +482,7 @@ class CourseController extends Controller
         try {
             // Convert back from URL-safe format
             $hashedToken = str_replace(['-', '_'], ['+', '/'], $hashedToken);
-            
+
             // Find the meeting link in database
             $meetingLink = MeetingLink::where('hashed_token', $hashedToken)
                 ->where('is_active', true)
@@ -516,10 +516,10 @@ class CourseController extends Controller
     public function generateLinkForNewEnrollment($courseId, $userId)
     {
         $course = Course::with('meeting')->find($courseId);
-        
+
         if ($course && $course->meeting) {
             $this->generateStudentLink($course->meeting, $userId);
-            
+
             Log::info('Generated meeting link for new enrollment', [
                 'course_id' => $courseId,
                 'user_id' => $userId,
@@ -588,7 +588,7 @@ class CourseController extends Controller
         if ($userEnrollment && $userEnrollment->status === 'active') {
             $activeMeeting = $course->getActiveMeeting();
             $upcomingMeetings = $course->getUpcomingMeetings();
-            
+
             if ($activeMeeting || $upcomingMeetings->count() > 0) {
                 $meetingInfo = [
                     'active_meeting' => $activeMeeting,
@@ -807,7 +807,7 @@ class CourseController extends Controller
             DB::beginTransaction();
 
             // Check if schedule changed and update meetings accordingly
-            $scheduleChanged = $course->start_date !== $validated['start_date'] || 
+            $scheduleChanged = $course->start_date !== $validated['start_date'] ||
                              $course->start_time !== $validated['start_time'];
 
             $course->update([
@@ -856,7 +856,7 @@ class CourseController extends Controller
             // Update meeting schedules if course schedule changed
             if ($scheduleChanged) {
                 $scheduledAt = \Carbon\Carbon::parse($validated['start_date'] . ' ' . $validated['start_time']);
-                
+
                 $course->meetings()
                     ->where('status', 'scheduled')
                     ->update(['scheduled_at' => $scheduledAt]);
@@ -869,7 +869,7 @@ class CourseController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to update course: ' . $e->getMessage());
-            
+
             return redirect()->back()
                 ->withInput()
                 ->withErrors(['error' => 'Failed to update course. Please try again.']);
