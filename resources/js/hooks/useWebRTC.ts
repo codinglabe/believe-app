@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import echoService from "@/services/EchoService"
+import echoService from "@/Services/EchoService"
 
 interface WebRTCHook {
   localStream: MediaStream | null
