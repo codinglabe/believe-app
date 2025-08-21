@@ -46,5 +46,7 @@ return [
         'secret' => env('PLAID_SECRET'),
         'environment' => env('PLAID_ENVIRONMENT', 'sandbox'), // sandbox, development, production
         'webhook_url' => env('PLAID_WEBHOOK_URL'),
-    ],
+    ]
+
+
 ];

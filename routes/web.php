@@ -7,6 +7,7 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\TestMeetingController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
@@ -41,6 +42,7 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -295,7 +297,7 @@ Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->n
 //     Route::post('/verification/ownership/retry', [OwnershipVerificationController::class, 'retry'])->name('verification.retry');
 // });
 // Enrollment routes (require authentication)
-Route::middleware(['auth' , 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/courses/{course:slug}/enroll', [EnrollmentController::class, 'show'])->name('courses.enroll');
     Route::post('/courses/{course:slug}/enroll', [EnrollmentController::class, 'store'])->name('courses.enroll.store');
     Route::post('/courses/{course:slug}/cancel', [EnrollmentController::class, 'cancel'])->name('courses.cancel');
@@ -318,53 +320,6 @@ Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
 
     // Topic Management Routes (Admin Only)
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
-});
-// Meeting routes
-Route::middleware(['auth', 'topics.selected'])->group(function () {
-    // Meeting management
-    Route::get('/meetings', [MeetingController::class, 'index'])->name('meetings.index');
-    Route::get('/meetings/create', [MeetingController::class, 'create'])->name('meetings.create');
-    Route::post('/meetings', [MeetingController::class, 'store'])->name('meetings.store');
-    Route::get('/meetings/{meeting}', [MeetingController::class, 'show'])->name('meetings.show');
-
-    // Meeting actions
-    Route::post('/meetings/{meeting}/start', [MeetingController::class, 'start'])->name('meetings.start');
-    Route::post('/meetings/{meeting}/end', [MeetingController::class, 'end'])->name('meetings.end');
-    Route::post('/meetings/{meeting}/leave', [MeetingController::class, 'leave'])->name('meetings.leave');
-    Route::post('/meetings/{meeting}/join', [MeetingController::class, 'joinMeeting'])->name('meetings.join-direct');
-
-    // WebRTC status updates
-    Route::post('/meetings/{meeting}/audio', [MeetingController::class, 'updateAudio'])->name('meetings.update-audio');
-    Route::post('/meetings/{meeting}/video', [MeetingController::class, 'updateVideo'])->name('meetings.update-video');
-
-    // Participant management
-    Route::post('/meetings/{meeting}/remove-participant', [MeetingController::class, 'removeParticipant'])->name('meetings.remove-participant');
-    Route::post('/meetings/{meeting}/mute-participant', [MeetingController::class, 'muteParticipant'])->name('meetings.mute-participant');
-    Route::get('/meetings/{meeting}/participants', [MeetingController::class, 'participants'])->name('meetings.participants');
-
-    // Meeting links
-    Route::post('/meetings/{meeting}/regenerate-links', [MeetingController::class, 'regenerateLinks'])->name('meetings.regenerate-links');
-
-    // Join meeting via token
-    Route::get('/meetings/join/{token}', [MeetingController::class, 'join'])->name('meetings.join');
-
-    // Chat routes
-    Route::delete('/meetings/{meeting}/chat/{message}', [MeetingChatMessageController::class, 'destroy'])->name('meetings.chat.destroy');
-    Route::get('/meetings/{meeting}/chat/history', [MeetingChatMessageController::class, 'history'])->name('meetings.chat.history');
-    Route::post('/meetings/{meeting}/messages', [MeetingChatMessageController::class, 'store'])->name('meetings.messages.send');
-    Route::get('/meetings/{meeting}/messages', [MeetingChatMessageController::class, 'index'])->name('meetings.messages.index');
-    Route::delete('/meetings/{meeting}/messages/{message}', [MeetingChatMessageController::class, 'deleteMessage'])->name('meetings.messages.delete');
-    Route::post('/meetings/{meeting}/messages/{message}/emoji', [MeetingChatMessageController::class, 'addEmoji'])->name('meetings.messages.emoji');
-    Route::post('/meetings/{meeting}/emoji', [MeetingChatMessageController::class, 'sendEmoji'])->name('meetings.emoji.send');
-
-    // Recording routes
-    Route::get('/meetings/{meeting}/recordings', [RecordingController::class, 'index'])->name('meetings.recordings.index');
-    Route::post('/meetings/{meeting}/recordings', [RecordingController::class, 'store'])->name('meetings.recordings.store');
-    Route::get('/recordings/{recording}', [RecordingController::class, 'show'])->name('recordings.show');
-    Route::get('/recordings/{recording}/download', [RecordingController::class, 'download'])->name('recordings.download');
-    Route::get('/recordings/{recording}/stream', [RecordingController::class, 'stream'])->name('recordings.stream');
-    Route::delete('/recordings/{recording}', [RecordingController::class, 'destroy'])->name('recordings.destroy');
-    Route::get('/recordings/{recording}/progress', [RecordingController::class, 'uploadProgress'])->name('recordings.progress');
 });
 
 // Plaid Verification routes
@@ -424,7 +379,6 @@ Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
-
 
 
 require __DIR__ . '/settings.php';

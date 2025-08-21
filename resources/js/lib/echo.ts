@@ -52,12 +52,9 @@ const echoConfig = {
   enabledTransports: ["ws", "wss"],
   auth: {
     headers: {
-      Authorization: `Bearer ${document.querySelector('meta[name="auth-token"]')?.getAttribute("content")}`,
       "X-CSRF-TOKEN": document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "",
     },
   },
-  authEndpoint: "/broadcasting/auth",
-  cluster: import.meta.env.VITE_PUSHER_APP_CLUSTER,
 }
 
 // Initialize Pusher

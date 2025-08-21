@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -50,9 +51,7 @@ class EnrollmentController extends Controller
         }
 
         // Check if course has started
-        $startDate = Carbon::parse($course->start_date)->format('Y-m-d');
-        $startTime = $course->start_time;
-        $startDateTime = Carbon::parse("$startDate $startTime");
+        $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
 
         if ($startDateTime->isPast()) {
             return redirect()->route('courses.show', $course->slug)
@@ -102,9 +101,6 @@ class EnrollmentController extends Controller
 
                 // Update course enrolled count
                 $course->increment('enrolled');
-
-                // Generate meeting links for the newly enrolled user
-                $course->generateMeetingLinksForNewEnrollment($user);
 
                 DB::commit();
 
@@ -179,25 +175,13 @@ class EnrollmentController extends Controller
 
         // Handle free enrollment success
         if ($enrollmentId && !$sessionId) {
-            $enrollment = Enrollment::with(['course.meetings', 'user'])->findOrFail($enrollmentId);
-
-            // Get meeting links for enrolled user
-            $meetingLinks = [];
-            foreach ($enrollment->course->meetings as $meeting) {
-                $studentLink = $meeting->getStudentLink($enrollment->user);
-                if ($studentLink) {
-                    $meetingLinks[] = [
-                        'meeting' => $meeting,
-                        'join_url' => $studentLink->getJoinUrl(),
-                    ];
-                }
-            }
+            $enrollment = Enrollment::with(['course', 'user'])->findOrFail($enrollmentId);
 
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
                 'type' => 'free',
-                'meetingLinks' => $meetingLinks,
+                'meetingLink' => $enrollment->course->meeting_link,
             ]);
         }
 
@@ -215,7 +199,6 @@ class EnrollmentController extends Controller
             $enrollment = Enrollment::with([
                 'course.organization',
                 'course.topic',
-                'course.meetings',
                 'user'
             ])->findOrFail($session->metadata->enrollment_id);
 
@@ -246,28 +229,13 @@ class EnrollmentController extends Controller
             // Update course enrolled count
             $enrollment->course->increment('enrolled');
 
-            // Generate meeting links for the newly enrolled user
-            $enrollment->course->generateMeetingLinksForNewEnrollment($enrollment->user);
-
-            // Get meeting links for enrolled user
-            $meetingLinks = [];
-            foreach ($enrollment->course->meetings as $meeting) {
-                $studentLink = $meeting->getStudentLink($enrollment->user);
-                if ($studentLink) {
-                    $meetingLinks[] = [
-                        'meeting' => $meeting,
-                        'join_url' => $studentLink->getJoinUrl(),
-                    ];
-                }
-            }
-
             DB::commit();
 
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
                 'type' => 'paid',
-                'meetingLinks' => $meetingLinks,
+                'meetingLink' => $enrollment->course->meeting_link,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -326,7 +294,7 @@ class EnrollmentController extends Controller
         }
 
         // Check if cancellation is allowed (24 hours before start)
-        $startDateTime = \Carbon\Carbon::parse($course->start_date . ' ' . $course->start_time);
+        $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
         $hoursUntilStart = now()->diffInHours($startDateTime, false);
 
         if ($hoursUntilStart < 24) {
@@ -365,9 +333,6 @@ class EnrollmentController extends Controller
 
             // Decrease course enrolled count
             $course->decrement('enrolled');
-
-            // Deactivate meeting links for this user
-            $course->deactivateMeetingLinksForUser($user);
 
             DB::commit();
 
@@ -452,9 +417,6 @@ class EnrollmentController extends Controller
             // Decrease course enrolled count
             $course->decrement('enrolled');
 
-            // Deactivate meeting links for this user
-            $course->deactivateMeetingLinksForUser($user);
-
             DB::commit();
 
             return redirect()->route('courses.show', $course->slug)
@@ -493,28 +455,9 @@ class EnrollmentController extends Controller
 
         $enrollments = $query->orderBy('enrolled_at', 'desc')->paginate(10);
 
-        // Add meeting information for active enrollments
         $enrollments->getCollection()->transform(function ($enrollment) use ($user) {
             if ($enrollment->status === 'active') {
-                $course = $enrollment->course;
-                $activeMeeting = $course->getActiveMeeting();
-                $upcomingMeetings = $course->getUpcomingMeetings();
-                
-                $enrollment->meeting_info = [
-                    'active_meeting' => $activeMeeting,
-                    'upcoming_meetings' => $upcomingMeetings,
-                ];
-
-                // Add join links
-                if ($activeMeeting) {
-                    $studentLink = $activeMeeting->getStudentLink($user);
-                    $enrollment->meeting_info['active_meeting']->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
-                }
-
-                foreach ($upcomingMeetings as $meeting) {
-                    $studentLink = $meeting->getStudentLink($user);
-                    $meeting->join_url = $studentLink ? $studentLink->getJoinUrl() : null;
-                }
+                $enrollment->meeting_link = $enrollment->course->meeting_link;
             }
             return $enrollment;
         });
@@ -535,5 +478,35 @@ class EnrollmentController extends Controller
                 'status' => $request->get('status', ''),
             ],
         ]);
+    }
+
+    /**
+     * Parse datetime properly handling cases where date already contains time
+     */
+    private function parseDateTime($date, $time)
+    {
+        try {
+            // Handle different date formats
+            if (strpos($date, ' ') !== false) {
+                // Date already contains time, extract just the date part
+                $datePart = explode(' ', $date)[0];
+            } else {
+                $datePart = $date;
+            }
+
+            // Combine date and time
+            $dateTimeString = $datePart . ' ' . $time;
+            return Carbon::parse($dateTimeString);
+
+        } catch (\Exception $e) {
+            Log::error('DateTime parsing error in EnrollmentController', [
+                'date' => $date,
+                'time' => $time,
+                'error' => $e->getMessage()
+            ]);
+            
+            // Fallback to current time
+            return Carbon::now();
+        }
     }
 }

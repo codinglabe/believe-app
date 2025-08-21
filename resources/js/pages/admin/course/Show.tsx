@@ -1,12 +1,26 @@
 "use client"
 import { Head, Link } from "@inertiajs/react"
-import { ArrowLeft, Users, Calendar, Clock, Globe, MapPin, Star, Award, Heart, BookOpen } from "lucide-react"
+import {
+  ArrowLeft,
+  Users,
+  Calendar,
+  Clock,
+  Globe,
+  MapPin,
+  Star,
+  Award,
+  Heart,
+  BookOpen,
+  ExternalLink,
+  Copy,
+} from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import AppLayout from "@/layouts/app-layout"
 import { route } from "ziggy-js"
+import { useState } from "react"
 
 interface Topic {
   id: number
@@ -57,6 +71,7 @@ interface Course {
   last_updated: string | null
   created_at: string
   updated_at: string
+  meeting_link: string | null
   topic: Topic | null
   organization: Organization
   creator: Creator
@@ -80,6 +95,18 @@ interface AdminCoursesShowProps {
 }
 
 export default function AdminCoursesShow({ course, enrollmentStats, status }: AdminCoursesShowProps) {
+  const [copied, setCopied] = useState(false)
+
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error("Failed to copy text: ", err)
+    }
+  }
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case "available":
@@ -251,6 +278,38 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Meeting Link Card */}
+            {course.meeting_link && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ExternalLink className="h-5 w-5" />
+                    Meeting Link
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="p-3 bg-muted rounded-lg">
+                    <div className="text-sm font-mono break-all text-muted-foreground mb-2">{course.meeting_link}</div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => copyToClipboard(course.meeting_link!)}
+                        className="flex-1"
+                      >
+                        <Copy className="h-4 w-4 mr-2" />
+                        {copied ? "Copied!" : "Copy"}
+                      </Button>
+                      <Button size="sm" onClick={() => window.open(course.meeting_link!, "_blank")} className="flex-1">
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        Open
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Enrollment Stats */}
             <Card>
               <CardHeader>
@@ -298,6 +357,17 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                     <div className="text-sm text-muted-foreground">Start Date</div>
                   </div>
                 </div>
+
+                {/* End Date display if available */}
+                {course.end_date && (
+                  <div className="flex items-center gap-3">
+                    <Calendar className="w-5 h-5 text-red-500" />
+                    <div>
+                      <div className="font-medium">{new Date(course.end_date).toLocaleDateString()}</div>
+                      <div className="text-sm text-muted-foreground">End Date</div>
+                    </div>
+                  </div>
+                )}
 
                 <div className="flex items-center gap-3">
                   <Clock className="w-5 h-5 text-green-500" />
