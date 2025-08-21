@@ -41,6 +41,8 @@ interface Meeting {
   is_chat_enabled: boolean
   is_screen_share_enabled: boolean
   meeting_password: string
+  google_meet_url?: string
+  google_meet_id?: string
   course: {
     id: number
     name: string
@@ -156,11 +158,12 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
   }
 
   const joinUrl =
-    isInstructor && hostLink
+    meeting.google_meet_url ||
+    (isInstructor && hostLink
       ? `/meetings/join/${hostLink.token}`
       : studentLink
         ? `/meetings/join/${studentLink.token}`
-        : null
+        : null)
 
   const LayoutComponent = isInstructor ? AppLayout : FrontendLayout
 
@@ -196,10 +199,14 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
                     {meeting.status === "active" && (
                       <>
                         {joinUrl && (
-                          <Link href={joinUrl}>
+                          <Link
+                            href={joinUrl}
+                            target={meeting.google_meet_url ? "_blank" : undefined}
+                            rel={meeting.google_meet_url ? "noopener noreferrer" : undefined}
+                          >
                             <Button className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
                               <Video className="w-4 h-4 mr-2" />
-                              Join Meeting
+                              {meeting.google_meet_url ? "Join Google Meet" : "Join Meeting"}
                             </Button>
                           </Link>
                         )}
@@ -213,10 +220,14 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
                 ) : (
                   <>
                     {meeting.status === "active" && joinUrl && (
-                      <Link href={joinUrl}>
+                      <Link
+                        href={joinUrl}
+                        target={meeting.google_meet_url ? "_blank" : undefined}
+                        rel={meeting.google_meet_url ? "noopener noreferrer" : undefined}
+                      >
                         <Button className="bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
                           <Video className="w-4 h-4 mr-2" />
-                          Join Meeting
+                          {meeting.google_meet_url ? "Join Google Meet" : "Join Meeting"}
                         </Button>
                       </Link>
                     )}
@@ -292,6 +303,26 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
                               <Copy className="w-4 h-4" />
                             </Button>
                           </div>
+                          {meeting.google_meet_id && (
+                            <div className="mt-2">
+                              <label className="text-sm font-medium text-gray-500 dark:text-gray-400">
+                                Google Meet ID
+                              </label>
+                              <div className="flex items-center space-x-2 mt-1">
+                                <code className="bg-green-100 dark:bg-green-900/20 px-2 py-1 rounded text-sm font-mono text-green-800 dark:text-green-300">
+                                  {meeting.google_meet_id}
+                                </code>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => copyToClipboard(meeting.google_meet_id!)}
+                                  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                                >
+                                  <Copy className="w-4 h-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          )}
                         </div>
 
                         <div>
@@ -354,6 +385,15 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
                           Features
                         </label>
                         <div className="flex flex-wrap gap-2">
+                          {meeting.google_meet_url && (
+                            <Badge
+                              variant="secondary"
+                              className="bg-green-100 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800"
+                            >
+                              <Video className="w-3 h-3 mr-1" />
+                              Google Meet
+                            </Badge>
+                          )}
                           {meeting.is_recording_enabled && (
                             <Badge
                               variant="secondary"
@@ -580,10 +620,19 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
                 </CardHeader>
                 <CardContent className="space-y-3">
                   {joinUrl && (
-                    <Link href={joinUrl} className="block">
+                    <Link
+                      href={joinUrl}
+                      className="block"
+                      target={meeting.google_meet_url ? "_blank" : undefined}
+                      rel={meeting.google_meet_url ? "noopener noreferrer" : undefined}
+                    >
                       <Button className="w-full bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700">
                         <Video className="w-4 h-4 mr-2" />
-                        {isInstructor ? "Join as Host" : "Join Meeting"}
+                        {meeting.google_meet_url
+                          ? `Join Google Meet${isInstructor ? " as Host" : ""}`
+                          : isInstructor
+                            ? "Join as Host"
+                            : "Join Meeting"}
                       </Button>
                     </Link>
                   )}
@@ -612,12 +661,36 @@ export default function ShowMeeting({ meeting, hostLink, studentLink, attendance
               </Card>
 
               {/* Meeting Links */}
-              {(hostLink || studentLink) && (
+              {(hostLink || studentLink || meeting.google_meet_url) && (
                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                   <CardHeader>
                     <CardTitle className="text-gray-900 dark:text-white">Meeting Access</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
+                    {meeting.google_meet_url && (
+                      <div>
+                        <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Google Meet Link</label>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <input
+                            value={meeting.google_meet_url}
+                            readOnly
+                            className="text-xs bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded px-2 py-1 flex-1 text-green-800 dark:text-green-300"
+                          />
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => copyToClipboard(meeting.google_meet_url!)}
+                            className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
+                          >
+                            <Copy className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        <p className="text-xs text-green-600 dark:text-green-400 mt-1">
+                          Direct Google Meet access - no expiration
+                        </p>
+                      </div>
+                    )}
+
                     {hostLink && isInstructor && (
                       <div>
                         <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Host Link</label>

@@ -156,7 +156,7 @@ class NodeSellController extends Controller
                         'share_amount' => $amount,
                         'will_be_big_boss' => $willBeBigBoss ? '1' : '0',
                     ],
-                    'payment_method_types' => ['card', 'afterpay_clearpay'],
+                    'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
                 ]
             );
 

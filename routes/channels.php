@@ -50,3 +50,8 @@ Broadcast::channel('user.{id}', function ($user, $userId) {
 Broadcast::channel('meeting.{meetingId}.participants', function (User $user, $meetingId) {
     return $user->meetings()->where('meetings.id', $meetingId)->exists();
 });
+
+
+Broadcast::channel('meeting.{meetingId}', function ($user, $meetingId) {
+    return true; // Allow all users for testing (no DB auth check)
+});

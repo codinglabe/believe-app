@@ -2,7 +2,19 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { ArrowLeft, CreditCard, Shield, CheckCircle, AlertCircle, Calendar, Clock, Users, MapPin } from "lucide-react"
+import {
+  ArrowLeft,
+  CreditCard,
+  Shield,
+  CheckCircle,
+  AlertCircle,
+  Calendar,
+  Clock,
+  Users,
+  MapPin,
+  LinkIcon,
+  Copy,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -21,6 +33,7 @@ interface Course {
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
+  end_date?: string
   start_time: string
   duration: string
   format: string
@@ -30,6 +43,7 @@ interface Course {
   formatted_duration: string
   formatted_format: string
   image_url?: string
+  meeting_link?: string
   topic: {
     name: string
   }
@@ -44,6 +58,7 @@ interface Props {
 
 export default function FrontendCourseEnroll({ course }: Props) {
   const [paymentMethod, setPaymentMethod] = useState("")
+  const [copied, setCopied] = useState(false)
   const { data, setData, post, processing, errors } = useForm({
     terms_accepted: false,
     payment_method: "",
@@ -57,6 +72,14 @@ export default function FrontendCourseEnroll({ course }: Props) {
     }
 
     post(`/courses/${course.slug}/enroll`)
+  }
+
+  const copyMeetingLink = () => {
+    if (course.meeting_link) {
+      navigator.clipboard.writeText(course.meeting_link)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    }
   }
 
   const availableSpots = course.max_participants - course.enrolled
@@ -240,6 +263,7 @@ export default function FrontendCourseEnroll({ course }: Props) {
                           <Calendar className="h-4 w-4 text-blue-600" />
                           <span>
                             {new Date(course.start_date).toLocaleDateString()} at {course.start_time}
+                            {course.end_date && ` - ${new Date(course.end_date).toLocaleDateString()}`}
                           </span>
                         </div>
 
@@ -288,6 +312,42 @@ export default function FrontendCourseEnroll({ course }: Props) {
                               Full refund available within 7 days of enrollment. Cancellations must be made at least 24
                               hours before course start.
                             </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+
+                  {/* Meeting Link Card */}
+                  {course.meeting_link && (
+                    <Card className="shadow-lg">
+                      <CardContent className="p-6">
+                        <div className="flex items-start gap-3">
+                          <LinkIcon className="h-5 w-5 text-blue-600 mt-0.5" />
+                          <div className="flex-1">
+                            <h4 className="font-semibold text-gray-900 dark:text-white mb-2">Meeting Link</h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                              Join the course using this meeting link after enrollment.
+                            </p>
+                            <div className="flex gap-2">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={copyMeetingLink}
+                                className="flex-1 bg-transparent"
+                              >
+                                <Copy className="mr-2 h-4 w-4" />
+                                {copied ? "Copied!" : "Copy Link"}
+                              </Button>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => window.open(course.meeting_link, "_blank")}
+                                className="flex-1 bg-blue-600 hover:bg-blue-700"
+                              >
+                                Open Meeting
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </CardContent>

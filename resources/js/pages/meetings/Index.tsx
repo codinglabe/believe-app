@@ -21,6 +21,8 @@ interface Meeting {
   duration_minutes: number
   status: "scheduled" | "active" | "completed" | "cancelled"
   max_participants: number
+  google_meet_url?: string
+  google_meet_id?: string
   course: {
     id: number
     name: string
@@ -89,7 +91,7 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
 
   const canJoinMeeting = (meeting: Meeting) => {
     if (userRole === "user") return true
-    return meeting.status === "active" && meeting.join_url
+    return meeting.status === "active" && (meeting.join_url || meeting.google_meet_url)
   }
 
   const LayoutComponent = userRole === "organization" ? AppLayout : FrontendLayout
@@ -236,6 +238,11 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
                       <div className="flex items-center text-sm text-gray-500 dark:text-gray-400">
                         <Video className="w-4 h-4 mr-2" />
                         ID: {meeting.meeting_id}
+                        {meeting.google_meet_id && (
+                          <span className="ml-2 text-xs bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300 px-2 py-1 rounded">
+                            Google Meet
+                          </span>
+                        )}
                       </div>
 
                       <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
@@ -286,14 +293,19 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
                                   Details
                                 </Button>
                               </Link>
-                              {canJoinMeeting(meeting) && meeting.join_url && (
-                                <Link href={meeting.join_url} className="flex-1">
+                              {canJoinMeeting(meeting) && (meeting.join_url || meeting.google_meet_url) && (
+                                <Link
+                                  href={meeting.google_meet_url || meeting.join_url || "#"}
+                                  target={meeting.google_meet_url ? "_blank" : undefined}
+                                  rel={meeting.google_meet_url ? "noopener noreferrer" : undefined}
+                                  className="flex-1"
+                                >
                                   <Button
                                     size="sm"
                                     className="w-full bg-purple-600 hover:bg-purple-700 dark:bg-purple-600 dark:hover:bg-purple-700"
                                   >
                                     <Video className="w-4 h-4 mr-2" />
-                                    Join
+                                    {meeting.google_meet_url ? "Join Google Meet" : "Join"}
                                   </Button>
                                 </Link>
                               )}
@@ -336,12 +348,13 @@ export default function MeetingsIndex({ meetings, userRole, filters }: Props) {
                   <Link
                     key={index}
                     href={link.url || "#"}
-                    className={`px-3 py-2 text-sm rounded-md transition-colors ${link.active
+                    className={`px-3 py-2 text-sm rounded-md transition-colors ${
+                      link.active
                         ? "bg-purple-600 text-white dark:bg-purple-600"
                         : link.url
                           ? "bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 border border-gray-300 dark:border-gray-600"
                           : "bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed"
-                      }`}
+                    }`}
                     dangerouslySetInnerHTML={{ __html: link.label }}
                   />
                 ))}

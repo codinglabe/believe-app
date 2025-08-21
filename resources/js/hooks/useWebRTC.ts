@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
-import { echo } from "@/lib/echo"
+import echoService from "@/services/EchoService"
 
 interface WebRTCHook {
   localStream: MediaStream | null
@@ -13,6 +13,7 @@ interface WebRTCHook {
   isVideoEnabled: boolean
   isScreenSharing: boolean
   permissionStatus: string
+  connectedPeers: string[]
   startCall: () => Promise<void>
   endCall: () => void
   toggleAudio: () => void
@@ -20,8 +21,6 @@ interface WebRTCHook {
   startScreenShare: () => Promise<void>
   stopScreenShare: () => void
   requestPermissions: () => Promise<boolean>
-  createOfferForPeer: (peerId: string) => Promise<void>
-  handleWebRTCSignal: (signal: any) => Promise<void>
 }
 
 export function useWebRTC(meetingId: string, userId: string, role: string): WebRTCHook {
@@ -34,44 +33,139 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
   const [isVideoEnabled, setIsVideoEnabled] = useState(true)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [permissionStatus, setPermissionStatus] = useState("prompt")
+  const [connectedPeers, setConnectedPeers] = useState<string[]>([])
 
+  // Refs for managing state
   const peerConnections = useRef<Map<string, RTCPeerConnection>>(new Map())
   const originalVideoTrack = useRef<MediaStreamTrack | null>(null)
-  const echoListenersSetup = useRef(false)
+  const isInitialized = useRef(false)
+  const callEnded = useRef(false)
+  const pendingCandidates = useRef<Map<string, RTCIceCandidateInit[]>>(new Map())
+  const makingOffer = useRef<Map<string, boolean>>(new Map())
+  const ignoreOffer = useRef<Map<string, boolean>>(new Map())
+  const isSettingRemoteAnswerPending = useRef<Map<string, boolean>>(new Map())
 
-  // WebRTC Configuration
   const rtcConfiguration: RTCConfiguration = {
     iceServers: [
+      // Google STUN servers
       { urls: "stun:stun.l.google.com:19302" },
       { urls: "stun:stun1.l.google.com:19302" },
       { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:19302" },
+      // Cloudflare STUN
+      { urls: "stun:stun.cloudflare.com:3478" },
+      // Mozilla STUN
+      { urls: "stun:stun.services.mozilla.com" },
+      // Add TURN servers for production (uncomment and configure)
+      // {
+      //   urls: "turn:your-turn-server.com:3478",
+      //   username: "your-username",
+      //   credential: "your-password"
+      // }
     ],
+    iceCandidatePoolSize: 10,
+    bundlePolicy: "max-bundle",
+    rtcpMuxPolicy: "require",
   }
+
+  // Update connection status
+  const updateConnectionStatus = useCallback(() => {
+    if (callEnded.current) return
+
+    const totalPeers = peerConnections.current.size
+    const connectedCount = Array.from(peerConnections.current.values()).filter(
+      (pc) => pc.connectionState === "connected",
+    ).length
+
+    console.log(
+      "[v0] updateConnectionStatus - isInitialized:",
+      isInitialized.current,
+      "totalPeers:",
+      totalPeers,
+      "connectedCount:",
+      connectedCount,
+    )
+
+    setConnectedPeers(
+      Array.from(peerConnections.current.entries())
+        .filter(([_, pc]) => pc.connectionState === "connected")
+        .map(([peerId, _]) => peerId),
+    )
+
+    if (!isInitialized.current) {
+      setIsConnected(false)
+      setConnectionStatus("Setting up connection...")
+      console.log("[v0] Status: Setting up connection...")
+    } else if (totalPeers === 0) {
+      setIsConnected(true)
+      setConnectionStatus("Waiting for participants...")
+      console.log("[v0] Status: Waiting for participants...")
+    } else if (connectedCount === totalPeers) {
+      setIsConnected(true)
+      setConnectionStatus("Connected to all participants")
+      console.log("[v0] Status: Connected to all participants")
+    } else if (connectedCount > 0) {
+      setIsConnected(true)
+      setConnectionStatus(`Connected to ${connectedCount}/${totalPeers} participants`)
+      console.log("[v0] Status: Connected to some participants")
+    } else {
+      setIsConnected(false)
+      setConnectionStatus("Connecting to participants...")
+      console.log("[v0] Status: Connecting to participants...")
+    }
+  }, [])
 
   // Request media permissions
   const requestPermissions = useCallback(async (): Promise<boolean> => {
+    if (callEnded.current) return false
+
     try {
       setPermissionStatus("requesting")
-      setConnectionStatus("Requesting permissions...")
+      setConnectionStatus("Requesting media permissions...")
 
-      const constraints = {
-        video: {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          frameRate: { ideal: 30, max: 60 },
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 44100,
-        },
+      let stream: MediaStream
+      try {
+        // Try video + audio first
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 15, max: 30 },
+            facingMode: "user",
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 44100,
+          },
+        })
+        console.log("✅ Video and audio permissions granted")
+      } catch (videoError) {
+        console.warn("⚠️ Video permission denied, trying audio only:", videoError)
+        try {
+          // Fallback to audio only
+          stream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          })
+          setIsVideoEnabled(false)
+          console.log("✅ Audio-only permissions granted")
+        } catch (audioError) {
+          console.error("❌ All media permissions denied:", audioError)
+          setPermissionStatus("denied")
+          setConnectionStatus("Media permissions denied")
+          return false
+        }
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       setLocalStream(stream)
       setPermissionStatus("granted")
-      setConnectionStatus("Permissions granted")
+      setConnectionStatus("Media permissions granted")
 
       // Store original video track for screen sharing
       const videoTrack = stream.getVideoTracks()[0]
@@ -79,145 +173,255 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
         originalVideoTrack.current = videoTrack
       }
 
-      console.log("Media permissions granted successfully")
       return true
     } catch (error) {
-      console.error("Failed to get media permissions:", error)
+      console.error("❌ Failed to get media permissions:", error)
       setPermissionStatus("denied")
-      setConnectionStatus("Media permissions denied")
-
-      // Try audio only as fallback
-      try {
-        console.log("Trying audio-only fallback...")
-        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true })
-        setLocalStream(audioStream)
-        setIsVideoEnabled(false)
-        setPermissionStatus("partial")
-        setConnectionStatus("Audio only - Video permission denied")
-        console.log("Audio-only permissions granted")
-        return true
-      } catch (audioError) {
-        console.error("Failed to get audio permission:", audioError)
-        setConnectionStatus("All media permissions denied")
-        return false
-      }
+      setConnectionStatus("Failed to get media permissions")
+      return false
     }
   }, [])
 
-  // Create peer connection
+  // Create peer connection with perfect negotiation pattern
   const createPeerConnection = useCallback(
     (peerId: string): RTCPeerConnection => {
-      console.log("Creating peer connection for:", peerId)
+      if (callEnded.current) {
+        throw new Error("Call has ended")
+      }
+
+      console.log(`🔗 Creating peer connection for: ${peerId}`)
+
+      // Close existing connection if any
+      const existingPc = peerConnections.current.get(peerId)
+      if (existingPc) {
+        existingPc.close()
+        peerConnections.current.delete(peerId)
+      }
+
       const pc = new RTCPeerConnection(rtcConfiguration)
 
+      // Initialize negotiation state
+      makingOffer.current.set(peerId, false)
+      ignoreOffer.current.set(peerId, false)
+      isSettingRemoteAnswerPending.current.set(peerId, false)
+
       // Add local stream tracks
-      if (localStream) {
+      if (localStream && !callEnded.current) {
         localStream.getTracks().forEach((track) => {
-          console.log("Adding track to peer connection:", track.kind)
+          console.log(`➕ Adding ${track.kind} track to peer ${peerId}`)
           pc.addTrack(track, localStream)
         })
       }
 
       // Handle remote stream
       pc.ontrack = (event) => {
-        console.log("Received remote track from:", peerId, event.track.kind)
-        const remoteStream = event.streams[0]
+        if (callEnded.current) return
 
-        setRemoteStreams((prev) => {
-          const existingIndex = prev.findIndex((stream) => stream.id === remoteStream.id)
-          if (existingIndex === -1) {
-            console.log("Adding new remote stream:", remoteStream.id)
-            return [...prev, remoteStream]
-          }
-          return prev
-        })
+        console.log(`📺 Received ${event.track.kind} track from: ${peerId}`)
+        const [remoteStream] = event.streams
+
+        if (remoteStream) {
+          setRemoteStreams((prev) => {
+            const filtered = prev.filter((stream) => stream.id !== remoteStream.id)
+            return [...filtered, remoteStream]
+          })
+          console.log(`📺 Added remote stream for peer: ${peerId}`)
+        }
       }
 
       // Handle ICE candidates
       pc.onicecandidate = (event) => {
+        if (callEnded.current) return
+
         if (event.candidate) {
-          console.log("Sending ICE candidate to:", peerId)
-          echo.private(`meeting.${meetingId}`).whisper("webrtc-signal", {
+          console.log(`🧊 Sending ICE candidate to: ${peerId}`)
+          echoService.sendWebRTCSignal(meetingId, {
             type: "ice-candidate",
             candidate: event.candidate,
             from: userId,
             to: peerId,
           })
+        } else {
+          console.log(`🧊 ICE gathering complete for peer: ${peerId}`)
+        }
+      }
+
+      // Perfect negotiation pattern
+      pc.onnegotiationneeded = async () => {
+        if (callEnded.current) return
+
+        try {
+          console.log(`🤝 Negotiation needed with peer: ${peerId}`)
+          makingOffer.current.set(peerId, true)
+
+          await pc.setLocalDescription()
+          console.log(`📤 Sending offer to peer: ${peerId}`)
+
+          echoService.sendWebRTCSignal(meetingId, {
+            type: "offer",
+            offer: pc.localDescription,
+            from: userId,
+            to: peerId,
+          })
+        } catch (error) {
+          console.error(`❌ Error in negotiation with peer ${peerId}:`, error)
+        } finally {
+          makingOffer.current.set(peerId, false)
         }
       }
 
       // Handle connection state changes
       pc.onconnectionstatechange = () => {
-        console.log(`Peer connection state with ${peerId}:`, pc.connectionState)
+        if (callEnded.current) return
 
-        if (pc.connectionState === "connected") {
-          setIsConnected(true)
-          setConnectionStatus("Connected")
-        } else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-          setIsConnected(false)
-          setConnectionStatus(`Connection ${pc.connectionState}`)
+        console.log(`🔄 Peer ${peerId} connection state: ${pc.connectionState}`)
+
+        switch (pc.connectionState) {
+          case "connected":
+            console.log(`✅ Peer ${peerId} connected successfully`)
+            updateConnectionStatus()
+            break
+          case "connecting":
+            console.log(`🔄 Connecting to peer: ${peerId}`)
+            break
+          case "disconnected":
+            console.log(`⚠️ Peer ${peerId} disconnected`)
+            updateConnectionStatus()
+            break
+          case "failed":
+            console.log(`❌ Peer ${peerId} connection failed`)
+            // Clean up failed connection
+            pc.close()
+            peerConnections.current.delete(peerId)
+            setRemoteStreams((prev) => prev.filter((stream) => stream.id !== `remote-${peerId}`))
+            updateConnectionStatus()
+            break
+          case "closed":
+            console.log(`🔒 Peer ${peerId} connection closed`)
+            updateConnectionStatus()
+            break
         }
       }
 
       // Handle ICE connection state changes
       pc.oniceconnectionstatechange = () => {
-        console.log(`ICE connection state with ${peerId}:`, pc.iceConnectionState)
+        if (callEnded.current) return
+
+        console.log(`🧊 ICE connection state with ${peerId}: ${pc.iceConnectionState}`)
+
+        if (pc.iceConnectionState === "failed") {
+          console.log(`🔄 Restarting ICE for peer: ${peerId}`)
+          pc.restartIce()
+        }
       }
 
       peerConnections.current.set(peerId, pc)
       return pc
     },
-    [localStream, meetingId, userId],
+    [localStream, meetingId, userId, updateConnectionStatus],
   )
 
-  // Handle WebRTC signaling
   const handleWebRTCSignal = useCallback(
     async (signal: any) => {
+      if (callEnded.current) return
+
       try {
         const { type, from, to, offer, answer, candidate } = signal
 
         // Only process signals meant for this user
         if (to !== userId) return
 
-        console.log("Received WebRTC signal:", type, "from:", from)
+        console.log(`📨 Received ${type} from: ${from}`)
 
         let pc = peerConnections.current.get(from)
         if (!pc) {
+          console.log(`🔗 Creating new peer connection for signal from: ${from}`)
           pc = createPeerConnection(from)
         }
 
         switch (type) {
           case "offer":
-            await pc.setRemoteDescription(new RTCSessionDescription(offer))
-            const answer_desc = await pc.createAnswer()
-            await pc.setLocalDescription(answer_desc)
+            try {
+              const isPolite = userId > from // Polite peer determination
+              const offerCollision = pc.signalingState !== "stable" || makingOffer.current.get(from)
 
-            echo.private(`meeting.${meetingId}`).whisper("webrtc-signal", {
-              type: "answer",
-              answer: answer_desc,
-              from: userId,
-              to: from,
-            })
+              ignoreOffer.current.set(from, !isPolite && offerCollision)
+
+              if (ignoreOffer.current.get(from)) {
+                console.log(`🚫 Ignoring offer from ${from} (collision)`)
+                return
+              }
+
+              console.log(`📥 Processing offer from ${from}`)
+              await pc.setRemoteDescription(offer)
+
+              // Process any pending candidates
+              const pending = pendingCandidates.current.get(from) || []
+              for (const candidate of pending) {
+                try {
+                  await pc.addIceCandidate(candidate)
+                  console.log(`🧊 Added pending candidate from ${from}`)
+                } catch (e) {
+                  console.warn(`Failed to add pending candidate: ${e}`)
+                }
+              }
+              pendingCandidates.current.delete(from)
+
+              const answer = await pc.createAnswer()
+              await pc.setLocalDescription(answer)
+
+              console.log(`📤 Sending answer to: ${from}`)
+              echoService.sendWebRTCSignal(meetingId, {
+                type: "answer",
+                answer: pc.localDescription,
+                from: userId,
+                to: from,
+              })
+            } catch (error) {
+              console.error(`❌ Error processing offer from ${from}:`, error)
+            }
             break
 
           case "answer":
-            await pc.setRemoteDescription(new RTCSessionDescription(answer))
+            try {
+              console.log(`📥 Processing answer from ${from}`)
+              await pc.setRemoteDescription(answer)
+              console.log(`✅ Set remote description for answer from: ${from}`)
+
+              // Process any pending candidates
+              const pending = pendingCandidates.current.get(from) || []
+              for (const candidate of pending) {
+                try {
+                  await pc.addIceCandidate(candidate)
+                  console.log(`🧊 Added pending candidate from ${from}`)
+                } catch (e) {
+                  console.warn(`Failed to add pending candidate: ${e}`)
+                }
+              }
+              pendingCandidates.current.delete(from)
+            } catch (error) {
+              console.error(`❌ Error processing answer from ${from}:`, error)
+            }
             break
 
           case "ice-candidate":
-            await pc.addIceCandidate(new RTCIceCandidate(candidate))
-            break
-
-          case "screen-share-start":
-            console.log("Participant started screen sharing:", from)
-            break
-
-          case "screen-share-stop":
-            console.log("Participant stopped screen sharing:", from)
+            try {
+              if (pc.remoteDescription && pc.remoteDescription.type) {
+                await pc.addIceCandidate(candidate)
+                console.log(`🧊 Added ICE candidate from: ${from}`)
+              } else {
+                console.log(`🧊 Queuing ICE candidate from ${from} (no remote description)`)
+                const pending = pendingCandidates.current.get(from) || []
+                pending.push(candidate)
+                pendingCandidates.current.set(from, pending)
+              }
+            } catch (error) {
+              console.error(`❌ Error adding ICE candidate from ${from}:`, error)
+            }
             break
         }
       } catch (error) {
-        console.error("Error handling WebRTC signal:", error)
+        console.error("❌ Error handling WebRTC signal:", error)
       }
     },
     [userId, meetingId, createPeerConnection],
@@ -225,62 +429,91 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
 
   // Set up Echo listeners
   const setupEchoListeners = useCallback(() => {
-    if (echoListenersSetup.current) return
+    console.log(`🔊 Setting up Echo listeners for meeting: ${meetingId}`)
 
-    console.log("Setting up Echo listeners for meeting:", meetingId)
+    const channelName = echoService.joinMeeting(meetingId, userId, {
+      onParticipantJoined: (participant: any) => {
+        const participantId = participant.user?.id?.toString() || participant.id?.toString()
+        console.log(`👋 New participant joined: ${participantId}`)
 
-    const channel = echo.private(`meeting.${meetingId}`)
+        if (participantId && participantId !== userId && !callEnded.current) {
+          setConnectionStatus("New participant joining...")
+          setTimeout(() => {
+            if (!callEnded.current) {
+              const pc = createPeerConnection(participantId)
+              // Initiate negotiation for new participant
+              pc.onnegotiationneeded()
+              updateConnectionStatus()
+            }
+          }, 500) // Reduced delay for faster connection
+        }
+      },
+      onParticipantLeft: (participant: any) => {
+        const participantId = participant.user?.id?.toString() || participant.id?.toString()
+        console.log(`👋 Participant left: ${participantId}`)
 
-    // Listen for WebRTC signals
-    channel.listenForWhisper("webrtc-signal", handleWebRTCSignal)
+        if (participantId) {
+          const pc = peerConnections.current.get(participantId)
+          if (pc) {
+            pc.close()
+            peerConnections.current.delete(participantId)
+          }
 
-    // Listen for new participants
-    channel.listen("ParticipantJoined", (data: any) => {
-      console.log("New participant joined:", data.user.id)
-      if (data.user.id !== userId) {
-        // Create offer for new participant
-        createOfferForPeer(data.user.id.toString())
-      }
+          setRemoteStreams((prev) => prev.filter((stream) => stream.id !== `remote-${participantId}`))
+
+          // Clean up negotiation state
+          makingOffer.current.delete(participantId)
+          ignoreOffer.current.delete(participantId)
+          isSettingRemoteAnswerPending.current.delete(participantId)
+          pendingCandidates.current.delete(participantId)
+
+          updateConnectionStatus()
+        }
+      },
+      onWebRTCSignal: handleWebRTCSignal,
     })
 
-    // Listen for participants leaving
-    channel.listen("ParticipantLeft", (data: any) => {
-      console.log("Participant left:", data.user.id)
-      const pc = peerConnections.current.get(data.user.id.toString())
-      if (pc) {
-        pc.close()
-        peerConnections.current.delete(data.user.id.toString())
-      }
+    return channelName !== ""
+  }, [meetingId, userId, handleWebRTCSignal, createPeerConnection, updateConnectionStatus])
 
-      // Remove their remote stream
-      setRemoteStreams((prev) => prev.filter((stream) => stream.id !== `remote-${data.user.id}`))
-    })
-
-    echoListenersSetup.current = true
-  }, [meetingId, userId, handleWebRTCSignal])
-
-  // Start call
   const startCall = useCallback(async () => {
-    try {
-      console.log("Starting WebRTC call...")
-      setConnectionStatus("Starting call...")
+    if (isInitialized.current || callEnded.current) {
+      console.log("📞 Call already initialized or ended")
+      return
+    }
 
-      // Request permissions if not already granted
+    try {
+      console.log("📞 Starting WebRTC call...")
+      callEnded.current = false
+      setConnectionStatus("Initializing call...")
+
+      // Request permissions if needed
       if (!localStream && permissionStatus !== "granted") {
+        setConnectionStatus("Requesting media permissions...")
         const granted = await requestPermissions()
         if (!granted) {
           throw new Error("Media permissions required")
         }
       }
 
-      console.log("Local stream initialized")
+      setConnectionStatus("Setting up real-time communication...")
 
-      // Set up Echo listeners
-      console.log("Setting up Echo listeners...")
-      setupEchoListeners()
+      // Set up Echo listeners first
+      const success = setupEchoListeners()
+      if (!success) {
+        throw new Error("Failed to set up real-time communication")
+      }
+
+      // Wait for Echo to be ready
+      setConnectionStatus("Connecting to meeting server...")
+      const connected = await echoService.waitForConnection(10000)
+      if (!connected) {
+        throw new Error("Failed to connect to meeting server")
+      }
 
       // Join meeting on server
-      console.log("Joining meeting on server...")
+      console.log("🚪 Joining meeting on server...")
+      setConnectionStatus("Joining meeting...")
       const response = await fetch(`/meetings/${meetingId}/join`, {
         method: "POST",
         headers: {
@@ -295,83 +528,33 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
       }
 
       const data = await response.json()
-      console.log("Successfully joined meeting:", data)
+      console.log("✅ Successfully joined meeting:", data)
 
-      setConnectionStatus("Call started")
-      console.log("Call started successfully")
+      isInitialized.current = true
+      setConnectionStatus("Connected to meeting")
+      updateConnectionStatus()
+
+      console.log("✅ Call started successfully")
     } catch (error) {
-      console.error("Failed to start call:", error)
+      console.error("❌ Failed to start call:", error)
       setConnectionStatus(`Failed to start call: ${error.message}`)
       setIsConnected(false)
+      isInitialized.current = false
+      callEnded.current = true
     }
-  }, [localStream, permissionStatus, requestPermissions, meetingId, setupEchoListeners])
-
-  // Create offer for new participant
-  const createOfferForPeer = useCallback(
-    async (peerId: string) => {
-      try {
-        console.log("Creating offer for peer:", peerId)
-        const pc = createPeerConnection(peerId)
-        const offer = await pc.createOffer()
-        await pc.setLocalDescription(offer)
-
-        echo.private(`meeting.${meetingId}`).whisper("webrtc-signal", {
-          type: "offer",
-          offer,
-          from: userId,
-          to: peerId,
-        })
-
-        console.log("Created offer for peer:", peerId)
-      } catch (error) {
-        console.error("Failed to create offer for peer:", error)
-      }
-    },
-    [createPeerConnection, meetingId, userId],
-  )
-
-  // End call
-  const endCall = useCallback(() => {
-    try {
-      console.log("Ending call...")
-
-      // Stop local stream
-      if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop())
-        setLocalStream(null)
-      }
-
-      // Stop screen sharing
-      if (screenStream) {
-        screenStream.getTracks().forEach((track) => track.stop())
-        setScreenStream(null)
-        setIsScreenSharing(false)
-      }
-
-      // Close all peer connections
-      peerConnections.current.forEach((pc) => {
-        pc.close()
-      })
-      peerConnections.current.clear()
-
-      setIsConnected(false)
-      setConnectionStatus("Call ended")
-      setRemoteStreams([])
-      echoListenersSetup.current = false
-      console.log("Call ended successfully")
-    } catch (error) {
-      console.error("Failed to end call:", error)
-    }
-  }, [localStream, screenStream])
+  }, [localStream, permissionStatus, requestPermissions, setupEchoListeners, meetingId, updateConnectionStatus])
 
   // Toggle audio
   const toggleAudio = useCallback(async () => {
-    if (localStream) {
+    if (localStream && !callEnded.current) {
       const audioTrack = localStream.getAudioTracks()[0]
       if (audioTrack) {
         audioTrack.enabled = !audioTrack.enabled
         setIsAudioEnabled(audioTrack.enabled)
-        console.log("Audio toggled:", audioTrack.enabled ? "enabled" : "disabled")
+        console.log(`🎤 Audio ${audioTrack.enabled ? "enabled" : "disabled"}`)
+
+        // Broadcast to other participants
+        echoService.broadcastAudioToggle(meetingId, userId, audioTrack.enabled)
 
         // Update server
         try {
@@ -384,20 +567,23 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
             body: JSON.stringify({ audio_enabled: audioTrack.enabled }),
           })
         } catch (error) {
-          console.error("Failed to update audio status:", error)
+          console.error("❌ Failed to update audio status:", error)
         }
       }
     }
-  }, [localStream, meetingId])
+  }, [localStream, meetingId, userId])
 
   // Toggle video
   const toggleVideo = useCallback(async () => {
-    if (localStream) {
+    if (localStream && !callEnded.current) {
       const videoTrack = localStream.getVideoTracks()[0]
       if (videoTrack) {
         videoTrack.enabled = !videoTrack.enabled
         setIsVideoEnabled(videoTrack.enabled)
-        console.log("Video toggled:", videoTrack.enabled ? "enabled" : "disabled")
+        console.log(`📹 Video ${videoTrack.enabled ? "enabled" : "disabled"}`)
+
+        // Broadcast to other participants
+        echoService.broadcastVideoToggle(meetingId, userId, videoTrack.enabled)
 
         // Update server
         try {
@@ -410,16 +596,18 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
             body: JSON.stringify({ video_enabled: videoTrack.enabled }),
           })
         } catch (error) {
-          console.error("Failed to update video status:", error)
+          console.error("❌ Failed to update video status:", error)
         }
       }
     }
-  }, [localStream, meetingId])
+  }, [localStream, meetingId, userId])
 
   // Start screen share
   const startScreenShare = useCallback(async () => {
+    if (callEnded.current) return
+
     try {
-      console.log("Starting screen share...")
+      console.log("🖥️ Starting screen share...")
 
       const stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
@@ -427,7 +615,11 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
           height: { ideal: 1080 },
           frameRate: { ideal: 30 },
         },
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
       })
 
       setScreenStream(stream)
@@ -435,37 +627,36 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
 
       // Replace video track in all peer connections
       const videoTrack = stream.getVideoTracks()[0]
-      peerConnections.current.forEach(async (pc) => {
-        const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
-        if (sender) {
-          await sender.replaceTrack(videoTrack)
-          console.log("Replaced video track with screen share")
-        }
-      })
-
-      // Notify other participants
-      echo.private(`meeting.${meetingId}`).whisper("webrtc-signal", {
-        type: "screen-share-start",
-        from: userId,
-      })
+      if (videoTrack) {
+        const promises = Array.from(peerConnections.current.values()).map(async (pc) => {
+          const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
+          if (sender) {
+            await sender.replaceTrack(videoTrack)
+            console.log("🔄 Replaced video track with screen share")
+          }
+        })
+        await Promise.all(promises)
+      }
 
       // Handle screen share end
       videoTrack.onended = () => {
-        console.log("Screen share ended by user")
+        console.log("🖥️ Screen share ended by user")
         stopScreenShare()
       }
 
-      console.log("Screen share started successfully")
+      console.log("✅ Screen share started successfully")
     } catch (error) {
-      console.error("Failed to start screen share:", error)
+      console.error("❌ Failed to start screen share:", error)
       setIsScreenSharing(false)
     }
-  }, [meetingId, userId])
+  }, [])
 
   // Stop screen share
   const stopScreenShare = useCallback(() => {
+    if (callEnded.current) return
+
     try {
-      console.log("Stopping screen share...")
+      console.log("🖥️ Stopping screen share...")
 
       if (screenStream) {
         screenStream.getTracks().forEach((track) => track.stop())
@@ -476,30 +667,76 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
 
       // Restore original camera video
       if (originalVideoTrack.current && originalVideoTrack.current.readyState === "live") {
-        peerConnections.current.forEach(async (pc) => {
+        const promises = Array.from(peerConnections.current.values()).map(async (pc) => {
           const sender = pc.getSenders().find((s) => s.track && s.track.kind === "video")
           if (sender) {
             await sender.replaceTrack(originalVideoTrack.current)
-            console.log("Restored original video track")
+            console.log("🔄 Restored original video track")
           }
         })
+        Promise.all(promises).catch(console.error)
       }
 
-      // Notify other participants
-      echo.private(`meeting.${meetingId}`).whisper("webrtc-signal", {
-        type: "screen-share-stop",
-        from: userId,
-      })
-
-      console.log("Screen share stopped successfully")
+      console.log("✅ Screen share stopped successfully")
     } catch (error) {
-      console.error("Failed to stop screen share:", error)
+      console.error("❌ Failed to stop screen share:", error)
     }
-  }, [screenStream, meetingId, userId])
+  }, [screenStream])
+
+  // End call
+  const endCall = useCallback(() => {
+    try {
+      console.log("📞 Ending call...")
+      callEnded.current = true
+
+      // Stop local stream
+      if (localStream) {
+        localStream.getTracks().forEach((track) => {
+          track.stop()
+          console.log(`🛑 Stopped ${track.kind} track`)
+        })
+        setLocalStream(null)
+      }
+
+      // Stop screen sharing
+      if (screenStream) {
+        screenStream.getTracks().forEach((track) => track.stop())
+        setScreenStream(null)
+        setIsScreenSharing(false)
+      }
+
+      // Close all peer connections
+      peerConnections.current.forEach((pc, peerId) => {
+        console.log(`🔒 Closing peer connection for: ${peerId}`)
+        pc.close()
+      })
+      peerConnections.current.clear()
+
+      // Clear all state
+      setRemoteStreams([])
+      setConnectedPeers([])
+      makingOffer.current.clear()
+      ignoreOffer.current.clear()
+      isSettingRemoteAnswerPending.current.clear()
+      pendingCandidates.current.clear()
+
+      // Leave Echo channel
+      echoService.leaveMeeting(meetingId)
+
+      setIsConnected(false)
+      setConnectionStatus("disconnected")
+      isInitialized.current = false
+      console.log("✅ Call ended successfully")
+    } catch (error) {
+      console.error("❌ Failed to end call:", error)
+    }
+  }, [localStream, screenStream, meetingId])
 
   // Auto-request permissions on mount
   useEffect(() => {
-    requestPermissions()
+    if (!callEnded.current && !isInitialized.current) {
+      requestPermissions()
+    }
   }, [requestPermissions])
 
   // Cleanup on unmount
@@ -519,6 +756,7 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
     isVideoEnabled,
     isScreenSharing,
     permissionStatus,
+    connectedPeers,
     startCall,
     endCall,
     toggleAudio,
@@ -526,7 +764,5 @@ export function useWebRTC(meetingId: string, userId: string, role: string): WebR
     startScreenShare,
     stopScreenShare,
     requestPermissions,
-    createOfferForPeer,
-    handleWebRTCSignal,
   }
 }

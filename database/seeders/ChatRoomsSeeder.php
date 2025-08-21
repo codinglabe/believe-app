@@ -13,7 +13,7 @@ class ChatRoomsSeeder extends Seeder
     public function run()
     {
         $now = Carbon::now();
-        $userId = 1; // Assuming user with ID 1 is the admin/creator
+        $userId = 9; // Assuming user with ID 9 is the admin/creator
 
         // Define all topics with their descriptions
         $topics = [

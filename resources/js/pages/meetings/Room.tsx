@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover"
-import echoService from "@/Services/EchoService"
 import {
   Mic,
   MicOff,
@@ -28,9 +27,9 @@ import { useRecording } from "@/hooks/useRecording"
 import type { Meeting, User, MeetingLink, Participant, ChatMessage } from "@/types"
 import AppLayout from "@/layouts/app-layout"
 import ParticipantsCard from "@/components/meeting/ParticipantsCard"
-import MeetingDetailsCard from "@/components/meeting/MeetingDetailsCard"
 import ChatCard from "@/components/meeting/ChatCard"
 import EmojiPicker from "@/components/meeting/EmojiPicker"
+import echoService from "@/Services/EchoService"
 
 interface Props {
   meeting: Meeting
@@ -55,7 +54,7 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
 
   // Refs
   const localVideoRef = useRef<HTMLVideoElement>(null)
-  const remoteVideoRef = useRef<HTMLVideoElement>(null)
+  const remoteVideoRefs = useRef<Map<string, HTMLVideoElement>>(new Map())
   const screenShareRef = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -65,6 +64,7 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
     remoteStreams,
     screenStream,
     isConnected: isWebRTCConnected,
+    connectionStatus: webrtcStatus,
     isAudioEnabled,
     isVideoEnabled,
     isScreenSharing,
@@ -89,23 +89,28 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
     return () => clearInterval(timer)
   }, [])
 
-  // Set up video refs
   useEffect(() => {
     if (localVideoRef.current && localStream) {
       localVideoRef.current.srcObject = localStream
+      localVideoRef.current.play().catch(console.error)
     }
   }, [localStream])
 
   useEffect(() => {
-    if (remoteVideoRef.current && remoteStreams.length > 0) {
-      remoteVideoRef.current.srcObject = remoteStreams[0]
-    }
+    remoteStreams.forEach((stream, index) => {
+      const videoElement = document.getElementById(`remote-video-${index}`) as HTMLVideoElement
+      if (videoElement && videoElement.srcObject !== stream) {
+        videoElement.srcObject = stream
+        videoElement.play().catch(console.error)
+      }
+    })
   }, [remoteStreams])
 
   // Set up screen share ref
   useEffect(() => {
     if (screenShareRef.current && screenStream) {
       screenShareRef.current.srcObject = screenStream
+      screenShareRef.current.play().catch(console.error)
     }
   }, [screenStream])
 
@@ -322,7 +327,66 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
     }
   }
 
-  const isConnected = connectionStatus === "connected" && isWebRTCConnected
+  const renderMainVideo = () => {
+    // Screen share takes priority
+    if (isScreenSharing && screenStream) {
+      return (
+        <video
+          ref={screenShareRef}
+          autoPlay
+          playsInline
+          className="w-full h-full object-contain transition-all duration-500"
+        />
+      )
+    }
+
+    // Show remote video if available
+    if (remoteStreams.length > 0) {
+      return (
+        <video
+          id="remote-video-0"
+          autoPlay
+          playsInline
+          className="w-full h-full object-cover transition-all duration-500"
+        />
+      )
+    }
+
+    // Fallback to waiting state
+    return (
+      <div className="text-center animate-fade-in px-4">
+        <div className="relative mb-4 lg:mb-6">
+          <Avatar className="w-20 h-20 sm:w-24 sm:h-24 lg:w-32 lg:h-32 mx-auto shadow-2xl ring-4 ring-white/20 transition-all duration-500 hover:scale-105">
+            <AvatarFallback className="text-2xl sm:text-3xl lg:text-4xl bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+              {user.name.charAt(0).toUpperCase()}
+            </AvatarFallback>
+          </Avatar>
+          <div className="absolute -bottom-1 -right-1 lg:-bottom-2 lg:-right-2 w-5 h-5 lg:w-6 lg:h-6 bg-green-500 rounded-full border-2 lg:border-4 border-white animate-pulse"></div>
+        </div>
+        <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
+          {participants.length === 0 ? "Waiting for participants..." : "Meeting in Progress"}
+        </h3>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+          Status:{" "}
+          <span className={`font-medium ${isWebRTCConnected ? "text-green-500" : "text-yellow-500"}`}>
+            {webrtcStatus}
+          </span>{" "}
+          • Participants: {participants.length + 1}
+        </p>
+
+        {/* Connection Status Indicator */}
+        <div className="flex items-center justify-center space-x-2">
+          <div
+            className={`w-2 h-2 lg:w-3 lg:h-3 rounded-full ${isWebRTCConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce"}`}
+          ></div>
+          <span className="text-xs text-gray-400">{isWebRTCConnected ? "Ready" : "Connecting..."}</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Determine overall connection status
+  const isConnected = isWebRTCConnected && (webrtcStatus === "connected" || webrtcStatus === "ready")
 
   if (isLoading) {
     return (
@@ -397,57 +461,7 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
 
               {/* Main Video Content */}
               <div className="w-full h-full flex items-center justify-center relative overflow-hidden">
-                {/* Screen Share Display (Priority) */}
-                {isScreenSharing && screenStream ? (
-                  <video
-                    ref={screenShareRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-contain transition-all duration-500"
-                  />
-                ) : remoteStreams.length > 0 ? (
-                  /* Remote Video */
-                  <video
-                    ref={remoteVideoRef}
-                    autoPlay
-                    playsInline
-                    className="w-full h-full object-cover transition-all duration-500"
-                  />
-                ) : (
-                  /* Waiting State */
-                  <div className="text-center animate-fade-in px-4">
-                    <div className="relative mb-4 lg:mb-6">
-                      <Avatar className="w-20 h-20 sm:w-24 sm:h-24 lg:w-32 lg:h-32 mx-auto shadow-2xl ring-4 ring-white/20 transition-all duration-500 hover:scale-105">
-                        <AvatarFallback className="text-2xl sm:text-3xl lg:text-4xl bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                          {user.name.charAt(0).toUpperCase()}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="absolute -bottom-1 -right-1 lg:-bottom-2 lg:-right-2 w-5 h-5 lg:w-6 lg:h-6 bg-green-500 rounded-full border-2 lg:border-4 border-white animate-pulse"></div>
-                    </div>
-                    <h3 className="text-base sm:text-lg lg:text-xl font-semibold text-gray-700 dark:text-gray-300 mb-2">
-                      {participants.length === 0 ? "Waiting for participants..." : "Meeting in Progress"}
-                    </h3>
-                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                      Status:{" "}
-                      <span
-                        className={`font-medium ${connectionStatus === "connected" ? "text-green-500" : "text-yellow-500"}`}
-                      >
-                        {connectionStatus}
-                      </span>{" "}
-                      • Participants: {participants.length}
-                    </p>
-
-                    {/* Connection Status Indicator */}
-                    <div className="flex items-center justify-center space-x-2">
-                      <div
-                        className={`w-2 h-2 lg:w-3 lg:h-3 rounded-full ${connectionStatus === "connected" ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce"}`}
-                      ></div>
-                      <span className="text-xs text-gray-400">
-                        {connectionStatus === "connected" ? "Connected" : "Connecting..."}
-                      </span>
-                    </div>
-                  </div>
-                )}
+                {renderMainVideo()}
               </div>
 
               {/* Participant Thumbnails - Responsive grid */}
@@ -455,10 +469,7 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
                 <div className="flex flex-wrap justify-center gap-2 lg:gap-3 max-w-full px-2 lg:px-4">
                   {/* Local Video Thumbnail */}
                   <div className="relative w-20 h-14 sm:w-24 sm:h-16 lg:w-28 lg:h-20 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-lg lg:rounded-xl overflow-hidden flex-shrink-0 shadow-lg border-2 border-white/50 transition-all duration-300 hover:scale-105 hover:shadow-xl">
-                    {/* Show screen share in thumbnail if sharing */}
-                    {isScreenSharing && screenStream ? (
-                      <video ref={screenShareRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                    ) : isVideoEnabled && localStream ? (
+                    {isVideoEnabled && localStream ? (
                       <video ref={localVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-blue-400 to-purple-500">
@@ -498,64 +509,48 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
                     )}
                   </div>
 
-                  {/* Other Participants */}
-                  {participants.slice(0, window.innerWidth < 768 ? 2 : 4).map((participant, index) => (
+                  {/* Remote Participants Thumbnails */}
+                  {remoteStreams.slice(0, window.innerWidth < 768 ? 2 : 4).map((stream, index) => (
                     <div
-                      key={participant.id}
+                      key={`remote-${index}`}
                       className="relative w-20 h-14 sm:w-24 sm:h-16 lg:w-28 lg:h-20 bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 rounded-lg lg:rounded-xl overflow-hidden flex-shrink-0 shadow-lg border-2 border-white/50 transition-all duration-300 hover:scale-105 hover:shadow-xl"
                       style={{ animationDelay: `${index * 100}ms` }}
                     >
-                      {participant.is_video_enabled ? (
-                        <video ref={remoteVideoRef} autoPlay playsInline muted className="w-full h-full object-cover" />
-                      ) : (
-                        <div className="w-full h-full bg-gradient-to-br from-gray-400 to-gray-600 flex items-center justify-center">
-                          <Avatar className="w-8 h-8 lg:w-12 lg:h-12">
-                            <AvatarFallback className="bg-white/20 text-white text-xs lg:text-sm font-semibold">
-                              {participant.user.name.charAt(0).toUpperCase()}
-                            </AvatarFallback>
-                          </Avatar>
-                        </div>
-                      )}
+                      <video
+                        id={`remote-video-${index}`}
+                        autoPlay
+                        playsInline
+                        muted
+                        className="w-full h-full object-cover"
+                      />
 
                       {/* Participant Name */}
                       <div className="absolute bottom-1 left-1 bg-black/70 text-white text-xs px-1.5 py-0.5 lg:px-2 lg:py-1 rounded backdrop-blur-sm">
-                        {participant.user.name.split(" ")[0]}
+                        Participant {index + 1}
                       </div>
 
                       {/* Audio Status */}
                       <div className="absolute top-1 left-1">
-                        <div
-                          className={`w-5 h-5 lg:w-6 lg:h-6 ${participant.is_muted ? "bg-red-500" : "bg-green-500"} rounded-full flex items-center justify-center shadow-lg transition-all duration-300`}
-                        >
-                          {participant.is_muted ? (
-                            <MicOff className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-white" />
-                          ) : (
-                            <Mic className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-white" />
-                          )}
+                        <div className="w-5 h-5 lg:w-6 lg:h-6 bg-green-500 rounded-full flex items-center justify-center shadow-lg transition-all duration-300">
+                          <Mic className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-white" />
                         </div>
                       </div>
-
-                      {/* Video Status */}
-                      {!participant.is_video_enabled && (
-                        <div className="absolute top-1 right-1">
-                          <div className="w-5 h-5 lg:w-6 lg:h-6 bg-red-500 rounded-full flex items-center justify-center shadow-lg">
-                            <VideoOff className="w-2.5 h-2.5 lg:w-3 lg:h-3 text-white" />
-                          </div>
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>
               </div>
             </div>
 
+            {/* ... existing code for control bar ... */}
             {/* Professional Bottom Control Bar - Exact Reference Design */}
             <div className="bg-gray-900/95 backdrop-blur-xl rounded-xl lg:rounded-2xl shadow-2xl border border-gray-700/50 px-4 py-3 lg:px-6 lg:py-4">
               <div className="flex items-center justify-between">
                 {/* Left: Meeting Status */}
                 <div className="flex items-center space-x-2 lg:space-x-4">
                   <div className="flex items-center space-x-1 lg:space-x-2">
-                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                    <div
+                      className={`w-2 h-2 rounded-full ${isConnected ? "bg-green-500 animate-pulse" : "bg-yellow-500 animate-bounce"}`}
+                    ></div>
                     <span className="text-xs lg:text-sm font-medium text-white tabular-nums">
                       {formatDuration(meetingDuration)}
                     </span>
@@ -736,16 +731,6 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
                 />
               </div>
 
-              {/* Meeting Details Card */}
-              {/* <div className="animate-fade-in-up" style={{ animationDelay: "200ms" }}>
-                <MeetingDetailsCard
-                  meetingId={meeting.meeting_id}
-                  duration={formatDuration(meetingDuration)}
-                  status={connectionStatus}
-                  isRecording={isRecording}
-                />
-              </div> */}
-
               {/* Chat Card - Takes remaining space */}
               <div className="flex-1 min-h-0 animate-fade-in-up" style={{ animationDelay: "300ms" }}>
                 <ChatCard
@@ -771,31 +756,19 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
           )}
         </div>
 
-        {/* Connection Status Alerts */}
+        {/* Connection Status Alerts - Only show if not connected */}
         {!isConnected && (
           <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50 px-4 animate-slide-in-down">
             <Alert className="bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900 dark:to-orange-900 border-yellow-300 dark:border-yellow-700 text-yellow-800 dark:text-yellow-200 shadow-xl backdrop-blur-sm">
               <AlertDescription className="flex items-center space-x-2">
                 <div className="w-3 h-3 bg-yellow-500 rounded-full animate-pulse"></div>
                 <span className="font-medium">
-                  {connectionStatus === "connecting"
+                  {webrtcStatus === "connecting"
                     ? "Connecting to meeting..."
-                    : `Connection ${connectionStatus} - Please wait...`}
+                    : webrtcStatus === "starting"
+                      ? "Starting call..."
+                      : `${webrtcStatus} - Setting up connection...`}
                 </span>
-              </AlertDescription>
-            </Alert>
-          </div>
-        )}
-
-        {chatConnectionStatus !== "connected" && (
-          <div
-            className="fixed top-32 left-1/2 transform -translate-x-1/2 z-50 px-4 animate-slide-in-down"
-            style={{ animationDelay: "100ms" }}
-          >
-            <Alert className="bg-gradient-to-r from-orange-100 to-red-100 dark:from-orange-900 dark:to-red-900 border-orange-300 dark:border-orange-700 text-orange-800 dark:text-orange-200 shadow-xl backdrop-blur-sm">
-              <AlertDescription className="flex items-center space-x-2">
-                <div className="w-3 h-3 bg-orange-500 rounded-full animate-bounce"></div>
-                <span className="font-medium">Chat {chatConnectionStatus}</span>
               </AlertDescription>
             </Alert>
           </div>
