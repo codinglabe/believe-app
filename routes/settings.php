@@ -18,8 +18,8 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
         Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
         Route::get('/settings/settings/referral', [ReferralLinkController::class, 'edit'])->name('referral.edit');
-        Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
-        Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
+        Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index')->middleware('role:admin');
+        Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update')->middleware('role:admin');
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');
         })->name('appearance');

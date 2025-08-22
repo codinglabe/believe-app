@@ -139,7 +139,9 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                               <Lock className="h-4 w-4" />
                               Security
                             </Link>
-                          </TabsTrigger>
+                                                  </TabsTrigger>
+
+                                                  {auth.user.role === "admin" && (
                           <TabsTrigger value="payment-methods" asChild>
                             <Link href={route("payment-methods.index")}
                               className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -147,6 +149,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                               Payment methods
                             </Link>
                                                   </TabsTrigger>
+                            )}
                           <TabsTrigger value="referral" asChild>
                             <Link href={route("referral.edit")}
                               className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -188,17 +191,18 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                           <Lock className="h-4 w-4" />
                           Password & Security
                         </Link>
-
-                        <Link
-                          href={route("payment-methods.index")}
-                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "payment-methods"
-                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
-                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
-                            }`}
-                        >
-                          <CreditCard className="h-4 w-4" />
-                          Payment methods
-                        </Link>
+                                              {auth.user.role === "admin" && (
+                                                  <Link
+                                                      href={route("payment-methods.index")}
+                                                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "payment-methods"
+                                                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                                          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                                                          }`}
+                                                  >
+                                                      <CreditCard className="h-4 w-4" />
+                                                      Payment methods
+                                                  </Link>
+                                              )}
                         <Link
                           href={route("referral.edit")}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "referral"
