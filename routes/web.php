@@ -49,6 +49,7 @@ use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
+use App\Http\Controllers\SocialMediaController;
 use Illuminate\Support\Facades\Broadcast;
 
 // Route::get('/test-broadcast', function () {
@@ -370,6 +371,20 @@ Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
 
     //comission withdrawls
     Route::post('/withrawl/request', [WithdrawalController::class, 'store'])->name("withdrawl.request");
+
+    // Social Media Management Routes
+    Route::prefix('social-media')->name('social-media.')->group(function () {
+        Route::get('/', [SocialMediaController::class, 'index'])->name('index');
+        Route::post('/accounts', [SocialMediaController::class, 'storeAccount'])->name('accounts.store');
+        Route::put('/accounts/{account}', [SocialMediaController::class, 'updateAccount'])->name('accounts.update');
+        Route::delete('/accounts/{account}', [SocialMediaController::class, 'deleteAccount'])->name('accounts.delete');
+        Route::post('/posts', [SocialMediaController::class, 'storePost'])->name('posts.store');
+        Route::put('/posts/{post}', [SocialMediaController::class, 'updatePost'])->name('posts.update');
+        Route::delete('/posts/{post}', [SocialMediaController::class, 'deletePost'])->name('posts.delete');
+        Route::post('/posts/{post}/publish', [SocialMediaController::class, 'publishPost'])->name('posts.publish');
+        Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
+        Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
+    });
 });
 
 
@@ -378,6 +393,14 @@ Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
+});
+
+// IRS BMF Management Routes
+Route::prefix('irs-bmf')->name('irs-bmf.')->group(function () {
+    Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');
+    Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
+    Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
+    Route::post('/import', [App\Http\Controllers\IrsBmfController::class, 'triggerImport'])->name('import');
 });
 
 

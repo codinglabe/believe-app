@@ -440,4 +440,20 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps();
     }
 
+    /**
+     * Get the social media accounts for this user.
+     */
+    public function socialMediaAccounts(): HasMany
+    {
+        return $this->hasMany(SocialMediaAccount::class);
+    }
+
+    /**
+     * Get the social media posts for this user.
+     */
+    public function socialMediaPosts(): HasMany
+    {
+        return $this->hasMany(SocialMediaPost::class);
+    }
+
 }
