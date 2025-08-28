@@ -15,6 +15,7 @@ interface IrsBmfRecord {
   ntee_cd: string;
   status: string;
   ruling: string;
+  created_at: string;
 }
 
 interface Stats {
@@ -50,6 +51,15 @@ export default function Index({ records, stats }: Props) {
     }
   };
 
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return 'N/A';
+    // Handle YYYYMM format
+    if (dateStr.length === 6) {
+      return `${dateStr.slice(0, 4)}-${dateStr.slice(4)}`;
+    }
+    return dateStr;
+  };
+
   const triggerImport = async (mode: 'full' | 'update-only') => {
     setIsImporting(true);
     try {
@@ -61,9 +71,9 @@ export default function Index({ records, stats }: Props) {
         },
         body: JSON.stringify({ mode }),
       });
-      
+
       const result = await response.json();
-      
+
       if (result.success) {
         alert(result.message);
       } else {
@@ -79,19 +89,13 @@ export default function Index({ records, stats }: Props) {
   return (
     <AppLayout>
       <Head title="IRS BMF Records" />
-      
+
       <div className="py-6">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center mb-6">
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
               IRS Business Master File
             </h1>
-            <Link href={route('irs-bmf.search')}>
-              <Button>
-                <Search className="w-4 h-4 mr-2" />
-                Search Records
-              </Button>
-            </Link>
           </div>
 
           {/* Import Section */}
@@ -110,7 +114,7 @@ export default function Index({ records, stats }: Props) {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button 
+                  <Button
                     onClick={() => triggerImport('full')}
                     variant="outline"
                     className="whitespace-nowrap"
@@ -119,7 +123,7 @@ export default function Index({ records, stats }: Props) {
                     <Database className="w-4 h-4 mr-2" />
                     {isImporting ? 'Importing...' : 'Full Import'}
                   </Button>
-                  <Button 
+                  <Button
                     onClick={() => triggerImport('update-only')}
                     variant="outline"
                     className="whitespace-nowrap"
@@ -177,8 +181,18 @@ export default function Index({ records, stats }: Props) {
 
           {/* Records Table */}
           <Card>
-            <CardHeader>
-              <CardTitle>Recent Records</CardTitle>
+            <CardHeader >
+                          <CardTitle className='flex justify-between mb-6'>
+
+                              Recent Records
+                          <Link href={route('irs-bmf.search')}>
+              <Button>
+                <Search className="w-4 h-4 mr-2" />
+                Search Records
+              </Button>
+            </Link>
+                          </CardTitle>
+
             </CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
@@ -196,28 +210,28 @@ export default function Index({ records, stats }: Props) {
                   <tbody>
                     {records.data.map((record) => (
                       <tr key={record.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <td className="py-2 px-4 font-mono text-sm">{record.ein}</td>
+                        <td className="py-2 px-4 font-mono text-sm">{record.ein || 'N/A'}</td>
                         <td className="py-2 px-4">
-                          <Link 
+                          <Link
                             href={route('irs-bmf.show', record.id)}
                             className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                           >
-                            {record.name}
+                            {record.name || 'N/A'}
                           </Link>
                         </td>
                         <td className="py-2 px-4">
-                          {record.city}, {record.state}
+                          {record.city || 'N/A'}, {record.state || 'N/A'}
                         </td>
                         <td className="py-2 px-4">
                           <Badge variant="outline">{record.ntee_cd || 'N/A'}</Badge>
                         </td>
                         <td className="py-2 px-4">
                           <Badge className={getStatusColor(record.status)}>
-                            {record.status}
+                            {record.status || 'N/A'}
                           </Badge>
                         </td>
                         <td className="py-2 px-4 text-sm text-gray-600 dark:text-gray-400">
-                          {record.ruling ? `${record.ruling.slice(0, 4)}-${record.ruling.slice(4)}` : 'N/A'}
+                          {formatDate(record.ruling)}
                         </td>
                       </tr>
                     ))}

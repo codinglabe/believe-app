@@ -18,6 +18,7 @@ interface IrsBmfRecord {
   ntee_cd: string;
   status: string;
   ruling: string;
+  is_header?: boolean;
 }
 
 interface Props {
@@ -64,13 +65,37 @@ export default function Search({ records, states, nteeCodes, statusCodes, filter
   };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    if (!status) return 'bg-gray-100 text-gray-800';
+
+    // Handle transformed status format like "01 - Active"
+    const statusCode = status.split(' - ')[0];
+
+    switch (statusCode) {
       case '01': return 'bg-green-100 text-green-800';
       case '02': return 'bg-yellow-100 text-yellow-800';
       case '03': return 'bg-red-100 text-red-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
+
+  const formatRulingDate = (ruling: string) => {
+    if (!ruling) return 'N/A';
+
+    // Handle transformed ruling date format
+    if (ruling.includes('-')) {
+      return ruling; // Already formatted
+    }
+
+    // Format raw ruling date YYYYMMDD to YYYY-MM-DD
+    if (ruling.length === 8) {
+      return `${ruling.slice(0, 4)}-${ruling.slice(4, 6)}-${ruling.slice(6)}`;
+    }
+
+    return ruling;
+  };
+
+  // Filter out header rows from display
+  const displayRecords = records.data.filter(record => !record.is_header);
 
   return (
     <AppLayout>
@@ -191,11 +216,11 @@ export default function Search({ records, states, nteeCodes, statusCodes, filter
           <Card>
             <CardHeader>
               <CardTitle>
-                Search Results ({records.total} records found)
+                Search Results ({displayRecords.length} of {records.total} records found)
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {records.data.length > 0 ? (
+              {displayRecords.length > 0 ? (
                 <>
                   <div className="overflow-x-auto">
                     <table className="w-full">
@@ -210,11 +235,11 @@ export default function Search({ records, states, nteeCodes, statusCodes, filter
                         </tr>
                       </thead>
                       <tbody>
-                        {records.data.map((record) => (
+                        {displayRecords.map((record) => (
                           <tr key={record.id} className="border-b hover:bg-gray-50 dark:hover:bg-gray-800">
                             <td className="py-2 px-4 font-mono text-sm">{record.ein}</td>
                             <td className="py-2 px-4">
-                              <Link 
+                              <Link
                                 href={route('irs-bmf.show', record.id)}
                                 className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
                               >
@@ -233,7 +258,7 @@ export default function Search({ records, states, nteeCodes, statusCodes, filter
                               </Badge>
                             </td>
                             <td className="py-2 px-4 text-sm text-gray-600 dark:text-gray-400">
-                              {record.ruling ? `${record.ruling.slice(0, 4)}-${record.ruling.slice(4)}` : 'N/A'}
+                              {formatRulingDate(record.ruling)}
                             </td>
                           </tr>
                         ))}

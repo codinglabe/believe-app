@@ -2,19 +2,24 @@
 
 namespace App\Console\Commands;
 
-use App\Models\IrsBmfRecord;
+use App\Models\ExcelData;
+use App\Models\UploadedFile;
+use App\Services\ExcelDataTransformer;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use League\Csv\Reader;
-use League\Csv\Statement;
-use Throwable;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class ImportIrsBmf extends Command
 {
-    protected $signature = 'irs:bmf:import {--resume : Resume from last saved offset} {--chunk=500 : Chunk size for processing} {--update-only : Only update existing records, do not insert new ones}';
+    protected $signature = 'irs:bmf:import
+        {--resume : Resume from last saved offset}
+        {--chunk=500 : Chunk size for processing}
+        {--update-only : Only update existing records, do not insert new ones}
+        {--source= : Specific source URL to process}';
 
-    protected $description = 'Stream-import IRS Exempt Organization Business Master File (EO BMF) safely with resume. Use --update-only for monthly updates.';
+    protected $description = 'Stream-import IRS Exempt Organization Business Master File (EO BMF) into excel_data table';
 
     private array $sources = [
         'https://www.irs.gov/pub/irs-soi/eo1.csv',
@@ -23,25 +28,42 @@ class ImportIrsBmf extends Command
         'https://www.irs.gov/pub/irs-soi/eo4.csv',
     ];
 
+    private $uploadedFile;
+    private $excelDataTransformer;
+    private $uniqueKeyColumns = ['EIN']; // Define the column(s) that make a record unique
+
+    public function __construct()
+    {
+        parent::__construct();
+        $this->excelDataTransformer = new ExcelDataTransformer();
+    }
+
     public function handle(): int
     {
-        $this->info('Starting IRS BMF import');
-        
+        $this->info('Starting IRS BMF import into excel_data system');
+
         $updateOnly = $this->option('update-only');
+        $specificSource = $this->option('source');
+
         if ($updateOnly) {
-            $this->info('Running in UPDATE-ONLY mode - will not insert new records');
+            $this->info('Running in UPDATE-ONLY mode');
         }
-        
+
         // Set memory limit higher for large imports
         ini_set('memory_limit', '512M');
-        
-        $chunkSize = (int)$this->option('chunk');
+
+        $chunkSize = (int) $this->option('chunk');
         $this->info("Using chunk size: {$chunkSize}");
 
-        $state = $this->loadState();
-        $resume = (bool)$this->option('resume');
+        // Create uploaded file record
+        $this->createUploadedFileRecord();
 
-        foreach ($this->sources as $index => $url) {
+        $state = $this->loadState();
+        $resume = (bool) $this->option('resume');
+
+        $sourcesToProcess = $specificSource ? [$specificSource] : $this->sources;
+
+        foreach ($sourcesToProcess as $index => $url) {
             if ($resume && $index < ($state['source_index'] ?? 0)) {
                 $this->line("Skipping already completed source: {$url}");
                 continue;
@@ -51,171 +73,220 @@ class ImportIrsBmf extends Command
             $state['source_index'] = $index + 1;
             $state['row_offset'] = 0;
             $this->saveState($state);
-            
+
             // Force garbage collection between sources
             gc_collect_cycles();
         }
+
+        // Mark upload as completed
+        $this->completeUpload();
 
         $this->info('IRS BMF import completed successfully');
         return self::SUCCESS;
     }
 
+    private function createUploadedFileRecord(): void
+    {
+        $fileName = 'irs_bmf_' . now()->format('Y-m-d_His') . '.csv';
+
+        $this->uploadedFile = UploadedFile::create([
+            'upload_id' => Str::uuid(),
+            'file_id' => Str::ulid(),
+            'file_name' => $fileName,
+            'original_name' => 'IRS_BMF_Combined.csv',
+            'file_type' => 'text/csv',
+            'file_extension' => 'csv',
+            'file_size' => '0', // Will update later
+            'total_rows' => 0,
+            'processed_rows' => 0,
+            'total_chunks' => 0,
+            'processed_chunks' => 0,
+            'status' => 'processing',
+        ]);
+
+        $this->info("Created upload record: {$this->uploadedFile->id}");
+    }
+
+    private function completeUpload(): void
+    {
+        if ($this->uploadedFile) {
+            $this->uploadedFile->update([
+                'status' => 'completed',
+                'processed_rows' => $this->uploadedFile->excelData()->count(),
+            ]);
+            $this->info("Upload marked as completed: {$this->uploadedFile->id}");
+        }
+    }
+
     private function importSource(string $url, int $sourceIndex, array &$state, int $chunkSize, bool $updateOnly): void
     {
-        $this->info("Downloading: {$url}");
-        $tempPath = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'irs_bmf_' . md5($url) . '.csv';
-        
-        // Stream download to avoid memory issues
-        $stream = fopen($url, 'r');
-        if ($stream === false) {
-            throw new \RuntimeException("Failed to open source URL: {$url}");
-        }
-        $out = fopen($tempPath, 'w');
-        stream_copy_to_stream($stream, $out);
-        fclose($stream);
-        fclose($out);
+        $this->info("Processing source {$sourceIndex}: {$url}");
 
-        $csv = Reader::createFromPath($tempPath, 'r');
-        $csv->setHeaderOffset(0);
+        try {
+            $response = Http::timeout(300)->get($url);
 
-        $stmt = (new Statement());
-        $records = $stmt->process($csv);
-
-        $chunk = [];
-        $processed = 0;
-        $resumeOffset = $state['row_offset'] ?? 0;
-
-        foreach ($records as $i => $record) {
-            if ($resumeOffset && $i < $resumeOffset) {
-                continue;
+            if (!$response->successful()) {
+                $this->error("Failed to download: {$url}");
+                return;
             }
 
-            $chunk[] = $this->mapRecord($record);
+            $content = $response->body();
+            $lines = explode("\n", $content);
 
-            if (count($chunk) >= $chunkSize) {
-                $this->upsertChunk($chunk, $updateOnly);
-                $processed += count($chunk);
-                $state['row_offset'] = $i + 1;
-                $this->saveState($state);
-                $this->line("Processed {$processed} rows from source {$sourceIndex}+1");
-                $chunk = [];
-                
-                // Force garbage collection every few chunks
-                if ($processed % ($chunkSize * 10) === 0) {
-                    gc_collect_cycles();
+            // Remove empty lines
+            $lines = array_filter($lines, function ($line) {
+                return !empty(trim($line));
+            });
+
+            $header = str_getcsv(array_shift($lines));
+            $this->info("Detected columns: " . implode(', ', $header));
+
+            $this->info("Processing " . count($lines) . " records from source {$sourceIndex}");
+
+            $chunk = [];
+            $processed = 0;
+            $resumeOffset = $state['row_offset'] ?? 0;
+
+            $this->info("resumeOffset " . $state['row_offset']);
+
+            // Store header row (only if we're not resuming and header doesn't exist)
+            if ($resumeOffset === 0) {
+                $existingHeader = DB::table('excel_data')
+                    ->where('file_id', $this->uploadedFile->id)
+                    ->exists();
+
+                if (!$existingHeader) {
+                    $headerRow = [
+                        'file_id' => $this->uploadedFile->id,
+                        'row_data' => json_encode($header), // Header values as array
+                        'status' => 'complete',
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ];
+
+                    DB::table('excel_data')->insert($headerRow);
+                    $this->uploadedFile->increment('processed_rows');
+                    $this->uploadedFile->increment('processed_chunks');
+                    $this->info("Added header row for file ID: {$this->uploadedFile->id}");
                 }
             }
-        }
 
-        if (!empty($chunk)) {
-            $this->upsertChunk($chunk, $updateOnly);
-            $processed += count($chunk);
-            $this->line("Processed {$processed} rows from source {$sourceIndex}+1");
-        }
+            foreach ($lines as $i => $line) {
+                if ($resumeOffset && $i < $resumeOffset) {
+                    continue;
+                }
 
-        @unlink($tempPath);
+                $rowData = str_getcsv($line);
+                if (count($rowData) !== count($header)) {
+                    $this->warn("Skipping malformed row at line {$i}: " . substr($line, 0, 100) . "...");
+                    continue; // Skip malformed rows
+                }
+
+                // Add data row (just the values as array)
+                $chunk[] = [
+                    'file_id' => $this->uploadedFile->id,
+                    'row_data' => json_encode($rowData), // Data values as array
+                    'status' => 'complete',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
+                if (count($chunk) >= $chunkSize) {
+                    $this->processChunk($chunk, $header, $updateOnly);
+                    $processed += count($chunk);
+                    $state['row_offset'] = $i + 1;
+                    $this->saveState($state);
+                    $this->line("Processed {$processed} data rows from source {$sourceIndex}");
+
+                    // Update uploaded file progress
+                    $this->uploadedFile->increment('processed_rows', count($chunk));
+                    $this->uploadedFile->increment('processed_chunks');
+
+                    $chunk = [];
+
+                    // Force garbage collection every few chunks
+                    if ($processed % ($chunkSize * 10) === 0) {
+                        gc_collect_cycles();
+                    }
+                }
+            }
+
+            if (!empty($chunk)) {
+                $this->processChunk($chunk, $header, $updateOnly);
+                $processed += count($chunk);
+                $this->uploadedFile->increment('processed_rows', count($chunk));
+                $this->uploadedFile->increment('processed_chunks');
+                $this->line("Processed {$processed} data rows from source {$sourceIndex}");
+            }
+
+            $this->info("Completed processing source {$sourceIndex}: {$processed} data records");
+
+        } catch (\Exception $e) {
+            $this->error("Error processing source {$url}: " . $e->getMessage());
+            Log::error("IRS BMF Import Error: " . $e->getMessage(), [
+                'url' => $url,
+                'source_index' => $sourceIndex
+            ]);
+        }
     }
 
-    private function mapRecord(array $r): array
-    {
-        // Map IRS columns as per IRS documentation
-        return [
-            'ein' => $r['EIN'] ?? null,
-            'name' => $r['NAME'] ?? null,
-            'ico' => $r['ICO'] ?? null,
-            'street' => $r['STREET'] ?? null,
-            'city' => $r['CITY'] ?? null,
-            'state' => $r['STATE'] ?? null,
-            'zip' => $r['ZIP'] ?? null,
-            'group' => $r['GROUP'] ?? null,
-            'subsection' => $r['SUBSECTION'] ?? null,
-            'affiliation' => $r['AFFILIATION'] ?? null,
-            'classification' => $r['CLASSIFICATION'] ?? null,
-            'ruling' => $r['RULING'] ?? null,
-            'deductibility' => $r['DEDUCTIBILITY'] ?? null,
-            'foundation' => $r['FOUNDATION'] ?? null,
-            'activity' => $r['ACTIVITY'] ?? null,
-            'organization' => $r['ORGANIZATION'] ?? null,
-            'status' => $r['STATUS'] ?? null,
-            'tax_period' => $r['TAX_PERIOD'] ?? null,
-            'asset_cd' => $r['ASSET_CD'] ?? null,
-            'income_cd' => $r['INCOME_CD'] ?? null,
-            'revenue_amt' => $r['REVENUE_AMT'] ?? null,
-            'ntee_cd' => $r['NTEE_CD'] ?? null,
-            'sort_name' => $r['SORT_NAME'] ?? null,
-            'raw' => json_encode($r), // Convert array to JSON string
-        ];
-    }
-
-    private function upsertChunk(array $rows, bool $updateOnly = false): void
+    private function processChunk(array $rows, array $header, bool $updateOnly): void
     {
         try {
-            if ($updateOnly) {
-                // In update-only mode, only update existing records
-                $this->updateChunk($rows);
-            } else {
-                // Normal mode: insert new records or update existing ones
-                DB::table('irs_bmf_records')->upsert($rows, ['ein'], [
-                    'name','ico','street','city','state','zip','group','subsection','affiliation','classification','ruling','deductibility','foundation','activity','organization','status','tax_period','asset_cd','income_cd','revenue_amt','ntee_cd','sort_name','raw','updated_at'
-                ]);
+            foreach ($rows as $row) {
+                $rowData = json_decode($row['row_data'], true);
+
+                // Create a unique identifier for this record
+                $uniqueKeyValues = [];
+                foreach ($this->uniqueKeyColumns as $column) {
+                    $columnIndex = array_search($column, $header);
+                    if ($columnIndex !== false && isset($rowData[$columnIndex])) {
+                        $uniqueKeyValues[$column] = $rowData[$columnIndex];
+                    }
+                }
+
+                // If we have a unique identifier, try to find existing record
+                if (!empty($uniqueKeyValues)) {
+                    $existingRecord = ExcelData::where('file_id', $row['file_id'])
+                        ->where(function ($query) use ($uniqueKeyValues, $header) {
+                            foreach ($uniqueKeyValues as $column => $value) {
+                                $columnIndex = array_search($column, $header);
+                                $query->whereRaw("JSON_EXTRACT(row_data, '$[$columnIndex]') = ?", [$value]);
+                            }
+                        })
+                        ->first();
+
+                    if ($existingRecord) {
+                        // Update existing record
+                        $existingRecord->update([
+                            'row_data' => $row['row_data'],
+                            'updated_at' => now()
+                        ]);
+                    } else if (!$updateOnly) {
+                        // Insert new record if not in update-only mode
+                        DB::table('excel_data')->insert($row);
+                    }
+                } else if (!$updateOnly) {
+                    // If no unique identifier, just insert (unless update-only mode)
+                    DB::table('excel_data')->insert($row);
+                }
             }
-        } catch (Throwable $e) {
+        } catch (\Exception $e) {
             $this->error("Error processing chunk: " . $e->getMessage());
-            // Fallback to individual processing for debugging
+
+            // Fallback to individual processing
             foreach ($rows as $row) {
                 try {
-                    if ($updateOnly) {
-                        // Only update if record exists
-                        $exists = DB::table('irs_bmf_records')->where('ein', $row['ein'])->exists();
-                        if ($exists) {
-                            DB::table('irs_bmf_records')
-                                ->where('ein', $row['ein'])
-                                ->update($row);
-                        }
-                    } else {
-                        DB::table('irs_bmf_records')->updateOrInsert(
-                            ['ein' => $row['ein']],
-                            $row
-                        );
-                    }
-                } catch (Throwable $insertError) {
-                    $this->error("Failed to process EIN {$row['ein']}: " . $insertError->getMessage());
+                    DB::table('excel_data')->insert($row);
+                } catch (\Exception $insertError) {
+                    $this->error("Failed to insert row: " . $insertError->getMessage());
+                    Log::error("Failed to insert IRS BMF row", [
+                        'row_data' => $row['row_data'],
+                        'error' => $insertError->getMessage()
+                    ]);
                 }
             }
         }
-    }
-
-    private function updateChunk(array $rows): void
-    {
-        // Get all EINs from the chunk
-        $eins = array_column($rows, 'ein');
-        
-        // Find existing records
-        $existingRecords = DB::table('irs_bmf_records')
-            ->whereIn('ein', $eins)
-            ->pluck('ein')
-            ->toArray();
-        
-        // Only update existing records
-        $rowsToUpdate = array_filter($rows, function($row) use ($existingRecords) {
-            return in_array($row['ein'], $existingRecords);
-        });
-        
-        if (empty($rowsToUpdate)) {
-            $this->line("No existing records found to update in this chunk");
-            return;
-        }
-        
-        // Update existing records in batches
-        foreach (array_chunk($rowsToUpdate, 100) as $batch) {
-            foreach ($batch as $row) {
-                DB::table('irs_bmf_records')
-                    ->where('ein', $row['ein'])
-                    ->update($row);
-            }
-        }
-        
-        $this->line("Updated " . count($rowsToUpdate) . " existing records in this chunk");
     }
 
     private function statePath(): string
