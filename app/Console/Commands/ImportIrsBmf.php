@@ -30,7 +30,6 @@ class ImportIrsBmf extends Command
 
     private $uploadedFile;
     private $excelDataTransformer;
-    private $uniqueKeyColumns = ['EIN']; // Define the column(s) that make a record unique
 
     public function __construct()
     {
@@ -60,6 +59,12 @@ class ImportIrsBmf extends Command
 
         $state = $this->loadState();
         $resume = (bool) $this->option('resume');
+
+        // If not resuming, reset the state
+        if (!$resume) {
+            $state = ['source_index' => 0, 'row_offset' => 0];
+            $this->saveState($state);
+        }
 
         $sourcesToProcess = $specificSource ? [$specificSource] : $this->sources;
 
@@ -145,47 +150,51 @@ class ImportIrsBmf extends Command
 
             $chunk = [];
             $processed = 0;
-            $resumeOffset = $state['row_offset'] ?? 0;
 
-            $this->info("resumeOffset " . $state['row_offset']);
+            // Get the resume offset for THIS specific source
+            $resumeOffset = ($state['source_index'] == $sourceIndex) ? ($state['row_offset'] ?? 0) : 0;
 
-            // Store header row (only if we're not resuming and header doesn't exist)
-            if ($resumeOffset === 0) {
-                $existingHeader = DB::table('excel_data')
-                    ->where('file_id', $this->uploadedFile->id)
-                    ->exists();
+            $this->info("resumeOffset " . $resumeOffset);
 
-                if (!$existingHeader) {
-                    $headerRow = [
-                        'file_id' => $this->uploadedFile->id,
-                        'row_data' => json_encode($header), // Header values as array
-                        'status' => 'complete',
-                        'created_at' => now(),
-                        'updated_at' => now(),
-                    ];
+            // ALWAYS CHECK AND ADD HEADER FOR THIS FILE (only once per file)
+            $existingHeader = DB::table('excel_data')
+                ->where('file_id', $this->uploadedFile->id)
+                ->whereRaw("JSON_EXTRACT(row_data, '$[0]') = ?", ['EIN'])
+                ->exists();
 
-                    DB::table('excel_data')->insert($headerRow);
-                    $this->uploadedFile->increment('processed_rows');
-                    $this->uploadedFile->increment('processed_chunks');
-                    $this->info("Added header row for file ID: {$this->uploadedFile->id}");
-                }
+            if (!$existingHeader) {
+                $headerRow = [
+                    'file_id' => $this->uploadedFile->id,
+                    'row_data' => json_encode($header),
+                    'status' => 'complete',
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+
+                DB::table('excel_data')->insert($headerRow);
+                $this->uploadedFile->increment('processed_rows');
+                $this->uploadedFile->increment('processed_chunks');
+                $this->info("Added header row for file ID: {$this->uploadedFile->id}");
+            } else {
+                $this->info("Header already exists for this file, skipping");
             }
 
             foreach ($lines as $i => $line) {
-                if ($resumeOffset && $i < $resumeOffset) {
+                // Only skip rows if we're specifically resuming this source
+                if ($state['source_index'] == $sourceIndex && $i < $resumeOffset) {
                     continue;
                 }
 
                 $rowData = str_getcsv($line);
                 if (count($rowData) !== count($header)) {
                     $this->warn("Skipping malformed row at line {$i}: " . substr($line, 0, 100) . "...");
-                    continue; // Skip malformed rows
+                    continue;
                 }
 
-                // Add data row (just the values as array)
+                // Add data row
                 $chunk[] = [
                     'file_id' => $this->uploadedFile->id,
-                    'row_data' => json_encode($rowData), // Data values as array
+                    'row_data' => json_encode($rowData),
                     'status' => 'complete',
                     'created_at' => now(),
                     'updated_at' => now(),
@@ -194,7 +203,11 @@ class ImportIrsBmf extends Command
                 if (count($chunk) >= $chunkSize) {
                     $this->processChunk($chunk, $header, $updateOnly);
                     $processed += count($chunk);
+
+                    // Update state for this specific source
                     $state['row_offset'] = $i + 1;
+                    $state['source_index'] = $sourceIndex;
+
                     $this->saveState($state);
                     $this->line("Processed {$processed} data rows from source {$sourceIndex}");
 
@@ -219,6 +232,10 @@ class ImportIrsBmf extends Command
                 $this->line("Processed {$processed} data rows from source {$sourceIndex}");
             }
 
+            // Reset offset for next source
+            $state['row_offset'] = 0;
+            $this->saveState($state);
+
             $this->info("Completed processing source {$sourceIndex}: {$processed} data records");
 
         } catch (\Exception $e) {
@@ -233,55 +250,72 @@ class ImportIrsBmf extends Command
     private function processChunk(array $rows, array $header, bool $updateOnly): void
     {
         try {
+            $einIndex = array_search('EIN', $header);
+
+            if ($einIndex === false) {
+                throw new \Exception("EIN column not found in header");
+            }
+
+            // Process each row
             foreach ($rows as $row) {
                 $rowData = json_decode($row['row_data'], true);
 
-                // Create a unique identifier for this record
-                $uniqueKeyValues = [];
-                foreach ($this->uniqueKeyColumns as $column) {
-                    $columnIndex = array_search($column, $header);
-                    if ($columnIndex !== false && isset($rowData[$columnIndex])) {
-                        $uniqueKeyValues[$column] = $rowData[$columnIndex];
-                    }
+                // Skip header rows
+                if (isset($rowData[0]) && $rowData[0] === 'EIN') {
+                    continue;
                 }
 
-                // If we have a unique identifier, try to find existing record
-                if (!empty($uniqueKeyValues)) {
-                    $existingRecord = ExcelData::where('file_id', $row['file_id'])
-                        ->where(function ($query) use ($uniqueKeyValues, $header) {
-                            foreach ($uniqueKeyValues as $column => $value) {
-                                $columnIndex = array_search($column, $header);
-                                $query->whereRaw("JSON_EXTRACT(row_data, '$[$columnIndex]') = ?", [$value]);
-                            }
-                        })
+                // Get EIN value
+                $einValue = isset($rowData[$einIndex]) ? (string) $rowData[$einIndex] : null;
+
+                if (!empty($einValue)) {
+                    // Find existing record by EIN (across ALL files)
+                    $existingRecord = ExcelData::whereRaw("JSON_UNQUOTE(JSON_EXTRACT(row_data, '$[$einIndex]')) = ?", [$einValue])
+                        ->whereRaw("JSON_EXTRACT(row_data, '$[0]') != 'EIN'") // Exclude header rows
                         ->first();
 
                     if ($existingRecord) {
-                        // Update existing record
-                        $existingRecord->update([
-                            'row_data' => $row['row_data'],
-                            'updated_at' => now()
-                        ]);
+                        // FIX: $existingRecord->row_data is already an array due to model cast
+                        $existingData = $existingRecord->row_data;
+
+                        if ($existingData !== $rowData) {
+                            $existingRecord->update([
+                                'row_data' => $row['row_data'], // Keep as JSON string
+                                'updated_at' => now()
+                            ]);
+                            $this->info("✓ Updated record with EIN: {$einValue}");
+                        } else {
+                            $this->info("→ Skipped unchanged record with EIN: {$einValue}");
+                        }
                     } else if (!$updateOnly) {
-                        // Insert new record if not in update-only mode
+                        // Insert new record
                         DB::table('excel_data')->insert($row);
+                        $this->info("+ Inserted new record with EIN: {$einValue}");
                     }
                 } else if (!$updateOnly) {
-                    // If no unique identifier, just insert (unless update-only mode)
+                    // Insert record without EIN
                     DB::table('excel_data')->insert($row);
+                    $this->info("Inserted record without EIN");
                 }
             }
         } catch (\Exception $e) {
             $this->error("Error processing chunk: " . $e->getMessage());
+            Log::error("Error processing chunk: " . $e->getMessage());
 
-            // Fallback to individual processing
+            // Fallback: insert all rows without processing
             foreach ($rows as $row) {
                 try {
+                    $rowData = json_decode($row['row_data'], true);
+
+                    // Skip header rows
+                    if (isset($rowData[0]) && $rowData[0] === 'EIN') {
+                        continue;
+                    }
+
                     DB::table('excel_data')->insert($row);
                 } catch (\Exception $insertError) {
                     $this->error("Failed to insert row: " . $insertError->getMessage());
                     Log::error("Failed to insert IRS BMF row", [
-                        'row_data' => $row['row_data'],
                         'error' => $insertError->getMessage()
                     ]);
                 }
@@ -300,13 +334,22 @@ class ImportIrsBmf extends Command
         if (!file_exists($path)) {
             return ['source_index' => 0, 'row_offset' => 0];
         }
-        $json = file_get_contents($path);
-        $data = json_decode($json, true);
-        return is_array($data) ? $data : ['source_index' => 0, 'row_offset' => 0];
+
+        try {
+            $json = file_get_contents($path);
+            $data = json_decode($json, true);
+            return is_array($data) ? $data : ['source_index' => 0, 'row_offset' => 0];
+        } catch (\Exception $e) {
+            return ['source_index' => 0, 'row_offset' => 0];
+        }
     }
 
     private function saveState(array $state): void
     {
-        file_put_contents($this->statePath(), json_encode($state));
+        try {
+            file_put_contents($this->statePath(), json_encode($state));
+        } catch (\Exception $e) {
+            $this->error("Failed to save state: " . $e->getMessage());
+        }
     }
 }
