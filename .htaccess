@@ -1,10 +1,11 @@
 <IfModule mod_rewrite.c>
   RewriteEngine On
   RewriteBase /
-  # Don’t loop on index.php
+
+  # Don't loop on index.php at root
   RewriteRule ^index\.php$ - [L]
-  # If the request isn't already for /public and isn't an existing file/dir,
-  # rewrite internally to /public/<request>
+
+  # Internally rewrite everything to /public/<request> if it's not already there
   RewriteCond %{REQUEST_URI} !^/public/
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
