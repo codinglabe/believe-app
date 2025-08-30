@@ -80,6 +80,7 @@ jobs:
             git pull origin main
 
             composer install --no-dev --optimize-autoloader
+            mkdir -p resources/views
             php artisan migrate --force
             php artisan storage:link
             php artisan config:cache
