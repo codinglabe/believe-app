@@ -37,10 +37,10 @@ jobs:
           # Ensure view dirs exist so view:cache doesn't fail
           mkdir -p resources/views
           mkdir -p storage/framework/views
+          # Cache configs/routes/views
           php artisan config:cache
           php artisan route:cache
           php artisan view:cache
-
 
       # If you use Vite/Node assets, build them
       - name: Setup Node
@@ -55,29 +55,43 @@ jobs:
           npm ci --legacy-peer-deps
           npm run build
 
-      # Ensure root .htaccess exists to route to /public
-      - name: Ensure root .htaccess
+      - name: Ensure Laravel writable dirs
         run: |
-          if [ ! -f .htaccess ]; then
-            cat > .htaccess <<'HTACCESS'
-          <IfModule mod_rewrite.c>
-            RewriteEngine On
-            RewriteBase /
-            RewriteRule ^index\.php$ - [L]
-            RewriteCond %{REQUEST_URI} !^/public/
-            RewriteCond %{REQUEST_FILENAME} !-f
-            RewriteCond %{REQUEST_FILENAME} !-d
-            RewriteRule ^(.*)$ public/$1 [L]
-          </IfModule>
-          HTACCESS
-          fi
+          mkdir -p storage/framework/{cache,data,sessions,testing,views} bootstrap/cache
+          chmod -R 775 storage bootstrap/cache || true
 
-      # Package a clean artifact for Zip Deploy
-      - name: Create deployment package
+      # Create an Nginx-friendly deploy bundle:
+      #   - copy whole app to deploy/
+      #   - copy public/* (except index.php) to web root
+      #   - add root index.php shim that requires public/index.php
+      - name: Create deploy bundle for Nginx docroot
         run: |
-          rm -f app.zip
-          zip -r app.zip . \
-            -x ".git/*" ".github/*" "tests/*" "node_modules/*" "storage/logs/*"
+          set -e
+          rm -rf deploy app.zip
+          mkdir -p deploy
+
+          # Copy the full app (vendor included)
+          rsync -a . deploy/ \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude "tests" \
+            --exclude "storage/logs"
+
+          # Copy public/* to the web root except index.php
+          rsync -a --exclude 'index.php' public/ deploy/
+
+          # Root index.php shim -> hand off to Laravel front controller
+          cat > deploy/index.php <<'PHP'
+          <?php
+          require __DIR__ . '/public/index.php';
+          PHP
+
+          # Ensure these exist inside the bundle
+          mkdir -p deploy/resources/views deploy/storage/framework/views
+
+          # Zip the deploy bundle
+          (cd deploy && zip -r ../app.zip .)
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -102,5 +116,3 @@ jobs:
           slot-name: Production
           package: app.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D1C832605F1410F9AF04E1576811AE7 }}
-
-
