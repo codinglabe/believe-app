@@ -4,6 +4,16 @@
     </IfModule>
 
     RewriteEngine On
+ 
+    RewriteBase /
+    # Don’t loop on index.php
+    RewriteRule ^index\.php$ - [L]
+    # If the request isn't already for /public and isn't an existing file/dir,
+    # rewrite internally to /public/<request>
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{REQUEST_FILENAME} !-f
+    RewriteCond %{REQUEST_FILENAME} !-d
+    RewriteRule ^(.*)$ public/$1 [L]
 
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
