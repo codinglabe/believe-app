@@ -52,7 +52,7 @@ jobs:
       - name: Build frontend (if present)
         if: hashFiles('package.json') != ''
         run: |
-          npm ci
+          npm ci --legacy-peer-deps
           npm run build
 
       # Ensure root .htaccess exists to route to /public
@@ -102,4 +102,5 @@ jobs:
           slot-name: Production
           package: app.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D1C832605F1410F9AF04E1576811AE7 }}
+
 
