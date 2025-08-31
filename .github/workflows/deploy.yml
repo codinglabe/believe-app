@@ -27,14 +27,14 @@ jobs:
           cache: 'npm'
 
       - name: Cache Composer dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
           path: ~/.composer/cache
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
       - name: Cache Node modules
-        uses: actions/cache@v4
+        uses: actions/cache@v3
         with:
           path: node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
@@ -67,9 +67,6 @@ jobs:
     if: github.ref == 'refs/heads/main'
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Setup SSH
         uses: webfactory/ssh-agent@v0.9.0
         with:
@@ -80,11 +77,9 @@ jobs:
           ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             set -e
             cd ${{ secrets.SSH_DEPLOY_PATH }}
-            git fetch origin main
-            git reset --hard origin/main
+            git pull origin main
 
-            composer install --no-dev --optimize-autoloader --no-interaction
-            cp .env.production .env
+            composer install --no-dev --optimize-autoloader
             php artisan migrate --force
             php artisan storage:link
             php artisan config:cache
