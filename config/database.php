@@ -64,9 +64,11 @@ return [
             'strict' => false,
             'engine' => null,
             'options' => extension_loaded('pdo_mysql') ? array_filter([
+                PDO::MYSQL_ATTR_SSL_CA   => env('MYSQL_ATTR_SSL_CA'),
+                PDO::MYSQL_ATTR_SSL_CERT => env('MYSQL_ATTR_SSL_CERT'),
+                PDO::MYSQL_ATTR_SSL_KEY  => env('MYSQL_ATTR_SSL_KEY'),
                 PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => false,
-                //PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
-                PDO::MYSQL_ATTR_SSL_KEY => env('MYSQL_ATTR_SSL_KEY'),
+                PDO::MYSQL_ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
                 PDO::ATTR_TIMEOUT => 60,
                 PDO::ATTR_EMULATE_PREPARES => true,
             ]) : [],

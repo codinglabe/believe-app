@@ -18,7 +18,7 @@ jobs:
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.2'
+          php-version: '8.3'
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -80,11 +80,12 @@ jobs:
             git pull origin main
 
             composer install --no-dev --optimize-autoloader
+            mkdir -p resources/views
             php artisan migrate --force
             php artisan storage:link
             php artisan config:cache
             php artisan route:cache
-            php artisan view:cache
+            php artisan view:cache || true
 
             npm install --production
             npm run production
