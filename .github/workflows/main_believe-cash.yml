@@ -43,6 +43,9 @@ jobs:
           php artisan view:cache
 
       # If you use Vite/Node assets, build them
+      - name: Set APP_URL
+        run: echo "APP_URL=https://believe-cash.azurewebsites.net" >> .env
+        
       - name: Setup Node
         if: hashFiles('package.json') != ''
         uses: actions/setup-node@v4
@@ -116,3 +119,4 @@ jobs:
           slot-name: Production
           package: app.zip
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D1C832605F1410F9AF04E1576811AE7 }}
+
