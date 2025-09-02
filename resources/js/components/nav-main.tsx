@@ -32,6 +32,9 @@ export function NavMain({ items = [] }: NavMainProps) {
                     // For edit pages: /status-codes/123/edit should match /status-codes
                     if (currentPath.match(new RegExp(`^${basePath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`))) return true;
 
+                    // For admin routes: /admin/courses should match /admin/courses
+                    if (currentPath.startsWith(basePath)) return true;
+
                     return false;
                 });
                 if (hasActiveChild) {
@@ -80,7 +83,11 @@ export function NavMain({ items = [] }: NavMainProps) {
                             <SidebarMenu>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton
-                                        onClick={() => toggleGroup(item.title)}
+                                        onClick={(e) => {
+                                            e.preventDefault();
+                                            e.stopPropagation();
+                                            toggleGroup(item.title);
+                                        }}
                                         isActive={hasActiveChild}
                                         tooltip={{ children: item.title }}
                                     >
@@ -88,24 +95,35 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         <span>{item.title}</span>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
-
-                                {isExpanded && item.items.map((subItem) => (
-                                    shouldShowItem(subItem) && (
-                                        <SidebarMenuItem key={subItem.title}>
-                                            <SidebarMenuButton
-                                                asChild
-                                                isActive={subItem.href === page.url}
-                                                tooltip={{ children: subItem.title }}
-                                            >
-                                                <Link href={subItem.href} prefetch>
-                                                    {subItem.icon && <subItem.icon />}
-                                                    <span>{subItem.title}</span>
-                                                </Link>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
-                                    )
-                                ))}
                             </SidebarMenu>
+                            
+                            {isExpanded && (
+                                <div className="ml-4 space-y-1">
+                                    {item.items.map((subItem) => (
+                                        shouldShowItem(subItem) && (
+                                            <SidebarMenu key={subItem.title}>
+                                                <SidebarMenuItem>
+                                                    <SidebarMenuButton
+                                                        asChild
+                                                        isActive={
+                                                            subItem.href === page.url ||
+                                                            page.url.startsWith(subItem.href + '/create') ||
+                                                            !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
+                                                            page.url.startsWith(subItem.href)
+                                                        }
+                                                        tooltip={{ children: subItem.title }}
+                                                    >
+                                                        <Link href={subItem.href} prefetch>
+                                                            {subItem.icon && <subItem.icon />}
+                                                            <span>{subItem.title}</span>
+                                                        </Link>
+                                                    </SidebarMenuButton>
+                                                </SidebarMenuItem>
+                                            </SidebarMenu>
+                                        )
+                                    ))}
+                                </div>
+                            )}
                         </SidebarGroup>
                     );
                 } else {
