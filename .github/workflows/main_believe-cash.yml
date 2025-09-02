@@ -1,0 +1,120 @@
+name: Build and deploy Laravel to Azure Web App - believe-cash
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    env:
+      PHP_VERSION: '8.3'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
+
+      - name: Cache Composer
+        uses: actions/cache@v4
+        with:
+          path: ~/.composer/cache/files
+          key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+          restore-keys: ${{ runner.os }}-composer-
+
+      - name: Install PHP dependencies (prod)
+        run: |
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          # Ensure view dirs exist so view:cache doesn't fail
+          mkdir -p resources/views
+          mkdir -p storage/framework/views
+          # Cache configs/routes/views
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
+
+      # If you use Vite/Node assets, build them
+      - name: Setup Node
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend (if present)
+        if: hashFiles('package.json') != ''
+        run: |
+          npm ci --legacy-peer-deps
+          npm run build
+
+      - name: Ensure Laravel writable dirs
+        run: |
+          mkdir -p storage/framework/{cache,data,sessions,testing,views} bootstrap/cache
+          chmod -R 775 storage bootstrap/cache || true
+
+      # Create an Nginx-friendly deploy bundle:
+      #   - copy whole app to deploy/
+      #   - copy public/* (except index.php) to web root
+      #   - add root index.php shim that requires public/index.php
+      - name: Create deploy bundle for Nginx docroot
+        run: |
+          set -e
+          rm -rf deploy app.zip
+          mkdir -p deploy
+
+          # Copy the full app (vendor included)
+          rsync -a . deploy/ \
+            --exclude ".git" \
+            --exclude ".github" \
+            --exclude "node_modules" \
+            --exclude "tests" \
+            --exclude "storage/logs"
+
+          # Copy public/* to the web root except index.php
+          rsync -a --exclude 'index.php' public/ deploy/
+
+          # Root index.php shim -> hand off to Laravel front controller
+          cat > deploy/index.php <<'PHP'
+          <?php
+          require __DIR__ . '/public/index.php';
+          PHP
+
+          # Ensure these exist inside the bundle
+          mkdir -p deploy/resources/views deploy/storage/framework/views
+
+          # Zip the deploy bundle
+          (cd deploy && zip -r ../app.zip .)
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: laravel-app-zip
+          path: app.zip
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: laravel-app-zip
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: believe-cash
+          slot-name: Production
+          package: app.zip
+          publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_3D1C832605F1410F9AF04E1576811AE7 }}
+
+

@@ -26,7 +26,8 @@ import {
   X,
   Tag,
   Text,
-  MessageCircle, // Added MessageCircle icon
+  MessageCircle,
+  GraduationCap, // Added MessageCircle icon
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -102,6 +103,13 @@ const navigationItems = [
     icon: ShoppingBag,
     description: "Purchase history",
     color: "from-orange-500 to-amber-600",
+  },
+  {
+    name: "Course",
+    href: "/profile/course",
+    icon: GraduationCap,
+    description: "Course management",
+    color: "from-purple-500 to-indigo-600",
   },
   {
     name: "Enrollments",
@@ -491,7 +499,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           >
             <Card className="bg-white dark:bg-gray-800 shadow-xl border-0">
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-9 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-10 gap-3">
                   {navigationItems.map((item, index) => {
                     const isActive = currentPath === item.href
                     const Icon = item.icon

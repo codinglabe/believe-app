@@ -28,6 +28,8 @@ class AdminPermissionsSeeder extends Seeder
             'supporter.management',
             'permission.management',
             'role.management',
+            'ntee.code',
+            'chat'
         ];
 
         $prefixes = ['.read', '.create', '.edit', '.update', '.delete'];

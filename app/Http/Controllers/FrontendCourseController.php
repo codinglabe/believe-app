@@ -15,9 +15,8 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
-class CourseController extends Controller
+class FrontendCourseController extends Controller
 {
-
     /**
      * Display a listing of courses for the public view.
      */
@@ -100,17 +99,12 @@ class CourseController extends Controller
             'courses_topic'
         ]);
 
-        $user = Auth::user();
-
         $query = Course::query()
-            ->with(['topic', 'organization', 'creator']);
+            ->with(['topic', 'organization', 'creator'])
+            // Only show courses for the current user's organization
+            ->where('organization_id', Auth::id());
 
-        // ✅ If user is not admin → restrict by organization
-        if ($user->role !== 'admin') {
-            $query->where('organization_id', $user->organization_id);
-        }
-
-        // 🔍 Search functionality
+        // Search functionality
         if (!empty($filters['courses_search'])) {
             $search = $filters['courses_search'];
             $query->where(function ($q) use ($search) {
@@ -124,22 +118,22 @@ class CourseController extends Controller
             });
         }
 
-        // 🔎 Topic filter
+        // Topic filter
         if (!empty($filters['courses_topic'])) {
             $query->where('topic_id', $filters['courses_topic']);
         }
 
-        // 🔎 Pricing type filter
+        // Pricing type filter
         if (!empty($filters['courses_type'])) {
             $query->where('pricing_type', $filters['courses_type']);
         }
 
-        // 🔎 Format filter
+        // Format filter
         if (!empty($filters['courses_format'])) {
             $query->where('format', $filters['courses_format']);
         }
 
-        // 🔎 Status filter
+        // Status filter (based on enrollment and start date)
         if (!empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
@@ -171,19 +165,16 @@ class CourseController extends Controller
 
         $topics = Topic::orderBy('name')->get(['id', 'name']);
 
-        // ✅ Only calculate statistics for own org unless admin
-        $statistics = $user->role === 'admin'
-            ? $this->calculateCourseStatistics(null) // all orgs
-            : $this->calculateCourseStatistics($user->organization_id);
+        // Calculate statistics for the current user's organization
+        $statistics = $this->calculateCourseStatistics(Auth::id());
 
-        return Inertia::render('admin/course/Index', [
+        return Inertia::render('frontend/user/course/Index', [
             'courses' => $courses,
             'topics' => $topics,
             'filters' => $filters,
             'statistics' => $statistics,
         ]);
     }
-
 
     /**
      * Calculate course statistics for the admin dashboard
@@ -217,7 +208,7 @@ class CourseController extends Controller
     {
         $topics = Topic::orderBy('name')->get(['id', 'name']);
 
-        return Inertia::render('admin/course/Create', [
+        return Inertia::render('frontend/user/course/Create', [
             'topics' => $topics,
         ]);
     }
@@ -345,7 +336,8 @@ class CourseController extends Controller
 
             DB::commit();
 
-            return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
+            return redirect()->route('profile.course.index')->with('success', 'Community course created successfully!');
+
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to create course: ' . $e->getMessage());
@@ -365,7 +357,6 @@ class CourseController extends Controller
 
         // Check if current user is enrolled (if authenticated)
         $userEnrollment = null;
-        $user = Auth::user();
         if (Auth::check()) {
             $userEnrollment = Enrollment::where('user_id', Auth::id())
                 ->where('course_id', $course->id)
@@ -392,18 +383,16 @@ class CourseController extends Controller
             $status = 'full';
         } elseif (($course->enrolled / $course->max_participants) >= 0.8) {
             $status = 'almost_full';
-        } elseif (Auth::user()->id === $course->user_id) {
-            $status = 'unavailable';
         } else {
             $status = 'available';
         }
 
-        return Inertia::render('frontend/course/Show', [
+        return Inertia::render('frontend/user/course/Show', [
             'course' => $course,
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
-            'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started' && $status !== 'unavailable',
+            'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started',
             'meetingLink' => $course->meeting_link, // Added meeting_link field
         ]);
     }
@@ -451,7 +440,7 @@ class CourseController extends Controller
             ->limit(10)
             ->get();
 
-        return Inertia::render('admin/course/Show', [
+        return Inertia::render('frontend/user/course/Show', [
             'course' => $course,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
@@ -489,7 +478,7 @@ class CourseController extends Controller
             ? $course->start_time->format('H:i')
             : (is_string($course->start_time) ? substr($course->start_time, 0, 5) : $course->start_time);
 
-        return Inertia::render('admin/course/Edit', [
+        return Inertia::render('frontend/user/course/Edit', [
             'course' => $courseData,
             'topics' => $topics,
         ]);
@@ -626,7 +615,8 @@ class CourseController extends Controller
 
             DB::commit();
 
-            return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+            return redirect()->route('profile.course.index')->with('success', 'Community course updated successfully!');
+
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Failed to update course: ' . $e->getMessage());
@@ -659,7 +649,7 @@ class CourseController extends Controller
 
             DB::commit();
 
-            return redirect()->route('admin.courses.index')->with('success', 'Course deleted successfully!');
+            return redirect()->route('profile.course.index')->with('success', 'Course deleted successfully!');
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error("Error deleting course: " . $e->getMessage());
@@ -667,3 +657,4 @@ class CourseController extends Controller
         }
     }
 }
+ 

@@ -33,6 +33,7 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\JobApplicationController;
@@ -42,6 +43,7 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\FrontendCourseController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
@@ -182,6 +184,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.select
     // Classification Codes Routes
     Route::resource('classification-codes', ClassificationCodeController::class)->except(['show']);
 
+    // NTEE Codes Routes
+    Route::resource('ntee-codes', NteeCodeController::class)->except(['show']);
+
     // Status Codes Routes
     Route::resource('status-codes', StatusCodeController::class)->except(['show']);
 
@@ -306,6 +311,13 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/courses/enrollment/success', [EnrollmentController::class, 'success'])->name('courses.enrollment.success');
     Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
+    Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
+    Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create');
+    Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store');
+    Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show'); // Added this line
+    Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit');
+    Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update');
+    Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy');
 });
 Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
