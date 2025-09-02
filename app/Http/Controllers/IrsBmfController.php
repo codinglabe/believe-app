@@ -275,7 +275,7 @@ class IrsBmfController extends Controller
                 $command .= ' --source=' . escapeshellarg($source);
             }
 
-            Artisan::queue($command);
+            Artisan::queue($command)->onQueue('irs-import');
 
             return response()->json([
                 'success' => true,

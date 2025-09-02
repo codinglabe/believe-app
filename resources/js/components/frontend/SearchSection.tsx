@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useState, useEffect } from "react"
 import { Search, X } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -48,7 +49,8 @@ export default function SearchSection({
   const [selectedState, setSelectedState] = useState(filters.state || "All States")
   const [selectedCity, setSelectedCity] = useState(filters.city || "All Cities")
   const [zipCode, setZipCode] = useState(filters.zip || "")
-  const [cities, setCities] = useState(filterOptions.cities)
+  const [cities, setCities] = useState<string[]>(filterOptions.cities || ["All Cities"])
+  const [isLoadingCities, setIsLoadingCities] = useState(false)
 
   // Debounced search function
   const debouncedSearch = debounce((params: Record<string, string>) => {
@@ -73,6 +75,7 @@ export default function SearchSection({
     setSelectedCity("All Cities")
 
     if (state !== "All States") {
+      setIsLoadingCities(true)
       try {
         const response = await fetch(`/api/cities-by-state?state=${encodeURIComponent(state)}`)
         const newCities = await response.json()
@@ -80,22 +83,40 @@ export default function SearchSection({
       } catch (error) {
         console.error("Error fetching cities:", error)
         setCities(["All Cities"])
+      } finally {
+        setIsLoadingCities(false)
       }
     } else {
-      setCities(filterOptions.cities)
+      setCities(["All Cities"])
     }
 
     // Trigger search after state change
-    // setTimeout(() => {
-    //   const params = {
-    //     search: searchQuery,
-    //     category: selectedCategory,
-    //     state: state,
-    //     city: "All Cities",
-    //     zip: zipCode,
-    //   }
-    //   debouncedSearch(params)
-    // }, 100)
+    setTimeout(() => {
+      const params = {
+        search: searchQuery,
+        category: selectedCategory,
+        state: state,
+        city: "All Cities",
+        zip: zipCode,
+      }
+      debouncedSearch(params)
+    }, 100)
+  }
+
+  // Handle city change
+  const handleCityChange = (city: string) => {
+    setSelectedCity(city)
+    // Trigger search after city change
+    setTimeout(() => {
+      const params = {
+        search: searchQuery,
+        category: selectedCategory,
+        state: selectedState,
+        city: city,
+        zip: zipCode,
+      }
+      debouncedSearch(params)
+    }, 100)
   }
 
   // Handle quick filter
@@ -131,6 +152,12 @@ export default function SearchSection({
       return () => clearTimeout(timer)
     }
   }, [zipCode])
+
+  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      handleSearch()
+    }
+  }
 
   return (
     <motion.div
@@ -185,9 +212,9 @@ export default function SearchSection({
               </SelectContent>
             </Select>
 
-            <Select value={selectedCity} onValueChange={setSelectedCity}>
+            <Select value={selectedCity} onValueChange={handleCityChange} disabled={isLoadingCities || selectedState === "All States"}>
               <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
-                <SelectValue placeholder="All Cities" />
+                <SelectValue placeholder={isLoadingCities ? "Loading cities..." : "All Cities"} />
               </SelectTrigger>
               <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                 {cities.map((city) => (
@@ -200,9 +227,10 @@ export default function SearchSection({
 
             <Input
               type="text"
-              placeholder="Zip Code"
+              placeholder="ZIP Code"
               value={zipCode}
               onChange={(e) => setZipCode(e.target.value)}
+              onKeyPress={handleKeyPress}
               className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl"
             />
 

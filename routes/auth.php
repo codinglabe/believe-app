@@ -76,7 +76,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/purchase-success', [PurchaseOrderController::class, 'purchaseSuccess'])->name('purchase.success');
     Route::get('/order-success', [PurchaseOrderController::class, 'orderSuccess'])->name('order.success');
     Route::get('/order-cancel', [PurchaseOrderController::class, 'purchaseCancel'])->name('purchase.cancel');
-    
+
     // Profile photo routes
     Route::post('/profile/photo', [ProfilePhotoController::class, 'store'])->name('profile.photo.store');
     Route::delete('/profile/photo', [ProfilePhotoController::class, 'destroy'])->name('profile.photo.destroy');

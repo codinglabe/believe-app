@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\PositionCategory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -101,6 +102,13 @@ class PositionCategoryController extends Controller
      */
     public function destroy(PositionCategory $positionCategory)
     {
+
+        $auth = Auth::user();
+
+        if ($auth->role !== 'admin') {
+            return redirect()->route('position-categories.index')->with('error', 'You do not have permission to delete this Job Position Category.');
+        }
+
         $positionCategory->delete();
         return redirect()->route('position-categories.index')->with('success', 'Job Position Category deleted successfully.');
     }

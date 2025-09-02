@@ -36,6 +36,7 @@ class OrganizationRegisterController extends Controller
             if (!$user) {
                 return redirect()->route('register')->with('error', 'Invalid referral code');
             }
+
             return Inertia::render('frontend/register/organization', [
                 'referralCode' => $user->referral_code,
             ]);
@@ -170,12 +171,12 @@ class OrganizationRegisterController extends Controller
 
             $user = User::create([
                 "name" => $validated['contact_name'],
-                "slug" => $slug,
+                "slug" => Str::slug($validated['contact_name']) . '-' . Str::random(5),
                 "email" => $validated['email'],
                 "contact_number" => $validated['phone'],
                 "password" => Hash::make($validated['password']),
                 "role" => 'organization',
-                "referred_by" => $referredBy,
+                "referred_by" => null,
             ]);
 
 

@@ -43,6 +43,15 @@ return [
             'after_commit' => false,
         ],
 
+        'irs-import' => [
+            'driver' => env('DB_QUEUE_CONNECTION'),
+            'table' => env('DB_QUEUE_TABLE', 'jobs'),
+            'queue' => 'irs-import',
+            'retry_after' => 7200, // 2 hours
+            'timeout' => 3600, // 1 hour
+            'after_commit' => false,
+        ],
+
         'beanstalkd' => [
             'driver' => 'beanstalkd',
             'host' => env('BEANSTALKD_QUEUE_HOST', 'localhost'),
