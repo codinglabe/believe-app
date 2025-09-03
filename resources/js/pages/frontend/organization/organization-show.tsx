@@ -530,11 +530,15 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                       <CardHeader>
                         <CardTitle className="text-gray-900 dark:text-white">Organization Details</CardTitle>
                       </CardHeader>
-                      <CardContent className="space-y-4">
+                        <CardContent className="space-y-4">
                         <div>
+                          <span className="text-sm text-gray-600 dark:text-gray-300">Ntee Code</span>
+                          <div className="text-gray-900 dark:text-white">{organization.ntee_code}</div>
+                        </div>
+                        {/* <div>
                           <span className="text-sm text-gray-600 dark:text-gray-300">EIN</span>
                           <div className="text-gray-900 dark:text-white">{organization.ein}</div>
-                        </div>
+                        </div> */}
 
                         <div>
                           <span className="text-sm text-gray-600 dark:text-gray-300">Address</span>
