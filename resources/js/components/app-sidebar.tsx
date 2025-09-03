@@ -25,7 +25,9 @@ import {
     FileCode,
     Hash,
     Percent,
-    Building
+    Building,
+    Calendar,
+    Plus
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -161,6 +163,26 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "course.read"
+    },
+
+    // Event Management Section
+    {
+        title: 'Event Management',
+        items: [
+            {
+                title: 'Events',
+                href: '/events',
+                icon: Calendar,
+                permission: "event.read"
+            },
+            {
+                title: 'Create Event',
+                href: '/events/create',
+                icon: Plus,
+                permission: "event.create"
+            },
+        ],
+        permission: "event.read"
     },
 
     // Code Management Section

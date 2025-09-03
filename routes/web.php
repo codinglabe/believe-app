@@ -316,6 +316,15 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store');
     Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show'); // Added this line
     Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit');
+
+    // Frontend User Events Routes
+    Route::get('/profile/events', [EventController::class, 'userEvents'])->name('profile.events.index');
+    Route::get('/profile/events/create', [EventController::class, 'userCreate'])->name('profile.events.create');
+    Route::post('/profile/events', [EventController::class, 'userStore'])->name('profile.events.store');
+    Route::get('/profile/events/{event}', [EventController::class, 'userShow'])->name('profile.events.show');
+    Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit');
+    Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update');
+    Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy');
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy');
 });

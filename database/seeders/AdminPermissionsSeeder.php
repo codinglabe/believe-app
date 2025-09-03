@@ -14,7 +14,7 @@ class AdminPermissionsSeeder extends Seeder
     public function run(): void
     {
         $bases = [
-            'dashbord.management',
+            'dashbord.management', 
             'user.management',
             'upload.data',
             'management.data',
@@ -29,7 +29,8 @@ class AdminPermissionsSeeder extends Seeder
             'permission.management',
             'role.management',
             'ntee.code',
-            'chat'
+            'chat',
+            'event'
         ];
 
         $prefixes = ['.read', '.create', '.edit', '.update', '.delete'];

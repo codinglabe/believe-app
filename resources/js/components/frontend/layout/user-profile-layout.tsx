@@ -66,6 +66,7 @@ interface PageProps {
       wallet_balance?: number
     }
   }
+  [key: string]: any
 }
 
 const navigationItems = [
@@ -117,6 +118,13 @@ const navigationItems = [
     icon: BookOpen,
     description: "Course enrollments",
     color: "from-purple-500 to-violet-600",
+  },
+  {
+    name: "Events",
+    href: "/profile/events",
+    icon: Calendar,
+    description: "My events",
+    color: "from-blue-500 to-cyan-600",
   },
   {
     name: "Node Boss",
@@ -499,7 +507,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           >
             <Card className="bg-white dark:bg-gray-800 shadow-xl border-0">
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-10 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-11 gap-3">
                   {navigationItems.map((item, index) => {
                     const isActive = currentPath === item.href
                     const Icon = item.icon
