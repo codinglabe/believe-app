@@ -153,7 +153,7 @@ export default function NonprofitNews({
         <div className="container mx-auto px-4 max-w-6xl">
           {/* Header */}
           <div className="text-center mb-8 relative">
-            <button
+            {/* <button
               onClick={toggleDarkMode}
               className="absolute right-0 top-0 p-2 rounded-full bg-white dark:bg-gray-800 shadow-md"
               aria-label="Toggle dark mode"
@@ -167,7 +167,7 @@ export default function NonprofitNews({
                   <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
                 </svg>
               )}
-            </button>
+            </button> */}
 
             <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">Nonprofit News Aggregator</h1>
             <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
@@ -183,7 +183,7 @@ export default function NonprofitNews({
                 <span className="block text-sm text-gray-500 dark:text-gray-400">Total Articles</span>
               </div>
               <div className="text-center">
-                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{sources.length}</span>
+                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{sources.length === 0 ? allSources.length : sources.length}</span>
                 <span className="block text-sm text-gray-500 dark:text-gray-400">Sources</span>
               </div>
               <div className="text-center">
