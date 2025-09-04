@@ -398,10 +398,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                         {organization.city}, {organization.state}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1">
+                    {/* <div className="flex items-center gap-1">
                       <Calendar className="h-4 w-4" />
                       <span className="text-sm">Founded {organization.ruling}</span>
-                    </div>
+                    </div> */}
                     {organization.is_registered && (
                       <div className="flex items-center gap-1">
                         <Star className="h-4 w-4 text-yellow-400" />
@@ -571,10 +571,10 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                           </div>
                         )}
 
-                        <div>
+                        {/* <div>
                           <span className="text-sm text-gray-600 dark:text-gray-300">Founded</span>
                           <div className="text-gray-900 dark:text-white">{organization.ruling}</div>
-                        </div>
+                        </div> */}
 
                         <div>
                           <span className="text-sm text-gray-600 dark:text-gray-300">Status</span>

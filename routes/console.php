@@ -14,3 +14,6 @@ Schedule::command('irs:bmf:import --update-only --chunk=1000')
     ->at('02:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+
+Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();

@@ -47,12 +47,14 @@ use App\Http\Controllers\FrontendCourseController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Http;
 
 // Route::get('/test-broadcast', function () {
 //     $message = App\Models\ChatMessage::first();
@@ -71,6 +73,11 @@ Route::get('/about', function () {
 Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
+
+Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
+    ->name('nonprofit.news');
+
+
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');

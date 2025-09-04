@@ -687,6 +687,7 @@ export default function Navbar() {
     { name: "Marketplace", href: "/marketplace" },
     { name: "Events", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
+    { name: "News", href: "/nonprofit-news" },
     { name: "Donate", href: "/donate" },
     { name: "Courses", href: route("course.index") },
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index") }] : []),

@@ -161,9 +161,9 @@ export default function OrganizationCard({
             )}
           </div>
 
-          {/* <div className="mb-4">
-            <span className="text-sm text-gray-500 dark:text-gray-400">EIN: {organization.ein}</span>
-          </div> */}
+          <div className="mb-4">
+            <span className="text-sm text-gray-500 dark:text-gray-400">Category: {organization.ntee_code}</span>
+          </div>
 
           {customButton ? (
             customButton
