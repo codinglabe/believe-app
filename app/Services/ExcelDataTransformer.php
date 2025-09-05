@@ -99,7 +99,7 @@ class ExcelDataTransformer
         /* NTEE_CD */
         if (isset($row[$columnMap['NTEE_CD']])) {
             $code                            = $row[$columnMap['NTEE_CD']];
-            $description                     = NteeCode::where('ntee_codes', $code)->value('description');
+            $description                     = NteeCode::where('ntee_codes', $code)->value('category');
             $row[$columnMap['NTEE_CD']] = $code . " - " . $description ?? $code;
         }
 

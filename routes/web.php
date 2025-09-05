@@ -77,8 +77,6 @@ Route::get('/contact', function () {
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
     ->name('nonprofit.news');
 
-
-
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
