@@ -7,6 +7,8 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\TestMeetingController;
+use App\Http\Controllers\UsersInterestedTopicsController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -31,6 +33,7 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\JobApplicationController;
@@ -40,16 +43,24 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\FrontendCourseController;
+use App\Http\Controllers\GoogleAuthController;
+use App\Http\Controllers\MeetingChatMessageController;
+use App\Http\Controllers\MeetingController;
+use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
+use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
+use App\Http\Controllers\SocialMediaController;
 use Illuminate\Support\Facades\Broadcast;
+use Illuminate\Support\Facades\Http;
 
-Route::get('/test-broadcast', function () {
-    $message = App\Models\ChatMessage::first();
-    event(new App\Events\MessageSent($message));
-    return "Event fired for message: " . $message;
-});
+// Route::get('/test-broadcast', function () {
+//     $message = App\Models\ChatMessage::first();
+//     event(new App\Events\MessageSent($message));
+//     return "Event fired for message: " . $message;
+// });
 
 Broadcast::routes(['middleware' => ['auth']]);
 
@@ -62,6 +73,9 @@ Route::get('/about', function () {
 Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
+
+Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
+    ->name('nonprofit.news');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
@@ -108,7 +122,13 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+
+    Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
+        ->name('topics.select');
 });
+
+Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
+    ->middleware(['auth', 'verified', 'role:user|organization']);
 
 Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
@@ -116,7 +136,7 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
 
 Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index', 'store', 'update', 'destroy']);
 
-Route::prefix("chat")->middleware(['auth', 'verified'])->name("chat.")->group(function () {
+Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
     Route::get("/rooms/{chatRoom}/messages", [ChatController::class, 'getMessages'])->name('messages');
     Route::post("/rooms/{chatRoom}/messages", [ChatController::class, 'sendMessage'])->name('send-message');
@@ -128,9 +148,13 @@ Route::prefix("chat")->middleware(['auth', 'verified'])->name("chat.")->group(fu
     Route::post("/rooms/{chatRoom}/typing", [ChatController::class, 'setTypingStatus'])->name('typing'); // Renamed function
     Route::post("/rooms/{chatRoom}/mark-as-read", [ChatController::class, 'markRoomAsRead'])->name('mark-as-read'); // Renamed function
     Route::post("/rooms/{chatRoom}/members", [ChatController::class, 'addMembers'])->name('add-members');
+    Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
+
+    Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
+    Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 
-Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
     // Chunked Upload Routes
@@ -164,6 +188,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
 
     // Classification Codes Routes
     Route::resource('classification-codes', ClassificationCodeController::class)->except(['show']);
+
+    // NTEE Codes Routes
+    Route::resource('ntee-codes', NteeCodeController::class)->except(['show']);
 
     // Status Codes Routes
     Route::resource('status-codes', StatusCodeController::class)->except(['show']);
@@ -281,7 +308,7 @@ Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->n
 //     Route::post('/verification/ownership/retry', [OwnershipVerificationController::class, 'retry'])->name('verification.retry');
 // });
 // Enrollment routes (require authentication)
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/courses/{course:slug}/enroll', [EnrollmentController::class, 'show'])->name('courses.enroll');
     Route::post('/courses/{course:slug}/enroll', [EnrollmentController::class, 'store'])->name('courses.enroll.store');
     Route::post('/courses/{course:slug}/cancel', [EnrollmentController::class, 'cancel'])->name('courses.cancel');
@@ -289,8 +316,24 @@ Route::middleware('auth')->group(function () {
     Route::get('/courses/enrollment/success', [EnrollmentController::class, 'success'])->name('courses.enrollment.success');
     Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
+    Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
+    Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create');
+    Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store');
+    Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show'); // Added this line
+    Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit');
+
+    // Frontend User Events Routes
+    Route::get('/profile/events', [EventController::class, 'userEvents'])->name('profile.events.index');
+    Route::get('/profile/events/create', [EventController::class, 'userCreate'])->name('profile.events.create');
+    Route::post('/profile/events', [EventController::class, 'userStore'])->name('profile.events.store');
+    Route::get('/profile/events/{event}', [EventController::class, 'userShow'])->name('profile.events.show');
+    Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit');
+    Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update');
+    Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy');
+    Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update');
+    Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy');
 });
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
     Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
         Route::get('/', [CourseController::class, 'adminIndex'])->name('index');
@@ -306,10 +349,8 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
 });
 
-
-
 // Plaid Verification routes
-Route::middleware(['auth'])->group(function () {
+Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/verification/ownership', [PlaidVerificationController::class, 'show'])->name('verification.ownership');
     Route::get('/verification/results', [PlaidVerificationController::class, 'results'])->name('verification.results');
     Route::post('/verification/download-certificate', [PlaidVerificationController::class, 'downloadCertificate'])->name('verification.download-certificate');
@@ -317,7 +358,7 @@ Route::middleware(['auth'])->group(function () {
 });
 
 // Plaid API routes
-Route::middleware(['auth'])->prefix('api/plaid')->group(function () {
+Route::middleware(['auth', 'topics.selected'])->prefix('api/plaid')->group(function () {
     Route::post('/create-link-token', [PlaidVerificationController::class, 'createLinkToken']);
     Route::post('/exchange-token', [PlaidVerificationController::class, 'exchangeToken']);
     Route::post('/verify-ownership', [PlaidVerificationController::class, 'verifyOwnership']);
@@ -330,7 +371,7 @@ Route::post('/api/plaid/webhook', function () {
 });
 
 
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // NodeShare routes
     Route::resource('node-shares', NodeShareController::class);
 
@@ -356,16 +397,37 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
     //comission withdrawls
     Route::post('/withrawl/request', [WithdrawalController::class, 'store'])->name("withdrawl.request");
+
+    // Social Media Management Routes
+    Route::prefix('social-media')->name('social-media.')->group(function () {
+        Route::get('/', [SocialMediaController::class, 'index'])->name('index');
+        Route::post('/accounts', [SocialMediaController::class, 'storeAccount'])->name('accounts.store');
+        Route::put('/accounts/{account}', [SocialMediaController::class, 'updateAccount'])->name('accounts.update');
+        Route::delete('/accounts/{account}', [SocialMediaController::class, 'deleteAccount'])->name('accounts.delete');
+        Route::post('/posts', [SocialMediaController::class, 'storePost'])->name('posts.store');
+        Route::put('/posts/{post}', [SocialMediaController::class, 'updatePost'])->name('posts.update');
+        Route::delete('/posts/{post}', [SocialMediaController::class, 'deletePost'])->name('posts.delete');
+        Route::post('/posts/{post}/publish', [SocialMediaController::class, 'publishPost'])->name('posts.publish');
+        Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
+        Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
+    });
 });
 
 
 // route for donation
-Route::middleware(['auth', 'verified'])->group(function () {
+Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
 
+// IRS BMF Management Routes
+Route::prefix('irs-bmf')->name('irs-bmf.')->group(function () {
+    Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');
+    Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
+    Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
+    Route::post('/import', [App\Http\Controllers\IrsBmfController::class, 'triggerImport'])->name('import');
+});
 
 
 require __DIR__ . '/settings.php';

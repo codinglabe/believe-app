@@ -10,12 +10,14 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
-use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class CourseController extends Controller
 {
+
     /**
      * Display a listing of courses for the public view.
      */
@@ -85,8 +87,6 @@ class CourseController extends Controller
         ]);
     }
 
-
-
     /**
      * Display a listing of courses for the admin view.
      */
@@ -100,12 +100,17 @@ class CourseController extends Controller
             'courses_topic'
         ]);
 
-        $query = Course::query()
-            ->with(['topic', 'organization', 'creator'])
-            // Only show courses for the current user's organization
-            ->where('organization_id', Auth::id());
+        $user = Auth::user();
 
-        // Search functionality
+        $query = Course::query()
+            ->with(['topic', 'organization', 'creator']);
+
+        // ✅ If user is not admin → restrict by organization
+        if ($user->role !== 'admin') {
+            $query->where('organization_id', $user->organization_id);
+        }
+
+        // 🔍 Search functionality
         if (!empty($filters['courses_search'])) {
             $search = $filters['courses_search'];
             $query->where(function ($q) use ($search) {
@@ -119,22 +124,22 @@ class CourseController extends Controller
             });
         }
 
-        // Topic filter
+        // 🔎 Topic filter
         if (!empty($filters['courses_topic'])) {
             $query->where('topic_id', $filters['courses_topic']);
         }
 
-        // Pricing type filter
+        // 🔎 Pricing type filter
         if (!empty($filters['courses_type'])) {
             $query->where('pricing_type', $filters['courses_type']);
         }
 
-        // Format filter
+        // 🔎 Format filter
         if (!empty($filters['courses_format'])) {
             $query->where('format', $filters['courses_format']);
         }
 
-        // Status filter (based on enrollment and start date)
+        // 🔎 Status filter
         if (!empty($filters['courses_status'])) {
             $status = $filters['courses_status'];
             $now = now();
@@ -166,8 +171,10 @@ class CourseController extends Controller
 
         $topics = Topic::orderBy('name')->get(['id', 'name']);
 
-        // Calculate statistics for the current user's organization
-        $statistics = $this->calculateCourseStatistics(Auth::id());
+        // ✅ Only calculate statistics for own org unless admin
+        $statistics = $user->role === 'admin'
+            ? $this->calculateCourseStatistics(null) // all orgs
+            : $this->calculateCourseStatistics($user->organization_id);
 
         return Inertia::render('admin/course/Index', [
             'courses' => $courses,
@@ -176,6 +183,7 @@ class CourseController extends Controller
             'statistics' => $statistics,
         ]);
     }
+
 
     /**
      * Calculate course statistics for the admin dashboard
@@ -202,8 +210,6 @@ class CourseController extends Controller
         ];
     }
 
-
-
     /**
      * Show the form for creating a new course.
      */
@@ -226,6 +232,7 @@ class CourseController extends Controller
             'name' => 'required|string|max:255|unique:courses,name',
             'description' => 'required|string',
             'topic_id' => ['required', 'exists:topics,id'],
+            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -281,57 +288,72 @@ class CourseController extends Controller
             $counter++;
         }
 
-        Course::create([
-            // Auto-populated fields
-            'organization_id' => Auth::id(), // Current user's ID as organization
-            'user_id' => Auth::id(), // Current user's ID as creator
+        try {
+            DB::beginTransaction();
 
-            // Form data
-            'topic_id' => $validated['topic_id'],
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'description' => $validated['description'],
+            $course = Course::create([
+                // Auto-populated fields
+                'organization_id' => Auth::id(),
+                'user_id' => Auth::id(),
 
-            // Pricing
-            'pricing_type' => $validated['pricing_type'],
-            'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+                // Form data
+                'topic_id' => $validated['topic_id'],
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
+                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
 
-            // Schedule & Format
-            'start_date' => $validated['start_date'],
-            'start_time' => $validated['start_time'],
-            'end_date' => $validated['end_date'],
-            'duration' => $validated['duration'],
-            'format' => $validated['format'],
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-            // Configuration
-            'max_participants' => $validated['max_participants'],
-            'language' => $validated['language'],
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'] ?? null,
+                'duration' => $validated['duration'],
+                'format' => $validated['format'],
 
-            // Target Audience & Impact
-            'target_audience' => $validated['target_audience'],
-            'community_impact' => $validated['community_impact'],
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
 
-            // Course Content
-            'learning_outcomes' => $validated['learning_outcomes'],
-            'prerequisites' => $validated['prerequisites'] ?? [],
-            'materials_needed' => $validated['materials_needed'] ?? [],
-            'accessibility_features' => $validated['accessibility_features'] ?? [],
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
 
-            // Settings
-            'certificate_provided' => $validated['certificate_provided'] ?? false,
-            'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-            // Media
-            'image' => $imagePath,
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-            // Defaults
-            'enrolled' => 0,
-            'rating' => 0.0,
-            'total_reviews' => 0,
-            'last_updated' => now(),
-        ]);
+                // Media
+                'image' => $imagePath,
 
-        return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
+                // Defaults
+                'enrolled' => 0,
+                'rating' => 0.0,
+                'total_reviews' => 0,
+                'last_updated' => now(),
+            ]);
+
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to create course: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to create course. Please try again.']);
+        }
     }
 
     /**
@@ -343,6 +365,7 @@ class CourseController extends Controller
 
         // Check if current user is enrolled (if authenticated)
         $userEnrollment = null;
+        $user = Auth::user();
         if (Auth::check()) {
             $userEnrollment = Enrollment::where('user_id', Auth::id())
                 ->where('course_id', $course->id)
@@ -369,6 +392,8 @@ class CourseController extends Controller
             $status = 'full';
         } elseif (($course->enrolled / $course->max_participants) >= 0.8) {
             $status = 'almost_full';
+        } elseif (Auth::user()->id === $course->user_id) {
+            $status = 'unavailable';
         } else {
             $status = 'available';
         }
@@ -378,7 +403,8 @@ class CourseController extends Controller
             'userEnrollment' => $userEnrollment,
             'enrollmentStats' => $enrollmentStats,
             'status' => $status,
-            'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started',
+            'canEnroll' => !$userEnrollment && $status !== 'full' && $status !== 'started' && $status !== 'unavailable',
+            'meetingLink' => $course->meeting_link, // Added meeting_link field
         ]);
     }
 
@@ -489,6 +515,7 @@ class CourseController extends Controller
             ],
             'description' => 'required|string',
             'topic_id' => ['required', 'exists:topics,id'],
+            'meeting_link' => 'nullable|url|max:500', // Added meeting_link validation
 
             // Pricing
             'pricing_type' => ['required', Rule::in(['free', 'paid'])],
@@ -550,50 +577,64 @@ class CourseController extends Controller
             }
         }
 
-        $course->update([
-            // Note: organization_id and user_id are NOT updated - they remain as originally set
-            'topic_id' => $validated['topic_id'],
-            'name' => $validated['name'],
-            'slug' => $slug,
-            'description' => $validated['description'],
+        try {
+            DB::beginTransaction();
 
-            // Pricing
-            'pricing_type' => $validated['pricing_type'],
-            'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
+            $course->update([
+                'topic_id' => $validated['topic_id'],
+                'name' => $validated['name'],
+                'slug' => $slug,
+                'description' => $validated['description'],
+                'meeting_link' => $validated['meeting_link'], // Added meeting_link field
 
-            // Schedule & Format
-            'start_date' => $validated['start_date'],
-            'start_time' => $validated['start_time'],
-            'end_date' => $validated['end_date'],
-            'duration' => $validated['duration'],
-            'format' => $validated['format'],
+                // Pricing
+                'pricing_type' => $validated['pricing_type'],
+                'course_fee' => $validated['pricing_type'] === 'paid' ? $validated['course_fee'] : null,
 
-            // Configuration
-            'max_participants' => $validated['max_participants'],
-            'language' => $validated['language'],
+                // Schedule & Format
+                'start_date' => $validated['start_date'],
+                'start_time' => $validated['start_time'],
+                'end_date' => $validated['end_date'],
+                'duration' => $validated['duration'],
+                'format' => $validated['format'],
 
-            // Target Audience & Impact
-            'target_audience' => $validated['target_audience'],
-            'community_impact' => $validated['community_impact'],
+                // Configuration
+                'max_participants' => $validated['max_participants'],
+                'language' => $validated['language'],
 
-            // Course Content
-            'learning_outcomes' => $validated['learning_outcomes'],
-            'prerequisites' => $validated['prerequisites'] ?? [],
-            'materials_needed' => $validated['materials_needed'] ?? [],
-            'accessibility_features' => $validated['accessibility_features'] ?? [],
+                // Target Audience & Impact
+                'target_audience' => $validated['target_audience'],
+                'community_impact' => $validated['community_impact'],
 
-            // Settings
-            'certificate_provided' => $validated['certificate_provided'] ?? false,
-            'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
+                // Course Content
+                'learning_outcomes' => $validated['learning_outcomes'],
+                'prerequisites' => $validated['prerequisites'] ?? [],
+                'materials_needed' => $validated['materials_needed'] ?? [],
+                'accessibility_features' => $validated['accessibility_features'] ?? [],
 
-            // Media
-            'image' => $imagePath,
+                // Settings
+                'certificate_provided' => $validated['certificate_provided'] ?? false,
+                'volunteer_opportunities' => $validated['volunteer_opportunities'] ?? false,
 
-            // Update timestamp
-            'last_updated' => now(),
-        ]);
+                // Media
+                'image' => $imagePath,
 
-        return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+                // Update timestamp
+                'last_updated' => now(),
+            ]);
+
+
+            DB::commit();
+
+            return redirect()->route('admin.courses.index')->with('success', 'Community course updated successfully!');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Failed to update course: ' . $e->getMessage());
+
+            return redirect()->back()
+                ->withInput()
+                ->withErrors(['error' => 'Failed to update course. Please try again.']);
+        }
     }
 
     /**
@@ -607,6 +648,8 @@ class CourseController extends Controller
         }
 
         try {
+            DB::beginTransaction();
+
             // Delete image if exists
             if ($course->image && Storage::disk('public')->exists($course->image)) {
                 Storage::disk('public')->delete($course->image);
@@ -614,8 +657,11 @@ class CourseController extends Controller
 
             $course->delete();
 
+            DB::commit();
+
             return redirect()->route('admin.courses.index')->with('success', 'Course deleted successfully!');
         } catch (\Exception $e) {
+            DB::rollBack();
             Log::error("Error deleting course: " . $e->getMessage());
             return redirect()->back()->with('error', 'Failed to delete course. An unexpected error occurred.');
         }

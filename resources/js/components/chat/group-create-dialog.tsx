@@ -12,6 +12,13 @@ import { UserAvatar } from "@/components/chat/user-avatar"
 import { Checkbox } from "@/components/chat/ui/checkbox"
 import { ScrollArea } from "@/components/chat/ui/scroll-area"
 import { Loader2Icon } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/chat/ui/select"
 
 interface GroupCreateDialogProps {
   open: boolean
@@ -19,10 +26,11 @@ interface GroupCreateDialogProps {
 }
 
 export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps) {
-  const { createRoom, allUsers, currentUser } = useChat()
+  const { createRoom, allUsers, currentUser, allTopics } = useChat()
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
   const [type, setType] = useState<"public" | "private">("public")
+  const [topicId, setTopicId] = useState<string>("")
   const [image, setImage] = useState<File | null>(null)
   const [selectedMembers, setSelectedMembers] = useState<number[]>([])
   const [isLoading, setIsLoading] = useState(false)
@@ -43,11 +51,12 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
     e.preventDefault()
     setIsLoading(true)
     try {
-      await createRoom(name, type, description, image || undefined, type === "private" ? selectedMembers : undefined)
+      await createRoom(name, type, description, image || undefined, type === "private" ? selectedMembers : undefined, topicId)
       // Reset form
       setName("")
       setDescription("")
       setType("public")
+      setTopicId("")
       setImage(null)
       setSelectedMembers([])
       onOpenChange(false)
@@ -92,6 +101,27 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
               onChange={(e) => setDescription(e.target.value)}
               className="col-span-3"
             />
+          </div>
+          <div className="grid grid-cols-4 items-center gap-4">
+            <Label htmlFor="topic" className="text-right">
+              Topic
+            </Label>
+            <Select
+              value={topicId}
+              onValueChange={setTopicId}
+              required
+            >
+              <SelectTrigger className="col-span-3">
+                <SelectValue placeholder="Select a topic" />
+              </SelectTrigger>
+              <SelectContent>
+                {allTopics.map((topic) => (
+                  <SelectItem key={topic.id} value={topic.id.toString()}>
+                    {topic.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           <div className="grid grid-cols-4 items-center gap-4">
             <Label htmlFor="type" className="text-right">
@@ -150,7 +180,7 @@ export function GroupCreateDialog({ open, onOpenChange }: GroupCreateDialogProps
           )}
 
           <DialogFooter>
-            <Button type="submit" disabled={isLoading}>
+            <Button type="submit" disabled={isLoading || !topicId}>
               {isLoading && <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />}
               Create Room
             </Button>

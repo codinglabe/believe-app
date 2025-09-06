@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\JobPosition;
 use App\Models\PositionCategory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -110,6 +111,12 @@ class JobPositionController extends Controller
      */
     public function destroy(JobPosition $jobPosition)
     {
+        $auth =  Auth::user();
+
+        if($auth->role !== 'admin'){
+            return redirect()->route('job-positions.index')->with('error', 'You do not have permission to delete this Job Position.');
+        };
+
         $jobPosition->delete();
         return redirect()->route('job-positions.index')->with('success', 'Job Position deleted successfully.');
     }

@@ -121,7 +121,6 @@ export default function FrontendCoursesListPage({
   const [isSearchFocused, setIsSearchFocused] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
   const [showFilters, setShowFilters] = useState(false)
-
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   // Perform search with debouncing
@@ -532,7 +531,7 @@ export default function FrontendCoursesListPage({
                         <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
                           {course?.organization_name ? course?.organization_name:course?.organization.name}
                         </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Organization</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{course?.creator?.role}</p>
                       </div>
                     </div>
 

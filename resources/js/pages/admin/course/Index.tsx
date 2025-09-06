@@ -128,7 +128,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{
     isOpen: boolean
-    id: number | null
+    id: string | null
     title: string
     message: string
   }>({
@@ -196,10 +196,10 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     })
   }
 
-  const openDeleteModal = (id: number, courseName: string) => {
+  const openDeleteModal = (slug: string, courseName: string) => {
     setDeleteModal({
       isOpen: true,
-      id,
+      id: slug,
       title: "Delete Course",
       message: `Are you sure you want to delete the course "${courseName}"? This action cannot be undone and will affect all enrolled students.`,
     })
@@ -262,19 +262,6 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
       return "Almost Full"
     } else {
       return "Available"
-    }
-  }
-
-  const getFormatIcon = (format: string) => {
-    switch (format) {
-      case "online":
-        return <Globe className="h-4 w-4 text-blue-500" />
-      case "in_person":
-        return <MapPin className="h-4 w-4 text-green-500" />
-      case "hybrid":
-        return <Users className="h-4 w-4 text-purple-500" />
-      default:
-        return <Globe className="h-4 w-4 text-gray-500" />
     }
   }
 
@@ -729,7 +716,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                               variant="ghost"
                               size="sm"
                               className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              onClick={() => openDeleteModal(course.id, course.name)}
+                              onClick={() => openDeleteModal(course.slug, course.name)}
                             >
                               <Trash2 className="h-4 w-4" />
                             </Button>

@@ -1,34 +1,29 @@
 "use client"
 
 import type React from "react"
+import { useState } from "react"
 
-import { MapPin, Star, CheckCircle, ArrowRight } from "lucide-react"
+import { MapPin, Star, ArrowRight, Heart } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { motion } from "framer-motion"
-import { Link } from "@inertiajs/react"
+import { Link, router } from "@inertiajs/react"
 
 interface Organization {
   id: number
+  ein: string
   name: string
-  description: string
-  mission: string
+  ico?: string
+  street: string
   city: string
   state: string
   zip: string
-  website?: string
-  ico?: string
   ntee_code?: string
+  classification?: string
   created_at: string
-  ntee_code_relation?: {
-    category: string
-  }
-    user?: {
-    slug: string
-    image?: string
-    email_verified_at?: string
-  }
+  is_favorited?: boolean
+  is_registered?: boolean // Add is_registered field
 }
 
 interface OrganizationCardProps {
@@ -38,17 +33,61 @@ interface OrganizationCardProps {
   rating?: number
   linkUrl?: string
   customButton?: React.ReactNode
+  showFavorite?: boolean
 }
 
 export default function OrganizationCard({
   organization,
   index = 0,
-  showRating = true,
+  showRating = false,
   rating = 4.8,
   linkUrl,
   customButton,
+  showFavorite = true,
 }: OrganizationCardProps) {
-  const defaultLinkUrl = linkUrl || `/organizations/${organization.user?.slug}`
+  const defaultLinkUrl = linkUrl || `/organizations/${organization.id}`
+  const [isFavorited, setIsFavorited] = useState(organization.is_favorited || false)
+  const [isLoading, setIsLoading] = useState(false)
+
+  const handleToggleFavorite = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (isLoading) return
+
+    if (!organization.is_registered) {
+      return // Don't allow favoriting unregistered organizations
+    }
+
+    setIsLoading(true)
+    const newFavoriteState = !isFavorited
+
+    // Optimistic UI update
+    setIsFavorited(newFavoriteState)
+
+    try {
+      await router.post(
+        `/organizations/${organization.id}/toggle-favorite`,
+        {},
+        {
+          preserveScroll: true,
+          onSuccess: () => {
+            setIsFavorited(newFavoriteState)
+          },
+          onError: () => {
+            // Revert on error
+            setIsFavorited(!newFavoriteState)
+          },
+          onFinish: () => {
+            setIsLoading(false)
+          },
+        },
+      )
+    } catch (error) {
+      setIsFavorited(!newFavoriteState)
+      setIsLoading(false)
+    }
+  }
 
   return (
     <motion.div
@@ -61,11 +100,7 @@ export default function OrganizationCard({
       <Card className="h-full border-0 shadow-xl hover:shadow-2xl transition-all duration-500 bg-white dark:bg-gray-800 overflow-hidden">
         <div className="relative overflow-hidden">
           <img
-            src={
-              organization.user?.image
-                ? "/storage/" + organization.user.image
-                : "/placeholder.svg?height=300&width=400&text=Organization"
-            }
+            src="/placeholder.svg?height=300&width=400&text=Organization"
             alt={organization.name}
             width={400}
             height={300}
@@ -75,19 +110,27 @@ export default function OrganizationCard({
 
           <div className="absolute top-4 left-4">
             <Badge variant="secondary" className="bg-white/90 text-gray-700 font-medium">
-              {organization.ntee_code_relation?.category || "General"}
+              {organization.ntee_code || "Non-Profit"}
             </Badge>
           </div>
 
-          <div className="absolute top-4 right-4">
-            <div className="bg-white/90 rounded-full p-1.5">
-              <CheckCircle className="h-5 w-5 text-blue-600" />
+          {showFavorite && organization.is_registered && (
+            <div className="absolute top-4 right-4">
+              <button
+                onClick={handleToggleFavorite}
+                disabled={isLoading}
+                className={`bg-white/90 rounded-full p-1.5 transition-all duration-200 ${
+                  isFavorited ? "text-red-500 hover:bg-red-50" : "text-gray-400 hover:text-red-500 hover:bg-white"
+                } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+              >
+                <Heart className={`h-5 w-5 ${isFavorited ? "fill-current" : ""}`} />
+              </button>
             </div>
-          </div>
+          )}
 
           <div className="absolute bottom-4 left-4 right-4">
             <div className="flex items-center justify-between text-white text-sm">
-              {organization.user?.email_verified_at && <span className="font-semibold">Verified</span>}
+              <span className="font-semibold">{organization.is_registered ? "Registered" : "Listed"}</span>
               <span className="font-semibold">Active</span>
             </div>
           </div>
@@ -98,7 +141,7 @@ export default function OrganizationCard({
             {organization.name}
           </CardTitle>
           <CardDescription className="text-gray-600 dark:text-gray-400 line-clamp-2 leading-relaxed">
-            {organization.description}
+            {organization.classification || "Non-profit organization serving the community"}
           </CardDescription>
         </CardHeader>
 
@@ -116,6 +159,10 @@ export default function OrganizationCard({
                 <span className="text-sm font-semibold">{rating}</span>
               </div>
             )}
+          </div>
+
+          <div className="mb-4">
+            <span className="text-sm text-gray-500 dark:text-gray-400">Category: {organization.ntee_code}</span>
           </div>
 
           {customButton ? (

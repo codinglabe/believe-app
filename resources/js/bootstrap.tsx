@@ -1,24 +1,17 @@
-import Echo from 'laravel-echo';
-import Pusher from 'pusher-js';
+import axios from 'axios';
+declare global {
+	interface Window {
+		axios: typeof axios;
+	}
+}
+window.axios = axios;
 
-window.Pusher = Pusher;
+window.axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
 
-const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content');
-console.log('CSRF Tokensss:', csrfToken); // Debug token
+/**
+ * Echo exposes an expressive API for subscribing to channels and listening
+ * for events that are broadcast by Laravel. Echo and event broadcasting
+ * allow your team to quickly build robust real-time web applications.
+ */
 
-window.Echo = new Echo({
-    broadcaster: 'reverb',
-    key: import.meta.env.VITE_REVERB_APP_KEY || 'fallback_key',
-    wsHost: import.meta.env.VITE_REVERB_HOST || window.location.hostname,
-    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    forceTLS: false, // Disable for local testing
-    enabledTransports: ['ws', 'wss'],
-    authEndpoint: '/broadcasting/auth',
-    withCredentials: true,
-    auth: {
-        headers: {
-            'X-CSRF-TOKEN': csrfToken,
-        },
-    },
-
-});
+import './echo';

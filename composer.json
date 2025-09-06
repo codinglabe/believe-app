@@ -11,12 +11,16 @@
     "require": {
         "php": "^8.2",
         "doctrine/dbal": "*",
+        "google/apiclient": "^2.18",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/cashier": "^15.7",
         "laravel/framework": "^12.0",
         "laravel/reverb": "^1.5",
+        "laravel/scout": "^10.19",
         "laravel/tinker": "^2.10.1",
+        "league/csv": "^9.24",
         "phpoffice/phpspreadsheet": "^4.3",
+        "simplepie/simplepie": "^1.8",
         "spatie/laravel-permission": "^6.20",
         "srmklive/paypal": "*",
         "tightenco/ziggy": "^2.4"

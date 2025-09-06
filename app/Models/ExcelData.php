@@ -14,7 +14,15 @@ class ExcelData extends Model
     protected $fillable = [
         'file_id',
         'row_data',
+        'ein',
         'status',
+        'ein',
+        'name_virtual',
+        'state_virtual',
+        'city_virtual',
+        'zip_virtual',
+        'ntee_code_virtual',
+        'sort_name_virtual',
     ];
 
     protected $casts = [
@@ -55,5 +63,10 @@ class ExcelData extends Model
         return self::whereJsonContains('row_data->0', $ein)
             ->orWhereJsonContains('row_data', $ein)
             ->get();
+    }
+
+    public function nteeCode()
+    {
+        return $this->belongsTo(NteeCode::class, 'ntee_code_virtual', 'ntee_codes');
     }
 }

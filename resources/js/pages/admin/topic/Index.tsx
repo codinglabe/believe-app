@@ -172,7 +172,7 @@ export default function TopicsIndex() {
             <div className="py-12">
                 <div className="mx-auto sm:px-6 lg:px-8">
                     <motion.div
-                        className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6"
+                        className=" border overflow-hidden shadow-sm sm:rounded-lg p-6"
                         variants={containerVariants}
                         initial="hidden"
                         animate="visible"
@@ -202,7 +202,7 @@ export default function TopicsIndex() {
                         <motion.div variants={itemVariants}>
                             <Table>
                                 <TableHeader>
-                                    <TableRow className="bg-gray-50 dark:bg-gray-700">
+                                    <TableRow className="">
                                         <TableHead className="text-gray-700 dark:text-gray-200">ID</TableHead>
                                         <TableHead className="text-gray-700 dark:text-gray-200">Name</TableHead>
                                         <TableHead className="text-gray-700 dark:text-gray-200">Actions</TableHead>
@@ -220,7 +220,7 @@ export default function TopicsIndex() {
                                             <motion.tr
                                                 key={topic.id}
                                                 variants={itemVariants}
-                                                className="hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                                                className="hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b"
                                             >
                                                 <TableCell className="text-gray-900 dark:text-gray-100">{topic.id}</TableCell>
                                                 <TableCell className="font-medium text-gray-900 dark:text-gray-100">{topic.name}</TableCell>

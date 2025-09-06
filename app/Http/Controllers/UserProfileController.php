@@ -14,9 +14,10 @@ use Inertia\Inertia;
 
 class UserProfileController extends Controller
 {
-    public function index()
+    public function index(Request $request)
     {
-        $user = Auth::user();
+        // Load the user and their interested topics
+        $user = $request->user();
 
         // Get recent donations (you'll need to adjust based on your donation model)
         $recentDonations = collect([]); // Replace with actual donation query
@@ -25,6 +26,7 @@ class UserProfileController extends Controller
             'recentDonations' => $recentDonations,
         ]);
     }
+
 
     public function edit()
     {

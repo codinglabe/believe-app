@@ -9,6 +9,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -50,9 +51,7 @@ class EnrollmentController extends Controller
         }
 
         // Check if course has started
-        $startDate = Carbon::parse($course->start_date)->format('Y-m-d');
-        $startTime = $course->start_time;
-        $startDateTime = Carbon::parse("$startDate $startTime");
+        $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
 
         if ($startDateTime->isPast()) {
             return redirect()->route('courses.show', $course->slug)
@@ -181,7 +180,8 @@ class EnrollmentController extends Controller
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
-                'type' => 'free'
+                'type' => 'free',
+                'meetingLink' => $enrollment->course->meeting_link,
             ]);
         }
 
@@ -234,7 +234,8 @@ class EnrollmentController extends Controller
             return Inertia::render('frontend/course/enrollment/Success', [
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
-                'type' => 'paid'
+                'type' => 'paid',
+                'meetingLink' => $enrollment->course->meeting_link,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -293,7 +294,7 @@ class EnrollmentController extends Controller
         }
 
         // Check if cancellation is allowed (24 hours before start)
-        $startDateTime = \Carbon\Carbon::parse($course->start_date . ' ' . $course->start_time);
+        $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
         $hoursUntilStart = now()->diffInHours($startDateTime, false);
 
         if ($hoursUntilStart < 24) {
@@ -454,6 +455,13 @@ class EnrollmentController extends Controller
 
         $enrollments = $query->orderBy('enrolled_at', 'desc')->paginate(10);
 
+        $enrollments->getCollection()->transform(function ($enrollment) use ($user) {
+            if ($enrollment->status === 'active') {
+                $enrollment->meeting_link = $enrollment->course->meeting_link;
+            }
+            return $enrollment;
+        });
+
         // Calculate enrollment statistics
         $enrollmentStats = [
             'total_enrolled' => Enrollment::where('user_id', $user->id)->count(),
@@ -470,5 +478,35 @@ class EnrollmentController extends Controller
                 'status' => $request->get('status', ''),
             ],
         ]);
+    }
+
+    /**
+     * Parse datetime properly handling cases where date already contains time
+     */
+    private function parseDateTime($date, $time)
+    {
+        try {
+            // Handle different date formats
+            if (strpos($date, ' ') !== false) {
+                // Date already contains time, extract just the date part
+                $datePart = explode(' ', $date)[0];
+            } else {
+                $datePart = $date;
+            }
+
+            // Combine date and time
+            $dateTimeString = $datePart . ' ' . $time;
+            return Carbon::parse($dateTimeString);
+
+        } catch (\Exception $e) {
+            Log::error('DateTime parsing error in EnrollmentController', [
+                'date' => $date,
+                'time' => $time,
+                'error' => $e->getMessage()
+            ]);
+            
+            // Fallback to current time
+            return Carbon::now();
+        }
     }
 }

@@ -13,23 +13,15 @@ import OrganizationCard from "@/components/frontend/OrganizationCard"
 
 interface Organization {
   id: number
+  ein: string
   name: string
-  description: string
-  mission: string
+  ico?: string
+  street: string
   city: string
   state: string
   zip: string
-  website?: string
-  ico?: string
   ntee_code?: string
   created_at: string
-  ntee_code_relation?: {
-    category: string
-  }
-  user?: {
-    image?: string
-    email_verified_at?: string
-  }
 }
 
 interface PageProps {
@@ -51,7 +43,7 @@ interface PageProps {
     sort?: string
     per_page?: string
   }
-  filterOptions: {
+    filterOptions: { // Add this
     categories: string[]
     states: string[]
     cities: string[]
@@ -60,17 +52,16 @@ interface PageProps {
 }
 
 const sortOptions = [
-  { value: "relevance", label: "Most Relevant" },
-  { value: "rating", label: "Highest Rated" },
-  { value: "supporters", label: "Most Supporters" },
-  { value: "raised", label: "Most Funds Raised" },
-  { value: "newest", label: "Newest" },
+  { value: "id", label: "ID (Ascending)" },
+  { value: "name", label: "Name (A-Z)" },
+  { value: "state", label: "State" },
+  { value: "city", label: "City" },
 ]
 
 export default function OrganizationsPage() {
   const { organizations, filters, filterOptions, hasActiveFilters } = usePage<PageProps>().props
 
-  const [sortBy, setSortBy] = useState(filters.sort || "relevance")
+  const [sortBy, setSortBy] = useState(filters.sort || "id")
   const [resultsPerPage, setResultsPerPage] = useState(Number(filters.per_page) || 12)
   const [isLoading, setIsLoading] = useState(false)
 
@@ -103,7 +94,7 @@ export default function OrganizationsPage() {
 
   // Clear all filters
   const clearFilters = () => {
-    setSortBy("relevance")
+    setSortBy("id")
     setResultsPerPage(12)
 
     router.visit("/organizations", {
@@ -186,21 +177,20 @@ export default function OrganizationsPage() {
               Discover Organizations
             </h1>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-3xl mx-auto">
-              Find verified non-profit organizations making a real difference in communities worldwide.
+              Find verified non-profit organizations from our database.
             </p>
           </motion.div>
 
           {/* Search Section Component */}
           <SearchSection
-            filters={filters}
-            filterOptions={filterOptions}
-            hasActiveFilters={hasActiveFilters}
-            onSearch={handleSearch}
-            onClearFilters={clearFilters}
-            isLoading={isLoading}
-            showQuickFilters={true}
-            quickFilterTags={["Education", "Environment", "Health", "Emergency Relief"]}
-          />
+  filters={filters}
+  filterOptions={filterOptions} // Add this line
+  hasActiveFilters={hasActiveFilters}
+  onSearch={handleSearch}
+  onClearFilters={clearFilters}
+  isLoading={isLoading}
+  showQuickFilters={true}
+/>
 
           {/* Results Header */}
           <motion.div
@@ -250,7 +240,7 @@ export default function OrganizationsPage() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
                 {organizations.data.map((org, index) => (
-                  <OrganizationCard key={org.id} organization={org} index={index} showRating={true} rating={4.8} />
+                  <OrganizationCard key={org.id} organization={org} index={index} showRating={false} />
                 ))}
               </div>
 

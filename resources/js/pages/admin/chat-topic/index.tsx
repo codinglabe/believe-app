@@ -171,7 +171,7 @@ export default function TopicsIndex() {
 
     return (
         <AppLayout>
-            <Head title="Manage Topics" />
+            <Head title="Manage Groups Chat" />
 
             <div className="py-12">
                 <div className="mx-auto sm:px-6 lg:px-8">
@@ -189,7 +189,7 @@ export default function TopicsIndex() {
                                 <Search className="h-5 w-5 text-gray-400 dark:text-gray-500" />
                                 <Input
                                     type="text"
-                                    placeholder="Search topics..."
+                                    placeholder="Search Groups Chat..."
                                     value={data.search}
                                     onChange={(e) => {
                                         setData("search", e.target.value)
@@ -199,7 +199,7 @@ export default function TopicsIndex() {
                                 />
                             </div>
                             <Button onClick={openCreateModal} className="w-full md:w-auto">
-                                <PlusCircle className="mr-2 h-4 w-4" /> Add New Topic
+                                <PlusCircle className="mr-2 h-4 w-4" /> Add New Groups Chat
                             </Button>
                         </motion.div>
 
@@ -217,7 +217,7 @@ export default function TopicsIndex() {
                                     {topics.data.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={4} className="text-center py-4 text-gray-500 dark:text-gray-400">
-                                                No topics found.
+                                                No Groups Chat found.
                                             </TableCell>
                                         </TableRow>
                                     ) : (
@@ -258,30 +258,49 @@ export default function TopicsIndex() {
 
                         {/* Pagination */}
                         {topics.last_page > 1 && (
-                            <motion.div className="mt-6 flex justify-center" variants={itemVariants}>
-                                <Pagination>
-                                    <PaginationContent>
-                                        {topics.links.map((link, index) => (
-                                            <PaginationItem key={index}>
-                                                {link.url ? (
-                                                    <PaginationLink href={link.url} isActive={link.active} size="icon">
-                                                        {link.label.includes("Previous") ? (
-                                                            <PaginationPrevious size="icon" />
-                                                        ) : link.label.includes("Next") ? (
-                                                            <PaginationNext size="icon" />
-                                                        ) : (
-                                                            link.label
-                                                        )}
-                                                    </PaginationLink>
-                                                ) : (
-                                                    <PaginationEllipsis />
-                                                )}
-                                            </PaginationItem>
-                                        ))}
-                                    </PaginationContent>
-                                </Pagination>
-                            </motion.div>
-                        )}
+    <motion.div className="mt-6 flex justify-center" variants={itemVariants}>
+        <div className="flex items-center gap-1">
+            {/* Previous Page Button */}
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.get(topics.prev_page_url || '')}
+                disabled={!topics.prev_page_url}
+                className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+                Previous
+            </Button>
+
+            {/* Page Numbers */}
+            {Array.from({ length: topics.last_page }, (_, i) => i + 1).map((page) => (
+                <Button
+                    key={page}
+                    variant={page === topics.current_page ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => router.get(route("chat-group-topics.index", { page }))}
+                    className={
+                        page === topics.current_page
+                            ? "bg-primary text-white dark:text-black"
+                            : "bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    }
+                >
+                    {page}
+                </Button>
+            ))}
+
+            {/* Next Page Button */}
+            <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.get(topics.next_page_url || '')}
+                disabled={!topics.next_page_url}
+                className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
+            >
+                Next
+            </Button>
+        </div>
+    </motion.div>
+)}
                     </motion.div>
                 </div>
             </div>
@@ -290,13 +309,13 @@ export default function TopicsIndex() {
             <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
                 <DialogContent className="sm:max-w-[425px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
                     <DialogHeader>
-                        <DialogTitle>Create New Topic</DialogTitle>
-                        <DialogDescription>Enter the details for the new topic.</DialogDescription>
+                        <DialogTitle>Create New Groups Chat</DialogTitle>
+                        <DialogDescription>Enter the details for the new Groups Chat.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleCreateSubmit} className="space-y-4">
                         <div>
                             <Label htmlFor="name" className="text-gray-700 dark:text-gray-300">
-                                Topic Name
+                                Groups Chat Name
                             </Label>
                             <Input
                                 id="name"
@@ -331,7 +350,7 @@ export default function TopicsIndex() {
                                 Cancel
                             </Button>
                             <Button type="submit" disabled={processing}>
-                                {processing ? "Creating..." : "Create Topic"}
+                                {processing ? "Creating..." : "Create Groups Chat"}
                             </Button>
                         </DialogFooter>
                     </form>
@@ -342,13 +361,13 @@ export default function TopicsIndex() {
             <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
                 <DialogContent className="sm:max-w-[425px] bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100">
                     <DialogHeader>
-                        <DialogTitle>Edit Topic</DialogTitle>
-                        <DialogDescription>Edit the details of the topic.</DialogDescription>
+                        <DialogTitle>Edit Groups Chat</DialogTitle>
+                        <DialogDescription>Edit the details of the Groups Chat.</DialogDescription>
                     </DialogHeader>
                     <form onSubmit={handleEditSubmit} className="space-y-4">
                         <div>
                             <Label htmlFor="edit-name" className="text-gray-700 dark:text-gray-300">
-                                Topic Name
+                                Groups Chat Name
                             </Label>
                             <Input
                                 id="edit-name"
@@ -396,7 +415,7 @@ export default function TopicsIndex() {
                     <DialogHeader>
                         <DialogTitle>Confirm Deletion</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete the topic "<span className="font-semibold">{selectedTopic?.name}</span>"?
+                            Are you sure you want to delete the Groups Chat "<span className="font-semibold">{selectedTopic?.name}</span>"?
                             This action cannot be undone.
                         </DialogDescription>
                     </DialogHeader>

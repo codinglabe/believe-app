@@ -619,10 +619,10 @@ export default function FrontendCourseShow({
                         ) : (
                           <div className="text-center">
                             <Button disabled className="w-full" size="lg">
-                              {status === "full" ? "Course Full" : "Enrollment Closed"}
+                              {status === "full" ? "Course Full" : status === "unavailable" ? "Enrollment Unavailable" : "Enrollment Closed"}
                             </Button>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                              {status === "full" ? "No spots available" : "Registration has ended"}
+                              {status === "full" ? "No spots available" : status === "unavailable" ? "You are not authorized to enroll in this course" : "Registration has ended"}
                             </p>
                           </div>
                         )}

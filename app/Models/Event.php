@@ -9,6 +9,7 @@ class Event extends Model
 {
     protected $fillable = [
         'organization_id',
+        'user_id',
         'event_type_id',
         'name',
         'description',
@@ -39,6 +40,11 @@ class Event extends Model
     public function organization(): BelongsTo
     {
         return $this->belongsTo(Organization::class);
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class);
     }
 
     public function eventType(): BelongsTo

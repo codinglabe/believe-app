@@ -1,6 +1,6 @@
 "use client"
 import type React from "react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import {
@@ -23,6 +23,11 @@ import {
   Settings,
   Star,
   Activity,
+  X,
+  Tag,
+  Text,
+  MessageCircle,
+  GraduationCap, // Added MessageCircle icon
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -30,12 +35,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/av
 import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Link, usePage } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 
 interface ProfileLayoutProps {
   children: React.ReactNode
   title: string
   description?: string
+}
+
+interface Topic {
+  id: number;
+  name: string;
+  color: string;
 }
 
 interface PageProps {
@@ -55,6 +66,7 @@ interface PageProps {
       wallet_balance?: number
     }
   }
+  [key: string]: any
 }
 
 const navigationItems = [
@@ -64,6 +76,13 @@ const navigationItems = [
     icon: User,
     description: "Profile overview",
     color: "from-blue-500 to-blue-600",
+  },
+  {
+    name: "Groups Chat",
+    href: "/profile/topics/select",
+    icon: Text,
+    description: "Groups Chat",
+    color: "from-green-400 to-blue-600",
   },
   {
     name: "Favorites",
@@ -87,11 +106,25 @@ const navigationItems = [
     color: "from-orange-500 to-amber-600",
   },
   {
+    name: "Course",
+    href: "/profile/course",
+    icon: GraduationCap,
+    description: "Course management",
+    color: "from-purple-500 to-indigo-600",
+  },
+  {
     name: "Enrollments",
     href: "/profile/my-enrollments",
     icon: BookOpen,
     description: "Course enrollments",
     color: "from-purple-500 to-violet-600",
+  },
+  {
+    name: "Events",
+    href: "/profile/events",
+    icon: Calendar,
+    description: "My events",
+    color: "from-blue-500 to-cyan-600",
   },
   {
     name: "Node Boss",
@@ -120,11 +153,60 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   const { auth } = usePage<PageProps>().props
   const user = auth.user
   const [copied, setCopied] = useState(false)
-  const [showBalance, setShowBalance] = useState(false)
+    const [showBalance, setShowBalance] = useState(false)
+    const [topics, setTopics] = useState<Topic[]>([]);
   const [addFundsAmount, setAddFundsAmount] = useState("")
   const [withdrawAmount, setWithdrawAmount] = useState("")
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+
+    const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
+     const [loading, setLoading] = useState(true);
+
+    // Fetch topics on component mount
+  useEffect(() => {
+    const fetchTopics = async () => {
+      try {
+        const response = await fetch('/chat/user/topics', {
+          headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include' // Important for sessions/cookies
+        });
+
+        if (response.ok) {
+            const data = await response.json();
+          setTopics(data || []);
+        } else {
+          console.error('Failed to fetch topics');
+        }
+      } catch (error) {
+        console.error('Error fetching topics:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTopics();
+  }, []);
+
+  const handleDeleteTopic = (topicId: number) => {
+    if (confirm('Are you sure you want to remove this topic?')) {
+      router.delete(`/chat/user/topics/${topicId}`, {
+        preserveScroll: true,
+          onSuccess: () => {
+            setTopics(prevTopics => prevTopics.filter(topic => topic.id !== topicId))
+          // Inertia will automatically re-render the page with updated data
+        }
+      });
+    }
+  };
+
+  const navigateToChat = (topicId: number, e: React.MouseEvent) => {
+    e.stopPropagation(); // Prevent triggering parent events
+    router.get(route("chat.index", { topic: topicId }));
+  };
 
   const currentPath = typeof window !== "undefined" ? window.location.pathname : ""
 
@@ -135,15 +217,11 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   }
 
   const handleAddFunds = () => {
-    console.log("Adding funds:", addFundsAmount)
-    setAddFundsAmount("")
-    setIsAddFundsOpen(false)
+    // Implementation for adding funds
   }
 
   const handleWithdraw = () => {
-    console.log("Withdrawing:", withdrawAmount)
-    setWithdrawAmount("")
-    setIsWithdrawOpen(false)
+    // Implementation for withdrawing funds
   }
 
   return (
@@ -309,55 +387,115 @@ export default function ProfileLayout({ children, title, description }: ProfileL
             </Card>
           </motion.div>
 
-          {/* Referral Section */}
+          {/* Referral and Topics Section */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6, delay: 0.3 }}
             className="mb-8"
           >
-            <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-700 shadow-xl">
-              <CardContent className="p-6">
-                <div className="flex flex-col lg:flex-row items-start lg:items-center gap-6">
-                  <div className="flex-1">
-                    <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
-                      <Award className="w-5 h-5 mr-2 text-indigo-600" />
-                      Share Your Referral Link
-                    </h3>
-                    <p className="text-gray-600 dark:text-gray-300 mb-4">
-                      Invite friends and earn rewards when they join our community. Both you and your friends will
-                      receive special bonuses!
-                    </p>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 relative">
-                        <Input
-                          type="text"
-                          value={user?.referral_link || ""}
-                          readOnly
-                          className="pr-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 font-mono text-sm"
-                        />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Referral Section */}
+              <Card className="bg-gradient-to-r from-indigo-50 to-purple-50 dark:from-indigo-900/20 dark:to-purple-900/20 border-indigo-200 dark:border-indigo-700 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 flex items-center">
+                        <Award className="w-5 h-5 mr-2 text-indigo-600" />
+                        Share Your Referral Link
+                      </h3>
+                      <p className="text-gray-600 dark:text-gray-300 mb-4">
+                        Invite friends and earn rewards when they join our community.
+                      </p>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 relative">
+                          <Input
+                            type="text"
+                            value={user?.referral_link || ""}
+                            readOnly
+                            className="pr-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 font-mono text-sm"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleCopy}
+                          className="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 hover:scale-105"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-4 h-4 mr-2" />
+                              Copied!
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-4 h-4 mr-2" />
+                              Copy Link
+                            </>
+                          )}
+                        </Button>
                       </div>
-                      <Button
-                        onClick={handleCopy}
-                        className="bg-indigo-600 hover:bg-indigo-700 transition-all duration-300 hover:scale-105"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-4 h-4 mr-2" />
-                            Copied!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-4 h-4 mr-2" />
-                            Copy Link
-                          </>
-                        )}
-                      </Button>
                     </div>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
+
+              {/* Topics Section */}
+              <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200 dark:border-emerald-700 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
+                        <Text className="w-5 h-5 mr-2 text-emerald-600" />
+                        Your Groups Chat
+                      </h3>
+                      <div className="flex items-center gap-2">
+                        <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                          {topics.length} Active
+                        </Badge>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mb-4">
+                      {topics.slice(0, 4).map((topic) => (
+                        <div
+                          key={topic.id}
+                          className="group relative flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all duration-200"
+                        >
+                          <div className={`w-3 h-3 rounded-full ${topic.color}`}></div>
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
+                            {topic.name}
+                          </span>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={(e) => navigateToChat(topic.id, e)}
+                              className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-all duration-200"
+                              title="Go to chat"
+                            >
+                              <MessageCircle className="w-3 h-3 text-blue-500" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteTopic(topic.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-all duration-200"
+                            >
+                              <X className="w-3 h-3 text-red-500" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {topics.length > 4 && (
+                      <Button
+                        onClick={() => setIsTopicsModalOpen(true)}
+                        variant="outline"
+                        className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-900/20 transition-all duration-300"
+                      >
+                        View {topics.length - 4} more topics
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </motion.div>
 
           {/* Navigation */}
@@ -369,7 +507,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           >
             <Card className="bg-white dark:bg-gray-800 shadow-xl border-0">
               <CardContent className="p-6">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-4 xl:grid-cols-8 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-6 xl:grid-cols-11 gap-3">
                   {navigationItems.map((item, index) => {
                     const isActive = currentPath === item.href
                     const Icon = item.icon
@@ -499,6 +637,53 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 </Button>
               </div>
             </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Topics Modal */}
+        <Dialog open={isTopicsModalOpen} onOpenChange={setIsTopicsModalOpen}>
+          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <Tag className="w-5 h-5 text-emerald-600" />
+                Your Groups Chat ({topics.length})
+              </DialogTitle>
+            </DialogHeader>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+              {topics.map((topic) => (
+                <motion.div
+                  key={topic.id}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.9 }}
+                  className="group relative flex items-center gap-3 p-4 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
+                >
+                  <div className={`w-4 h-4 rounded-full ${topic.color} shadow-lg`}></div>
+                  <span className="font-medium text-gray-800 dark:text-gray-200 flex-1">{topic.name}</span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => navigateToChat(topic.id, e)}
+                      className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all duration-200 hover:scale-110"
+                      title="Go to chat"
+                    >
+                      <MessageCircle className="w-4 h-4 text-blue-500" />
+                    </button>
+                    <button
+                      onClick={() => handleDeleteTopic(topic.id)}
+                      className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 hover:scale-110"
+                    >
+                      <X className="w-4 h-4 text-red-500" />
+                    </button>
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+            {topics.length === 0 && (
+              <div className="text-center py-8">
+                <Tag className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                <p className="text-gray-500 dark:text-gray-400">No topics selected yet.</p>
+              </div>
+            )}
           </DialogContent>
         </Dialog>
       </div>

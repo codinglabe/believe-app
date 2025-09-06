@@ -10,6 +10,7 @@ use App\Events\RoomUpdated;
 use App\Events\UserTyping;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
+use App\Models\ChatTopic;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -23,22 +24,30 @@ class ChatController extends Controller
     {
         $user = auth()->user();
 
+        // Get user's interested topic IDs
+        $interestedTopicIds = $user->interestedTopics()->pluck('chat_topics.id')->toArray();
+
         // Get chat rooms the user is a member of
         $userChatRooms = $user->chatRooms()
-            ->with(['members.organization', 'latestMessage.user'])
+            ->with(['members.organization', 'latestMessage.user', 'topics'])
             ->where('is_active', true)
             ->get();
 
-        // Get public chat rooms that user is NOT a member of
+        // Get public chat rooms that user is NOT a member of but matches interested topics
         $publicRooms = ChatRoom::where('type', 'public')
             ->where('is_active', true)
             ->whereDoesntHave('members', function ($query) use ($user) {
                 $query->where('user_id', $user->id);
             })
-            ->with(['members.organization', 'latestMessage.user'])
+            ->whereHas('topics', function ($query) use ($interestedTopicIds, $user) {
+                if($user->role === 'organization' || $user->role === 'user') {
+                    $query->whereIn('chat_topics.id', $interestedTopicIds);
+                }
+            })
+            ->with(['members.organization', 'latestMessage.user', 'topics'])
             ->get();
 
-        // Combine and remove duplicates (important if a public room is also a user's member room)
+        // Combine and remove duplicates
         $allRooms = $userChatRooms->merge($publicRooms)->unique('id');
 
         $chatRooms = $allRooms->map(function ($room) use ($user) {
@@ -59,7 +68,7 @@ class ChatController extends Controller
                 ] : null,
                 'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $user->id)->whereDoesntHave('reads', function ($query) use ($user) {
                     $query->where('user_id', $user->id);
-                })->count() : 0, // Only count unread if user is a member
+                })->count() : 0,
                 'members' => $room->members->map(function ($member) {
                     return [
                         'id' => $member->id,
@@ -72,6 +81,13 @@ class ChatController extends Controller
                 }),
                 'is_member' => $isMember,
                 'created_by' => $room->created_by,
+                'topics' => $room->topics->map(function ($topic) {
+                    return [
+                        'id' => $topic->id,
+                        'name' => $topic->name,
+                        'description' => $topic->description,
+                    ];
+                }),
             ];
         })
             ->sortByDesc(function ($room) {
@@ -79,22 +95,31 @@ class ChatController extends Controller
             })
             ->values();
 
-        $allUsers = User::with('organization')
-        ->where('id', '!=', $user->id)
-        ->get()
-        ->map(function ($user) {
+        // Get all active topics for the create room dialog
+        $allTopics = ChatTopic::active()->get()->map(function ($topic) {
             return [
-                'id' => $user->id,
-                'name' => $user->name,
-                'avatar' => $user->avatar_url,
-                'is_online' => $user->is_online,
-                'role' => $user->role,
-                'organization' => $user->organization ? [
-                    'id' => $user->organization->id,
-                    'name' => $user->organization->name
-                ] : null,
+                'id' => $topic->id,
+                'name' => $topic->name,
+                'description' => $topic->description,
             ];
         });
+
+        $allUsers = User::with('organization')
+            ->where('id', '!=', $user->id)
+            ->get()
+            ->map(function ($user) {
+                return [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'avatar' => $user->avatar_url,
+                    'is_online' => $user->is_online,
+                    'role' => $user->role,
+                    'organization' => $user->organization ? [
+                        'id' => $user->organization->id,
+                        'name' => $user->organization->name
+                    ] : null,
+                ];
+            });
 
         $currentUser = [
             'id' => $user->id,
@@ -103,11 +128,19 @@ class ChatController extends Controller
             'is_online' => $user->is_online,
             'role' => $user->role,
             'organization' => $user->organization ? ['id' => $user->organization->id, 'name' => $user->organization->name] : null,
+            'interestedTopics' => $user->interestedTopics->map(function ($topic) {
+                return [
+                    'id' => $topic->id,
+                    'name' => $topic->name,
+                    'description' => $topic->description,
+                ];
+            }),
         ];
 
         return Inertia::render('chat/index', [
             'chatRooms' => $chatRooms,
             'allUsers' => $allUsers,
+            'allTopics' => $allTopics,
             'currentUser' => $currentUser,
         ]);
     }
@@ -252,18 +285,29 @@ class ChatController extends Controller
 
     public function createRoom(Request $request)
     {
-        // Only users with 'admin' or 'organization' role can create groups
-        if (!in_array(auth()->user()->role, ['admin', 'organization'])) {
-            abort(403, 'You are not authorized to create chat rooms.');
+        $user = auth()->user();
+
+        // Check room creation limits based on role
+        $publicRoomCount = ChatRoom::where('created_by', $user->id)
+            ->where('type', 'public')
+            ->count();
+
+        if ($user->role === 'user' && $publicRoomCount >= 5) {
+            abort(403, 'You can only create up to 5 public chat rooms as a regular user.');
+        }
+
+        if ($user->role === 'organization' && $publicRoomCount >= 10) {
+            abort(403, 'You can only create up to 10 public chat rooms as an organization.');
         }
 
         $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string|max:1000',
             'type' => ['required', Rule::in(['public', 'private'])],
-            'image' => 'nullable|image|max:2048', // Max 2MB
+            'image' => 'nullable|image|max:2048',
             'members' => 'nullable|array',
             'members.*' => 'exists:users,id',
+            'topic_id' => 'required|exists:chat_topics,id',
         ]);
 
         $imageUrl = null;
@@ -271,17 +315,20 @@ class ChatController extends Controller
             $imageUrl = Storage::url($request->file('image')->store('chat_room_images', 'public'));
         }
 
-        $room = DB::transaction(function () use ($request, $imageUrl) {
+        $room = DB::transaction(function () use ($request, $imageUrl, $user) {
             $room = ChatRoom::create([
                 'name' => $request->input('name'),
                 'description' => $request->input('description'),
                 'type' => $request->input('type'),
                 'image_url' => $imageUrl,
-                'created_by' => auth()->id(),
+                'created_by' => $user->id,
             ]);
 
+            // Attach the topic
+            $room->topics()->attach($request->input('topic_id'));
+
             // Add creator as a member
-            $room->members()->attach(auth()->id());
+            $room->members()->attach($user->id);
 
             // Add specified members for private rooms only
             if ($request->input('type') === 'private' && $request->has('members')) {
@@ -291,12 +338,50 @@ class ChatController extends Controller
             return $room;
         });
 
-        $room->load('members');
+        $room->load('members', 'topics');
 
-        // Broadcast the new room
-        broadcast(new RoomCreated($room))->toOthers();
+        if ($room->type === 'public') {
+            // Get all admin users
+            $admins = User::where('role', 'admin')->get();
 
-        return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
+            // Get regular users interested in this room's topics
+            $interestedUsers = User::where('role', '!=', 'admin')
+                ->whereHas('interestedTopics', function ($query) use ($room) {
+                    $query->whereIn('chat_topics.id', $room->topics->pluck('id'));
+                })->get();
+
+            // Combine both collections and remove duplicates
+            $recipients = $admins->merge($interestedUsers)->unique('id');
+
+            // First broadcast to general public channel
+            broadcast(new RoomCreated($room));
+
+            // Then send to specific users who should get notifications
+            foreach ($recipients as $user) {
+                broadcast(new RoomCreated($room))->toOthers();
+            }
+        } else {
+            // For private rooms, broadcast only to members
+            broadcast(new RoomCreated($room));
+        }
+
+        return response()->json(['room' => $room->load('members.organization', 'latestMessage.user', 'topics')]);
+    }
+
+    // Add this new method to get topics
+    public function getTopics()
+    {
+        $topics = ChatTopic::active()->get();
+
+        return response()->json([
+            'topics' => $topics->map(function ($topic) {
+                return [
+                    'id' => $topic->id,
+                    'name' => $topic->name,
+                    'description' => $topic->description,
+                ];
+            })
+        ]);
     }
 
     public function createDirectChat(Request $request)
