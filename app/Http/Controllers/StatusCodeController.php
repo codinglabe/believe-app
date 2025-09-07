@@ -7,13 +7,14 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class StatusCodeController extends Controller
+class StatusCodeController extends BaseController
 {
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'status.code.read');
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
@@ -44,8 +45,9 @@ class StatusCodeController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'status.code.create');
         return Inertia::render('status-codes/create');
     }
 
@@ -54,6 +56,7 @@ class StatusCodeController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'status.code.create');
         $request->validate([
             'status_code' => 'required|integer|unique:status_codes,status_code',
             'status' => 'required|string|max:255',
@@ -73,8 +76,9 @@ class StatusCodeController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(StatusCode $statusCode): Response
+    public function edit(Request $request, StatusCode $statusCode): Response
     {
+        $this->authorizePermission($request, 'status.code.edit');
         return Inertia::render('status-codes/edit', [
             'statusCode' => $statusCode
         ]);
@@ -85,6 +89,7 @@ class StatusCodeController extends Controller
      */
     public function update(Request $request, StatusCode $statusCode)
     {
+        $this->authorizePermission($request, 'status.code.update');
         $request->validate([
             'status_code' => 'required|integer|unique:status_codes,status_code,' . $statusCode->id,
             'status' => 'required|string|max:255',
@@ -104,8 +109,9 @@ class StatusCodeController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(StatusCode $statusCode)
+    public function destroy(Request $request, StatusCode $statusCode)
     {
+        $this->authorizePermission($request, 'status.code.delete');
         $statusCode->delete();
 
         return redirect()->route('status-codes.index')

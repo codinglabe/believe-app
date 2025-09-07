@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
+use App\Models\RaffleTicket;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -135,5 +136,22 @@ class UserProfileController extends Controller
         }
 
         return redirect()->route('user.profile.favorites');
+    }
+
+    public function raffleTickets(Request $request)
+    {
+        $user = $request->user();
+        
+        $raffleTickets = RaffleTicket::with([
+            'raffle.organization',
+            'raffle.winners.ticket'
+        ])
+        ->where('user_id', $user->id)
+        ->orderBy('created_at', 'desc')
+        ->get();
+
+        return Inertia::render('frontend/user-profile/raffle-tickets', [
+            'raffleTickets' => $raffleTickets,
+        ]);
     }
 }

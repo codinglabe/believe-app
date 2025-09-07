@@ -181,19 +181,20 @@ class User extends Authenticatable implements MustVerifyEmail
      * Record a transaction for the user.
      *
      * @param array $data
-     * @return void
+     * @return Transaction
      */
-    protected function recordTransaction(array $data): void
+    public function recordTransaction(array $data): Transaction
     {
         // Merge default values, allowing overrides
         $defaultData = [
+            'user_id' => $this->id,
             'status' => 'completed', // Default status, can be overridden
             'currency' => 'USD',
             'related_id' => null,
             'related_type' => null,
             'processed_at' => now(), // Default processed_at
         ];
-        $this->transactions()->create(array_merge($defaultData, $data));
+        return $this->transactions()->create(array_merge($defaultData, $data));
     }
 
     /**

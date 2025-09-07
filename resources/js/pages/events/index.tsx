@@ -9,6 +9,7 @@ import { Input } from '@/components/frontend/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/frontend/ui/select';
 import { useState } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -163,12 +164,14 @@ export default function EventsIndex({ events, eventTypes, userRole }: Props) {
                         </p>
                     </div>
                     {userRole === 'organization' && (
-                        <Link href={route('events.create')}>
-                            <Button className="bg-blue-600 hover:bg-blue-700">
-                                <Plus className="h-4 w-4 mr-2" />
-                                Create Event
-                            </Button>
-                        </Link>
+                        <PermissionButton permission="event.create">
+                            <Link href={route('events.create')}>
+                                <Button className="bg-blue-600 hover:bg-blue-700">
+                                    <Plus className="h-4 w-4 mr-2" />
+                                    Create Event
+                                </Button>
+                            </Link>
+                        </PermissionButton>
                     )}
                 </div>
 
@@ -344,23 +347,23 @@ export default function EventsIndex({ events, eventTypes, userRole }: Props) {
                                             View
                                         </Button>
                                     </Link>
-                                    {(userRole === 'admin' || userRole === 'organization') && (
-                                        <>
-                                            <Link href={route('events.edit', event.id)}>
-                                                <Button size="sm" variant="outline">
-                                                    <Edit className="h-4 w-4" />
-                                                </Button>
-                                            </Link>
-                                            <Button 
-                                                size="sm" 
-                                                variant="outline" 
-                                                onClick={() => handleDelete(event.id)}
-                                                className="text-red-600 hover:text-red-700"
-                                            >
-                                                <Trash2 className="h-4 w-4" />
+                                    <PermissionButton permission="event.edit">
+                                        <Link href={route('events.edit', event.id)}>
+                                            <Button size="sm" variant="outline">
+                                                <Edit className="h-4 w-4" />
                                             </Button>
-                                        </>
-                                    )}
+                                        </Link>
+                                    </PermissionButton>
+                                    <PermissionButton permission="event.delete">
+                                        <Button 
+                                            size="sm" 
+                                            variant="outline" 
+                                            onClick={() => handleDelete(event.id)}
+                                            className="text-red-600 hover:text-red-700"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </Button>
+                                    </PermissionButton>
                                 </div>
                             </CardContent>
                         </Card>

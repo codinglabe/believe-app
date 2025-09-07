@@ -61,7 +61,19 @@ export function NavMain({ items = [] }: NavMainProps) {
         // If no permission or role is specified, show the item
         if (!item.permission && !item.role) return true;
 
-        // Check if user has either the required permission or role
+        // For groups, check if any child item is visible
+        if ('items' in item) {
+            const hasVisibleChild = item.items.some(childItem => {
+                if (!childItem.permission && !childItem.role) return true;
+                return can(childItem.permission ?? '') || role(childItem.role ?? '');
+            });
+            
+            // Show group if user has group permission OR if any child is visible
+            const hasGroupPermission = can(item.permission ?? '') || role(item.role ?? '');
+            return hasGroupPermission || hasVisibleChild;
+        }
+
+        // For individual items, check if user has the required permission or role
         return can(item.permission ?? '') || role(item.role ?? '');
     };
 

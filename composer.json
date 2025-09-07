@@ -20,7 +20,11 @@
         "laravel/tinker": "^2.10.1",
         "league/csv": "^9.24",
         "phpoffice/phpspreadsheet": "^4.3",
+<<<<<<< Updated upstream
         "simplepie/simplepie": "^1.8",
+=======
+        "simplesoftwareio/simple-qrcode": "^4.2",
+>>>>>>> Stashed changes
         "spatie/laravel-permission": "^6.20",
         "srmklive/paypal": "*",
         "tightenco/ziggy": "^2.4"

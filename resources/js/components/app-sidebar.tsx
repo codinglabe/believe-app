@@ -18,6 +18,7 @@ import {
     Database,
     Users,
     Building2,
+    Gift,
     Tag,
     Briefcase,
     BookOpen,
@@ -38,7 +39,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Dashboard',
         href: '/dashboard',
         icon: BarChart3,
-        permission: "dashbord.management.read"
+        permission: "dashboard.read"
     },
     
     // Data Management Section
@@ -49,16 +50,16 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Upload Data',
                 href: '/upload',
                 icon: Download,
-                permission: "upload.data.read"
+                permission: "data.management.read"
             },
             {
                 title: 'Manage Data',
                 href: '/manage-data',
                 icon: Database,
-                permission: "management.data.read"
+                permission: "data.management.read"
             },
         ],
-        permission: "management.data.read"
+        permission: "data.management.read"
     },
 
     // E-commerce Section
@@ -69,22 +70,28 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Products',
                 href: '/products',
                 icon: ShoppingCart,
-                permission: "products.read"
+                permission: "product.read"
             },
             {
                 title: 'Categories',
                 href: '/categories',
                 icon: Tag,
-                permission: "products.read"
+                permission: "category.read"
             },
             {
                 title: 'Orders',
                 href: '/orders',
                 icon: Package,
-                permission: "management.data.read"
+                permission: "ecommerce.read"
             },
-        ],
-        permission: "products.read"
+            {
+                title: 'Raffle Draws',
+                href: '/raffles',
+                icon: Gift,
+                permission: "raffle.read"
+            },
+        ]
+        // Removed group permission - nav-main will show group if any child is visible
     },
 
     // Job Management Section
@@ -115,8 +122,8 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Users,
                 permission: "job.posts.read"
             },
-        ],
-        permission: "job.positions.read"
+        ]
+        // Removed group permission - nav-main will show group if any child is visible
     },
 
     // Node Management Section
@@ -127,22 +134,22 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Node Boss',
                 href: '/node-boss',
                 icon: AlignEndHorizontal,
-                permission: "node.boss.read"
+                permission: "node.referral.read"
             },
             {
                 title: 'Node Referral',
                 href: '/node-referral',
                 icon: Network,
-                permission: "node.boss.read"
+                permission: "node.referral.read"
             },
             {
                 title: 'Withdrawals',
                 href: '/withdrawals',
                 icon: HandCoins,
-                permission: "management.data.read"
+                permission: "data.management.read"
             },
         ],
-        permission: "node.boss.read"
+        permission: "node.referral.read"
     },
 
     // Course Management Section
@@ -159,7 +166,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Course Topics',
                 href: '/topics',
                 icon: BookOpen,
-                permission: "course.read"
+                permission: "topic.read"
             },
         ],
         permission: "course.read"
@@ -193,7 +200,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Classification Codes',
                 href: '/classification-codes',
                 icon: FileCode,
-                permission: "classificaiton.code.read"
+                permission: "classification.code.read"
             },
             {
                 title: 'Status Codes', 
@@ -213,8 +220,8 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Building,
                 permission: "ntee.code.read"
             },
-        ],
-        permission: "code.management.read"
+        ]
+        // Removed group permission - nav-main will show group if any child is visible
     },
 
     // Communication Section
@@ -225,15 +232,16 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Group Chat',
                 href: '/chat-group-topics',
                 icon: MessageSquare,
-                role: "admin"
+                permission: "communication.read"
             },
             {
                 title: 'Chat',
                 href: '/chat',
                 icon: Text,
+                permission: "communication.read"
             },
         ],
-        permission: "chat.read"
+        permission: "communication.read"
     },
 
     // System Management Section
@@ -252,8 +260,8 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Settings,
                 permission: "profile.read"
             },
-        ],
-        permission: "role.management.read"
+        ]
+        // Removed group permission - nav-main will show group if any child is visible
     },
 ];
 

@@ -9,21 +9,15 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class JobPostController extends Controller
+class JobPostController extends BaseController
 {
-    public function __construct()
-    {
-        $this->middleware('can:job.posts.read')->only(['index']);
-        $this->middleware('can:job.posts.create')->only(['create', 'store']);
-        $this->middleware('can:job.posts.edit')->only(['edit', 'update']);
-        $this->middleware('can:job.posts.delete')->only(['destroy']);
-    }
 
     /**
      * Display a listing of job posts.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.posts.read');
         $perPage = (int) $request->get('per_page', 10);
         $page = (int) $request->get('page', 1);
         $search = $request->get('search', '');
@@ -69,8 +63,9 @@ class JobPostController extends Controller
     /**
      * Show the form for creating a new job post.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.posts.create');
         return Inertia::render('job-posts/create', [
             'positions' => JobPosition::select('id', 'title')->get(),
             'typeOptions' => [
@@ -103,6 +98,7 @@ class JobPostController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'job.posts.create');
         $validated = $request->validate([
             'position_id' => 'required|exists:job_positions,id',
             'title' => 'required|string|max:255',
@@ -138,6 +134,7 @@ class JobPostController extends Controller
      */
     public function edit(Request $request, JobPost $jobPost): Response
     {
+        $this->authorizePermission($request, 'job.posts.edit');
         // Check if the current user's organization owns this job post
         if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
@@ -176,6 +173,7 @@ class JobPostController extends Controller
      */
     public function update(Request $request, JobPost $jobPost)
     {
+        $this->authorizePermission($request, 'job.posts.update');
         if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
         }
@@ -208,6 +206,7 @@ class JobPostController extends Controller
      */
     public function destroy(Request $request, JobPost $jobPost)
     {
+        $this->authorizePermission($request, 'job.posts.delete');
         if ($jobPost->organization_id !== $request->user()->organization?->id) {
             abort(403, 'Unauthorized action.');
         }

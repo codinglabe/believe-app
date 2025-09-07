@@ -7,6 +7,7 @@ import { Plus, Edit, Trash2, LayoutGrid, Search, X } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -155,12 +156,14 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                     Manage Job Position categories for your organization. Total: {categories.total.toLocaleString()} categories
                                 </CardDescription>
                             </div>
-                            <Link href={route('position-categories.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Position Category
-                                </Button>
-                            </Link>
+                            <PermissionButton permission="job.position.categories.create">
+                                <Link href={route('position-categories.create')}>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Position Category
+                                    </Button>
+                                </Link>
+                            </PermissionButton>
                         </div>
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
@@ -220,13 +223,15 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <Link href={route('position-categories.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
-                                                        </Button>
-                                                    </Link>
-                                                    {auth?.user?.role === "admin" && (
+                                                    <PermissionButton permission="job.position.categories.edit">
+                                                        <Link href={route('position-categories.edit', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton>
+                                                    <PermissionButton permission="job.position.categories.delete">
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
@@ -236,7 +241,7 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                             <Trash2 className="mr-2 h-4 w-4" />
                                                             Delete
                                                         </Button>
-                                                    )}
+                                                    </PermissionButton>
                                                 </div>
                                             </td>
                                         </tr>

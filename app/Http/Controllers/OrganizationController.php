@@ -12,10 +12,11 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelDataTransformer;
 
-class OrganizationController extends Controller
+class OrganizationController extends BaseController
 {
     public function index(Request $request)
     {
+        $this->authorizePermission($request, 'organization.read');
         // Get search parameters
         $search = $request->get('search');
         $category = $request->get('category');
@@ -249,8 +250,9 @@ class OrganizationController extends Controller
         return response()->json($cities);
     }
 
-    public function show(string $id)
+    public function show(Request $request, string $id)
     {
+        $this->authorizePermission($request, 'organization.read');
         $organization = ExcelData::where('id', $id)
             ->where('status', 'complete')
             ->whereNotIn('id', function($subQuery) {
@@ -303,6 +305,7 @@ class OrganizationController extends Controller
 
     public function toggleFavorite(Request $request, int $id)
     {
+        $this->authorizePermission($request, 'organization.read');
         $user = Auth::user();
 
         // Get the ExcelData organization

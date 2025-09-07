@@ -8,6 +8,7 @@ import { Plus, Edit, Trash2, Eye, FileText, Search, X } from 'lucide-react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -161,12 +162,14 @@ export default function Index({ nteeCodes, filters, allowedPerPage }: Props) {
                                     Manage NTEE (National Taxonomy of Exempt Entities) codes for your organization. Total: {nteeCodes.total.toLocaleString()} codes
                                 </CardDescription>
                             </div>
-                            <Link href={route('ntee-codes.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add NTEE Code
-                                </Button>
-                            </Link>
+                            <PermissionButton permission="ntee.code.create">
+                                <Link href={route('ntee-codes.create')}>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add NTEE Code
+                                    </Button>
+                                </Link>
+                            </PermissionButton>
                         </div>
 
                         {/* Search Bar */}
@@ -238,21 +241,25 @@ export default function Index({ nteeCodes, filters, allowedPerPage }: Props) {
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <Link href={route('ntee-codes.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
+                                                    <PermissionButton permission="ntee.code.edit">
+                                                        <Link href={route('ntee-codes.edit', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton>
+                                                    <PermissionButton permission="ntee.code.delete">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleDelete(item)}
+                                                            className="text-red-600 hover:text-red-700"
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete
                                                         </Button>
-                                                    </Link>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(item)}
-                                                        className="text-red-600 hover:text-red-700"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Delete
-                                                    </Button>
+                                                    </PermissionButton>
                                                 </div>
                                             </td>
                                         </tr>

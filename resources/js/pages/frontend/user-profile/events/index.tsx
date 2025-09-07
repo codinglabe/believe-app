@@ -30,6 +30,8 @@ import {
 } from "@/components/frontend/ui/dropdown-menu"
 import { Link, router, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
+import { PermissionGuard, PermissionButton } from "@/components/ui/permission-guard"
+import { useEventPermissions } from "@/lib/permission-utils"
 
 interface Event {
   id: number
@@ -103,6 +105,7 @@ export default function EventsIndex() {
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
   const [statusFilter, setStatusFilter] = useState(filters.status || "all")
   const [isSearching, setIsSearching] = useState(false)
+  const eventPermissions = useEventPermissions()
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -203,12 +206,14 @@ export default function EventsIndex() {
               <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">My Events</h1>
               <p className="text-gray-600 dark:text-gray-300">Manage and organize your created events</p>
             </div>
-            <Link href="/profile/events/create">
-              <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5">
-                <Plus className="w-5 h-5 mr-2" />
-                Create New Event
-              </Button>
-            </Link>
+                         <PermissionButton
+               permission="event.create"
+               onClick={() => router.visit('/profile/events/create')}
+               className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5"
+             >
+               <Plus className="w-5 h-5 mr-2" />
+               Create New Event
+             </PermissionButton>
           </div>
         </div>
 
@@ -270,27 +275,33 @@ export default function EventsIndex() {
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem asChild>
-                            <Link href={`/profile/events/${event.id}`}>
-                              <Eye className="w-4 h-4 mr-2" />
-                              View
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem asChild>
-                            <Link href={`/profile/events/${event.id}/edit`}>
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </Link>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem 
-                            onClick={() => handleDeleteEvent(event.id)}
-                            className="text-red-600 dark:text-red-400"
-                          >
-                            <Trash2 className="w-4 h-4 mr-2" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
+                                                 <DropdownMenuContent align="end">
+                           <PermissionGuard permission="event.read">
+                             <DropdownMenuItem asChild>
+                               <Link href={`/profile/events/${event.id}`}>
+                                 <Eye className="w-4 h-4 mr-2" />
+                                 View
+                               </Link>
+                             </DropdownMenuItem>
+                           </PermissionGuard>
+                           <PermissionGuard permission="event.edit">
+                             <DropdownMenuItem asChild>
+                               <Link href={`/profile/events/${event.id}/edit`}>
+                                 <Edit className="w-4 h-4 mr-2" />
+                                 Edit
+                               </Link>
+                             </DropdownMenuItem>
+                           </PermissionGuard>
+                           <PermissionGuard permission="event.delete">
+                             <DropdownMenuItem 
+                               onClick={() => handleDeleteEvent(event.id)}
+                               className="text-red-600 dark:text-red-400"
+                             >
+                               <Trash2 className="w-4 h-4 mr-2" />
+                               Delete
+                             </DropdownMenuItem>
+                           </PermissionGuard>
+                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
                   </CardHeader>
@@ -383,12 +394,14 @@ export default function EventsIndex() {
                   : 'You haven\'t created any events yet. Start by creating your first event!'
                 }
               </p>
-              <Link href="/profile/events/create">
-                <Button className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 px-8 py-3">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Create Your First Event
-                </Button>
-              </Link>
+                             <PermissionButton
+                 permission="event.create"
+                 onClick={() => router.visit('/profile/events/create')}
+                 className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-0.5 px-8 py-3"
+               >
+                 <Plus className="w-5 h-5 mr-2" />
+                 Create Your First Event
+               </PermissionButton>
             </CardContent>
           </Card>
         )}

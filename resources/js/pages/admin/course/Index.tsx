@@ -11,6 +11,7 @@ import { Plus, Eye, Edit, Trash2, Users, DollarSign, TrendingUp, Heart, Star, Ch
 import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
 import DeleteConfirmModal from "@/components/admin/DeleteConfirmModal"
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 interface Topic {
   id: number
@@ -340,16 +341,18 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             </p>
           </div>
           <div className="animate-in slide-in-from-right duration-700">
-            <Link href={route("admin.courses.create")}>
-              <Button
-                size="lg"
-                className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
-              >
-                <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                <span className="hidden sm:inline">Create Course</span>
-                <span className="sm:hidden">Create</span>
-              </Button>
-            </Link>
+            <PermissionButton permission="course.create">
+              <Link href={route("admin.courses.create")}>
+                <Button
+                  size="lg"
+                  className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
+                >
+                  <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                  <span className="hidden sm:inline">Create Course</span>
+                  <span className="sm:hidden">Create</span>
+                </Button>
+              </Link>
+            </PermissionButton>
           </div>
         </div>
 
@@ -702,24 +705,30 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
 
                         <TableCell>
                           <div className="flex items-center gap-1">
-                            <Link href={route("admin.courses.show", course.slug)}>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <Eye className="h-4 w-4" />
+                            <PermissionButton permission="course.read">
+                              <Link href={route("admin.courses.show", course.slug)}>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                            </PermissionButton>
+                            <PermissionButton permission="course.edit">
+                              <Link href={route("admin.courses.edit", course.slug)}>
+                                <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                              </Link>
+                            </PermissionButton>
+                            <PermissionButton permission="course.delete">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
+                                onClick={() => openDeleteModal(course.slug, course.name)}
+                              >
+                                <Trash2 className="h-4 w-4" />
                               </Button>
-                            </Link>
-                            <Link href={route("admin.courses.edit", course.slug)}>
-                              <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </Link>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-8 w-8 p-0 text-red-600 hover:text-red-700"
-                              onClick={() => openDeleteModal(course.slug, course.name)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            </PermissionButton>
                           </div>
                         </TableCell>
                       </TableRow>

@@ -7,6 +7,7 @@ import { Plus, Edit, Trash2, LayoutGrid, Search, X } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -160,12 +161,14 @@ export default function Index({ jobPositions, filters, allowedPerPage }: Props) 
                                     Manage Job Positions for your organization. Total: {jobPositions.total.toLocaleString()} jobPositions
                                 </CardDescription>
                             </div>
-                            <Link href={route('job-positions.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Job Position
-                                </Button>
-                            </Link>
+                            <PermissionButton permission="job.positions.create">
+                                <Link href={route('job-positions.create')}>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Job Position
+                                    </Button>
+                                </Link>
+                            </PermissionButton>
                         </div>
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
@@ -238,23 +241,25 @@ export default function Index({ jobPositions, filters, allowedPerPage }: Props) 
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <Link href={route('job-positions.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
-                                                        </Button>
-                                                    </Link>
-                                                      {auth?.user?.role === "admin" && (
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => handleDelete(item)}
-                                                                className="text-red-600 hover:text-red-700"
-                                                            >
-                                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                                Delete
+                                                    <PermissionButton permission="job.positions.edit">
+                                                        <Link href={route('job-positions.edit', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
                                                             </Button>
-                                                        )}
+                                                        </Link>
+                                                    </PermissionButton>
+                                                    <PermissionButton permission="job.positions.delete">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleDelete(item)}
+                                                            className="text-red-600 hover:text-red-700"
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete
+                                                        </Button>
+                                                    </PermissionButton>
                                                 </div>
                                             </td>
                                         </tr>

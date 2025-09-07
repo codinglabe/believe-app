@@ -9,18 +9,12 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class JobPositionController extends Controller
+class JobPositionController extends BaseController
 {
-    public function __construct()
-    {
-        $this->middleware('can:job.positions.read')->only(['index']);
-        $this->middleware('can:job.positions.create')->only(['create', 'store']);
-        $this->middleware('can:job.positions.edit')->only(['edit', 'update']);
-        $this->middleware('can:job.positions.delete')->only(['destroy']);
-    }
 
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.positions.read');
         $perPage = (int) $request->get('per_page', 10);
         $page = (int) $request->get('page', 1);
         $search = $request->get('search', '');
@@ -51,8 +45,9 @@ class JobPositionController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.positions.create');
         return inertia('job-positions/create', [
             'positionCategories' => PositionCategory::select('id', 'name')->get(),
         ]);
@@ -63,6 +58,7 @@ class JobPositionController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'job.positions.create');
         $validated = $request->validate([
             'category_id'  => 'required|exists:position_categories,id',
             'title' => 'required|string|max:255|unique:job_positions,title',
@@ -85,8 +81,9 @@ class JobPositionController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(JobPosition $jobPosition): Response
+    public function edit(Request $request, JobPosition $jobPosition): Response
     {
+        $this->authorizePermission($request, 'job.positions.edit');
         return inertia('job-positions/edit', [
             'jobPosition' => $jobPosition,
             'positionCategories' => PositionCategory::select('id', 'name')->get(),
@@ -95,6 +92,7 @@ class JobPositionController extends Controller
 
     public function update(Request $request, JobPosition $jobPosition)
     {
+        $this->authorizePermission($request, 'job.positions.update');
         $validated = $request->validate([
             'category_id' => 'required|exists:position_categories,id',
             'title' => 'required|string|max:255|unique:job_positions,title,' . $jobPosition->id,
@@ -109,8 +107,9 @@ class JobPositionController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(JobPosition $jobPosition)
+    public function destroy(Request $request, JobPosition $jobPosition)
     {
+        $this->authorizePermission($request, 'job.positions.delete');
         $auth =  Auth::user();
 
         if($auth->role !== 'admin'){

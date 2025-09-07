@@ -33,7 +33,7 @@ class DatabaseSeeder extends Seeder
             SubsectionCodesTableSeeder::class,
             RoleSeeder::class,
             AdminPermissionsSeeder::class,
-            permissionsSeeder::class,
+            ComprehensivePermissionsSeeder::class,
             JobPostsPermisstionSeeder::class,
             assignRole::class,
             AssignRolePermissionToUsersSeeder::class,

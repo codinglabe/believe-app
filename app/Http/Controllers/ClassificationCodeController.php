@@ -8,13 +8,14 @@ use Illuminate\Http\JsonResponse;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class ClassificationCodeController extends Controller
+class ClassificationCodeController extends BaseController
 {
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'classification.code.read');
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
@@ -45,8 +46,9 @@ class ClassificationCodeController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'classification.code.create');
         return Inertia::render('classification-codes/create');
     }
 
@@ -55,6 +57,7 @@ class ClassificationCodeController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'classification.code.create');
         $request->validate([
             'classification_code' => 'required|integer|unique:classification_codes,classification_code',
             'description' => 'required|string|max:1000',
@@ -74,8 +77,9 @@ class ClassificationCodeController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(ClassificationCode $classificationCode): Response
+    public function edit(Request $request, ClassificationCode $classificationCode): Response
     {
+        $this->authorizePermission($request, 'classification.code.edit');
         return Inertia::render('classification-codes/edit', [
             'classificationCode' => $classificationCode
         ]);
@@ -86,6 +90,7 @@ class ClassificationCodeController extends Controller
      */
     public function update(Request $request, ClassificationCode $classificationCode)
     {
+        $this->authorizePermission($request, 'classification.code.update');
         $request->validate([
             'classification_code' => 'required|integer|unique:classification_codes,classification_code,' . $classificationCode->id,
             'description' => 'required|string|max:1000',
@@ -103,8 +108,9 @@ class ClassificationCodeController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(ClassificationCode $classificationCode)
+    public function destroy(Request $request, ClassificationCode $classificationCode)
     {
+        $this->authorizePermission($request, 'classification.code.delete');
         $classificationCode->delete();
 
         return redirect()->route('classification-codes.index')

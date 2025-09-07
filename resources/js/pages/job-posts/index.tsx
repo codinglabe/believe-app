@@ -10,6 +10,7 @@ import { Edit, LayoutGrid, Plus, Search, Trash2, X } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import { Dialog, DialogContent, DialogFooter, DialogHeader } from '@/components/ui/dialog';
 import { DialogDescription, DialogTitle } from '@radix-ui/react-dialog';
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
@@ -184,12 +185,14 @@ export default function Index({ jobPosts, filters, statusOptions, allowedPerPage
                                     Manage all job postings. Total: {jobPosts.total.toLocaleString()} job posts
                                 </CardDescription>
                             </div>
-                            <Link href={route('job-posts.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Create Job Post
-                                </Button>
-                            </Link>
+                            <PermissionButton permission="job.posts.create">
+                                <Link href={route('job-posts.create')}>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Create Job Post
+                                    </Button>
+                                </Link>
+                            </PermissionButton>
                         </div>
                         <div className="flex items-center gap-4 mt-4">
                             <div className="relative flex-1 max-w-md">
@@ -257,21 +260,25 @@ export default function Index({ jobPosts, filters, statusOptions, allowedPerPage
                                                 </td>
                                                  <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <Link href={route('job-posts.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
+                                                    <PermissionButton permission="job.posts.edit">
+                                                        <Link href={route('job-posts.edit', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton>
+                                                    <PermissionButton permission="job.posts.delete">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleDelete(item)}
+                                                            className="text-red-600 hover:text-red-700"
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete
                                                         </Button>
-                                                    </Link>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(item)}
-                                                        className="text-red-600 hover:text-red-700"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Delete
-                                                    </Button>
+                                                    </PermissionButton>
                                                 </div>
                                             </td>
                                             </tr>

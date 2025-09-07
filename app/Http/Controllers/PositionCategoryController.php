@@ -8,18 +8,12 @@ use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class PositionCategoryController extends Controller
+class PositionCategoryController extends BaseController
 {
-    public function __construct()
-    {
-        $this->middleware('can:job.position.categories.read')->only(['index']);
-        $this->middleware('can:job.position.categories.create')->only(['create', 'store']);
-        $this->middleware('can:job.position.categories.edit')->only(['edit', 'update']);
-        $this->middleware('can:job.position.categories.delete')->only(['destroy']);
-    }
 
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.position.categories.read');
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
@@ -48,8 +42,9 @@ class PositionCategoryController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'job.position.categories.create');
         return inertia('position-categories/create');
     }
 
@@ -58,6 +53,7 @@ class PositionCategoryController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'job.position.categories.create');
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:position_categories,name',
             'description' => 'nullable',
@@ -77,8 +73,9 @@ class PositionCategoryController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(PositionCategory $positionCategory): Response
+    public function edit(Request $request, PositionCategory $positionCategory): Response
     {
+        $this->authorizePermission($request, 'job.position.categories.edit');
         return inertia('position-categories/edit', [
             'category' => $positionCategory
         ]);
@@ -89,6 +86,7 @@ class PositionCategoryController extends Controller
      */
     public function update(Request $request, PositionCategory $positionCategory)
     {
+        $this->authorizePermission($request, 'job.position.categories.update');
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:position_categories,name,' . $positionCategory->id,
             'description' => 'nullable',
@@ -100,8 +98,9 @@ class PositionCategoryController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(PositionCategory $positionCategory)
+    public function destroy(Request $request, PositionCategory $positionCategory)
     {
+        $this->authorizePermission($request, 'job.position.categories.delete');
 
         $auth = Auth::user();
 

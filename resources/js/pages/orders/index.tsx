@@ -8,6 +8,7 @@ import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import { Badge } from '@/components/ui/badge';
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -227,12 +228,14 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
 
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <Link href={route('orders.show', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Eye className="mr-2 h-4 w-4" />
-                                                            View
-                                                        </Button>
-                                                    </Link>
+                                                    <PermissionButton permission="ecommerce.read">
+                                                        <Link href={route('orders.show', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Eye className="mr-2 h-4 w-4" />
+                                                                View
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton>
                                                     {/* <Button
                                                         variant="outline"
                                                         size="sm"

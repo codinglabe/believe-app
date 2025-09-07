@@ -52,6 +52,14 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
+        
+        // Debug: Log the form data being sent
+        console.log('Submitting user update:', {
+            userId: initialUserData.id,
+            formData: formData,
+            customPermissions: formData.customPermissions
+        })
+        
         router.put(route("users.update", initialUserData.id), formData, {
             onSuccess: () => {
                 router.visit(route('users.list'))

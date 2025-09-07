@@ -10,7 +10,7 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission; // Import Spatie's Permission model
 use Illuminate\Support\Facades\DB; // For database transactions
 
-class RolePermissionController extends Controller
+class RolePermissionController extends BaseController
 {
     /**
      * Helper to get all permissions in the format expected by the frontend.
@@ -41,8 +41,10 @@ class RolePermissionController extends Controller
     /**
      * Display the role management list.
      */
-    public function roleManagement(): Response
+    public function roleManagement(Request $request): Response
     {
+        $this->authorizePermission($request, 'role.management.read');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
         $roles = Role::withCount('users')->paginate(9); // Eager load user count
 
@@ -69,6 +71,8 @@ class RolePermissionController extends Controller
      */
     public function userPermission(Request $request): Response
     {
+        $this->authorizePermission($request, 'role.management.read');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
 
         $allRoles = Role::all()->map(fn($role) => [
@@ -107,19 +111,23 @@ class RolePermissionController extends Controller
     /**
      * Display the create role page.
      */
-    public function createRole(): Response
+    public function createRole(Request $request): Response
     {
+        $this->authorizePermission($request, 'role.management.create');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
         return Inertia::render('permission/roles/create-role', [
             "allPermissions" => $allPermissions,
         ]);
     }
 
-    /**
+        /**
      * Store a newly created role in storage.
      */
-    public function storeRole(Request $request)
+public function storeRole(Request $request)
     {
+        $this->authorizePermission($request, 'role.management.create');
+        
         $request->validate([
             'name' => 'required|string|max:255|unique:roles,name',
             'description' => 'nullable|string|max:1000',
@@ -134,8 +142,18 @@ class RolePermissionController extends Controller
                 'guard_name' => 'web', // Or your desired guard
                 'color' => 'bg-blue-500', // Default color, consider making this dynamic
             ]);
-            $role->syncPermissions($request->permissions);
+            
+            // Debug: Log the permissions being synced
+            \Log::info('Creating role with permissions: ' . $role->name, [
+                'role_id' => $role->id,
+                'permissions' => $request->permissions
+            ]);
+            
+            $role->syncPermissions($request->permissions ?? []);
         });
+
+        // Clear permission cache to ensure changes take effect immediately
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         return redirect()->route('roles.list')->with('success', 'Role created successfully.');
     }
@@ -143,8 +161,10 @@ class RolePermissionController extends Controller
     /**
      * Display the edit role page.
      */
-    public function editRole(Role $role): Response
+    public function editRole(Request $request, Role $role): Response
     {
+        $this->authorizePermission($request, 'role.management.edit');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
         $rolePermissions = $role->permissions->pluck('name')->toArray();
 
@@ -164,6 +184,8 @@ class RolePermissionController extends Controller
      */
     public function updateRole(Request $request, Role $role)
     {
+        $this->authorizePermission($request, 'role.management.update');
+        
         $request->validate([
             'name' => 'required|string|max:255|unique:roles,name,' . $role->id,
             'description' => 'nullable|string|max:1000',
@@ -176,8 +198,18 @@ class RolePermissionController extends Controller
                 'name' => $request->name,
                 'description' => $request->description,
             ]);
-            $role->syncPermissions($request->permissions);
+            
+            // Debug: Log the permissions being synced
+            \Log::info('Syncing permissions for role: ' . $role->name, [
+                'role_id' => $role->id,
+                'permissions' => $request->permissions
+            ]);
+            
+            $role->syncPermissions($request->permissions ?? []);
         });
+
+        // Clear permission cache to ensure changes take effect immediately
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         return redirect()->route('roles.list')->with('success', 'Role updated successfully.');
     }
@@ -185,8 +217,10 @@ class RolePermissionController extends Controller
     /**
      * Remove the specified role from storage.
      */
-    public function destroyRole(Role $role)
+    public function destroyRole(Request $request, Role $role)
     {
+        $this->authorizePermission($request, 'role.management.delete');
+        
         // Prevent deleting roles that have users assigned or are critical (e.g., 'Super Admin')
         if ($role->users()->count() > 0) {
             return redirect()->back()->with('error', 'Cannot delete role with assigned users.');
@@ -202,8 +236,10 @@ class RolePermissionController extends Controller
     /**
      * Display the create user page.
      */
-    public function createUser(): Response
+    public function createUser(Request $request): Response
     {
+        $this->authorizePermission($request, 'role.management.create');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
         $allRoles = Role::all()->map(fn($role) => ['id' => (string) $role->id, 'name' => $role->name])->toArray();
         return Inertia::render('permission/users/create-user', [
@@ -217,6 +253,8 @@ class RolePermissionController extends Controller
      */
     public function storeUser(Request $request)
     {
+        $this->authorizePermission($request, 'role.management.create');
+        
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email',
@@ -238,17 +276,22 @@ class RolePermissionController extends Controller
             if ($request->roleId) {
                 $user->assignRole(Role::findById($request->roleId));
             }
-            $user->givePermissionTo($request->customPermissions);
+            $user->givePermissionTo($request->customPermissions ?? []);
         });
 
-        return to_route('users.index')->with('success', 'User created successfully.');
+        // Clear permission cache to ensure changes take effect immediately
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+        return to_route('users.list')->with('success', 'User created successfully.');
     }
 
     /**
      * Display the edit user page.
      */
-    public function editUser(User $user): Response
+    public function editUser(Request $request, User $user): Response
     {
+        $this->authorizePermission($request, 'role.management.edit');
+        
         $allPermissions = $this->getAllPermissionsForFrontend();
         $allRoles = Role::all()->map(fn($role) => [
             'id' => (string) $role->id,
@@ -280,6 +323,8 @@ class RolePermissionController extends Controller
      */
     public function updateUser(Request $request, User $user)
     {
+        $this->authorizePermission($request, 'role.management.update');
+        
         $request->validate([
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users,email,' . $user->id,
@@ -298,12 +343,22 @@ class RolePermissionController extends Controller
                 'password' => $request->password ? bcrypt($request->password) : $user->password,
             ]);
 
+            // Debug: Log the role and permissions being synced
+            \Log::info('Updating user permissions: ' . $user->name, [
+                'user_id' => $user->id,
+                'role_id' => $request->roleId,
+                'custom_permissions' => $request->customPermissions
+            ]);
+
             // Sync roles
             $user->syncRoles($request->roleId ? [Role::findById($request->roleId)] : []);
 
             // Sync direct permissions
-            $user->syncPermissions($request->customPermissions);
+            $user->syncPermissions($request->customPermissions ?? []);
         });
+
+        // Clear permission cache to ensure changes take effect immediately
+        app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
 
         return redirect()->route('users.list')->with('success', 'User updated successfully.');
     }
@@ -311,8 +366,10 @@ class RolePermissionController extends Controller
     /**
      * Remove the specified user from storage.
      */
-    public function destroyUser(User $user)
+    public function destroyUser(Request $request, User $user)
     {
+        $this->authorizePermission($request, 'role.management.delete');
+        
         DB::transaction(function () use ($user) {
             $user->delete();
         });

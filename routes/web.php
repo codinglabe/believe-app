@@ -53,6 +53,7 @@ use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
+use App\Http\Controllers\RaffleController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
 
@@ -98,9 +99,9 @@ Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alle
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
 
 
-// Organization routes
-Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
-Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
+    // Organization routes
+    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations')->middleware('permission:organization.read');
+    Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show')->middleware('permission:organization.read');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -134,7 +135,12 @@ Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', functi
     return Inertia::render('frontend/profile');
 });
 
-Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index', 'store', 'update', 'destroy']);
+Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
+    'index' => 'permission:communication.read',
+    'store' => 'permission:communication.create',
+    'update' => 'permission:communication.update',
+    'destroy' => 'permission:communication.delete'
+]);
 
 Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
@@ -152,6 +158,12 @@ Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
+});
+
+// Raffle Payment Routes (must come before admin routes to avoid conflicts)
+Route::middleware(['web', 'auth', 'verified'])->group(function () {
+    Route::get('/raffles/success', [App\Http\Controllers\RaffleController::class, 'success'])->name('raffles.success');
+    Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
 Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.selected'])->group(function () {
@@ -187,39 +199,139 @@ Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.select
     Route::post('/manage-dataset/{fileId}/rows/{rowId}/note', [ManageDatasetController::class, 'saveNote'])->name('manage-dataset.save-note');
 
     // Classification Codes Routes
-    Route::resource('classification-codes', ClassificationCodeController::class)->except(['show']);
+    Route::resource('classification-codes', ClassificationCodeController::class)->except(['show'])->middleware([
+        'index' => 'permission:classification.code.read',
+        'create' => 'permission:classification.code.create',
+        'store' => 'permission:classification.code.create',
+        'edit' => 'permission:classification.code.edit',
+        'update' => 'permission:classification.code.update',
+        'destroy' => 'permission:classification.code.delete'
+    ]);
 
     // NTEE Codes Routes
-    Route::resource('ntee-codes', NteeCodeController::class)->except(['show']);
+    Route::resource('ntee-codes', NteeCodeController::class)->except(['show'])->middleware([
+        'index' => 'permission:ntee.code.read',
+        'create' => 'permission:ntee.code.create',
+        'store' => 'permission:ntee.code.create',
+        'edit' => 'permission:ntee.code.edit',
+        'update' => 'permission:ntee.code.update',
+        'destroy' => 'permission:ntee.code.delete'
+    ]);
 
     // Status Codes Routes
-    Route::resource('status-codes', StatusCodeController::class)->except(['show']);
+    Route::resource('status-codes', StatusCodeController::class)->except(['show'])->middleware([
+        'index' => 'permission:status.code.read',
+        'create' => 'permission:status.code.create',
+        'store' => 'permission:status.code.create',
+        'edit' => 'permission:status.code.edit',
+        'update' => 'permission:status.code.update',
+        'destroy' => 'permission:status.code.delete'
+    ]);
 
     // Deductibility Codes Routes
-    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware('permission:deductibily.code.read');
+    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware([
+        'index' => 'permission:deductibility.code.read',
+        'create' => 'permission:deductibility.code.create',
+        'store' => 'permission:deductibility.code.create',
+        'edit' => 'permission:deductibility.code.edit',
+        'update' => 'permission:deductibility.code.update',
+        'destroy' => 'permission:deductibility.code.delete'
+    ]);
 
     /* Product Routes */
-    Route::resource('products', ProductController::class)->except(['show']);
+    Route::resource('products', ProductController::class)->except(['show'])->middleware([
+        'index' => 'permission:product.read',
+        'create' => 'permission:product.create',
+        'store' => 'permission:product.create',
+        'edit' => 'permission:product.edit',
+        'update' => 'permission:product.update',
+        'destroy' => 'permission:product.delete'
+    ]);
 
     /* Category Routes */
-    Route::resource('categories', CategoryController::class)->except(['show']);
+    Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
+        'index' => 'permission:category.read',
+        'create' => 'permission:category.create',
+        'store' => 'permission:category.create',
+        'edit' => 'permission:category.edit',
+        'update' => 'permission:category.update',
+        'destroy' => 'permission:category.delete'
+    ]);
 
-    Route::resource("position-categories", PositionCategoryController::class)->except(['show'])->middleware('permission:job.position.categories.read');
+    /* Raffle Routes */
+    Route::resource('raffles', RaffleController::class)->middleware([
+        'index' => 'permission:raffle.read',
+        'create' => 'permission:raffle.create',
+        'store' => 'permission:raffle.create',
+        'show' => 'permission:raffle.read',
+        'edit' => 'permission:raffle.edit',
+        'update' => 'permission:raffle.edit',
+        'destroy' => 'permission:raffle.delete'
+    ]);
+    
+    Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
+    Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
+    Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
+    Route::get('raffles/tickets/{ticket}/verify', [RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket')->middleware('permission:raffle.read');
 
-    Route::resource("job-positions", JobPositionController::class)->except(['show'])->middleware('permission:job.positions.read');
+    Route::resource("position-categories", PositionCategoryController::class)->except(['show'])->middleware([
+        'index' => 'permission:job.position.categories.read',
+        'create' => 'permission:job.position.categories.create',
+        'store' => 'permission:job.position.categories.create',
+        'edit' => 'permission:job.position.categories.edit',
+        'update' => 'permission:job.position.categories.update',
+        'destroy' => 'permission:job.position.categories.delete'
+    ]);
 
-    Route::resource('job-posts', JobPostController::class)->middleware(['role:organization', 'permission:job.posts.read']);
+    Route::resource("job-positions", JobPositionController::class)->except(['show'])->middleware([
+        'index' => 'permission:job.positions.read',
+        'create' => 'permission:job.positions.create',
+        'store' => 'permission:job.positions.create',
+        'edit' => 'permission:job.positions.edit',
+        'update' => 'permission:job.positions.update',
+        'destroy' => 'permission:job.positions.delete'
+    ]);
+
+    Route::resource('job-posts', JobPostController::class)->middleware([
+        'index' => 'permission:job.posts.read',
+        'create' => 'permission:job.posts.create',
+        'store' => 'permission:job.posts.create',
+        'show' => 'permission:job.posts.read',
+        'edit' => 'permission:job.posts.edit',
+        'update' => 'permission:job.posts.update',
+        'destroy' => 'permission:job.posts.delete'
+    ]);
 
     // job applications routes
-    Route::resource('job-applications', JobApplicationController::class)->middleware(['role:organization', 'permission:job.posts.read']);
+    Route::resource('job-applications', JobApplicationController::class)->middleware([
+        'index' => 'permission:job.posts.read',
+        'create' => 'permission:job.posts.read',
+        'store' => 'permission:job.posts.read',
+        'show' => 'permission:job.posts.read',
+        'edit' => 'permission:job.posts.read',
+        'update' => 'permission:job.posts.read',
+        'destroy' => 'permission:job.posts.read'
+    ]);
     Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
         ->name('job-applications.update-status')
         ->middleware(['role:organization', 'permission:job.posts.read']);
 
     // Events Routes
-    Route::resource('events', EventController::class);
-    Route::get('/events/{event}/update-status', [EventController::class, 'updateStatus'])->name('events.update-status');
-    Route::get('/api/events/dashboard', [EventController::class, 'dashboard'])->name('events.dashboard');
+    Route::resource('events', EventController::class)->middleware([
+        'index' => 'permission:event.read',
+        'create' => 'permission:event.create',
+        'store' => 'permission:event.create',
+        'show' => 'permission:event.read',
+        'edit' => 'permission:event.edit',
+        'update' => 'permission:event.update',
+        'destroy' => 'permission:event.delete'
+    ]);
+    Route::get('/events/{event}/update-status', [EventController::class, 'updateStatus'])
+        ->name('events.update-status')
+        ->middleware('permission:event.update');
+    Route::get('/api/events/dashboard', [EventController::class, 'dashboard'])
+        ->name('events.dashboard')
+        ->middleware('permission:event.read');
 
     //role and permission routes
     Route::get('/permission-management', [RolePermissionController::class, 'index']);
@@ -245,45 +357,65 @@ Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.select
         Route::put('/users/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
         Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
     });
-    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show']);
+    Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware([
+        'index' => 'permission:deductibility.code.read',
+        'create' => 'permission:deductibility.code.create',
+        'store' => 'permission:deductibility.code.create',
+        'edit' => 'permission:deductibility.code.edit',
+        'update' => 'permission:deductibility.code.update',
+        'destroy' => 'permission:deductibility.code.delete'
+    ]);
 
 
 
     /* orders Routes */
-    Route::resource('orders', OrderController::class);
+    Route::resource('orders', OrderController::class)->middleware([
+        'index' => 'permission:ecommerce.read',
+        'create' => 'permission:ecommerce.create',
+        'store' => 'permission:ecommerce.create',
+        'show' => 'permission:ecommerce.read',
+        'edit' => 'permission:ecommerce.edit',
+        'update' => 'permission:ecommerce.update',
+        'destroy' => 'permission:ecommerce.delete'
+    ]);
     // Purchase Order Routes
-    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
-    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');
-    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store');
-    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit');
-    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update');
-    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy');
-
-
-    /* orders Routes */
-    Route::resource('orders', OrderController::class);
-    // Purchase Order Routes
-    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index');
-    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create');
-    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store');
-    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit');
-    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update');
-    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy');
+    Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index')->middleware('permission:ecommerce.read');
+    Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create')->middleware('permission:ecommerce.create');
+    Route::post('/purchase-orders', [PurchaseController::class, 'store'])->name('purchase-orders.store')->middleware('permission:ecommerce.create');
+    Route::get('/purchase-orders/{id}/edit', [PurchaseController::class, 'edit'])->name('purchase-orders.edit')->middleware('permission:ecommerce.edit');
+    Route::put('/purchase-orders/{id}', [PurchaseController::class, 'update'])->name('purchase-orders.update')->middleware('permission:ecommerce.update');
+    Route::delete('/purchase-orders/{id}', [PurchaseController::class, 'destroy'])->name('purchase-orders.destroy')->middleware('permission:ecommerce.delete');
 
     // Node Boss Routes
-    Route::get('/node-boss/create', [NodeBossController::class, 'create'])->name('node-boss.create');
-    Route::post('/node-boss/store', [NodeBossController::class, 'store'])->name('node-boss.store');
-    Route::get('/node-boss/{id}/edit', [NodeBossController::class, 'edit'])->name('node-boss.edit');
-    Route::put('/node-boss/{id}', [NodeBossController::class, 'update'])->name('node-boss.update');
-    Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy');
-    Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index');
-    Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show');
+    Route::get('/node-boss/create', [NodeBossController::class, 'create'])->name('node-boss.create')->middleware('permission:node.referral.create');
+    Route::post('/node-boss/store', [NodeBossController::class, 'store'])->name('node-boss.store')->middleware('permission:node.referral.create');
+    Route::get('/node-boss/{id}/edit', [NodeBossController::class, 'edit'])->name('node-boss.edit')->middleware('permission:node.referral.edit');
+    Route::put('/node-boss/{id}', [NodeBossController::class, 'update'])->name('node-boss.update')->middleware('permission:node.referral.update');
+    Route::delete('/node-boss/{id}', [NodeBossController::class, 'destroy'])->name('node-boss.destroy')->middleware('permission:node.referral.delete');
+    Route::get('/node-boss', [NodeBossController::class, 'index'])->name('node-boss.index')->middleware('permission:node.referral.read');
+    Route::get('/node-boss/{id}', [NodeBossController::class, 'show'])->name('node-boss.show')->middleware('permission:node.referral.read');
 
     //node boss referral
-    Route::resource('node-referral', NodeReferralController::class);
+    Route::resource('node-referral', NodeReferralController::class)->middleware([
+        'index' => 'permission:node.referral.read',
+        'create' => 'permission:node.referral.create',
+        'store' => 'permission:node.referral.create',
+        'show' => 'permission:node.referral.read',
+        'edit' => 'permission:node.referral.edit',
+        'update' => 'permission:node.referral.update',
+        'destroy' => 'permission:node.referral.delete'
+    ]);
 
     // New Withdrawal resource routes
-    Route::resource('withdrawals', WithdrawalController::class);
+    Route::resource('withdrawals', WithdrawalController::class)->middleware([
+        'index' => 'permission:withdrawal.read',
+        'create' => 'permission:withdrawal.create',
+        'store' => 'permission:withdrawal.create',
+        'show' => 'permission:withdrawal.read',
+        'edit' => 'permission:withdrawal.edit',
+        'update' => 'permission:withdrawal.update',
+        'destroy' => 'permission:withdrawal.delete'
+    ]);
 
     // Custom routes for withdrawal actions
     Route::post('withdrawals/{withdrawal}/accept', [WithdrawalController::class, 'accept'])->name('withdrawals.accept');
@@ -317,36 +449,45 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/courses/enrollment/cancel/{enrollment}', [EnrollmentController::class, 'cancel'])->name('courses.enrollment.cancel');
     Route::get('/profile/my-enrollments', [EnrollmentController::class, 'myEnrollments'])->name('enrollments.my');
     Route::get('/profile/course', [FrontendCourseController::class, 'adminIndex'])->name('profile.course.index');
-    Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create');
-    Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store');
-    Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show'); // Added this line
-    Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit');
+    Route::get('/profile/course/create', [FrontendCourseController::class, 'create'])->name('profile.course.create')->middleware('permission:course.create');
+    Route::post('/profile/course', [FrontendCourseController::class, 'store'])->name('profile.course.store')->middleware('permission:course.create');
+    Route::get('/profile/course/{course:slug}', [FrontendCourseController::class, 'adminShow'])->name('profile.course.show')->middleware('permission:course.read'); // Added this line
+    Route::get('/profile/course/{course:slug}/edit', [FrontendCourseController::class, 'edit'])->name('profile.course.edit')->middleware('permission:course.edit');
 
     // Frontend User Events Routes
-    Route::get('/profile/events', [EventController::class, 'userEvents'])->name('profile.events.index');
-    Route::get('/profile/events/create', [EventController::class, 'userCreate'])->name('profile.events.create');
-    Route::post('/profile/events', [EventController::class, 'userStore'])->name('profile.events.store');
-    Route::get('/profile/events/{event}', [EventController::class, 'userShow'])->name('profile.events.show');
-    Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit');
-    Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update');
-    Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy');
-    Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update');
-    Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy');
+    Route::get('/profile/events', [EventController::class, 'userEvents'])->name('profile.events.index')->middleware('permission:event.read');
+    Route::get('/profile/events/create', [EventController::class, 'userCreate'])->name('profile.events.create')->middleware('permission:event.create');
+    Route::post('/profile/events', [EventController::class, 'userStore'])->name('profile.events.store')->middleware('permission:event.create');
+    Route::get('/profile/events/{event}', [EventController::class, 'userShow'])->name('profile.events.show')->middleware('permission:event.read');
+    Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit')->middleware('permission:event.edit');
+    Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update')->middleware('permission:event.update');
+    Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy')->middleware('permission:event.delete');
+    
+    // Frontend User Raffle Tickets Routes
+    Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
+    
+    Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
+    Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });
 Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
     Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
-        Route::get('/', [CourseController::class, 'adminIndex'])->name('index');
-        Route::get('/create', [CourseController::class, 'create'])->name('create');
-        Route::post('/', [CourseController::class, 'store'])->name('store');
-        Route::get('/{course:slug}', [CourseController::class, 'adminShow'])->name('show'); // Added this line
-        Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit');
-        Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update');
-        Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy');
+        Route::get('/', [CourseController::class, 'adminIndex'])->name('index')->middleware('permission:course.read');
+        Route::get('/create', [CourseController::class, 'create'])->name('create')->middleware('permission:course.create');
+        Route::post('/', [CourseController::class, 'store'])->name('store')->middleware('permission:course.create');
+        Route::get('/{course:slug}', [CourseController::class, 'adminShow'])->name('show')->middleware('permission:course.read');
+        Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit')->middleware('permission:course.edit');
+        Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update')->middleware('permission:course.update');
+        Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy')->middleware('permission:course.delete');
     });
 
     // Topic Management Routes (Admin Only)
-    Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy']);
+    Route::resource('topics', TopicController::class)->only(['index', 'store', 'update', 'destroy'])->middleware([
+        'index' => 'permission:topic.read',
+        'store' => 'permission:topic.create',
+        'update' => 'permission:topic.update',
+        'destroy' => 'permission:topic.delete'
+    ]);
 });
 
 // Plaid Verification routes
@@ -373,10 +514,26 @@ Route::post('/api/plaid/webhook', function () {
 
 Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
     // NodeShare routes
-    Route::resource('node-shares', NodeShareController::class);
+    Route::resource('node-shares', NodeShareController::class)->middleware([
+        'index' => 'permission:node.referral.read',
+        'create' => 'permission:node.referral.create',
+        'store' => 'permission:node.referral.create',
+        'show' => 'permission:node.referral.read',
+        'edit' => 'permission:node.referral.edit',
+        'update' => 'permission:node.referral.update',
+        'destroy' => 'permission:node.referral.delete'
+    ]);
 
     // NodeSell routes
-    Route::resource('node-sells', NodeSellController::class);
+    Route::resource('node-sells', NodeSellController::class)->middleware([
+        'index' => 'permission:node.referral.read',
+        'create' => 'permission:node.referral.create',
+        'store' => 'permission:node.referral.create',
+        'show' => 'permission:node.referral.read',
+        'edit' => 'permission:node.referral.edit',
+        'update' => 'permission:node.referral.update',
+        'destroy' => 'permission:node.referral.delete'
+    ]);
 
     // Buy share routes
 
@@ -427,6 +584,13 @@ Route::prefix('irs-bmf')->name('irs-bmf.')->group(function () {
     Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
     Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
     Route::post('/import', [App\Http\Controllers\IrsBmfController::class, 'triggerImport'])->name('import');
+});
+
+// Frontend Raffle Routes (for users to browse and purchase)
+Route::middleware(['web', 'auth', 'verified'])->prefix('frontend')->name('frontend.')->group(function () {
+    Route::get('/raffles', [App\Http\Controllers\RaffleController::class, 'frontendIndex'])->name('raffles.index');
+    Route::get('/raffles/{raffle}', [App\Http\Controllers\RaffleController::class, 'frontendShow'])->name('raffles.show');
+    Route::post('/raffles/{raffle}/purchase', [App\Http\Controllers\RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');
 });
 
 

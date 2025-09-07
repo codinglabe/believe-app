@@ -40,11 +40,17 @@ class HandleInertiaRequests extends Middleware
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
         $user = $request->user()?->load("organization");
         $role = $user?->roles?->first();
-        $permissions = [];
-        if ($role?->permissions) {
-            foreach ($role?->permissions as $permission) {
-                $permissions[] = $permission->name;
-            }
+        
+        // Get all permissions (both role-based and direct user permissions)
+        $permissions = $user ? $user->getAllPermissions()->pluck('name')->toArray() : [];
+        
+        // Debug: Log permissions being shared
+        if ($user && count($permissions) > 0) {
+            \Log::info('Sharing permissions with frontend for user: ' . $user->name, [
+                'user_id' => $user->id,
+                'permissions' => $permissions,
+                'role' => $role?->name
+            ]);
         }
         return [
             ...parent::share($request),

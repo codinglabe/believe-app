@@ -13,6 +13,7 @@ class Organization extends Model
 
     protected $fillable = [
         'user_id',
+        'balance',
         'ein',
         'name',
         'stripe_product_id',
@@ -82,6 +83,39 @@ class Organization extends Model
     // public function favoritedBy()
     // {
     //     return $this->belongsToMany(User::class, 'user_favorite_organizations');
+
+    /**
+     * Add funds to the organization's balance.
+     *
+     * @param float $amount
+     * @param string $method
+     * @param array $meta
+     * @return void
+     */
+    public function addFund(float $amount, string $method = 'raffle_sales', array $meta = []): void
+    {
+        $this->increment('balance', $amount);
+        
+        // Record transaction for the organization's user if it exists
+        if ($this->user) {
+            $this->user->recordTransaction([
+                'type' => 'raffle_sale',
+                'amount' => $amount,
+                'payment_method' => $method,
+                'meta' => array_merge($meta, ['organization_id' => $this->id]),
+            ]);
+        }
+    }
+
+    /**
+     * Get the current balance of the organization.
+     *
+     * @return float
+     */
+    public function currentBalance(): float
+    {
+        return (float) $this->balance;
+    }
     // }
 
     public function isFavoritedByUser(): HasOne

@@ -9,6 +9,7 @@ import { Plus, Edit, Trash2, Eye, FileText, Search, X } from 'lucide-react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
+import { PermissionButton } from '@/components/ui/permission-guard';
 
 const breadcrumbs: BreadcrumbItem[] = [
     {
@@ -185,12 +186,14 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                     Manage products for your organization. Total: {products.total.toLocaleString()} products
                                 </CardDescription>
                             </div>
-                            <Link href={route('products.create')}>
-                                <Button>
-                                    <Plus className="mr-2 h-4 w-4" />
-                                    Add Product
-                                </Button>
-                            </Link>
+                            <PermissionButton permission="product.create">
+                                <Link href={route('products.create')}>
+                                    <Button>
+                                        <Plus className="mr-2 h-4 w-4" />
+                                        Add Product
+                                    </Button>
+                                </Link>
+                            </PermissionButton>
                         </div>
 
                         {/* Search Bar */}
@@ -324,27 +327,33 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                             </td> */}
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    {/* <Link href={route('classification-codes.show', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Eye className="mr-2 h-4 w-4" />
-                                                            View
+                                                    {/* <PermissionButton permission="product.read">
+                                                        <Link href={route('products.show', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Eye className="mr-2 h-4 w-4" />
+                                                                View
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton> */}
+                                                    <PermissionButton permission="product.edit">
+                                                        <Link href={route('products.edit', item.id)}>
+                                                            <Button variant="outline" size="sm">
+                                                                <Edit className="mr-2 h-4 w-4" />
+                                                                Edit
+                                                            </Button>
+                                                        </Link>
+                                                    </PermissionButton>
+                                                    <PermissionButton permission="product.delete">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            onClick={() => handleDelete(item)}
+                                                            className="text-red-600 hover:text-red-700"
+                                                        >
+                                                            <Trash2 className="mr-2 h-4 w-4" />
+                                                            Delete
                                                         </Button>
-                                                    </Link> */}
-                                                    <Link href={route('products.edit', item.id)}>
-                                                        <Button variant="outline" size="sm">
-                                                            <Edit className="mr-2 h-4 w-4" />
-                                                            Edit
-                                                        </Button>
-                                                    </Link>
-                                                    <Button
-                                                        variant="outline"
-                                                        size="sm"
-                                                        onClick={() => handleDelete(item)}
-                                                        className="text-red-600 hover:text-red-700"
-                                                    >
-                                                        <Trash2 className="mr-2 h-4 w-4" />
-                                                        Delete
-                                                    </Button>
+                                                    </PermissionButton>
                                                 </div>
                                             </td>
                                         </tr>

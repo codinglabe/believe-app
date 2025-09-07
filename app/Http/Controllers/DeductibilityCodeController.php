@@ -8,25 +8,14 @@ use App\Models\DeductibilityCode;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 
-class DeductibilityCodeController extends Controller
+class DeductibilityCodeController extends BaseController
 {
-    /**
-     * Display a listing of the resource.
-     *
-     * @return \Illuminate\Http\Response
-     */
-    public function __construct()
-    {
-        //$this->middleware('permission:deductibily.code.read', ['only' => ['index', 'show']]);
-        // $this->middleware('permission:product-create', ['only' => ['create', 'store']]);
-        // $this->middleware('permission:product-edit', ['only' => ['edit', 'update']]);
-        // $this->middleware('permission:product-delete', ['only' => ['destroy']]);
-    }
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'deductibility.code.read');
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
@@ -57,8 +46,9 @@ class DeductibilityCodeController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'deductibility.code.create');
         return Inertia::render('deductibility-codes/create');
     }
 
@@ -67,6 +57,7 @@ class DeductibilityCodeController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'deductibility.code.create');
         $request->validate([
             'deductibility_code' => 'required|integer|unique:deductibility_codes,deductibility_code',
             'description' => 'required|string|max:1000',
@@ -86,8 +77,9 @@ class DeductibilityCodeController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(DeductibilityCode $deductibilityCode): Response
+    public function edit(Request $request, DeductibilityCode $deductibilityCode): Response
     {
+        $this->authorizePermission($request, 'deductibility.code.edit');
         return Inertia::render('deductibility-codes/edit', [
             'deductibilityCode' => $deductibilityCode
         ]);
@@ -98,6 +90,7 @@ class DeductibilityCodeController extends Controller
      */
     public function update(Request $request, DeductibilityCode $deductibilityCode)
     {
+        $this->authorizePermission($request, 'deductibility.code.update');
         $request->validate([
             'deductibility_code' => 'required|integer|unique:deductibility_codes,deductibility_code,' . $deductibilityCode->id,
             'description' => 'required|string|max:1000',
@@ -115,8 +108,9 @@ class DeductibilityCodeController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(DeductibilityCode $deductibilityCode)
+    public function destroy(Request $request, DeductibilityCode $deductibilityCode)
     {
+        $this->authorizePermission($request, 'deductibility.code.delete');
         $deductibilityCode->delete();
 
         return redirect()->route('deductibility-codes.index')

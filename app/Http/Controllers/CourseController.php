@@ -15,7 +15,7 @@ use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
 
-class CourseController extends Controller
+class CourseController extends BaseController
 {
 
     /**
@@ -92,6 +92,7 @@ class CourseController extends Controller
      */
     public function adminIndex(Request $request)
     {
+        $this->authorizePermission($request, 'course.read');
         $filters = $request->only([
             'courses_search',
             'courses_status',
@@ -213,8 +214,9 @@ class CourseController extends Controller
     /**
      * Show the form for creating a new course.
      */
-    public function create()
+    public function create(Request $request)
     {
+        $this->authorizePermission($request, 'course.create');
         $topics = Topic::orderBy('name')->get(['id', 'name']);
 
         return Inertia::render('admin/course/Create', [
@@ -227,6 +229,7 @@ class CourseController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'course.create');
         $validated = $request->validate([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
@@ -411,8 +414,9 @@ class CourseController extends Controller
     /**
      * Display the specified course in admin view.
      */
-    public function adminShow(Course $course)
+    public function adminShow(Request $request, Course $course)
     {
+        $this->authorizePermission($request, 'course.read');
         // Ensure user can only view their own organization's courses
         if ($course->organization_id !== Auth::id()) {
             abort(403, 'Unauthorized access to this course.');
@@ -462,8 +466,9 @@ class CourseController extends Controller
     /**
      * Show the form for editing the specified course.
      */
-    public function edit(Course $course)
+    public function edit(Request $request, Course $course)
     {
+        $this->authorizePermission($request, 'course.edit');
         // Ensure user can only edit their own organization's courses
         if ($course->organization_id !== Auth::id()) {
             abort(403, 'Unauthorized access to this course.');
@@ -500,6 +505,7 @@ class CourseController extends Controller
      */
     public function update(Request $request, Course $course)
     {
+        $this->authorizePermission($request, 'course.update');
         // Ensure user can only update their own organization's courses
         if ($course->organization_id !== Auth::id()) {
             abort(403, 'Unauthorized access to this course.');
@@ -640,8 +646,9 @@ class CourseController extends Controller
     /**
      * Remove the specified course from storage.
      */
-    public function destroy(Course $course)
+    public function destroy(Request $request, Course $course)
     {
+        $this->authorizePermission($request, 'course.delete');
         // Ensure user can only delete their own organization's courses
         if ($course->organization_id !== Auth::id()) {
             abort(403, 'Unauthorized access to this course.');

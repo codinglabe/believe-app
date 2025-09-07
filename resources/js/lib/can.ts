@@ -15,7 +15,18 @@ type PageProps = {
 // Check single permission
 export function useCan(permission: string): boolean {
     const { auth } = usePage<PageProps>().props;
-    return auth.permissions?.includes(permission) ?? false;
+    const hasPermission = auth.permissions?.includes(permission) ?? false;
+    
+    // Debug: Log permission checks
+    if (process.env.NODE_ENV === 'development') {
+        console.log(`Permission check: ${permission}`, {
+            hasPermission,
+            userPermissions: auth.permissions,
+            userRoles: auth.roles
+        });
+    }
+    
+    return hasPermission;
 }
 
 // Check permission against provided array

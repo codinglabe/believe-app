@@ -11,13 +11,14 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Category;
 
-class ProductController extends Controller
+class ProductController extends BaseController
 {
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'product.read');
 
         $organization = Organization::where('user_id', Auth::id())->first();
 
@@ -56,8 +57,9 @@ class ProductController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'product.create');
         $categories = Category::all();
         // If you want to pass organizations, fetch them here
         $organizations = Organization::all(['id', 'name']);
@@ -72,6 +74,7 @@ class ProductController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'product.create');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -120,8 +123,9 @@ class ProductController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Product $product): Response
+    public function edit(Request $request, Product $product): Response
     {
+        $this->authorizePermission($request, 'product.edit');
         
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
@@ -142,6 +146,7 @@ class ProductController extends Controller
      */
     public function update(Request $request, Product $product)
     {
+        $this->authorizePermission($request, 'product.update');
 
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
@@ -243,8 +248,9 @@ class ProductController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Product $product)
+    public function destroy(Request $request, Product $product)
     {
+        $this->authorizePermission($request, 'product.delete');
         
         $product->categories()->detach();
         $product->delete();

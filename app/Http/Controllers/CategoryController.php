@@ -7,12 +7,13 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class CategoryController extends Controller
+class CategoryController extends BaseController
 {
 
 
     public function index(Request $request): Response
     {
+        $this->authorizePermission($request, 'category.read');
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
@@ -41,8 +42,9 @@ class CategoryController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create(): Response
+    public function create(Request $request): Response
     {
+        $this->authorizePermission($request, 'category.create');
         return inertia('categories/create');
     }
 
@@ -51,6 +53,7 @@ class CategoryController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'category.create');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'status' => 'required|in:active,inactive',
@@ -70,8 +73,9 @@ class CategoryController extends Controller
     /**
      * Show the form for editing the specified resource.
      */
-    public function edit(Category $category): Response
+    public function edit(Request $request, Category $category): Response
     {
+        $this->authorizePermission($request, 'category.edit');
         return inertia('categories/edit', [
             'category' => $category
         ]);
@@ -82,6 +86,7 @@ class CategoryController extends Controller
      */
     public function update(Request $request, Category $category)
     {
+        $this->authorizePermission($request, 'category.update');
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'status' => 'required|in:active,inactive',
@@ -93,8 +98,9 @@ class CategoryController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Category $category)
+    public function destroy(Request $request, Category $category)
     {
+        $this->authorizePermission($request, 'category.delete');
         $category->delete();
         return redirect()->route('categories.index')->with('success', 'Category deleted successfully.');
     }

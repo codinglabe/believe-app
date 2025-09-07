@@ -12,21 +12,24 @@ use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
-class EventController extends Controller
+class EventController extends BaseController
 {
     /**
      * Display a listing of the resource.
      */
-    public function index()
+    public function index(Request $request)
     {
+        // Check if user has permission to read events
+        $this->authorizePermission($request, 'event.read');
+        
         $user = Auth::user();
         $events = [];
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
 
-        if ($user->role === 'admin') {
+        if ($this->isAdmin($request)) {
             // Admin can see all events
             $events = Event::with(['organization', 'user', 'eventType'])->latest()->paginate(12);
-        } elseif ($user->role === 'organization') {
+        } elseif ($this->isOrganization($request)) {
             // Organization can only see their own events
             $organization = Organization::where('user_id', $user->id)->first();
             if ($organization) {
@@ -50,15 +53,12 @@ class EventController extends Controller
     /**
      * Show the form for creating a new resource.
      */
-    public function create()
+    public function create(Request $request)
     {
-        $user = Auth::user();
+        // Check if user has permission to create events
+        $this->authorizePermission($request, 'event.create');
         
-        // Allow both organizations and regular users to create events
-        if (!in_array($user->role, ['organization', 'user'])) {
-            abort(403, 'Only organizations and users can create events.');
-        }
-
+        $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
 
         return Inertia::render('events/create', [

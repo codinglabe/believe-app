@@ -127,6 +127,13 @@ const navigationItems = [
     color: "from-blue-500 to-cyan-600",
   },
   {
+    name: "Raffle Tickets",
+    href: "/profile/raffle-tickets",
+    icon: Award,
+    description: "My raffle tickets",
+    color: "from-yellow-500 to-orange-600",
+  },
+  {
     name: "Node Boss",
     href: "/nodeboss/shares",
     icon: TrendingUp,

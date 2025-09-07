@@ -43,12 +43,20 @@ export default function EditRole({ role: initialRoleData, allPermissions, onNavi
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
+        
+        // Debug: Log the form data being sent
+        console.log('Submitting role update:', {
+            roleId: initialRoleData.id,
+            formData: formData,
+            permissions: formData.permissions
+        })
+        
         router.put(route("roles.update", initialRoleData.id), formData, {
             onSuccess: () => {
                 router.visit(route('roles.list'))
             },
             onError: (errors) => {
-                console.error("Error updating user:", errors)
+                console.error("Error updating role:", errors)
             },
         })
     }

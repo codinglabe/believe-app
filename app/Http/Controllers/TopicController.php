@@ -7,13 +7,14 @@ use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\Log;
 
-class TopicController extends Controller
+class TopicController extends BaseController
 {
     /**
      * Display a listing of the resource.
      */
     public function index(Request $request)
     {
+        $this->authorizePermission($request, 'topic.read');
         $filters = $request->only(['search']);
 
         $topics = Topic::query()
@@ -35,6 +36,7 @@ class TopicController extends Controller
      */
     public function store(Request $request)
     {
+        $this->authorizePermission($request, 'topic.create');
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:topics,name',
         ]);
@@ -49,6 +51,7 @@ class TopicController extends Controller
      */
     public function update(Request $request, Topic $topic)
     {
+        $this->authorizePermission($request, 'topic.update');
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:topics,name,' . $topic->id,
         ]);
@@ -61,8 +64,9 @@ class TopicController extends Controller
     /**
      * Remove the specified resource from storage.
      */
-    public function destroy(Topic $topic)
+    public function destroy(Request $request, Topic $topic)
     {
+        $this->authorizePermission($request, 'topic.delete');
         try {
             // Check if the topic is associated with any courses
             if ($topic->courses()->exists()) {
