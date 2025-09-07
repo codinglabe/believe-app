@@ -58,7 +58,13 @@ class NonprofitNewsController extends Controller
         );
 
         return Inertia::render('frontend/news/index', [
-            'items' => $paginator->items(),
+            'items' => collect($paginator->items())->map(function ($item) {
+                // Convert DateTimeImmutable -> ISO string
+                if (isset($item['published_at']) && $item['published_at'] instanceof \DateTimeInterface) {
+                    $item['published_at'] = $item['published_at']->format('c');
+                }
+                return $item;
+            }),
             'allSources' => array_keys($feeds),
             'sources' => $selectedSources,
             'query' => $q ?? '',

@@ -299,14 +299,14 @@ export default function NonprofitNews({
                         <div className="p-6">
                           <div className="flex justify-between items-start mb-3">
                             <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                              {item.source}
+                                {item.source}
                             </span>
                             {item.published_at && (
-                              <span className="text-xs text-gray-500 dark:text-gray-400">
+                                <span className="text-xs text-gray-500 dark:text-gray-400">
                                 {new Date(item.published_at).toLocaleDateString()}
-                              </span>
+                                </span>
                             )}
-                          </div>
+                            </div>
 
                           <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
                             <a

@@ -684,10 +684,10 @@ export default function Navbar() {
   const navItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
+    { name: "News", href: "/nonprofit-news" },
     { name: "Marketplace", href: "/marketplace" },
     { name: "Events", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
-    { name: "News", href: "/nonprofit-news" },
     { name: "Donate", href: "/donate" },
     { name: "Courses", href: route("course.index") },
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index") }] : []),
