@@ -587,6 +587,29 @@ Route::prefix('irs-bmf')->name('irs-bmf.')->group(function () {
 });
 
 // Frontend Raffle Routes (for users to browse and purchase)
+// Public QR Code Route (no authentication required)
+Route::get('/raffles/tickets/{ticket}/qr-code', [App\Http\Controllers\RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code.public');
+
+// Public QR Code Verification Route (no authentication required)
+Route::get('/raffles/tickets/{ticket}/verify', [App\Http\Controllers\RaffleController::class, 'verifyTicket'])->name('raffles.verify-ticket.public');
+
+// Test QR Code Route
+Route::get('/test-qr', function() {
+    $qrCode = \SimpleSoftwareIO\QrCode\Facades\QrCode::format('png')
+        ->size(200)
+        ->margin(2)
+        ->color(0, 0, 0)
+        ->backgroundColor(255, 255, 255)
+        ->generate('TEST QR CODE WORKING');
+    
+    return response($qrCode, 200, [
+        'Content-Type' => 'image/png',
+        'Cache-Control' => 'no-cache, no-store, must-revalidate',
+        'Pragma' => 'no-cache',
+        'Expires' => '0'
+    ]);
+});
+
 Route::middleware(['web', 'auth', 'verified'])->prefix('frontend')->name('frontend.')->group(function () {
     Route::get('/raffles', [App\Http\Controllers\RaffleController::class, 'frontendIndex'])->name('raffles.index');
     Route::get('/raffles/{raffle}', [App\Http\Controllers\RaffleController::class, 'frontendShow'])->name('raffles.show');

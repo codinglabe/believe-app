@@ -127,7 +127,7 @@ export default function RaffleTicketsPage() {
               <p className="text-gray-600 dark:text-gray-400">Beautiful tickets for your purchased raffles</p>
             </div>
             
-            <div className="grid grid-cols-1 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               {raffleTickets.map((ticket) => (
                 <div key={ticket.id} className="relative">
                   <div ref={(el) => { ticketRefs.current[ticket.id] = el; }} className="w-full">
@@ -138,13 +138,14 @@ export default function RaffleTicketsPage() {
                         is_winner: isWinner(ticket)
                       }} 
                       showStub={true}
+                      className="w-full"
                     />
                   </div>
                   
                   {/* Action Buttons */}
-                  <div className="flex gap-2 mt-4 justify-center">
+                  <div className="flex gap-2 mt-4 justify-center flex-wrap">
                     <Link href={`/frontend/raffles/${ticket.raffle.id}`}>
-                      <Button variant="outline" size="sm" className="flex items-center">
+                      <Button variant="outline" size="sm" className="flex items-center bg-white hover:bg-gray-50 border-gray-300 text-gray-700">
                         <Eye className="w-4 h-4 mr-2" />
                         View Raffle
                       </Button>
@@ -158,7 +159,7 @@ export default function RaffleTicketsPage() {
                           downloadTicket(ticketElement, ticket.ticket_number);
                         }
                       }}
-                      className="flex items-center"
+                      className="flex items-center bg-blue-50 hover:bg-blue-100 border-blue-300 text-blue-700"
                     >
                       <Download className="w-4 h-4 mr-2" />
                       Download
@@ -172,7 +173,7 @@ export default function RaffleTicketsPage() {
                           printTicket(ticketElement);
                         }
                       }}
-                      className="flex items-center"
+                      className="flex items-center bg-green-50 hover:bg-green-100 border-green-300 text-green-700"
                     >
                       <Eye className="w-4 h-4 mr-2" />
                       Print

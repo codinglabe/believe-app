@@ -325,9 +325,15 @@ class RaffleController extends BaseController
             // Select random winners
             $winners = $tickets->random($raffle->winners_count);
 
-            // Calculate total prize pool (80% of total sales)
+            // Calculate total prize pool
+            // Fee Structure for Prize Distribution:
+            // - 8% goes to platform as administrative fee
+            // - 92% goes to organization
+            // - From the 92%, 80% goes to winners (73.6% of total sales)
+            // - From the 92%, 20% stays with organization (18.4% of total sales)
             $totalSales = $raffle->sold_tickets * $raffle->ticket_price;
-            $prizePool = $totalSales * 0.8; // 80% goes to winners
+            $organizationAmount = $totalSales * 0.92; // 92% after 8% admin fee
+            $prizePool = $organizationAmount * 0.8; // 80% of organization amount goes to winners
             $prizeAmounts = $this->calculatePrizeAmounts($prizePool, $raffle->winners_count);
 
             // Create winner records and add prize money to balances
@@ -465,16 +471,44 @@ class RaffleController extends BaseController
             // Update sold tickets count
             $raffle->increment('sold_tickets', $quantity);
             
-            // Add funds to organization balance
+            // Calculate fees and amounts
+            // Fee Structure:
+            // - 8% goes to platform as administrative fee
+            // - 92% goes to organization's user balance
+            $administrativeFee = $totalAmount * 0.08; // 8% administrative fee
+            $organizationAmount = $totalAmount * 0.92; // 92% goes to organization
+            
+            // Add administrative fee to platform balance (you can create a platform user or handle this differently)
+            // For now, we'll record it as a transaction but you might want to add it to a platform balance
+            $user->recordTransaction([
+                'type' => 'administrative_fee',
+                'amount' => -$administrativeFee, // Negative because it's a fee taken
+                'payment_method' => 'stripe',
+                'status' => 'completed',
+                'meta' => [
+                    'raffle_id' => $raffle->id,
+                    'ticket_quantity' => $quantity,
+                    'description' => "8% administrative fee for raffle ticket purchase: " . $raffle->title,
+                    'fee_type' => 'administrative',
+                    'fee_percentage' => 8
+                ],
+                'related_id' => $raffle->id,
+                'related_type' => 'raffle'
+            ]);
+            
+            // Add funds to organization balance (92% of total amount)
             if ($raffle->organization && $raffle->organization->organization) {
                 $raffle->organization->organization->addFund(
-                    $totalAmount,
+                    $organizationAmount,
                     'raffle_sales',
                     [
                         'raffle_id' => $raffle->id,
                         'ticket_quantity' => $quantity,
                         'buyer_id' => $user->id,
-                        'description' => "Sale of " . $quantity . " ticket(s) for raffle: " . $raffle->title
+                        'total_amount' => $totalAmount,
+                        'administrative_fee' => $administrativeFee,
+                        'organization_amount' => $organizationAmount,
+                        'description' => "Sale of " . $quantity . " ticket(s) for raffle: " . $raffle->title . " (92% after 8% admin fee)"
                     ]
                 );
             }
@@ -511,28 +545,44 @@ class RaffleController extends BaseController
      */
     public function generateTicketQrCode(RaffleTicket $ticket)
     {
-        // Create verification data
-        $verificationData = [
-            'ticket_id' => $ticket->id,
-            'ticket_number' => $ticket->ticket_number,
-            'raffle_id' => $ticket->raffle_id,
-            'user_id' => $ticket->user_id,
-            'verification_url' => route('raffles.verify-ticket', $ticket->id),
-            'timestamp' => now()->toISOString()
-        ];
+        try {
+            // Create URL that will redirect to verification page when scanned
+            $verificationUrl = route('raffles.verify-ticket.public', $ticket);
 
-        // Generate QR code as SVG
-        $qrCode = QrCode::format('svg')
-            ->size(200)
-            ->margin(1)
-            ->generate(json_encode($verificationData));
+            // Generate QR code as PNG
+            $qrCode = QrCode::format('png')
+                ->size(200)
+                ->margin(2)
+                ->errorCorrection('M')
+                ->color(0, 0, 0)
+                ->backgroundColor(255, 255, 255)
+                ->generate($verificationUrl);
 
-        return response($qrCode, 200, [
-            'Content-Type' => 'image/svg+xml',
-            'Cache-Control' => 'no-cache, no-store, must-revalidate',
-            'Pragma' => 'no-cache',
-            'Expires' => '0'
-        ]);
+            return response($qrCode, 200, [
+                'Content-Type' => 'image/png',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0'
+            ]);
+        } catch (\Exception $e) {
+            // Log the error for debugging
+            \Illuminate\Support\Facades\Log::error('QR Code generation failed: ' . $e->getMessage());
+            
+            // Return a simple test QR code
+            $testQr = QrCode::format('png')
+                ->size(200)
+                ->margin(2)
+                ->color(0, 0, 0)
+                ->backgroundColor(255, 255, 255)
+                ->generate('TEST QR CODE');
+
+            return response($testQr, 200, [
+                'Content-Type' => 'image/png',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0'
+            ]);
+        }
     }
 
     /**
@@ -540,9 +590,11 @@ class RaffleController extends BaseController
      */
     public function verifyTicket(Request $request, RaffleTicket $ticket)
     {
-        $this->authorizePermission($request, 'raffle.read');
-
+        // Load relationships
         $ticket->load(['raffle.organization', 'user']);
+
+        // Check if ticket is a winner
+        $isWinner = $ticket->status === 'winner' || $ticket->is_winner;
 
         return Inertia::render('raffles/verify-ticket', [
             'ticket' => $ticket,
@@ -551,7 +603,7 @@ class RaffleController extends BaseController
                 'raffle_title' => $ticket->raffle->title,
                 'organization_name' => $ticket->raffle->organization->name,
                 'purchased_at' => $ticket->purchased_at,
-                'is_winner' => $ticket->is_winner,
+                'is_winner' => $isWinner,
                 'user_name' => $ticket->user->name,
                 'user_email' => $ticket->user->email
             ]

@@ -31,3 +31,4 @@ export default function QRCodeFallback({ ticketId, className = '' }: QRCodeFallb
         </div>
     );
 }
+

@@ -111,7 +111,7 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-6">
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
                                 <div className="text-center">
                                     <div className="text-3xl font-bold text-green-600 dark:text-green-400 mb-2">
                                         {tickets.length}
@@ -129,6 +129,33 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                                         ${(raffle.ticket_price * tickets.length).toFixed(2)}
                                     </div>
                                     <div className="text-gray-600 dark:text-gray-300">Total Amount</div>
+                                </div>
+                            </div>
+                            
+                            {/* Fee Breakdown */}
+                            <div className="border-t border-gray-200 dark:border-gray-600 pt-6">
+                                <h4 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+                                    Payment Breakdown
+                                </h4>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-600 dark:text-gray-300">Subtotal:</span>
+                                        <span className="font-semibold text-gray-900 dark:text-white">
+                                            ${(raffle.ticket_price * tickets.length).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-gray-600 dark:text-gray-300">Administrative Fee (8%):</span>
+                                        <span className="font-semibold text-orange-600 dark:text-orange-400">
+                                            -${((raffle.ticket_price * tickets.length) * 0.08).toFixed(2)}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-lg font-bold border-t border-gray-200 dark:border-gray-600 pt-3">
+                                        <span className="text-gray-900 dark:text-white">Amount to Organization:</span>
+                                        <span className="text-green-600 dark:text-green-400">
+                                            ${((raffle.ticket_price * tickets.length) * 0.92).toFixed(2)}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>
@@ -178,7 +205,7 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                             Your Raffle Tickets
                         </h2>
                         
-                        <div className="space-y-8">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                             {tickets.map((ticket, index) => (
                                 <div key={ticket.id} className="relative">
                                     <div ref={(el) => { ticketRefs.current[ticket.id] = el; }}>
@@ -189,11 +216,12 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                                                 is_winner: false
                                             }}
                                             showStub={true}
+                                            className="w-full"
                                         />
                                     </div>
                                     
                                     {/* Action Buttons */}
-                                    <div className="flex gap-3 mt-4 justify-center">
+                                    <div className="flex gap-4 mt-6 justify-center">
                                         <Button
                                             onClick={() => {
                                                 const element = ticketRefs.current[ticket.id];
@@ -201,12 +229,10 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                                                     downloadTicket(element, ticket.ticket_number);
                                                 }
                                             }}
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex items-center"
+                                            className="bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
                                         >
-                                            <Download className="w-4 h-4 mr-2" />
-                                            Download
+                                            <Download className="w-5 h-5 mr-2" />
+                                            Download Ticket
                                         </Button>
                                         <Button
                                             onClick={() => {
@@ -215,12 +241,10 @@ export default function RaffleSuccessPage({ raffle, tickets, auth }: SuccessPage
                                                     printTicket(element);
                                                 }
                                             }}
-                                            variant="outline"
-                                            size="sm"
-                                            className="flex items-center"
+                                            className="bg-gradient-to-r from-green-500 to-teal-600 hover:from-green-600 hover:to-teal-700 text-white px-6 py-3 rounded-full shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-200"
                                         >
-                                            <Eye className="w-4 h-4 mr-2" />
-                                            Print
+                                            <Eye className="w-5 h-5 mr-2" />
+                                            Print Ticket
                                         </Button>
                                     </div>
                                 </div>
