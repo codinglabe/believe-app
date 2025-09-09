@@ -16,7 +16,7 @@ class OrganizationController extends BaseController
 {
     public function index(Request $request)
     {
-        $this->authorizePermission($request, 'organization.read');
+        // $this->authorizePermission($request, 'organization.read');
         // Get search parameters
         $search = $request->get('search');
         $category = $request->get('category');
@@ -252,7 +252,7 @@ class OrganizationController extends BaseController
 
     public function show(Request $request, string $id)
     {
-        $this->authorizePermission($request, 'organization.read');
+        // $this->authorizePermission($request, 'organization.read');
         $organization = ExcelData::where('id', $id)
             ->where('status', 'complete')
             ->whereNotIn('id', function($subQuery) {
@@ -305,7 +305,7 @@ class OrganizationController extends BaseController
 
     public function toggleFavorite(Request $request, int $id)
     {
-        $this->authorizePermission($request, 'organization.read');
+        // $this->authorizePermission($request, 'organization.read');
         $user = Auth::user();
 
         // Get the ExcelData organization

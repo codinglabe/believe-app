@@ -100,8 +100,8 @@ Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('vi
 
 
     // Organization routes
-    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations')->middleware('permission:organization.read');
-    Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show')->middleware('permission:organization.read');
+    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
+    Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -268,7 +268,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.select
         'update' => 'permission:raffle.edit',
         'destroy' => 'permission:raffle.delete'
     ]);
-    
+
     Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
     Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
     Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
@@ -462,10 +462,10 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit')->middleware('permission:event.edit');
     Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update')->middleware('permission:event.update');
     Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy')->middleware('permission:event.delete');
-    
+
     // Frontend User Raffle Tickets Routes
     Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
-    
+
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });

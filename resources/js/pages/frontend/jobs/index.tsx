@@ -267,7 +267,7 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
             <option value="volunteer">Volunteer</option>
             <option value="paid">Paid</option>
             <option value="internship">Internship</option>
-            <option value="medicaid">Medicaid</option>
+            {/* <option value="medicaid">Medicaid</option> */}
                       </select>
 
                        {/* Clear Filters Button */}

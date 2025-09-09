@@ -72,7 +72,7 @@ class JobPostController extends BaseController
                 'volunteer' => 'Volunteer',
                 'paid' => 'Paid',
                 'internship' => 'Internship',
-                'medicaid' => 'Medicaid',
+                // 'medicaid' => 'Medicaid',
             ],
             'locationTypeOptions' => [
                 'onsite' => 'Onsite',

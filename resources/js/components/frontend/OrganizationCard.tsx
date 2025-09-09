@@ -110,7 +110,10 @@ export default function OrganizationCard({
 
           <div className="absolute top-4 left-4">
             <Badge variant="secondary" className="bg-white/90 text-gray-700 font-medium">
-              {organization.ntee_code || "Non-Profit"}
+                          {organization.ntee_code === ' - ' || !organization.ntee_code
+          ? "Non-Profit"
+          : `${organization.ntee_code}`
+        }
             </Badge>
           </div>
 
@@ -161,8 +164,14 @@ export default function OrganizationCard({
             )}
           </div>
 
-          <div className="mb-4">
-            <span className="text-sm text-gray-500 dark:text-gray-400">Category: {organization.ntee_code}</span>
+                  <div className="mb-4">
+
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                          {organization.ntee_code === ' - ' || !organization.ntee_code
+          ? "Category: Not Available"
+          : `Category: ${organization.ntee_code}`
+        }
+                      </span>
           </div>
 
           {customButton ? (
