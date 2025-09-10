@@ -315,8 +315,9 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     switch (stepNumber) {
       case 1:
         return einData.ein.length === 9
-      case 2:
-        return !!(formData.name && formData.street && formData.city && formData.state && formData.zip)
+        case 2:
+            // && formData.street && formData.city && formData.state && formData.zip
+        return !!(formData.name && formData.street && formData.city && formData.zip )
       case 3:
         return !!(
           formData.email &&

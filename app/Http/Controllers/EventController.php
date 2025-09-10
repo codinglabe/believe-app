@@ -21,7 +21,7 @@ class EventController extends BaseController
     {
         // Check if user has permission to read events
         $this->authorizePermission($request, 'event.read');
-        
+
         $user = Auth::user();
         $events = [];
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
@@ -57,7 +57,7 @@ class EventController extends BaseController
     {
         // Check if user has permission to create events
         $this->authorizePermission($request, 'event.create');
-        
+
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
 
@@ -73,7 +73,7 @@ class EventController extends BaseController
     public function store(EventRequest $request)
     {
         $user = Auth::user();
-        
+
         // Allow both organizations and regular users to create events
         if (!in_array($user->role, ['organization', 'user'])) {
             abort(403, 'Only organizations and users can create events.');
@@ -112,7 +112,7 @@ class EventController extends BaseController
     public function show(string $id)
     {
         $event = Event::with(['organization', 'eventType'])->findOrFail($id);
-        
+
         return Inertia::render('events/show', [
             'event' => $event,
         ]);
@@ -172,7 +172,7 @@ class EventController extends BaseController
             if ($event->poster_image) {
                 Storage::disk('public')->delete($event->poster_image);
             }
-            
+
             $path = $request->file('poster_image')->store('events/posters', 'public');
             $data['poster_image'] = $path;
         }
@@ -268,7 +268,7 @@ class EventController extends BaseController
 
 
 
-    
+
     public function alleventsPage(Request $request): Response
     {
         $search = $request->input('search');
@@ -276,19 +276,22 @@ class EventController extends BaseController
         $eventTypeId = $request->input('event_type_id');
         $organizationId = $request->input('organization_id');
         $locationFilter = $request->input('location_filter');
-        
+        $dateFilter = $request->input('date_filter');
+        $monthFilter = $request->input('month_filter');
+        $yearFilter = $request->input('year_filter');
+
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
         $organizations = Organization::orderBy('name')->get();
 
         // Get unique locations for the dropdown (combining location, city, state, zip)
         $locations = Event::query()
-            ->selectRaw('DISTINCT CONCAT_WS(", ", 
-                NULLIF(location, ""), 
-                NULLIF(city, ""), 
-                NULLIF(state, ""), 
-                NULLIF(zip, "")
-            ) as full_location')
+            ->selectRaw('DISTINCT CONCAT_WS(", ",
+            NULLIF(location, ""),
+            NULLIF(city, ""),
+            NULLIF(state, ""),
+            NULLIF(zip, "")
+        ) as full_location')
             ->whereNotNull('location')
             ->where('location', '!=', '')
             ->orderBy('full_location')
@@ -297,36 +300,45 @@ class EventController extends BaseController
             ->unique()
             ->values();
 
+
         $events = Event::query()
             ->with(['organization', 'eventType'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
-                      ->orWhere('location', 'like', '%' . $search . '%')
-                      ->orWhere('city', 'like', '%' . $search . '%')
-                      ->orWhere('state', 'like', '%' . $search . '%');
+                        ->orWhere('location', 'like', '%' . $search . '%')
+                        ->orWhere('city', 'like', '%' . $search . '%')
+                        ->orWhere('state', 'like', '%' . $search . '%');
                 });
-            })->when($status && $status !== 'all', function ($query, $status) {
-                $query->where('status', $status);
+            })->when($status, function ($query, $status) {
+                $query->where('status',$status);
             })->when($eventTypeId && $eventTypeId !== 'all', function ($query) use ($eventTypeId) {
                 $query->where('event_type_id', $eventTypeId);
             })->when($organizationId && $organizationId !== 'all', function ($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
             })->when($locationFilter && $locationFilter !== 'all', function ($query) use ($locationFilter) {
-                $query->whereRaw('CONCAT_WS(", ", 
-                    NULLIF(location, ""), 
-                    NULLIF(city, ""), 
-                    NULLIF(state, ""), 
-                    NULLIF(zip, "")
-                ) = ?', [$locationFilter]);
+                $query->whereRaw('CONCAT_WS(", ",
+                NULLIF(location, ""),
+                NULLIF(city, ""),
+                NULLIF(state, ""),
+                NULLIF(zip, "")
+            ) = ?', [$locationFilter]);
+            })->when($dateFilter && $dateFilter !== "all", function ($query) use ($dateFilter) {
+                $query->whereDate('start_date', $dateFilter);
+            })->when($monthFilter && $monthFilter !== "all", function ($query) use ($monthFilter) {
+                $query->whereMonth('start_date', $monthFilter);
+            })->when($yearFilter && $yearFilter !== "all", function ($query) use ($yearFilter) {
+                $query->whereYear('start_date', $yearFilter);
             });
 
-        // Only show public events to non-authenticated users or non-admin users
-        if (!$user || $user->role !== 'admin') {
-            $events->where('visibility', 'public');
-        }
+            // Only show public events to non-authenticated users or non-admin users
+            if (!$user || $user->role !== 'admin') {
+                $events->where('visibility', 'public');
+            }
 
-        $events = $events->get();
+            $events = $events->get();
+            // dd($events);
+
 
         return Inertia::render('frontend/events', [
             'events' => $events,
@@ -338,8 +350,10 @@ class EventController extends BaseController
             'eventTypeId' => $eventTypeId,
             'organizationId' => $organizationId,
             'locationFilter' => $locationFilter,
+            'dateFilter' => $dateFilter,
+            'monthFilter' => $monthFilter,
+            'yearFilter' => $yearFilter,
         ]);
-
     }
 
     public function viewEvent(string $id): Response
@@ -352,7 +366,7 @@ class EventController extends BaseController
             if (!$user) {
                 abort(403, 'This event is private and requires authentication.');
             }
-            
+
             if ($user->role === 'organization') {
                 $organization = Organization::where('user_id', $user->id)->first();
                 if (!$organization || $event->organization_id !== $organization->id) {
@@ -388,7 +402,7 @@ class EventController extends BaseController
         $query = Event::with(['organization', 'user', 'eventType'])
             ->where(function($query) use ($user) {
                 $query->where('user_id', $user->id);
-                
+
                 // If user is organization, also include organization events
                 if ($user->role === 'organization') {
                     $organization = Organization::where('user_id', $user->id)->first();
@@ -437,7 +451,7 @@ class EventController extends BaseController
     public function userCreate()
     {
         $user = Auth::user();
-        
+
         // Allow both organizations and regular users to create events
         if (!in_array($user->role, ['organization', 'user'])) {
             abort(403, 'Only organizations and users can create events.');
@@ -456,7 +470,7 @@ class EventController extends BaseController
     public function userStore(EventRequest $request)
     {
         $user = Auth::user();
-        
+
         // Allow both organizations and regular users to create events
         if (!in_array($user->role, ['organization', 'user'])) {
             abort(403, 'Only organizations and users can create events.');
@@ -564,7 +578,7 @@ class EventController extends BaseController
             if ($event->poster_image) {
                 Storage::disk('public')->delete($event->poster_image);
             }
-            
+
             $path = $request->file('poster_image')->store('events/posters', 'public');
             $data['poster_image'] = $path;
         }

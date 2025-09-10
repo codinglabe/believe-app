@@ -686,7 +686,7 @@ export default function Navbar() {
     { name: "About", href: "/about" },
     { name: "News", href: "/nonprofit-news" },
     { name: "Marketplace", href: "/marketplace" },
-    { name: "Events", href: "/all-events" },
+    { name: "Event Calendar", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
     { name: "Courses", href: route("course.index") },

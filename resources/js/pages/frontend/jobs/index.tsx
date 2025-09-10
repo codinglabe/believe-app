@@ -60,6 +60,9 @@ interface JobsIndexProps {
         type?: string;
         city?: string;
         state?: string;
+        position_category_id?: string;
+        organization_id?: string;
+        position_id?: string;
     };
   auth?: {
     user: {
@@ -68,13 +71,14 @@ interface JobsIndexProps {
   };
 }
 
-export default function JobsIndex({ jobs, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
+export default function JobsIndex({ jobs, organizations, positionCategories,positions: initialPositions, filters, auth }: JobsIndexProps) {
   const [search, setSearch] = useState(filters.search || '');
   const [locationType, setLocationType] = useState(filters.location_type || '');
     const [jobType, setJobType] = useState(filters.type || '');
      const [city, setCity] = useState(filters.city || '');
     const [state, setState] = useState(filters.state || '');
     const [positionCategoryId, setPositionCategoryId] = useState(filters.position_category_id || '');
+    const [organizationId, setOrganizationId] = useState(filters.organization_id || '');
 const [positionId, setPositionId] = useState(filters.position_id || '');
 const [positions, setPositions] = useState<Array<{id: number, title: string}>>([]);
     const [loading, setLoading] = useState(false);
@@ -90,6 +94,7 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
         city,
           state,
         position_category_id: positionCategoryId,
+        organization_id: organizationId,
             position_id: positionId,
         page: currentPage, // Use currentPage state
       }, {
@@ -100,7 +105,7 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [search, locationType, jobType, city, state, positionCategoryId, positionId, currentPage]); // Add currentPage to dependencies
+  }, [search, locationType, jobType, city, state, positionCategoryId, organizationId, positionId, currentPage]); // Add currentPage to dependencies
 
     // Add this effect to load positions when category changes
 // useEffect(() => {
@@ -175,6 +180,7 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
          setJobType('');
          setCity('');
          setPositionCategoryId('');
+         setOrganizationId('');
     setPositionId('');
     setState('');
     setCurrentPage(1); // Reset to first page when clearing filters
@@ -270,11 +276,23 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
             {/* <option value="medicaid">Medicaid</option> */}
                       </select>
 
+                      {/* Organization Filter */}
+            <select
+                className="w-full border rounded px-3 py-2 text-sm dark:bg-gray-950"
+                value={organizationId}
+                onChange={(e) => setOrganizationId(e.target.value)}
+            >
+                <option value="">All Organizations</option>
+                {Object.entries(organizations).map(([id, name]) => (
+                    <option key={id} value={id}>{name}</option>
+                ))}
+            </select>
+
                        {/* Clear Filters Button */}
           <Button
             variant="outline"
             onClick={clearFilters}
-            disabled={!search && !locationType && !jobType && !city && !state && !positionCategoryId && !positionId}
+            disabled={!search && !locationType && !jobType && !city && !state && !positionCategoryId && !positionId && !organizationId}
             className="flex items-center justify-center gap-2"
           >
             <svg

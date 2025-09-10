@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\JobApplication;
 use App\Models\JobPosition;
 use App\Models\JobPost;
+use App\Models\Organization;
 use App\Models\PositionCategory;
 use Illuminate\Container\Attributes\Auth;
 use Illuminate\Http\Request;
@@ -48,6 +49,9 @@ class JobsController extends Controller
             ->when($request->position_id, function ($query, $positionId) {
                 $query->where('position_id', $positionId);
             })
+            ->when($request->organization_id, function ($query, $organizationId) {
+                    $query->where('organization_id', $organizationId);
+            })
             ->when(auth()->check(), function ($query) {
                 $query->withExists([
                     'applications as has_applied' => function ($q) {
@@ -69,8 +73,13 @@ class JobsController extends Controller
                 ->toArray();
         }
 
+        $organizations = Organization::orderBy('name')
+                ->pluck('name', 'id')
+                ->toArray();
+
         return Inertia::render('frontend/jobs/index', [
             'jobs' => $jobs,
+            'organizations' => $organizations,
             'positionCategories' => $positionCategories,
             'positions' => $positions,
             'filters' => $request->only([
@@ -79,6 +88,7 @@ class JobsController extends Controller
                 'type',
                 'city',
                 'state',
+                'organization_id',
                 'position_category_id',
                 'position_id'
             ]),
