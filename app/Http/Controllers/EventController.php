@@ -276,6 +276,9 @@ class EventController extends BaseController
         $eventTypeId = $request->input('event_type_id');
         $organizationId = $request->input('organization_id');
         $locationFilter = $request->input('location_filter');
+        $monthFilter = $request->input('month_filter');
+        $dayFilter = $request->input('day_filter');
+        $dateFilter = $request->input('date_filter');
         
         $user = Auth::user();
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
@@ -298,7 +301,7 @@ class EventController extends BaseController
             ->values();
 
         $events = Event::query()
-            ->with(['organization', 'eventType'])
+            ->with(['organization', 'eventType', 'user.organization'])
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
@@ -319,6 +322,12 @@ class EventController extends BaseController
                     NULLIF(state, ""), 
                     NULLIF(zip, "")
                 ) = ?', [$locationFilter]);
+            })->when($monthFilter && $monthFilter !== 'all', function ($query) use ($monthFilter) {
+                $query->whereMonth('start_date', $monthFilter);
+            })->when($dayFilter && $dayFilter !== 'all', function ($query) use ($dayFilter) {
+                $query->whereDay('start_date', $dayFilter);
+            })->when($dateFilter, function ($query) use ($dateFilter) {
+                $query->whereDate('start_date', $dateFilter);
             });
 
         // Only show public events to non-authenticated users or non-admin users
@@ -338,6 +347,9 @@ class EventController extends BaseController
             'eventTypeId' => $eventTypeId,
             'organizationId' => $organizationId,
             'locationFilter' => $locationFilter,
+            'monthFilter' => $monthFilter,
+            'dayFilter' => $dayFilter,
+            'dateFilter' => $dateFilter,
         ]);
 
     }

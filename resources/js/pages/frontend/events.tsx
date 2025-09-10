@@ -51,6 +51,14 @@ interface Event {
         name: string;
         logo?: string;
     };
+    user?: {
+        id: number;
+        name: string;
+        organization?: {
+            id: number;
+            name: string;
+        };
+    };
 }
 
 interface Organization {
@@ -68,9 +76,12 @@ interface EventsPageProps {
     eventTypeId?: string;
     organizationId?: string;
     locationFilter?: string;
+    monthFilter?: string;
+    dayFilter?: string;
+    dateFilter?: string;
 }
 
-export default function EventsPage({ events, eventTypes, organizations, locations, search, status, eventTypeId, organizationId, locationFilter }: EventsPageProps) {
+export default function EventsPage({ events, eventTypes, organizations, locations, search, status, eventTypeId, organizationId, locationFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
     const [currentPage, setCurrentPage] = useState(1)
     const eventsPerPage = 6
 
@@ -87,12 +98,18 @@ export default function EventsPage({ events, eventTypes, organizations, location
         event_type_id: string
         organization_id: string
         location_filter: string
+        month_filter: string
+        day_filter: string
+        date_filter: string
     }>({
         search: search || '',
         status: status || 'all',
         event_type_id: eventTypeId || 'all',
         organization_id: organizationId || 'all',
-        location_filter: locationFilter || 'all'
+        location_filter: locationFilter || 'all',
+        month_filter: monthFilter || 'all',
+        day_filter: dayFilter || 'all',
+        date_filter: dateFilter || ''
     })
 
     const statusOptions = [
@@ -101,6 +118,30 @@ export default function EventsPage({ events, eventTypes, organizations, location
         { value: 'ongoing', label: 'Ongoing' },
         { value: 'completed', label: 'Completed' },
         { value: 'cancelled', label: 'Cancelled' }
+    ]
+
+    const monthOptions = [
+        { value: 'all', label: 'All Months' },
+        { value: '1', label: 'January' },
+        { value: '2', label: 'February' },
+        { value: '3', label: 'March' },
+        { value: '4', label: 'April' },
+        { value: '5', label: 'May' },
+        { value: '6', label: 'June' },
+        { value: '7', label: 'July' },
+        { value: '8', label: 'August' },
+        { value: '9', label: 'September' },
+        { value: '10', label: 'October' },
+        { value: '11', label: 'November' },
+        { value: '12', label: 'December' }
+    ]
+
+    const dayOptions = [
+        { value: 'all', label: 'All Days' },
+        ...Array.from({ length: 31 }, (_, i) => ({
+            value: (i + 1).toString(),
+            label: (i + 1).toString()
+        }))
     ]
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -130,7 +171,10 @@ export default function EventsPage({ events, eventTypes, organizations, location
             status: 'all',
             event_type_id: 'all',
             organization_id: 'all',
-            location_filter: 'all'
+            location_filter: 'all',
+            month_filter: 'all',
+            day_filter: 'all',
+            date_filter: ''
         })
     }
 
@@ -145,6 +189,27 @@ export default function EventsPage({ events, eventTypes, organizations, location
         setFilters((prev) => ({
             ...prev,
             location_filter: value
+        }))
+    }
+
+    const handleMonthFilterChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            month_filter: value
+        }))
+    }
+
+    const handleDayFilterChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            day_filter: value
+        }))
+    }
+
+    const handleDateFilterChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            date_filter: value
         }))
     }
 
@@ -175,279 +240,489 @@ export default function EventsPage({ events, eventTypes, organizations, location
         <FrontendLayout>
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
                 {/* Hero Section */}
-                <section className="bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-20">
-                    <div className="container mx-auto px-4">
+                <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 dark:from-gray-900 dark:via-blue-900 dark:to-indigo-900 py-16">
+                    {/* Background Pattern */}
+                    <div className="absolute inset-0 opacity-20">
+                        <div className="w-full h-full" style={{
+                            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='2'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+                            backgroundRepeat: 'repeat'
+                        }}></div>
+                    </div>
+                    
+                    {/* Floating Elements */}
+                    <div className="absolute top-10 left-10 w-20 h-20 bg-white/10 rounded-full blur-xl animate-pulse"></div>
+                    <div className="absolute top-32 right-20 w-32 h-32 bg-blue-300/20 rounded-full blur-2xl animate-pulse delay-1000"></div>
+                    <div className="absolute bottom-20 left-1/4 w-16 h-16 bg-purple-300/20 rounded-full blur-xl animate-pulse delay-2000"></div>
+                    <div className="absolute bottom-32 right-1/3 w-24 h-24 bg-indigo-300/20 rounded-full blur-2xl animate-pulse delay-3000"></div>
+                    
+                    <div className="container mx-auto px-4 relative z-10">
                         <motion.div
-                            initial={{ opacity: 0, y: 30 }}
+                            initial={{ opacity: 0, y: 40 }}
                             animate={{ opacity: 1, y: 0 }}
-                            transition={{ duration: 0.8 }}
-                            className="text-center max-w-4xl mx-auto"
+                            transition={{ duration: 1, ease: "easeOut" }}
+                            className="text-center max-w-5xl mx-auto"
                         >
-                            <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">Events</h1>
-                            <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
+                            {/* Icon */}
+                            <motion.div
+                                initial={{ scale: 0, rotate: -180 }}
+                                animate={{ scale: 1, rotate: 0 }}
+                                transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
+                                className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl mb-6 mx-auto"
+                            >
+                                <Calendar className="w-8 h-8 text-white" />
+                            </motion.div>
+                            
+                            {/* Main Title */}
+                            <motion.h1 
+                                initial={{ opacity: 0, y: 30 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.8, delay: 0.4 }}
+                                className="text-4xl md:text-6xl font-bold text-white mb-4 leading-tight"
+                            >
+                                Event
+                                <span className="block bg-gradient-to-r from-yellow-300 to-orange-300 bg-clip-text text-transparent">
+                                    Calendar
+                                </span>
+                            </motion.h1>
+                            
+                            {/* Subtitle */}
+                            <motion.p 
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.8, delay: 0.6 }}
+                                className="text-lg md:text-xl text-blue-100 dark:text-blue-200 mb-6 max-w-3xl mx-auto leading-relaxed"
+                            >
                                 Discover amazing events happening in your community
-                            </p>
+                            </motion.p>
+                            
+                            {/* Stats */}
+                            <motion.div
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ duration: 0.8, delay: 0.8 }}
+                                className="flex flex-wrap justify-center gap-6 md:gap-8 mb-6"
+                            >
+                                <div className="text-center">
+                                    <div className="text-2xl md:text-3xl font-bold text-white mb-1">
+                                        {totalEvents}+
+                                    </div>
+                                    <div className="text-blue-200 text-xs md:text-sm">Events Available</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl md:text-3xl font-bold text-white mb-1">
+                                        {eventTypes.length}+
+                                    </div>
+                                    <div className="text-blue-200 text-xs md:text-sm">Event Types</div>
+                                </div>
+                                <div className="text-center">
+                                    <div className="text-2xl md:text-3xl font-bold text-white mb-1">
+                                        {organizations.length}+
+                                    </div>
+                                    <div className="text-blue-200 text-xs md:text-sm">Organizations</div>
+                                </div>
+                            </motion.div>
+                            
                         </motion.div>
                     </div>
+                    
                 </section>
 
                 <div className="container-fluid mx-auto px-4 py-12">
                     {/* Search and Filter Section */}
-                    <div className="flex flex-col lg:flex-row gap-4 mb-8">
-                        <div className="flex-1">
-                            <Input
-                                type="text"
-                                placeholder="Search events by name or address location city state"
-                                value={filters.search}
-                                onChange={handleSearchChange}
-                                className="w-full p-3 border rounded-lg"
-                            />
-                        </div>
-                        <div className="lg:w-48">
-                            <Select value={filters.event_type_id} onValueChange={handleEventTypeChange}>
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="All Event Types" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Event Types</SelectItem>
-                                    {Object.entries(eventTypes.reduce((acc, eventType) => {
-                                        const category = eventType.category;
-                                        if (!acc[category]) {
-                                            acc[category] = [];
-                                        }
-                                        acc[category].push(eventType);
-                                        return acc;
-                                    }, {} as Record<string, EventType[]>)).map(([category, types]) => (
-                                        <div key={category}>
-                                            <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
-                                                {category}
+                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 mb-8">
+                        <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Search & Filter Events</h2>
+                        
+                        {/* Search and Filter Grid */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
+                            {/* Search Bar */}
+                            <div className="space-y-2 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search Events</label>
+                                <Input
+                                    type="text"
+                                    placeholder="Search by name, location, or description..."
+                                    value={filters.search}
+                                    onChange={handleSearchChange}
+                                    className="w-full p-3 border-2 border-gray-200 dark:border-gray-600 rounded-lg focus:border-blue-500 dark:focus:border-blue-400 transition-colors"
+                                />
+                            </div>
+                            {/* Event Type Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Event Type</label>
+                                <Select value={filters.event_type_id} onValueChange={handleEventTypeChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Event Types" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Event Types</SelectItem>
+                                        {Object.entries(eventTypes.reduce((acc, eventType) => {
+                                            const category = eventType.category;
+                                            if (!acc[category]) {
+                                                acc[category] = [];
+                                            }
+                                            acc[category].push(eventType);
+                                            return acc;
+                                        }, {} as Record<string, EventType[]>)).map(([category, types]) => (
+                                            <div key={category}>
+                                                <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                                    {category}
+                                                </div>
+                                                {types.map((type) => (
+                                                    <SelectItem key={type.id} value={type.id.toString()}>
+                                                        {type.name}
+                                                    </SelectItem>
+                                                ))}
                                             </div>
-                                            {types.map((type) => (
-                                                <SelectItem key={type.id} value={type.id.toString()}>
-                                                    {type.name}
-                                                </SelectItem>
-                                            ))}
-                                        </div>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="lg:w-48">
-                            <Select value={filters.organization_id} onValueChange={handleOrganizationChange}>
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="All Organizations" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Organizations</SelectItem>
-                                    {organizations.map((organization) => (
-                                        <SelectItem key={organization.id} value={organization.id.toString()}>
-                                            {organization.name}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="lg:w-48">
-                            <Select value={filters.location_filter} onValueChange={handleLocationFilterChange}>
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="All Locations" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Locations</SelectItem>
-                                    {locations.map((location) => (
-                                        <SelectItem key={location} value={location}>
-                                            {location}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="lg:w-48">
-                            <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
-                                <SelectTrigger className="w-full">
-                                    <SelectValue placeholder="All Statuses" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {statusOptions.map((option) => (
-                                        <SelectItem key={option.value} value={option.value}>
-                                            {option.label}
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-                        <div className="lg:w-auto">
-                            <Button
-                                onClick={clearAllFilters}
-                                variant="outline"
-                                className="w-full lg:w-auto px-4 py-3 border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
-                                disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all' && filters.location_filter === 'all'}
-                            >
-                                <X className="h-4 w-4 mr-2" />
-                                Clear Filters
-                            </Button>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Organization Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Organization</label>
+                                <Select value={filters.organization_id} onValueChange={handleOrganizationChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Organizations" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Organizations</SelectItem>
+                                        {organizations.map((organization) => (
+                                            <SelectItem key={organization.id} value={organization.id.toString()}>
+                                                {organization.name}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Location Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Location</label>
+                                <Select value={filters.location_filter} onValueChange={handleLocationFilterChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Locations" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Locations</SelectItem>
+                                        {locations.map((location) => (
+                                            <SelectItem key={location} value={location}>
+                                                {location}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Status Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Status</label>
+                                <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Statuses" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {statusOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Month Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Month</label>
+                                <Select value={filters.month_filter} onValueChange={handleMonthFilterChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Months" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {monthOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Day Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Day</label>
+                                <Select value={filters.day_filter} onValueChange={handleDayFilterChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Days" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {dayOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>
+                                                {option.label}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Date Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Exact Date</label>
+                                <Input
+                                    type="date"
+                                    value={filters.date_filter}
+                                    onChange={(e) => handleDateFilterChange(e.target.value)}
+                                    className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg"
+                                />
+                            </div>
+                            {/* Clear Filters Button */}
+                            <div className="space-y-2 flex flex-col justify-end">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 opacity-0">Clear</label>
+                                <Button
+                                    onClick={clearAllFilters}
+                                    variant="outline"
+                                    className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                                    disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all' && filters.location_filter === 'all' && filters.month_filter === 'all' && filters.day_filter === 'all' && !filters.date_filter}
+                                >
+                                    <X className="h-4 w-4 mr-2" />
+                                    Clear All
+                                </Button>
+                            </div>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-                        {/* Events Grid */}
-                        <div className="lg:col-span-4">
-                            <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-                                {totalEvents > 0 ? (
-                                    <>
-                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                            {currentEvents.map((event) => (
-                                                <Card key={event.id} className="hover:shadow-lg transition-shadow duration-300 h-full flex flex-col">
-                                                    <div className="relative overflow-hidden">
+                    {/* Events Grid */}
+                    <div className="space-y-6">
+                        {/* Results Header */}
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                            <div>
+                                <h3 className="text-2xl font-bold text-gray-900 dark:text-white">
+                                    Event Calendar
+                                    {totalEvents > 0 && (
+                                        <span className="text-lg font-normal text-gray-600 dark:text-gray-400 ml-2">
+                                            ({totalEvents} found)
+                                        </span>
+                                    )}
+                                </h3>
+                                <p className="text-gray-600 dark:text-gray-400 mt-1">
+                                    Discover amazing events happening in your community
+                                </p>
+                            </div>
+                        </div>
+
+                        <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
+                            {totalEvents > 0 ? (
+                                <>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+                                        {currentEvents.map((event, index) => (
+                                            <motion.div
+                                                key={event.id}
+                                                initial={{ opacity: 0, y: 20 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                transition={{ duration: 0.5, delay: index * 0.1 }}
+                                                className="group"
+                                            >
+                                                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-300 overflow-hidden border border-gray-100 dark:border-gray-700 hover:border-blue-200 dark:hover:border-blue-600 hover:-translate-y-1 h-full flex flex-col">
+                                                    {/* Event Poster */}
+                                                    <div className="relative h-64 overflow-hidden">
                                                         <img
                                                             src={event.poster_image ? '/storage/' + event.poster_image : "/placeholder.svg"}
                                                             alt={event.name}
-                                                            width={400}
-                                                            height={200}
-                                                            className="w-full h-48 object-cover"
+                                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
                                                         />
-                                                        <Badge 
-                                                            variant="secondary" 
-                                                            className={`absolute top-2 right-2 ${
-                                                                event.status === 'upcoming' ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200' :
-                                                                event.status === 'ongoing' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
-                                                                event.status === 'completed' ? 'bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200' :
-                                                                'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200'
-                                                            }`}
-                                                        >
-                                                            {event.status.charAt(0).toUpperCase() + event.status.slice(1)}
-                                                        </Badge>
-                                                    </div>
-                                                    
-                                                    <CardHeader>
-                                                        <CardTitle className="text-xl">{event.name}</CardTitle>
-                                                        <CardDescription className="mt-1">
-                                                            <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
-                                                                <Calendar className="h-4 w-4" />
-                                                                <span>
-                                                                    {new Date(event.start_date).toLocaleDateString('en-US', {
-                                                                        weekday: 'long',
-                                                                        year: 'numeric',
-                                                                        month: 'long',
-                                                                        day: 'numeric'
-                                                                    })}
+                                                        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                                                        
+                                                        {/* Event Status */}
+                                                        <div className="absolute top-4 right-4">
+                                                            <span className={`px-3 py-1.5 rounded-full text-xs font-bold uppercase tracking-wide ${
+                                                                event.status === 'upcoming' ? 'bg-blue-500 text-white shadow-lg' :
+                                                                event.status === 'ongoing' ? 'bg-green-500 text-white shadow-lg' :
+                                                                event.status === 'completed' ? 'bg-gray-500 text-white shadow-lg' :
+                                                                'bg-red-500 text-white shadow-lg'
+                                                            }`}>
+                                                                {event.status}
+                                                            </span>
+                                                        </div>
+
+                                                        {/* Event Type */}
+                                                        {event.event_type && (
+                                                            <div className="absolute top-4 left-4">
+                                                                <span className="px-3 py-1.5 bg-white/90 dark:bg-gray-800/90 text-gray-800 dark:text-white rounded-full text-xs font-semibold backdrop-blur-sm">
+                                                                    {event.event_type.name}
                                                                 </span>
                                                             </div>
-                                                        </CardDescription>
-                                                    </CardHeader>
+                                                        )}
 
-                                                    <CardContent className="flex-grow">
-                                                        <p className="line-clamp-3 text-muted-foreground mb-4">{event.description}</p>
-                                                        <div className="space-y-2">
-                                                            <div className="flex items-center text-sm">
-                                                                <MapPin className="h-4 w-4 mr-2 text-muted-foreground" />
-                                                                <span>{event.location || 'Location TBD'}</span>
+                                                        {/* Event Date Overlay */}
+                                                        <div className="absolute bottom-4 left-4 right-4">
+                                                            <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm rounded-lg p-3">
+                                                                <div className="flex items-center gap-2">
+                                                                    <Calendar className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                                                    <div>
+                                                                        <div className="text-sm font-bold text-gray-900 dark:text-white">
+                                                                            {new Date(event.start_date).toLocaleDateString('en-US', {
+                                                                                weekday: 'long',
+                                                                                month: 'long',
+                                                                                day: 'numeric'
+                                                                            })}
+                                                                        </div>
+                                                                        <div className="text-xs text-gray-600 dark:text-gray-400">
+                                                                            {new Date(event.start_date).toLocaleDateString('en-US', {
+                                                                                year: 'numeric'
+                                                                            })}
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
                                                             </div>
+                                                        </div>
+                                                    </div>
 
+                                                    {/* Event Details */}
+                                                    <div className="p-6 flex-1 flex flex-col">
+                                                        <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2 line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                                            {event.name}
+                                                        </h3>
+
+                                                        {/* Organization Name */}
+                                                        {(event.user?.organization || event.organization || event.user?.name) && (
+                                                            <div className="flex items-center gap-2 mb-3">
+                                                                <Building className="h-4 w-4 text-gray-500" />
+                                                                <span className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+                                                                    {event.user?.organization?.name || event.organization?.name || event.user?.name || 'Creator'}
+                                                                </span>
+                                                            </div>
+                                                        )}
+
+                                                        <p className="text-gray-600 dark:text-gray-300 text-sm mb-4 line-clamp-3 leading-relaxed">
+                                                            {event.description}
+                                                        </p>
+
+                                                        {/* Event Info */}
+                                                        <div className="space-y-3 mb-6 flex-1">
+                                                            <div className="flex items-center gap-3 text-sm">
+                                                                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                                                    <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                                                </div>
+                                                                <span className="text-gray-700 dark:text-gray-300 font-medium">
+                                                                    {event.location || 'Location TBD'}
+                                                                </span>
+                                                            </div>
+                                                            
                                                             {event.registration_fee && event.registration_fee > 0 && (
-                                                                <div className="flex items-center text-sm">
-                                                                    <DollarSign className="h-4 w-4 mr-2 text-muted-foreground" />
-                                                                    <span>Registration Fee: ${event.registration_fee}</span>
+                                                                <div className="flex items-center gap-3 text-sm">
+                                                                    <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
+                                                                        <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                                                                    </div>
+                                                                    <span className="text-gray-700 dark:text-gray-300 font-semibold">
+                                                                        ${event.registration_fee}
+                                                                    </span>
                                                                 </div>
                                                             )}
 
                                                             {event.max_participants && (
-                                                                <div className="flex items-center text-sm">
-                                                                    <Users className="h-4 w-4 mr-2 text-muted-foreground" />
-                                                                    <span>Max Participants: {event.max_participants}</span>
+                                                                <div className="flex items-center gap-3 text-sm">
+                                                                    <div className="p-2 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
+                                                                        <Users className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                                                    </div>
+                                                                    <span className="text-gray-700 dark:text-gray-300">
+                                                                        {event.max_participants} participants max
+                                                                    </span>
                                                                 </div>
                                                             )}
 
-                                                           
-                                                            {event.organization && (
-                                                                <div className="flex items-center text-sm">
-                                                                    <Building className="h-4 w-4 mr-2 text-muted-foreground" />
-                                                                    <span>{event.organization.name}</span>
-                                                                </div>
-                                                            )}
                                                         </div>
-                                                    </CardContent>
 
-                                                    <CardFooter className="flex justify-between items-center">
-                                                        <div className="flex items-center gap-2">
-                                                            {event.event_type && (
-                                                                <span className="text-xs bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 px-2 py-1 rounded">
-                                                                    {event.event_type.name}
-                                                                </span>
-                                                            )}
-                                                        </div>
-                                                        <Link href={route('viewEvent', event.id)} className="text-primary hover:underline text-sm font-medium">
-                                                            View details
-                                                        </Link>
-                                                    </CardFooter>
-                                                </Card>
-                                            ))}
-                                        </div>
-
-                                        {/* Pagination */}
-                                        {totalPages > 1 && (
-                                            <div className="flex flex-col sm:flex-row justify-center items-center gap-2 pt-8">
-                                                <div className="flex items-center gap-2">
-                                                    <Button
-                                                        variant="outline"
-                                                        onClick={() => handlePageChange(currentPage - 1)}
-                                                        disabled={currentPage === 1}
-                                                        className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                                                    >
-                                                        <ChevronLeft className="h-4 w-4 mr-1" />
-                                                        <span className="hidden sm:inline">Previous</span>
-                                                        <span className="sm:hidden">Prev</span>
-                                                    </Button>
-
-                                                    <div className="flex gap-1">
-                                                        {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-                                                            <Button
-                                                                key={page}
-                                                                variant={currentPage === page ? "default" : "outline"}
-                                                                onClick={() => handlePageChange(page)}
-                                                                className={
-                                                                    currentPage === page
-                                                                        ? "bg-blue-600 hover:bg-blue-700 text-white"
-                                                                        : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                                                                }
+                                                        {/* Action Button */}
+                                                        <div className="mt-auto">
+                                                            <Link 
+                                                                href={route('viewEvent', event.id)} 
+                                                                className="w-full bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold py-3 px-4 rounded-xl transition-all duration-300 flex items-center justify-center gap-2 group-hover:shadow-lg group-hover:shadow-blue-500/25"
                                                             >
-                                                                {page}
-                                                            </Button>
-                                                        ))}
+                                                                <Calendar className="h-4 w-4" />
+                                                                Join Event
+                                                                <ChevronRight className="h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                                                            </Link>
+                                                        </div>
                                                     </div>
-
-                                                    <Button
-                                                        variant="outline"
-                                                        onClick={() => handlePageChange(currentPage + 1)}
-                                                        disabled={currentPage === totalPages}
-                                                        className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
-                                                    >
-                                                        <span className="hidden sm:inline">Next</span>
-                                                        <span className="sm:hidden">Next</span>
-                                                        <ChevronRight className="h-4 w-4 ml-1" />
-                                                    </Button>
                                                 </div>
+                                            </motion.div>
+                                        ))}
+                                    </div>
 
-                                                <div className="text-sm text-gray-600 dark:text-gray-400 mt-2 sm:mt-0 sm:ml-4">
-                                                    Showing {startIndex + 1}-{endIndex} of {totalEvents} events
+                                    {/* Pagination */}
+                                    {totalPages > 1 && (
+                                        <div className="mt-12">
+                                            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6">
+                                                <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+                                                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                                                        Showing <span className="font-semibold text-gray-900 dark:text-white">{startIndex + 1}</span> to{' '}
+                                                        <span className="font-semibold text-gray-900 dark:text-white">{endIndex}</span> of{' '}
+                                                        <span className="font-semibold text-gray-900 dark:text-white">{totalEvents}</span> events
+                                                    </div>
+                                                    
+                                                    <div className="flex items-center gap-2">
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => handlePageChange(currentPage - 1)}
+                                                            disabled={currentPage === 1}
+                                                            className="px-4 py-2 border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            <ChevronLeft className="h-4 w-4 mr-2" />
+                                                            Previous
+                                                        </Button>
+
+                                                        <div className="flex gap-1">
+                                                            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                                                                <Button
+                                                                    key={page}
+                                                                    variant={currentPage === page ? "default" : "outline"}
+                                                                    onClick={() => handlePageChange(page)}
+                                                                    className={`px-3 py-2 min-w-[40px] ${
+                                                                        currentPage === page
+                                                                            ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600"
+                                                                            : "border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600"
+                                                                    }`}
+                                                                >
+                                                                    {page}
+                                                                </Button>
+                                                            ))}
+                                                        </div>
+
+                                                        <Button
+                                                            variant="outline"
+                                                            onClick={() => handlePageChange(currentPage + 1)}
+                                                            disabled={currentPage === totalPages}
+                                                            className="px-4 py-2 border-2 border-gray-200 dark:border-gray-600 hover:border-blue-300 dark:hover:border-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            Next
+                                                            <ChevronRight className="h-4 w-4 ml-2" />
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             </div>
-                                        )}
-                                    </>
-                                ) : (
-                                    <div className="text-center py-12">
-                                        <Calendar className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No events found</h3>
-                                        <p className="text-gray-600 dark:text-gray-300">
-                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all') || (filters.location_filter && filters.location_filter !== 'all')
-                                                ? "Try adjusting your search criteria or filters."
-                                                : "No events are currently available."
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <div className="text-center py-16">
+                                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-12 max-w-md mx-auto">
+                                        <Calendar className="h-20 w-20 text-gray-400 mx-auto mb-6" />
+                                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No events found</h3>
+                                        <p className="text-gray-600 dark:text-gray-300 mb-6">
+                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all') || (filters.location_filter && filters.location_filter !== 'all') || (filters.month_filter && filters.month_filter !== 'all') || (filters.day_filter && filters.day_filter !== 'all')
+                                                ? "Try adjusting your search criteria or filters to find more events."
+                                                : "No events are currently available. Check back later for new events!"
                                             }
                                         </p>
+                                        <Button
+                                            onClick={clearAllFilters}
+                                            className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg"
+                                        >
+                                            Clear All Filters
+                                        </Button>
                                     </div>
-                                )}
-                            </motion.div>
-                        </div>
+                                </div>
+                            )}
+                        </motion.div>
                     </div>
                 </div>
             </div>
