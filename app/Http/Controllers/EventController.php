@@ -275,7 +275,9 @@ class EventController extends BaseController
         $status = $request->input('status');
         $eventTypeId = $request->input('event_type_id');
         $organizationId = $request->input('organization_id');
-        $locationFilter = $request->input('location_filter');
+        $cityFilter = $request->input('city_filter');
+        $stateFilter = $request->input('state_filter');
+        $zipFilter = $request->input('zip_filter');
         $monthFilter = $request->input('month_filter');
         $dayFilter = $request->input('day_filter');
         $dateFilter = $request->input('date_filter');
@@ -284,22 +286,30 @@ class EventController extends BaseController
         $eventTypes = EventType::where('is_active', true)->orderBy('category')->orderBy('name')->get();
         $organizations = Organization::orderBy('name')->get();
 
-        // Get unique locations for the dropdown (combining location, city, state, zip)
-        $locations = Event::query()
-            ->selectRaw('DISTINCT CONCAT_WS(", ",
-            NULLIF(location, ""),
-            NULLIF(city, ""),
-            NULLIF(state, ""),
-            NULLIF(zip, "")
-        ) as full_location')
-            ->whereNotNull('location')
-            ->where('location', '!=', '')
-            ->orderBy('full_location')
-            ->pluck('full_location')
+        // Get unique values for filters
+        $cities = Event::whereNotNull('city')
+            ->where('city', '!=', '')
+            ->distinct()
+            ->orderBy('city')
+            ->pluck('city')
             ->filter()
-            ->unique()
             ->values();
 
+        $states = Event::whereNotNull('state')
+            ->where('state', '!=', '')
+            ->distinct()
+            ->orderBy('state')
+            ->pluck('state')
+            ->filter()
+            ->values();
+
+        $zips = Event::whereNotNull('zip')
+            ->where('zip', '!=', '')
+            ->distinct()
+            ->orderBy('zip')
+            ->pluck('zip')
+            ->filter()
+            ->values();
 
         $events = Event::query()
             ->with(['organization', 'eventType', 'user.organization'])
@@ -311,18 +321,17 @@ class EventController extends BaseController
                         ->orWhere('state', 'like', '%' . $search . '%');
                 });
             })->when($status, function ($query, $status) {
-                $query->where('status',$status);
+                $query->where('status', $status);
             })->when($eventTypeId && $eventTypeId !== 'all', function ($query) use ($eventTypeId) {
                 $query->where('event_type_id', $eventTypeId);
             })->when($organizationId && $organizationId !== 'all', function ($query) use ($organizationId) {
                 $query->where('organization_id', $organizationId);
-            })->when($locationFilter && $locationFilter !== 'all', function ($query) use ($locationFilter) {
-                $query->whereRaw('CONCAT_WS(", ",
-                    NULLIF(location, ""),
-                    NULLIF(city, ""),
-                    NULLIF(state, ""),
-                    NULLIF(zip, "")
-                ) = ?', [$locationFilter]);
+            })->when($cityFilter && $cityFilter !== 'all', function ($query) use ($cityFilter) {
+                $query->where('city', $cityFilter);
+            })->when($stateFilter && $stateFilter !== 'all', function ($query) use ($stateFilter) {
+                $query->where('state', $stateFilter);
+            })->when($zipFilter && $zipFilter !== 'all', function ($query) use ($zipFilter) {
+                $query->where('zip', $zipFilter);
             })->when($monthFilter && $monthFilter !== 'all', function ($query) use ($monthFilter) {
                 $query->whereMonth('start_date', $monthFilter);
             })->when($dayFilter && $dayFilter !== 'all', function ($query) use ($dayFilter) {
@@ -331,25 +340,27 @@ class EventController extends BaseController
                 $query->whereDate('start_date', $dateFilter);
             });
 
-            // Only show public events to non-authenticated users or non-admin users
-            if (!$user || $user->role !== 'admin') {
-                $events->where('visibility', 'public');
-            }
+        // Only show public events to non-authenticated users or non-admin users
+        if (!$user || $user->role !== 'admin') {
+            $events->where('visibility', 'public');
+        }
 
-            $events = $events->get();
-            // dd($events);
-
+        $events = $events->get();
 
         return Inertia::render('frontend/events', [
             'events' => $events,
             'eventTypes' => $eventTypes,
             'organizations' => $organizations,
-            'locations' => $locations,
+            'cities' => $cities,
+            'states' => $states,
+            'zips' => $zips,
             'search' => $search,
             'status' => $status,
             'eventTypeId' => $eventTypeId,
             'organizationId' => $organizationId,
-            'locationFilter' => $locationFilter,
+            'cityFilter' => $cityFilter,
+            'stateFilter' => $stateFilter,
+            'zipFilter' => $zipFilter,
             'monthFilter' => $monthFilter,
             'dayFilter' => $dayFilter,
             'dateFilter' => $dateFilter,

@@ -34,6 +34,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'topics.selected' => \App\Http\Middleware\CheckTopicsSelected::class,
             'check.permission' => \App\Http\Middleware\CheckPermission::class,
             'check.role' => \App\Http\Middleware\CheckRole::class,
+            'EnsureEmailIsVerified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

@@ -107,7 +107,7 @@ Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('vi
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
 
 // Profile routes
-Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')->group(function () {
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
     Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
@@ -129,9 +129,9 @@ Route::middleware(['auth', 'verified', 'role:user'])->name('user.')->group(funct
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
-    ->middleware(['auth', 'verified', 'role:user|organization']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization']);
 
-Route::middleware(['auth', 'verified', 'role:user'])->get('/profile-old', function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
 });
 
@@ -142,7 +142,7 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'destroy' => 'permission:communication.delete'
 ]);
 
-Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name("chat.")->group(function () {
+Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
     Route::get("/rooms/{chatRoom}/messages", [ChatController::class, 'getMessages'])->name('messages');
     Route::post("/rooms/{chatRoom}/messages", [ChatController::class, 'sendMessage'])->name('send-message');
@@ -161,12 +161,12 @@ Route::prefix("chat")->middleware(['auth', 'verified', 'topics.selected'])->name
 });
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
-Route::middleware(['web', 'auth', 'verified'])->group(function () {
+Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/raffles/success', [App\Http\Controllers\RaffleController::class, 'success'])->name('raffles.success');
     Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
-Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
     // Chunked Upload Routes
@@ -432,7 +432,7 @@ Route::middleware(['auth', 'verified', 'role:organization|admin', 'topics.select
 Route::get('/courses', [CourseController::class, 'publicIndex'])->name('course.index');
 Route::get('/courses/{course:slug}', [CourseController::class, 'publicShow'])->name('course.show'); // Use slug for public show
 // Ownership Verification Routes
-// Route::middleware(['auth', 'verified'])->group(function () {
+// Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 //     // Ownership Verification routes
 //     Route::get('/verification/ownership', [OwnershipVerificationController::class, 'show'])->name('verification.ownership');
 //     Route::post('/verification/ownership/verify', [OwnershipVerificationController::class, 'verify'])->name('verification.verify');
@@ -469,7 +469,7 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });
-Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
     Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
         Route::get('/', [CourseController::class, 'adminIndex'])->name('index')->middleware('permission:course.read');
@@ -512,7 +512,7 @@ Route::post('/api/plaid/webhook', function () {
 });
 
 
-Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     // NodeShare routes
     Route::resource('node-shares', NodeShareController::class)->middleware([
         'index' => 'permission:node.referral.read',
@@ -572,14 +572,14 @@ Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
 
 
 // route for donation
-Route::middleware(['auth', 'verified', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
 
 // IRS BMF Management Routes
-Route::prefix('irs-bmf')->name('irs-bmf.')->group(function () {
+Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(["auth", 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');
     Route::get('/search', [App\Http\Controllers\IrsBmfController::class, 'search'])->name('search');
     Route::get('/{record}', [App\Http\Controllers\IrsBmfController::class, 'show'])->name('show');
@@ -601,7 +601,7 @@ Route::get('/test-qr', function() {
         ->color(0, 0, 0)
         ->backgroundColor(255, 255, 255)
         ->generate('TEST QR CODE WORKING');
-    
+
     return response($qrCode, 200, [
         'Content-Type' => 'image/png',
         'Cache-Control' => 'no-cache, no-store, must-revalidate',
@@ -610,7 +610,7 @@ Route::get('/test-qr', function() {
     ]);
 });
 
-Route::middleware(['web', 'auth', 'verified'])->prefix('frontend')->name('frontend.')->group(function () {
+Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')->name('frontend.')->group(function () {
     Route::get('/raffles', [App\Http\Controllers\RaffleController::class, 'frontendIndex'])->name('raffles.index');
     Route::get('/raffles/{raffle}', [App\Http\Controllers\RaffleController::class, 'frontendShow'])->name('raffles.show');
     Route::post('/raffles/{raffle}/purchase', [App\Http\Controllers\RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');

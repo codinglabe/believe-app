@@ -78,18 +78,22 @@ interface EventsPageProps {
     events: Event[];
     eventTypes: EventType[];
     organizations: Organization[];
-    locations: string[];
+    cities: string[];
+    states: string[];
+    zips: string[];
     search?: string;
     status?: string;
     eventTypeId?: string;
     organizationId?: string;
-    locationFilter?: string;
+    cityFilter?: string;
+    stateFilter?: string;
+    zipFilter?: string;
     monthFilter?: string;
     dayFilter?: string;
     dateFilter?: string;
 }
 
-export default function EventsPage({ events, eventTypes, organizations, locations, search, status, eventTypeId, organizationId, locationFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
+export default function EventsPage({ events, eventTypes, organizations, cities, states, zips, search, status, eventTypeId, organizationId, cityFilter, stateFilter, zipFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
     const [currentPage, setCurrentPage] = useState(1)
     const eventsPerPage = 6
 
@@ -105,7 +109,9 @@ export default function EventsPage({ events, eventTypes, organizations, location
         status: string
         event_type_id: string
         organization_id: string
-        location_filter: string
+        city_filter: string
+        state_filter: string
+        zip_filter: string
         month_filter: string
         day_filter: string
         date_filter: string
@@ -114,7 +120,9 @@ export default function EventsPage({ events, eventTypes, organizations, location
         status: status || 'all',
         event_type_id: eventTypeId || 'all',
         organization_id: organizationId || 'all',
-        location_filter: locationFilter || 'all',
+        city_filter: cityFilter || 'all',
+        state_filter: stateFilter || 'all',
+        zip_filter: zipFilter || 'all',
         month_filter: monthFilter || 'all',
         day_filter: dayFilter || 'all',
         date_filter: dateFilter || ''
@@ -179,7 +187,9 @@ export default function EventsPage({ events, eventTypes, organizations, location
             status: 'all',
             event_type_id: 'all',
             organization_id: 'all',
-            location_filter: 'all',
+            city_filter: 'all',
+            state_filter: 'all',
+            zip_filter: 'all',
             month_filter: 'all',
             day_filter: 'all',
             date_filter: ''
@@ -193,10 +203,24 @@ export default function EventsPage({ events, eventTypes, organizations, location
     }))
   }
 
-    const handleLocationFilterChange = (value: string) => {
+    const handleCityFilterChange = (value: string) => {
         setFilters((prev) => ({
             ...prev,
-            location_filter: value
+            city_filter: value
+        }))
+    }
+
+    const handleStateFilterChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            state_filter: value
+        }))
+    }
+
+    const handleZipFilterChange = (value: string) => {
+        setFilters((prev) => ({
+            ...prev,
+            zip_filter: value
         }))
     }
 
@@ -254,7 +278,9 @@ export default function EventsPage({ events, eventTypes, organizations, location
     filters.status !== "all" ||
     filters.event_type_id !== "all" ||
     filters.organization_id !== "all" ||
-    filters.location_filter !== "all" ||
+    filters.city_filter !== "all" ||
+    filters.state_filter !== "all" ||
+    filters.zip_filter !== "all" ||
     filters.date_filter ||
     filters.month_filter !== "all" ||
     filters.year_filter !== "all"
@@ -356,7 +382,7 @@ export default function EventsPage({ events, eventTypes, organizations, location
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Search & Filter Events</h2>
 
                         {/* Search and Filter Grid */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-4 mb-6">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-8 gap-4 mb-6">
                             {/* Search Bar */}
                             <div className="space-y-2 sm:col-span-2 md:col-span-3 lg:col-span-2 xl:col-span-2">
                                 <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Search Events</label>
@@ -418,18 +444,54 @@ export default function EventsPage({ events, eventTypes, organizations, location
                                 </Select>
                             </div>
 
-                            {/* Location Filter */}
+                            {/* City Filter */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Location</label>
-                                <Select value={filters.location_filter} onValueChange={handleLocationFilterChange}>
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">City</label>
+                                <Select value={filters.city_filter} onValueChange={handleCityFilterChange}>
                                     <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
-                                        <SelectValue placeholder="All Locations" />
+                                        <SelectValue placeholder="All Cities" />
                                     </SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="all">All Locations</SelectItem>
-                                        {locations.map((location) => (
-                                            <SelectItem key={location} value={location}>
-                                                {location}
+                                        <SelectItem value="all">All Cities</SelectItem>
+                                        {cities.map((city) => (
+                                            <SelectItem key={city} value={city}>
+                                                {city}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* State Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">State</label>
+                                <Select value={filters.state_filter} onValueChange={handleStateFilterChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All States" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All States</SelectItem>
+                                        {states.map((state) => (
+                                            <SelectItem key={state} value={state}>
+                                                {state}
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+
+                            {/* Zip Filter */}
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Zip Code</label>
+                                <Select value={filters.zip_filter} onValueChange={handleZipFilterChange}>
+                                    <SelectTrigger className="w-full border-2 border-gray-200 dark:border-gray-600 rounded-lg">
+                                        <SelectValue placeholder="All Zip Codes" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Zip Codes</SelectItem>
+                                        {zips.map((zip) => (
+                                            <SelectItem key={zip} value={zip}>
+                                                {zip}
                                             </SelectItem>
                                         ))}
                                     </SelectContent>
@@ -504,7 +566,7 @@ export default function EventsPage({ events, eventTypes, organizations, location
                                     onClick={clearAllFilters}
                                     variant="outline"
                                     className="w-full px-4 py-3 border-2 border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 rounded-lg transition-colors"
-                                    disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all' && filters.location_filter === 'all' && filters.month_filter === 'all' && filters.day_filter === 'all' && !filters.date_filter}
+                                    disabled={!filters.search && filters.status === 'all' && filters.event_type_id === 'all' && filters.organization_id === 'all' && filters.city_filter === 'all' && filters.state_filter === 'all' && filters.zip_filter === 'all' && filters.month_filter === 'all' && filters.day_filter === 'all' && !filters.date_filter}
                                 >
                                     <X className="h-4 w-4 mr-2" />
                                     Clear All
@@ -627,6 +689,9 @@ export default function EventsPage({ events, eventTypes, organizations, location
                                                                 </div>
                                                                 <span className="text-gray-700 dark:text-gray-300 font-medium">
                                                                     {event.location || 'Location TBD'}
+                                                                    {event.city && `, ${event.city}`}
+                                                                    {event.state && `, ${event.state}`}
+                                                                    {event.zip && ` ${event.zip}`}
                                                                 </span>
                                                             </div>
 
@@ -731,7 +796,7 @@ export default function EventsPage({ events, eventTypes, organizations, location
                                         <Calendar className="h-20 w-20 text-gray-400 mx-auto mb-6" />
                                         <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No events found</h3>
                                         <p className="text-gray-600 dark:text-gray-300 mb-6">
-                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all') || (filters.location_filter && filters.location_filter !== 'all') || (filters.month_filter && filters.month_filter !== 'all') || (filters.day_filter && filters.day_filter !== 'all')
+                                            {filters.search || (filters.status && filters.status !== 'all') || (filters.event_type_id && filters.event_type_id !== 'all') || (filters.organization_id && filters.organization_id !== 'all') || (filters.city_filter && filters.city_filter !== 'all') || (filters.state_filter && filters.state_filter !== 'all') || (filters.zip_filter && filters.zip_filter !== 'all') || (filters.month_filter && filters.month_filter !== 'all') || (filters.day_filter && filters.day_filter !== 'all')
                                                 ? "Try adjusting your search criteria or filters to find more events."
                                                 : "No events are currently available. Check back later for new events!"
                                             }

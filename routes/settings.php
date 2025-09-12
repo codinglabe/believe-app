@@ -8,7 +8,7 @@ use App\Http\Controllers\UsersInterestedTopicsController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
-Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])->group(function () {
     Route::redirect('settings', 'settings/profile');
 
     Route::middleware('topics.selected')->group(function () {
@@ -29,9 +29,9 @@ Route::middleware(['auth', 'verified', 'role:organization|admin'])->group(functi
         ->name('auth.topics.select');
 });
 
-Route::middleware(['auth', 'verified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
 
-Route::middleware(['auth', 'verified', 'role:organization'])->patch(
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization'])->patch(
     'settings/social-accounts',
     [ProfileController::class, 'updateSocialAccounts']
 )->name('profile.social-accounts.update');
