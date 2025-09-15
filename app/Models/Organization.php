@@ -54,6 +54,11 @@ class Organization extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function newsletterRecipients()
+    {
+        return $this->hasMany(NewsletterRecipient::class, 'organization_id');
+    }
+
     public function getFormattedEinAttribute()
     {
         return substr($this->ein, 0, 2) . '-' . substr($this->ein, 2);

@@ -46,6 +46,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'primary_bank_account_id',
         'plaid_access_token',
         'verification_metadata',
+        'timezone',
     ];
 
     /**
