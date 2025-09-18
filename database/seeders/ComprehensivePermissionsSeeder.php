@@ -77,6 +77,11 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Communication
             'communication' => ['read', 'create', 'edit', 'update', 'delete'],
             
+            // Newsletter Management
+            'newsletter' => ['read', 'create', 'edit', 'update', 'delete', 'send', 'manage'],
+            'newsletter.template' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+            'newsletter.recipient' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+            
             // Role Management
             'role.management' => ['read', 'create', 'edit', 'update', 'delete'],
             
@@ -158,6 +163,11 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Communication - Full access
             'communication.read', 'communication.create', 'communication.edit', 'communication.update', 'communication.delete',
             
+            // Newsletter Management - Full access
+            'newsletter.read', 'newsletter.create', 'newsletter.edit', 'newsletter.update', 'newsletter.delete', 'newsletter.send', 'newsletter.manage',
+            'newsletter.template.read', 'newsletter.template.create', 'newsletter.template.edit', 'newsletter.template.update', 'newsletter.template.delete', 'newsletter.template.manage',
+            'newsletter.recipient.read', 'newsletter.recipient.create', 'newsletter.recipient.edit', 'newsletter.recipient.update', 'newsletter.recipient.delete', 'newsletter.recipient.manage',
+            
             // Raffle Management - Full access
             'raffle.read', 'raffle.create', 'raffle.edit', 'raffle.update', 'raffle.delete', 'raffle.draw',
             
@@ -218,6 +228,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             
             // Raffle Management (purchase only)
             'raffle.read', 'raffle.purchase',
+            
+            // Newsletter Management (read only)
+            'newsletter.read',
             
             // Dashboard
             'dashboard.read', 'dashboard.user',

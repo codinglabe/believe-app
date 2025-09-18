@@ -294,7 +294,7 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                         <Calendar className="h-5 w-5 text-white" />
                                     </div>
                                     <h3 className="text-base font-semibold text-white">Date & Time</h3>
-                                </div>
+                            </div>
                                 <p className="text-blue-100 text-sm">{formatDate(event.start_date)}</p>
                                 <p className="text-blue-200 text-sm">{formatTime(event.start_date)}</p>
                             </div>
@@ -303,9 +303,9 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                 <div className="flex items-center gap-3 mb-2">
                                     <div className="p-2 bg-white/20 rounded-lg">
                                         <MapPin className="h-5 w-5 text-white" />
-                                    </div>
+                            </div>
                                     <h3 className="text-base font-semibold text-white">Location</h3>
-                                </div>
+                        </div>
                                 <p className="text-blue-100 text-sm">{event.location}</p>
                                 {event.city && event.state && (
                                     <p className="text-blue-200 text-sm">{event.city}, {event.state}</p>
@@ -376,11 +376,11 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                             >
                                 <Card className="overflow-hidden shadow-2xl border-0 rounded-3xl group">
                                     <div className="relative overflow-hidden">
-                                        <img 
-                                            src={`/storage/${event.poster_image}`} 
-                                            alt={event.name}
+                                    <img 
+                                        src={`/storage/${event.poster_image}`} 
+                                        alt={event.name}
                                             className="w-full h-[500px] object-cover group-hover:scale-105 transition-transform duration-700"
-                                        />
+                                    />
                                         <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                                     </div>
                                 </Card>
@@ -443,7 +443,7 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                                 </p>
                                             </div>
                                         </CardContent>
-                                        </Card>
+                                    </Card>
                                     </motion.div>
                                 </TabsContent>
                                 
@@ -531,7 +531,7 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                                 </div>
                                             </div>
                                         </CardContent>
-                                        </Card>
+                                    </Card>
                                     </motion.div>
                                 </TabsContent>
                                 
@@ -563,12 +563,12 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                                         <FileText className="h-8 w-8 text-gray-400" />
                                                     </div>
                                                     <p className="text-gray-500 dark:text-gray-400 text-lg italic">
-                                                        No specific requirements for this event.
-                                                    </p>
+                                                    No specific requirements for this event.
+                                                </p>
                                                 </div>
                                             )}
                                         </CardContent>
-                                        </Card>
+                                    </Card>
                                     </motion.div>
                                 </TabsContent>
                                 
@@ -600,12 +600,12 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
                                                         <Phone className="h-8 w-8 text-gray-400" />
                                                     </div>
                                                     <p className="text-gray-500 dark:text-gray-400 text-lg italic">
-                                                        Contact information will be provided after registration.
-                                                    </p>
+                                                    Contact information will be provided after registration.
+                                                </p>
                                                 </div>
                                             )}
                                         </CardContent>
-                                        </Card>
+                                    </Card>
                                     </motion.div>
                                 </TabsContent>
                             </Tabs>

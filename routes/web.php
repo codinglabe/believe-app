@@ -46,6 +46,7 @@ use App\Http\Controllers\NodeShareController;
 use App\Http\Controllers\TransactionController;
 use App\Http\Controllers\WithdrawalController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\NewsletterController;
 use App\Http\Controllers\FrontendCourseController;
 use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
@@ -298,7 +299,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
         'update' => 'permission:raffle.edit',
         'destroy' => 'permission:raffle.delete'
     ]);
-
+    
     Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
     Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
     Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
@@ -455,8 +456,44 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
     //     Route::get('/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
     //     Route::post('/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
     // });
+
+    // Newsletter Routes
+    Route::prefix('newsletter')->name('newsletter.')->group(function () {
+        Route::get('/', [NewsletterController::class, 'index'])->name('index');
+        Route::get('/templates', [NewsletterController::class, 'templates'])->name('templates');
+        Route::get('/templates/create', [NewsletterController::class, 'createTemplate'])->name('templates.create');
+        Route::post('/templates', [NewsletterController::class, 'storeTemplate'])->name('templates.store');
+        Route::get('/templates/{id}', [NewsletterController::class, 'showTemplate'])->name('templates.show');
+        Route::get('/templates/{id}/edit', [NewsletterController::class, 'editTemplate'])->name('templates.edit');
+        Route::put('/templates/{id}', [NewsletterController::class, 'updateTemplate'])->name('templates.update');
+        Route::delete('/templates/{id}', [NewsletterController::class, 'destroyTemplate'])->name('templates.destroy');
+                Route::get('/recipients', [NewsletterController::class, 'recipients'])->name('recipients');
+                Route::post('/recipients', [NewsletterController::class, 'storeRecipient'])->name('recipients.store');
+                Route::post('/recipients/subscribe/{organizationId}', [NewsletterController::class, 'subscribeOrganization'])->name('recipients.subscribe');
+                Route::post('/recipients/unsubscribe/{organizationId}', [NewsletterController::class, 'unsubscribeOrganization'])->name('recipients.unsubscribe');
+                Route::post('/recipients/test-email', [NewsletterController::class, 'sendTestEmail'])->name('recipients.test-email');
+                Route::get('/recipients/export', [NewsletterController::class, 'exportRecipients'])->name('recipients.export');
+                Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
+                Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
+                Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+        Route::get('/create', [NewsletterController::class, 'create'])->name('create');
+        Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
+        Route::post('/', [NewsletterController::class, 'store'])->name('store');
+        Route::get('/{id}', [NewsletterController::class, 'show'])->name('show');
+        Route::get('/{id}/edit', [NewsletterController::class, 'edit'])->name('edit');
+        Route::put('/{id}', [NewsletterController::class, 'update'])->name('update');
+        Route::put('/{id}/schedule', [NewsletterController::class, 'updateSchedule'])->name('update-schedule');
+        Route::post('/{id}/pause', [NewsletterController::class, 'pause'])->name('pause');
+        Route::post('/{id}/resume', [NewsletterController::class, 'resume'])->name('resume');
+        Route::post('/{id}/manual-send', [NewsletterController::class, 'manualSend'])->name('manual-send');
+        Route::delete('/{id}', [NewsletterController::class, 'destroy'])->name('destroy');
+        Route::post('/{id}/send', [NewsletterController::class, 'send'])->name('send');
+    });
 });
 
+
+// Public Newsletter Routes
+Route::get('/newsletter/unsubscribe/{token}', [NewsletterController::class, 'unsubscribe'])->name('newsletter.unsubscribe');
 
 // Public Course Routes
 Route::get('/courses', [CourseController::class, 'publicIndex'])->name('course.index');
@@ -492,10 +529,10 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit')->middleware('permission:event.edit');
     Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update')->middleware('permission:event.update');
     Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy')->middleware('permission:event.delete');
-
+    
     // Frontend User Raffle Tickets Routes
     Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
-
+    
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });

@@ -65,6 +65,11 @@ class Organization extends Model
         return $this->hasManyThrough(User::class, BoardMember::class, 'organization_id', 'id', 'id', 'user_id');
     }
 
+    public function newsletterRecipients()
+    {
+        return $this->hasMany(NewsletterRecipient::class, 'organization_id');
+    }
+
     public function getFormattedEinAttribute()
     {
         return substr($this->ein, 0, 2) . '-' . substr($this->ein, 2);

@@ -28,7 +28,8 @@ import {
     Percent,
     Building,
     Calendar,
-    Plus
+    Plus,
+    Mail
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -253,6 +254,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/chat',
                 icon: Text,
                 permission: "communication.read"
+            },
+            {
+                title: 'Newsletter',
+                href: '/newsletter',
+                icon: Mail,
+                permission: "newsletter.read"
             },
         ],
         permission: "communication.read"
