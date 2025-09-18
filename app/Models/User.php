@@ -32,6 +32,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'slug',
         'email',
         'password',
+        'registered_user_image',
         'image',
         'cover_img',
         'dob',
@@ -331,6 +332,16 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Organization::class, 'user_id');
     }
 
+    public function boardMemberships()
+    {
+        return $this->hasMany(BoardMember::class);
+    }
+
+    public function organizations()
+    {
+        return $this->hasManyThrough(Organization::class, BoardMember::class, 'user_id', 'id', 'id', 'organization_id');
+    }
+
     public function getAvatarUrlAttribute(): string
     {
         return $this->image ? asset('storage/' . $this->image) : 'https://ui-avatars.com/api/?name=' . urlencode($this->name) . '&background=random';
@@ -388,10 +399,10 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
 
-    public function organizations(): HasMany
-    {
-        return $this->hasMany(Organization::class);
-    }
+    // public function organizations(): HasMany
+    // {
+    //     return $this->hasMany(Organization::class);
+    // }
 
     public function bankAccounts(): HasMany
     {

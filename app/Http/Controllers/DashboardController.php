@@ -15,8 +15,16 @@ class DashboardController extends Controller
         if($request->user()->role === 'admin') {
             $totalOrg =  Organization::get()->count();
         }else{
-            $organization = Organization::where('user_id', $request->user()->id)->first();
-            $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
+            // $organization = Organization::where('user_id', $request->user()->id)->first();
+            // dd($request->user()->organizations);
+            $organization =  $request->user()->organizations[0] ?? null;
+            if ($organization) {
+                $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
+            }else{
+                $organization = Organization::where('user_id', $request->user()->id)->first();
+
+                $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
+            }
         }
 
         $request->user()->load('interestedTopics');

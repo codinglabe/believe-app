@@ -37,6 +37,7 @@ class Organization extends Model
         'website',
         'description',
         'mission',
+        'registered_user_image',
         'registration_status',
         'has_edited_irs_data',
         'original_irs_data',
@@ -52,6 +53,16 @@ class Organization extends Model
     public function user()
     {
         return $this->belongsTo(User::class, 'user_id');
+    }
+
+    public function boardMembers()
+    {
+        return $this->hasMany(BoardMember::class);
+    }
+
+    public function users()
+    {
+        return $this->hasManyThrough(User::class, BoardMember::class, 'organization_id', 'id', 'id', 'user_id');
     }
 
     public function getFormattedEinAttribute()
@@ -95,7 +106,7 @@ class Organization extends Model
     public function addFund(float $amount, string $method = 'raffle_sales', array $meta = []): void
     {
         $this->increment('balance', $amount);
-        
+
         // Record transaction for the organization's user if it exists
         if ($this->user) {
             $this->user->recordTransaction([

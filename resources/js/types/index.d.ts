@@ -96,6 +96,55 @@ export interface PageProps {
   transactions: PaginationData<Transaction>
 }
 
+export interface Organization {
+    id: number;
+    user_id: number;
+    name: string;
+    ein: string;
+    email: string;
+    phone: string;
+    street: string;
+    city: string;
+    state: string;
+    zip: string;
+    website?: string;
+    description: string;
+    mission: string;
+    classification?: string;
+    status: string;
+    ntee_code?: string;
+    registration_status: 'pending' | 'approved' | 'rejected';
+    created_at: string;
+    updated_at: string;
+    board_members?: BoardMember[];
+    // ... other organization fields from your database
+}
+
+export interface BoardMember {
+    id: number;
+    organization_id: number;
+    user_id: number;
+    position: string;
+    is_active: boolean;
+    appointed_on: string;
+    term_ends_on: string | null;
+    created_at: string;
+    updated_at: string;
+    user: User;
+    histories?: BoardMemberHistory[];
+}
+
+export interface BoardMemberHistory {
+    id: number;
+    board_member_id: number;
+    action: string;
+    details: string | null;
+    changed_by: number;
+    created_at: string;
+    updated_at: string;
+    changed_by_user?: User;
+}
+
 
 export interface Meeting {
   id: number

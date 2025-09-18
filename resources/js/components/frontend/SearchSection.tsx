@@ -8,7 +8,6 @@ import { Input } from "@/components/frontend/ui/input"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import { motion } from "framer-motion"
-import { debounce } from "lodash"
 
 interface SearchSectionProps {
   filters: {
@@ -52,23 +51,6 @@ export default function SearchSection({
   const [cities, setCities] = useState<string[]>(filterOptions.cities || ["All Cities"])
   const [isLoadingCities, setIsLoadingCities] = useState(false)
 
-  // Debounced search function
-  const debouncedSearch = debounce((params: Record<string, string>) => {
-    onSearch(params)
-  }, 500)
-
-  // Handle search
-  const handleSearch = () => {
-    const params = {
-      search: searchQuery,
-      category: selectedCategory,
-      state: selectedState,
-      city: selectedCity,
-      zip: zipCode,
-    }
-    debouncedSearch(params)
-  }
-
   // Handle state change and update cities
   const handleStateChange = async (state: string) => {
     setSelectedState(state)
@@ -89,75 +71,36 @@ export default function SearchSection({
     } else {
       setCities(["All Cities"])
     }
-
-    // Trigger search after state change
-    setTimeout(() => {
-      const params = {
-        search: searchQuery,
-        category: selectedCategory,
-        state: state,
-        city: "All Cities",
-        zip: zipCode,
-      }
-      debouncedSearch(params)
-    }, 100)
   }
 
-  // Handle city change
-  const handleCityChange = (city: string) => {
-    setSelectedCity(city)
-    // Trigger search after city change
-    setTimeout(() => {
-      const params = {
-        search: searchQuery,
-        category: selectedCategory,
-        state: selectedState,
-        city: city,
-        zip: zipCode,
-      }
-      debouncedSearch(params)
-    }, 100)
+  // Handle search
+  const handleSearch = () => {
+    const params = {
+      search: searchQuery,
+      category: selectedCategory,
+      state: selectedState,
+      city: selectedCity,
+      zip: zipCode,
+    }
+    onSearch(params)
   }
 
   // Handle quick filter
   const handleQuickFilter = (category: string) => {
     setSelectedCategory(category)
-    setTimeout(() => {
-      const params = {
-        search: searchQuery,
-        category: category,
-        state: selectedState,
-        city: selectedCity,
-        zip: zipCode,
-      }
-      debouncedSearch(params)
-    }, 100)
   }
 
-  // Auto-search on input changes
+  // Reset form when clear filters is clicked
   useEffect(() => {
-    if (searchQuery !== (filters.search || "")) {
-      const timer = setTimeout(() => {
-        handleSearch()
-      }, 500)
-      return () => clearTimeout(timer)
+    if (!hasActiveFilters) {
+      setSearchQuery("")
+      setSelectedCategory("All Categories")
+      setSelectedState("All States")
+      setSelectedCity("All Cities")
+      setZipCode("")
+      setCities(["All Cities"])
     }
-  }, [searchQuery])
-
-  useEffect(() => {
-    if (zipCode !== (filters.zip || "")) {
-      const timer = setTimeout(() => {
-        handleSearch()
-      }, 500)
-      return () => clearTimeout(timer)
-    }
-  }, [zipCode])
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleSearch()
-    }
-  }
+  }, [hasActiveFilters])
 
   return (
     <motion.div
@@ -212,7 +155,7 @@ export default function SearchSection({
               </SelectContent>
             </Select>
 
-            <Select value={selectedCity} onValueChange={handleCityChange} disabled={isLoadingCities || selectedState === "All States"}>
+            <Select value={selectedCity} onValueChange={setSelectedCity} disabled={isLoadingCities || selectedState === "All States"}>
               <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
                 <SelectValue placeholder={isLoadingCities ? "Loading cities..." : "All Cities"} />
               </SelectTrigger>
@@ -230,7 +173,7 @@ export default function SearchSection({
               placeholder="ZIP Code"
               value={zipCode}
               onChange={(e) => setZipCode(e.target.value)}
-              onKeyPress={handleKeyPress}
+              onKeyPress={(e) => e.key === "Enter" && handleSearch()}
               className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl"
             />
 

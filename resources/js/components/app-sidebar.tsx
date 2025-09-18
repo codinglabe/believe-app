@@ -2,18 +2,18 @@ import { NavMain } from '@/components/nav-main';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
 import { Link } from '@inertiajs/react';
-import { 
-    Download, 
-    FileText, 
-    ShoppingCart, 
-    Shield, 
-    Settings, 
-    Package, 
-    AlignEndHorizontal, 
-    Network, 
-    HandCoins, 
-    GraduationCap, 
-    Text, 
+import {
+    Download,
+    FileText,
+    ShoppingCart,
+    Shield,
+    Settings,
+    Package,
+    AlignEndHorizontal,
+    Network,
+    HandCoins,
+    GraduationCap,
+    Text,
     BarChart3,
     Database,
     Users,
@@ -41,7 +41,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: BarChart3,
         permission: "dashboard.read"
     },
-    
+
+    {
+        title: 'Board of Directors',
+        items: [
+            {
+                title: 'Index',
+                href: '/board-members',
+                icon: Users,
+                role: "organization"
+            },
+        ],
+        // permission: "data.management.read"
+        role: "organization"
+    },
+
     // Data Management Section
     {
         title: 'Data Management',
@@ -203,7 +217,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 permission: "classification.code.read"
             },
             {
-                title: 'Status Codes', 
+                title: 'Status Codes',
                 href: '/status-codes',
                 icon: Hash,
                 permission: "status.code.read"

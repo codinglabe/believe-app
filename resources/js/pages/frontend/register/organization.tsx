@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { motion } from "framer-motion"
 import {
   Building2,
@@ -16,6 +16,9 @@ import {
   EyeOff,
   Eye,
   ShieldCheck,
+  Upload,
+  ImageIcon,
+  X,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -53,6 +56,8 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
   const [registrationSuccess, setRegistrationSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
   const [csrfToken, setCsrfToken] = useState(csrf_token || "")
+  const [imagePreview, setImagePreview] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (referralCode) {
@@ -94,6 +99,7 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     website: "",
     description: "",
     mission: "",
+    image: null as File | null,
     // Terms
     agree_to_terms: false,
     has_edited_irs_data: false,
@@ -143,7 +149,7 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     }
   }, [csrf_token])
 
-  const handleInputChange = (field: string, value: string | boolean) => {
+  const handleInputChange = (field: string, value: string | boolean | File | null) => {
     setFormData((prev) => ({
       ...prev,
       [field]: value,
@@ -156,6 +162,48 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
         delete newErrors[field]
         return newErrors
       })
+    }
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0] || null
+    if (file) {
+      // Check file type and size
+      if (!file.type.startsWith('image/')) {
+        setErrors({ image: 'Please select an image file' })
+        return
+      }
+
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        setErrors({ image: 'Image size should be less than 5MB' })
+        return
+      }
+
+      handleInputChange("image", file)
+
+      // Create preview
+      const reader = new FileReader()
+      reader.onload = () => {
+        setImagePreview(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+
+      // Clear error if any
+      if (errors.image) {
+        setErrors((prev) => {
+          const newErrors = { ...prev }
+          delete newErrors.image
+          return newErrors
+        })
+      }
+    }
+  }
+
+  const removeImage = () => {
+    handleInputChange("image", null)
+    setImagePreview(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""
     }
   }
 
@@ -275,14 +323,25 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     }
 
     try {
+      // Create FormData object for file upload
+      const formDataToSend = new FormData()
+
+      // Append all form fields
+      Object.keys(formData).forEach(key => {
+        if (key === 'image' && formData.image) {
+          formDataToSend.append('image', formData.image)
+        } else {
+          formDataToSend.append(key, formData[key as keyof typeof formData] as string | Blob)
+        }
+      })
+
       const response = await fetch(route("register.organization.store"), {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
+          "Accept": "application/json",
           "X-CSRF-TOKEN": getCsrfToken(),
         },
-        body: JSON.stringify(formData),
+        body: formDataToSend,
       })
 
       const data: RegistrationResponse = await response.json()
@@ -315,11 +374,11 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     switch (stepNumber) {
       case 1:
         return einData.ein.length === 9
-        case 2:
-            // && formData.street && formData.city && formData.state && formData.zip
-        return !!(formData.name && formData.street && formData.city && formData.zip )
+      case 2:
+        return !!(formData.name && formData.street && formData.city && formData.zip)
       case 3:
         return !!(
+          formData.image &&
           formData.email &&
           formData.phone &&
           formData.contact_name &&
@@ -674,6 +733,52 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      <div className="md:col-span-2">
+                        <Label htmlFor="image">Your Photo*</Label>
+                        <div className="mt-2 flex items-center justify-center w-full">
+                          <label
+                            htmlFor="image-upload"
+                            className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:hover:bg-gray-600"
+                          >
+                            {imagePreview ? (
+                              <div className="relative w-full h-full">
+                                <img
+                                  src={imagePreview}
+                                  alt="Preview"
+                                  className="w-full h-full object-contain rounded-lg"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={removeImage}
+                                  className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                                >
+                                  <X className="h-4 w-4" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                <Upload className="w-10 h-10 mb-3 text-gray-400" />
+                                <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
+                                  <span className="font-semibold">Click to upload</span> or drag and drop
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
+                                  PNG, JPG, GIF up to 5MB
+                                </p>
+                              </div>
+                            )}
+                            <input
+                              id="image-upload"
+                              ref={fileInputRef}
+                              type="file"
+                              className="hidden"
+                              accept="image/*"
+                              onChange={handleImageChange}
+                            />
+                          </label>
+                        </div>
+                        {errors.image && <p className="text-red-600 text-sm mt-1">{errors.image}</p>}
+                      </div>
+
                       <div>
                         <Label htmlFor="email">Organization Email *</Label>
                         <div className="relative">

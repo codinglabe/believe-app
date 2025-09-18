@@ -40,10 +40,10 @@ class HandleInertiaRequests extends Middleware
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
         $user = $request->user()?->load("organization");
         $role = $user?->roles?->first();
-        
+
         // Get all permissions (both role-based and direct user permissions)
         $permissions = $user ? $user->getAllPermissions()->pluck('name')->toArray() : [];
-        
+
         // Debug: Log permissions being shared
         if ($user && count($permissions) > 0) {
             \Log::info('Sharing permissions with frontend for user: ' . $user->name, [
@@ -73,6 +73,7 @@ class HandleInertiaRequests extends Middleware
                     'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
                     "organization" => $user->organization ? [
                         'name' => $user->organization->name,
+                        "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                         'contact_title' => $user->organization->contact_title,
                         'website' => $user->organization->website,
                         'description' => $user->organization->description,

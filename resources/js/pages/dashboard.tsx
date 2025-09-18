@@ -335,7 +335,7 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
-        <div className="bg-card border-border rounded-lg border p-6 shadow-sm">
+        {/* <div className="bg-card border-border rounded-lg border p-6 shadow-sm">
           <h1 className="text-2xl font-bold">
             {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
           </h1>
@@ -343,6 +343,41 @@ export default function Dashboard({
           <p className="text-muted-foreground mt-2">
             {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
           </p>
+        </div> */}
+
+               <div className="bg-card border-border border rounded-lg p-6 shadow-sm mb-6 flex flex-col md:flex-row items-center md:items-start gap-6">
+          {/* User Image */}
+          <div className="flex-shrink-0">
+            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
+              <img
+                src={organization?.registered_user_image ? organization?.registered_user_image : '/placeholder-user.jpg'}
+                alt={auth.user?.name || 'User'}
+                className="w-full h-full object-cover"
+              />
+            </div>
+          </div>
+
+          {/* Welcome Content */}
+          <div className="flex-1 text-center md:text-left">
+            <h1 className="text-2xl md:text-3xl font-bold text-white">
+              {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+            </h1>
+            <VerificationBanner user={auth?.user} />
+            <p className="text-gray-300 mt-2">
+              {userRole === "admin"
+                ? "System overview and management tools"
+                : `EIN: ${organization?.ein || 'Not provided'}`
+              }
+            </p>
+
+            {/* User Stats */}
+            {/* <div className="mt-4 flex flex-wrap gap-4 justify-center md:justify-start">
+              <div className="bg-blue-50 px-4 py-2 rounded-lg">
+                <p className="text-sm text-blue-600">Balance</p>
+                <p className="font-semibold text-blue-800">${auth.user?.balance?.toLocaleString() || '0'}</p>
+              </div>
+            </div> */}
+          </div>
         </div>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">

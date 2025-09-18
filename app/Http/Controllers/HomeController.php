@@ -66,24 +66,100 @@ class HomeController extends Controller
         ]);
     }
 
-    // Get states for filter options
     private function getStates()
     {
-        $cacheKey = 'states_filter_v3';
+        // Static list of all U.S. States and Territories abbreviations only
+        $statesAndTerritories = [
+            'AL',
+            'AK',
+            'AZ',
+            'AR',
+            'CA',
+            'CO',
+            'CT',
+            'DE',
+            'FL',
+            'GA',
+            'HI',
+            'ID',
+            'IL',
+            'IN',
+            'IA',
+            'KS',
+            'KY',
+            'LA',
+            'ME',
+            'MD',
+            'MA',
+            'MI',
+            'MN',
+            'MS',
+            'MO',
+            'MT',
+            'NE',
+            'NV',
+            'NH',
+            'NJ',
+            'NM',
+            'NY',
+            'NC',
+            'ND',
+            'OH',
+            'OK',
+            'OR',
+            'PA',
+            'RI',
+            'SC',
+            'SD',
+            'TN',
+            'TX',
+            'UT',
+            'VT',
+            'VA',
+            'WA',
+            'WV',
+            'WI',
+            'WY',
+            'DC',
+            'AS',
+            'GU',
+            'MP',
+            'PR',
+            'VI'
+        ];
 
-        return cache()->remember($cacheKey, 86400, function () {
-            return ExcelData::where('status', 'complete')
-                ->whereNotNull('state_virtual')
-                ->where('state_virtual', '!=', '')
-                ->whereNotIn('id', function ($subQuery) {
-                    $subQuery->select(DB::raw('MIN(id)'))
-                        ->from('excel_data')
-                        ->groupBy('file_id');
-                })
-                ->distinct()
-                ->orderBy('state_virtual')
-                ->pluck('state_virtual')
-                ->prepend('All States');
-        });
+        // Create a collection with just the abbreviations, sorted alphabetically
+        $statesCollection = collect($statesAndTerritories)
+            ->sort()
+            ->values() // Reset keys to maintain proper order
+            ->prepend('All States');
+
+        return $statesCollection;
     }
+
+    /**
+     * Original getStates method - commented out and replaced with static list
+     * This method previously queried the database for states from organization data
+     *
+    */
+    // private function getStates()
+    // {
+    //     $cacheKey = 'states_filter_v3';
+
+    //     return cache()->remember($cacheKey, 86400, function () {
+    //         return ExcelData::where('status', 'complete')
+    //             ->whereNotNull('state_virtual')
+    //             ->where('state_virtual', '!=', '')
+    //             ->whereNotIn('id', function ($subQuery) {
+    //                 $subQuery->select(DB::raw('MIN(id)'))
+    //                     ->from('excel_data')
+    //                     ->groupBy('file_id');
+    //             })
+    //             ->distinct()
+    //             ->orderBy('state_virtual')
+    //             ->pluck('state_virtual')
+    //             ->prepend('All States');
+    //     });
+    // }
+
 }

@@ -1,5 +1,8 @@
 <?php
 
+use App\Http\Controllers\BoardMemberController;
+use App\Http\Controllers\ExcelDataController;
+use App\Http\Controllers\ExcelDataExportController;
 use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\JobPostController;
@@ -166,8 +169,35 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
+Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])->group(function () {
+    Route::get('/export', function () {
+        return view('excel-export');
+    });
+
+    // Start export
+    Route::post('/export', [ExcelDataExportController::class, 'export'])->name('export');
+
+    // Check export status
+    Route::get('/status/{filename}', [ExcelDataExportController::class, 'status'])->name('status');
+
+    // Download exported file
+    Route::get('/download/{filename}', [ExcelDataExportController::class, 'download'])->name('download');
+
+    // Get available states for filtering
+    Route::get('/states', [ExcelDataExportController::class, 'getStates'])->name('states');
+});
+
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+
+    Route::middleware("role:organization")->group(function () {
+        Route::resource('board-members', BoardMemberController::class)
+            ->only(['index', 'store', 'update', 'destroy'])
+            ->shallow();
+
+        Route::post('board-members/{boardMember}/status', [BoardMemberController::class, 'updateStatus'])
+            ->name('board-members.status');
+    });
 
     // Chunked Upload Routes
     Route::prefix('upload')->group(function () {
