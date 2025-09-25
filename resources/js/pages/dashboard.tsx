@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import TopicsCard from "@/components/admin/topics-card"
-import { router } from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
 
 const showSuccessToast = (message: string) => {
   console.log("Success:", message)
@@ -64,47 +64,6 @@ const Link = ({ href, children, className }: { href: string; children: React.Rea
       {children}
     </a>
   )
-}
-
-const mockAuth = {
-  user: {
-    id: 1,
-    name: "John Doe",
-    email: "john@example.com",
-    role: "organization" as const,
-  },
-}
-
-const mockOrganization = {
-  name: "Sample Organization",
-  ein: "12-3456789",
-  description:
-    "We are dedicated to making a positive impact in our community through various programs and initiatives.",
-  mission: "To create lasting change and improve lives through education, healthcare, and community development.",
-  classification: "501(c)(3)",
-  ico: "John Smith",
-  street: "123 Main Street",
-  city: "Anytown",
-  state: "CA",
-  zip: "12345",
-  ruling: "2010",
-  deductibility: "Yes",
-  organization: "Public Charity",
-  status: "Active",
-  ntee_code: "P20",
-  contact_name: "Jane Doe",
-  contact_title: "Executive Director",
-  email: "contact@example.org",
-  phone: "(555) 123-4567",
-  website: "https://example.org",
-  social_accounts: {
-    youtube: "",
-    facebook: "",
-    instagram: "",
-    twitter: "",
-    linkedin: "",
-    tiktok: "",
-  },
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -178,11 +137,11 @@ const RecentActivityItem = ({ activity }: { activity: ActivityItem }) => {
 
 export default function Dashboard({
   totalOrg = 5,
-  orgInfo = mockOrganization,
+  orgInfo,
   totalFav = 12,
    topics = []
 }: { totalOrg?: number; orgInfo?: any; totalFav?: number;  topics?: { id: number; name: string }[] }) {
-  const auth = mockAuth
+  const auth = usePage().props.auth
   const organization = orgInfo
     const userRole = auth.user?.role // 'admin' or 'organization'
 
@@ -346,7 +305,8 @@ export default function Dashboard({
         </div> */}
 
                <div className="bg-card border-border border rounded-lg p-6 shadow-sm mb-6 flex flex-col md:flex-row items-center md:items-start gap-6">
-          {/* User Image */}
+                  {/* User Image */}
+                  {userRole === "organization" && (
           <div className="flex-shrink-0">
             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
               <img
@@ -356,6 +316,7 @@ export default function Dashboard({
               />
             </div>
           </div>
+                  )}
 
           {/* Welcome Content */}
           <div className="flex-1 text-center md:text-left">
@@ -363,11 +324,8 @@ export default function Dashboard({
               {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
             </h1>
             <VerificationBanner user={auth?.user} />
-            <p className="text-gray-300 mt-2">
-              {userRole === "admin"
-                ? "System overview and management tools"
-                : `EIN: ${organization?.ein || 'Not provided'}`
-              }
+            <p className="text-muted-foreground mt-2">
+            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
             </p>
 
             {/* User Stats */}

@@ -182,6 +182,7 @@ class OrganizationRegisterController extends Controller
             "contact_number" => $validated['phone'],
             "password" => Hash::make($validated['password']),
             "role" => 'organization',
+            "organization_role" => 'admin',
             "referred_by" => null,
         ]);
 

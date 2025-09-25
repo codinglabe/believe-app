@@ -38,6 +38,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'dob',
         'contact_number',
         'role',
+        'organization_role',
         'login_status',
         'referral_code',
         'referred_by',
@@ -328,9 +329,21 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(ChatMessage::class);
     }
 
-    public function organization(): HasOne
+    // public function organization(): HasOne
+    // {
+    //     return $this->hasOne(Organization::class, 'user_id');
+    // }
+
+    public function organization()
     {
-        return $this->hasOne(Organization::class, 'user_id');
+        return $this->hasOneThrough(
+            Organization::class,
+            BoardMember::class,
+            'user_id', // Foreign key on board_members table
+            'id',
+            'id', // Local key on users table
+            'organization_id' // Local key on board_members table
+        );
     }
 
     public function boardMemberships()
@@ -338,10 +351,10 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(BoardMember::class);
     }
 
-    public function organizations()
-    {
-        return $this->hasManyThrough(Organization::class, BoardMember::class, 'user_id', 'id', 'id', 'organization_id');
-    }
+    // public function organizations()
+    // {
+    //     return $this->hasManyThrough(Organization::class, BoardMember::class, 'user_id', 'id', 'id', 'organization_id');
+    // }
 
     public function getAvatarUrlAttribute(): string
     {

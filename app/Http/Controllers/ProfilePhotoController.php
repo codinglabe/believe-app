@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
@@ -115,6 +117,10 @@ class ProfilePhotoController extends Controller
             // Save to storage
             $path = 'profile-photos/' . $filename;
             Storage::disk('public')->put($path, $imageData);
+
+            $registeredUserid = $user->organization->user_id;
+
+            $user = User::find($registeredUserid);
 
             // Update user profile
             $user->updateProfilePhoto($path, 'public');
@@ -273,9 +279,13 @@ class ProfilePhotoController extends Controller
             $path = 'cover-photos/' . $filename;
             Storage::disk('public')->put($path, $imageData);
 
+            $registeredUserid = $user->organization->user_id;
+
+            $user  = User::find($registeredUserid);
+
             // Delete old cover if exists
             if ($user->cover_image) {
-                Storage::disk('public')->delete($user->cover_image);
+                Storage::disk('public')->delete($org->user->cover_image);
             }
 
             // Update user cover photo

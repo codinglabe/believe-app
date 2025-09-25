@@ -43,6 +43,9 @@ class DatabaseSeeder extends Seeder
             PositionCategoriesAndJobPositionsSeeder::class,
             EventTypesTableSeeder::class,
             ChatRoomsSeeder::class,
+
+            OrganizationBoardMembersSeeder::class,
+            OrganizationRoleSeeder::class,
         ]);
     }
 }

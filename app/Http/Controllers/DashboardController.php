@@ -17,12 +17,10 @@ class DashboardController extends Controller
         }else{
             // $organization = Organization::where('user_id', $request->user()->id)->first();
             // dd($request->user()->organizations);
-            $organization =  $request->user()->organizations[0] ?? null;
-            if ($organization) {
-                $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
-            }else{
-                $organization = Organization::where('user_id', $request->user()->id)->first();
+            $organization =  $request->user()->organization ?? null;
 
+            // dd($request->user()->organizations);
+            if ($organization) {
                 $totalFav = UserFavoriteOrganization::where('organization_id', $organization->id)->count();
             }
         }
@@ -35,6 +33,8 @@ class DashboardController extends Controller
         //         'name' => $topic->name,
         //     ];
         // }));
+
+
         return Inertia::render('dashboard', [
             'totalOrg' => $totalOrg ?? 0,
             'orgInfo' => $organization ?? null,

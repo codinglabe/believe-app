@@ -4,9 +4,6 @@ namespace App\Jobs;
 
 use App\Models\Newsletter;
 use App\Models\NewsletterEmail;
-use App\Models\NewsletterRecipient;
-use App\Models\User;
-use App\Models\Organization;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -113,7 +110,7 @@ class SendNewsletterJob implements ShouldQueue
     {
         // Check if email records already exist
         $existingCount = NewsletterEmail::where('newsletter_id', $this->newsletter->id)->count();
-        
+
         if ($existingCount > 0) {
             return; // Email records already exist
         }
@@ -122,7 +119,7 @@ class SendNewsletterJob implements ShouldQueue
 
         // Get targeted users based on newsletter targeting settings
         $targetedUsers = $this->newsletter->getTargetedUsers();
-        
+
         if ($targetedUsers->isEmpty()) {
             Log::warning("No targeted users found for newsletter {$this->newsletter->id}");
             return;
@@ -146,7 +143,7 @@ class SendNewsletterJob implements ShouldQueue
         // Also create records for targeted organizations if applicable
         if ($this->newsletter->target_type === 'organizations' || $this->newsletter->target_type === 'specific') {
             $targetedOrganizations = $this->newsletter->getTargetedOrganizations();
-            
+
             foreach ($targetedOrganizations as $organization) {
                 if ($organization->email) {
                     NewsletterEmail::create([
@@ -177,7 +174,7 @@ class SendNewsletterJob implements ShouldQueue
             $recipientName = 'Subscriber';
             $recipientEmail = $emailRecord->email;
             $unsubscribeLink = '#';
-            
+
             if ($emailRecord->recipient) {
                 // Traditional recipient system
                 $recipient = $emailRecord->recipient;
@@ -236,7 +233,7 @@ class SendNewsletterJob implements ShouldQueue
                 'email_id' => $emailRecord->id,
                 'error' => $e->getMessage()
             ]);
-            
+
             $emailRecord->update([
                 'status' => 'failed',
                 'error_message' => $e->getMessage()
@@ -250,7 +247,7 @@ class SendNewsletterJob implements ShouldQueue
     protected function processContent(array $data, bool $isHtml = false): string
     {
         $content = $isHtml ? $data['html_content'] : $data['content'];
-        
+
         $replacements = [
             '{organization_name}' => $data['organization_name'],
             '{recipient_name}' => $data['recipient_name'],

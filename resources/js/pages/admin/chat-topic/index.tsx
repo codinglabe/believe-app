@@ -245,9 +245,11 @@ export default function TopicsIndex() {
                                                     >
                                                         <Edit className="h-4 w-4 mr-1" /> Edit
                                                     </Button>
+                                                    {auth.user.role === "admin" && (
                                                     <Button variant="destructive" size="sm" onClick={() => openDeleteModal(topic)}>
                                                         <Trash2 className="h-4 w-4 mr-1" /> Delete
                                                     </Button>
+                                                    )}
                                                 </TableCell>
                                             </motion.tr>
                                         ))
