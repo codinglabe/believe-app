@@ -55,14 +55,40 @@ class Organization extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function boardMembers()
-    {
-        return $this->hasMany(BoardMember::class);
-    }
-
     public function users()
     {
         return $this->hasManyThrough(User::class, BoardMember::class, 'organization_id', 'id', 'id', 'user_id');
+    }
+
+    public function contentItems()
+    {
+        return $this->hasMany(ContentItem::class);
+    }
+
+    public function campaigns()
+    {
+        return $this->hasMany(Campaign::class);
+    }
+
+    public function activeMembers()
+    {
+        return $this->users()->where('login_status', true);
+    }
+
+    // Helper methods
+    public function getDefaultSettings()
+    {
+        return [
+            'send_time' => '07:00',
+            'channels' => ['push'],
+            'quiet_hours_start' => '21:00',
+            'quiet_hours_end' => '07:00',
+        ];
+    }
+
+    public function boardMembers()
+    {
+        return $this->hasMany(BoardMember::class);
     }
 
     public function newsletterRecipients()

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\BoardMemberController;
+use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExcelDataController;
 use App\Http\Controllers\ExcelDataExportController;
 use App\Http\Controllers\PaymentMethodSettingController;
@@ -36,6 +37,7 @@ use App\Http\Controllers\PurchaseOrderController;
 use App\Http\Controllers\RolePermissionController;
 use App\Http\Controllers\DeductibilityCodeController;
 use App\Http\Controllers\ClassificationCodeController;
+use App\Http\Controllers\ContentItemController;
 use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
@@ -52,6 +54,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
+use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
 use App\Http\Controllers\RecordingController;
@@ -188,6 +191,32 @@ Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEma
     Route::get('/states', [ExcelDataExportController::class, 'getStates'])->name('states');
 });
 
+Route::middleware(["auth", 'EnsureEmailIsVerified', 'topics.selected'])->group(function (){
+    Route::get('/notifications', [NotificationController::class, 'index']);
+    Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
+    Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
+    Route::post('/notifications/clear-all', [NotificationController::class, 'clearAll']);
+
+    Route::get("/notifications/content/{content_item}", [NotificationController::class, 'show'])->name('notifications.content.show');
+});
+
+
+Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function (){
+    Route::get('/content', [ContentItemController::class, 'index'])->name('content.items.index');
+    Route::get('/content/create', [ContentItemController::class, 'create'])->name('content.items.create');
+    Route::post('/content', [ContentItemController::class, 'store'])->name('content.items.store');
+    Route::get('/content/{content_item}/edit', [ContentItemController::class, 'edit'])->name('content.items.edit');
+    Route::put('/content/{content_item}', [ContentItemController::class, 'update'])->name('content.items.update');
+    Route::delete('/content/{content_item}', [ContentItemController::class, 'destroy'])->name('content.items.destroy');
+
+    // Campaigns
+    Route::get('/campaigns', [CampaignController::class, 'index'])->name('campaigns.index');
+    Route::get('/campaigns/create', [CampaignController::class, 'create'])->name('campaigns.create');
+    Route::post('/campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
+    Route::get('/campaigns/{campaign}', [CampaignController::class, 'show'])->name('campaigns.show');
+    Route::delete('/campaigns/{campaign}', [CampaignController::class, 'destroy'])->name('campaigns.destroy');
+});
+
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
@@ -299,7 +328,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
         'update' => 'permission:raffle.edit',
         'destroy' => 'permission:raffle.delete'
     ]);
-    
+
     Route::post('raffles/{raffle}/purchase', [RaffleController::class, 'purchaseTickets'])->name('raffles.purchase')->middleware('permission:raffle.purchase');
     Route::post('raffles/{raffle}/draw', [RaffleController::class, 'drawWinners'])->name('raffles.draw')->middleware('permission:raffle.draw');
     Route::get('raffles/tickets/{ticket}/qr-code', [RaffleController::class, 'generateTicketQrCode'])->name('raffles.ticket.qr-code')->middleware('permission:raffle.read');
@@ -529,10 +558,10 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
     Route::get('/profile/events/{event}/edit', [EventController::class, 'userEdit'])->name('profile.events.edit')->middleware('permission:event.edit');
     Route::put('/profile/events/{event}', [EventController::class, 'userUpdate'])->name('profile.events.update')->middleware('permission:event.update');
     Route::delete('/profile/events/{event}', [EventController::class, 'userDestroy'])->name('profile.events.destroy')->middleware('permission:event.delete');
-    
+
     // Frontend User Raffle Tickets Routes
     Route::get('/profile/raffle-tickets', [UserProfileController::class, 'raffleTickets'])->name('profile.raffle-tickets.index');
-    
+
     Route::put('/profile/course/{course:slug}', [FrontendCourseController::class, 'update'])->name('profile.course.update')->middleware('permission:course.update');
     Route::delete('/profile/course/{course:slug}', [FrontendCourseController::class, 'destroy'])->name('profile.course.destroy')->middleware('permission:course.delete');
 });

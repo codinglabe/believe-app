@@ -46,7 +46,13 @@ return [
         'secret' => env('PLAID_SECRET'),
         'environment' => env('PLAID_ENVIRONMENT', 'sandbox'), // sandbox, development, production
         'webhook_url' => env('PLAID_WEBHOOK_URL'),
-    ]
+    ],
+
+    'twilio' => [
+        'sid' => env('TWILIO_ACCOUNT_SID'),
+        'token' => env('TWILIO_AUTH_TOKEN'),
+        'whatsapp_from' => env('TWILIO_FROM', 'whatsapp:+14155238886'),
+    ],
 
 
 ];

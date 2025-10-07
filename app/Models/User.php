@@ -39,6 +39,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'contact_number',
         'role',
         'organization_role',
+        'whatsapp_opt_in',
+        'push_token',
         'login_status',
         'referral_code',
         'referred_by',
@@ -87,6 +89,11 @@ class User extends Authenticatable implements MustVerifyEmail
                 $user->referral_code = $code;
             }
         });
+    }
+
+    public function receivesBroadcastNotificationsOn(): string
+    {
+        return 'users.' . $this->id;
     }
 
     public function user()
@@ -346,9 +353,63 @@ class User extends Authenticatable implements MustVerifyEmail
         );
     }
 
+    public function isOrganizationAdmin()
+    {
+        return $this->organization_role === 'admin' && $this->organization;
+    }
+
+    public function isOrganizationLeader()
+    {
+        return $this->organization_role === 'leader' && $this->organization;
+    }
+
     public function boardMemberships()
     {
         return $this->hasMany(BoardMember::class);
+    }
+
+    public function canManageContent()
+    {
+        return $this->isOrganizationAdmin() || $this->isOrganizationLeader();
+    }
+
+    public function contentItems()
+    {
+        return $this->hasMany(ContentItem::class);
+    }
+
+    public function campaigns()
+    {
+        return $this->hasMany(Campaign::class);
+    }
+
+    public function sendJobs()
+    {
+        return $this->hasMany(SendJob::class);
+    }
+
+    // Notification preferences
+    public function shouldReceivePush()
+    {
+        return !empty($this->push_token) && $this->login_status;
+    }
+
+    public function shouldReceiveWhatsApp()
+    {
+        return $this->whatsapp_opt_in && !empty($this->contact_number);
+    }
+
+    public function getLocalTimezone()
+    {
+        return $this->timezone ?? 'America/Chicago';
+    }
+
+    /**
+     * Route notifications for Twilio channel (WhatsApp)
+     */
+    public function routeNotificationForTwilio()
+    {
+        return $this->contact_number ? 'whatsapp:' . $this->contact_number : null;
     }
 
     // public function organizations()
@@ -480,6 +541,24 @@ class User extends Authenticatable implements MustVerifyEmail
     public function socialMediaPosts(): HasMany
     {
         return $this->hasMany(SocialMediaPost::class);
+    }
+
+
+    /**
+     * Get the user's notifications with pagination
+     */
+    public function notifications()
+    {
+        return $this->morphMany(\Illuminate\Notifications\DatabaseNotification::class, 'notifiable')
+            ->orderBy('created_at', 'desc');
+    }
+
+    /**
+     * Get the user's unread notifications
+     */
+    public function unreadNotifications()
+    {
+        return $this->notifications()->whereNull('read_at');
     }
 
 }

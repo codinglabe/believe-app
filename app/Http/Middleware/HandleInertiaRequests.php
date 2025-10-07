@@ -72,6 +72,7 @@ class HandleInertiaRequests extends Middleware
                     "email_verified_at" => $user->email_verified_at,
                     "ownership_verified_at" => $user->ownership_verified_at,
                     'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
+                    'timezone' => $user->timezone ?? 'UTC',
                     "organization" => $user->organization ? [
                         'name' => $user->organization->name,
                         "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
@@ -92,7 +93,7 @@ class HandleInertiaRequests extends Middleware
             ],
             'csrf_token' => csrf_token(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'flash' => fn() => $request->session()->get('flash'),
+            'flash' => fn() => $request->session()->get('flash') ?? null,
             'success' => fn() => $request->session()->get('success'),
             'error' => fn() => $request->session()->get('error'),
             'info' => fn() => $request->session()->get('info'),

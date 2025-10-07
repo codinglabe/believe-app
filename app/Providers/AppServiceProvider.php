@@ -5,6 +5,7 @@ namespace App\Providers;
 use App\Models\NodeSell;
 use App\Models\User;
 use App\Observers\NodeSellObserver;
+use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\ServiceProvider;
 use Inertia\Inertia;

@@ -29,7 +29,9 @@ import {
     Building,
     Calendar,
     Plus,
-    Mail
+    Mail,
+    CalendarPlus,
+    PlusCircle
 } from 'lucide-react';
 import AppLogo from './app-logo';
 
@@ -54,6 +56,37 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         // permission: "data.management.read"
+        role: "organization"
+    },
+
+    {
+        title: 'Content Management',
+        items: [
+            {
+                title: 'Content Items',
+                href: '/content',
+                icon: FileText, // or BookOpen for content
+                role: "organization"
+            },
+            {
+                title: 'Create Content',
+                href: '/content/create',
+                icon: PlusCircle, // or FilePlus for create
+                role: "organization"
+            },
+            {
+                title: 'Campaigns',
+                href: '/campaigns',
+                icon: Calendar, // or Send for campaigns
+                role: "organization"
+            },
+            {
+                title: 'Create Campaign',
+                href: '/campaigns/create',
+                icon: CalendarPlus, // or Send for create campaign
+                role: "organization"
+            },
+        ],
         role: "organization"
     },
 

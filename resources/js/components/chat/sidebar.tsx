@@ -9,6 +9,7 @@ import { GroupCreateDialog } from "@/components/chat/group-create-dialog"
 import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { PlusIcon, SearchIcon } from 'lucide-react'
+import { NotificationBell } from "../notification-bell"
 
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
@@ -95,12 +96,15 @@ export function Sidebar() {
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-xl font-semibold">
           Dashboard / {getBreadcrumbText()}
-        </h2>
+              </h2>
+              <div>
+                  <NotificationBell userId={currentUser?.id}/>
         {canCreateGroups && (
           <Button variant="ghost" size="icon" onClick={() => setIsGroupCreateOpen(true)}>
             <PlusIcon className="h-5 w-5" />
           </Button>
         )}
+              </div>
       </div>
 
       {/* Search and Toggle */}

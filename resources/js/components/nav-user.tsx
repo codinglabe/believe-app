@@ -5,6 +5,7 @@ import { UserMenuContent } from '@/components/user-menu-content';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { type SharedData } from '@/types';
 import { usePage } from '@inertiajs/react';
+import { NotificationBell } from './notification-bell';
 
 export function NavUser() {
     const { auth } = usePage<SharedData>().props;
@@ -12,7 +13,10 @@ export function NavUser() {
     const isMobile = useIsMobile();
 
     return (
-        <SidebarMenu>
+        <SidebarMenu className="flex justify-content-between flex-row items-center gap-2">
+            <SidebarMenuItem>
+                <NotificationBell userId={auth.user.id} />
+            </SidebarMenuItem>
             <SidebarMenuItem>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>

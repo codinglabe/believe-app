@@ -46,6 +46,11 @@ export interface User {
     email_verified_at: string | null;
     created_at: string;
     updated_at: string;
+    timezone?: string;
+    contact_number?: string;
+    whatsapp_opt_in: boolean;
+    push_token?: string;
+    login_status: boolean;
     [key: string]: unknown; // This allows for additional properties...
 }
 export interface DashboardProps {
@@ -94,6 +99,24 @@ export interface PaginationData<T> {
   total: number
 }
 
+export interface PaginatedResponse<T> {
+    data: T[];
+    links: {
+        first: string | null;
+        last: string | null;
+        prev: string | null;
+        next: string | null;
+    };
+        current_page: number;
+        from: number;
+        last_page: number;
+        links: any[];
+        path: string;
+        per_page: number;
+        to: number;
+        total: number;
+}
+
 export interface PageProps {
   transactions: PaginationData<Transaction>
 }
@@ -120,6 +143,93 @@ export interface Organization {
     updated_at: string;
     board_members?: BoardMember[];
     // ... other organization fields from your database
+}
+
+export interface ContentItem {
+    id: number;
+    organization_id: number;
+    user_id: number;
+    user: User;
+    type: 'prayer' | 'devotional' | 'scripture';
+    title: string;
+    body: string;
+    meta: {
+        scripture_ref?: string;
+        image_url?: string;
+        tags?: string[];
+    };
+    is_approved: boolean;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface Campaign {
+    id: number;
+    organization_id: number;
+    user_id: number;
+    user: User;
+    name: string;
+    start_date: string;
+    end_date: string;
+    send_time_local: string;
+    channels: ('push' | 'whatsapp' | 'web')[];
+    rrule?: any;
+    status: 'active' | 'paused' | 'cancelled';
+    created_at: string;
+    updated_at: string;
+    scheduled_drops?: ScheduledDrop[];
+    scheduled_drops_count?: number;
+}
+
+export interface ScheduledDrop {
+    id: number;
+    campaign_id: number;
+    content_item_id: number;
+    content_item: ContentItem;
+    publish_at_utc: string;
+    status: 'pending' | 'expanded' | 'sent' | 'cancelled';
+    created_at: string;
+    updated_at: string;
+    send_jobs?: SendJob[];
+}
+
+export interface SendJob {
+    id: number;
+    scheduled_drop_id: number;
+    user_id: number;
+    user: User;
+    channel: 'push' | 'whatsapp' | 'web';
+    status: 'queued' | 'sent' | 'delivered' | 'failed';
+    idempotency_key: string;
+    error?: string;
+    sent_at?: string;
+    metadata?: any;
+    created_at: string;
+    updated_at: string;
+}
+
+export interface NotificationData {
+    id: string;
+    type: string;
+    data: {
+        content_id: number;
+        title: string;
+        body: string;
+        image_url?: string;
+        scripture_ref?: string;
+        channel: string;
+        created_at: string;
+    };
+    read_at: string | null;
+    created_at: string;
+}
+
+export interface CampaignStats {
+    total_drops: number;
+    sent_drops: number;
+    pending_drops: number;
+    total_sends: number;
+    successful_sends: number;
 }
 
 export interface BoardMember {

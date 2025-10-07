@@ -6,10 +6,13 @@ import { Sheet, SheetContent, SheetTrigger } from "@/components/chat/ui/sheet"
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/chat/ui/resizable"
 import { Button } from "@/components/chat/ui/button"
 import { Menu, MessageCircle } from 'lucide-react'
-import { useState } from "react"
+import { use, useState } from "react"
 import { useChat } from "@/providers/chat-provider"
+import { NotificationBell } from "../notification-bell"
+import { usePage } from "@inertiajs/react"
 
 export function ChatLayout() {
+    const auth = usePage().props.auth;
   const isMobile = useIsMobile()
   const [showDetailsPanel, setShowDetailsPanel] = useState(false)
   const { activeRoom } = useChat()
@@ -63,13 +66,18 @@ export function ChatLayout() {
                         />
                         </>
           ) : (
-            <div className="flex items-center p-4 border-b">
+                        <div className="flex items-center pe-4 justify-between border-b border-border/50">
+                            <div className="flex items-center p-4 border-b">
               <SheetTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Open sidebar">
+                                <Button variant="ghost" size="icon" aria-label="Open sidebar">
                   <Menu className="h-5 w-5" />
                 </Button>
               </SheetTrigger>
               <h1 className="ml-3 text-lg font-semibold">Messages</h1>
+                            </div>
+                            <div>
+                                <NotificationBell userId={auth.user.id}/>
+                            </div>
             </div>
           )}
 

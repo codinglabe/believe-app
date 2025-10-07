@@ -1,11 +1,12 @@
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
-import { type BreadcrumbItem } from '@/types';
+import { type BreadcrumbItem, PageProps } from '@/types';
 import { type ReactNode } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { useFlashMessage } from '@/hooks/use-flash-message';
 import { usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
+import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 
 interface AppLayoutProps {
     children: ReactNode;
@@ -13,6 +14,9 @@ interface AppLayoutProps {
 }
 
 export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
+
+    const { auth } = usePage<PageProps>().props;
+
     // Handle flash messages
     useFlashMessage();
 
@@ -40,6 +44,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     }, [pageProps.success, pageProps.error, pageProps.info, pageProps.warning]);
 
     return (
+            <NotificationProvider user={auth.user}>
         <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
             {children}
 
@@ -76,6 +81,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
                     },
                 }}
             />
-        </AppLayoutTemplate>
+            </AppLayoutTemplate>
+            </NotificationProvider>
     );
 };
