@@ -16,7 +16,9 @@ class NotificationController extends Controller
             ->orderBy('created_at', 'desc')
             ->get();
 
-        return response()->json($notifications);
+        return response()->json([
+            'notifications' => $notifications
+        ]);
     }
 
     public function markAsRead(Request $request, string $notificationId)
@@ -36,16 +38,21 @@ class NotificationController extends Controller
         $contentItemId = $notification->data['content_item_id'] ?? null;
 
         if (!$contentItemId) {
-            return response()->json(['error' => 'Content item not found in notification'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => 'Content item not found in notification'
+            ], 400);
         }
 
         // Find the content item and verify user has access
         $contentItem = ContentItem::findOrFail($contentItemId);
 
-        // Return JSON response with redirect URL for frontend
+        $redirectUrl = route('notifications.content.show', $contentItem);
+
         return response()->json([
+            'success' => true,
             'message' => 'Notification marked as read',
-            'redirect_url' => route('notifications.content.show', $contentItem),
+            'redirect_url' => $redirectUrl,
             'content_item_id' => $contentItemId
         ]);
     }
@@ -56,7 +63,10 @@ class NotificationController extends Controller
             ->unreadNotifications()
             ->update(['read_at' => now()]);
 
-        return response()->json(['message' => 'All notifications marked as read']);
+        return response()->json([
+            'success' => true,
+            'message' => 'All notifications marked as read'
+        ]);
     }
 
     public function clearAll(Request $request)
@@ -65,9 +75,11 @@ class NotificationController extends Controller
             ->notifications()
             ->delete();
 
-        return response()->json(['message' => 'All notifications cleared']);
+        return response()->json([
+            'success' => true,
+            'message' => 'All notifications cleared'
+        ]);
     }
-
 
     public function show(Request $request, ContentItem $contentItem)
     {

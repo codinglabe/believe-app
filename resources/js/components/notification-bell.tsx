@@ -61,9 +61,10 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
     if (!userId) return
 
     setIsLoading(true)
+
     try {
       const response = await axios.get("/notifications")
-      const data = response.data
+      const data = response.data.notifications || []
 
       const formattedNotifications = data.map((dbNotif: DatabaseNotification) => {
         const notificationData = typeof dbNotif.data === "string" ? JSON.parse(dbNotif.data) : dbNotif.data
@@ -94,23 +95,16 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
     try {
       const response = await axios.post(`/notifications/${notification.id}/read`)
 
-      if (response.status === 200) {
-        const result = response.data
+      // Update local state
+      setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
+      setUnreadCount((prev) => Math.max(0, prev - 1))
 
-        // Update local state
-        setNotifications((prev) => prev.map((n) => (n.id === notification.id ? { ...n, read: true } : n)))
-        setUnreadCount((prev) => Math.max(0, prev - 1))
-
-        // Redirect to content page
-        if (result.redirect_url) {
-          router.visit(result.redirect_url)
-        } else if (notification.content_item_id) {
-          router.visit(`/notifications/content/${notification.content_item_id}`)
-        }
-
-        return true
+      // Redirect to content page using Inertia router
+      if (notification.content_item_id) {
+        router.visit(`/notifications/content/${notification.content_item_id}`)
       }
-      return false
+
+      return true
     } catch (error) {
       console.error("Error marking notification as read:", error)
       return false
@@ -119,14 +113,12 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
 
   const markAllAsRead = async (): Promise<boolean> => {
     try {
-      const response = await axios.post("/notifications/mark-all-read")
+      await axios.post("/notifications/mark-all-read")
 
-      if (response.status === 200) {
-        setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
-        setUnreadCount(0)
-        return true
-      }
-      return false
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })))
+      setUnreadCount(0)
+
+      return true
     } catch (error) {
       console.error("Error marking all notifications as read:", error)
       return false
@@ -135,14 +127,12 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
 
   const clearAllNotifications = async (): Promise<boolean> => {
     try {
-      const response = await axios.post("/notifications/clear-all")
+      await axios.post("/notifications/clear-all")
 
-      if (response.status === 200) {
-        setNotifications([])
-        setUnreadCount(0)
-        return true
-      }
-      return false
+      setNotifications([])
+      setUnreadCount(0)
+
+      return true
     } catch (error) {
       console.error("Error clearing all notifications:", error)
       return false
@@ -166,12 +156,14 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
             title: data.title || "New Notification",
             body: data.body || "",
             content_item_id: data.content_item_id || 0,
-            type: data.type || "campaign",
+            type: data.content_type || "campaign",
             channel: data.channel || "app",
             meta: data.meta || {},
             timestamp: data.sent_at || new Date().toISOString(),
             read: false,
           }
+
+            console.log("New notification object:", newNotification)
 
           setNotifications((prev) => [newNotification, ...prev])
           setUnreadCount((prev) => prev + 1)

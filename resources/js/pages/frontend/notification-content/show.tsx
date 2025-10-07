@@ -113,7 +113,7 @@ export default function Show({ contentItem }: Props) {
               <ArrowLeft className="h-4 w-4 group-hover:-translate-x-1 transition-transform" />
               Back to Dashboard
             </Button>
-            <div className="flex gap-2">
+            {/* <div className="flex gap-2">
               <Button
                 variant="outline"
                 size="icon"
@@ -132,7 +132,7 @@ export default function Show({ contentItem }: Props) {
               >
                 <BookmarkPlus className={`h-4 w-4 ${isBookmarked ? 'fill-current' : ''}`} />
               </Button>
-            </div>
+            </div> */}
           </div>
 
           {/* Main Content */}

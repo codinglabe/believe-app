@@ -92,17 +92,17 @@ class DispatchDueDrops extends Command
                                         ]);
                                     }
 
-                                    // Send notification via Laravel notification system
-                                    $user->notify(new DailyPrayerNotification($drop->contentItem, $channel));
+                                   $user->notify(new DailyPrayerNotification($drop->contentItem, $channel));
+
 
                                     // Broadcast only for push/web channels (not for WhatsApp)
-                                    if (in_array($channel, ['push', 'web'])) {
-                                        broadcast(new CampaignNotificationSent(
-                                            $drop->contentItem,
-                                            $user->id,
-                                            $channel
-                                        ))->toOthers();
-                                    }
+                                    // if (in_array($channel, ['push', 'web'])) {
+                                    //     broadcast(new CampaignNotificationSent(
+                                    //         $drop->contentItem,
+                                    //         $user->id,
+                                    //         $channel,
+                                    //     ))->toOthers();
+                                    // }
 
                                     $sendJob->update(['status' => 'sent']);
                                     $sentCount++;

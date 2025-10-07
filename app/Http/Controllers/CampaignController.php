@@ -38,7 +38,7 @@ class CampaignController extends Controller
 
         $contentItems = ContentItem::forOrganization($organizationId)
             ->approved()
-            ->prayers()
+            // ->prayers()
             ->get();
 
         $users = User::where('login_status', true)

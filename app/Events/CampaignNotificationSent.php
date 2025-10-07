@@ -19,12 +19,14 @@ class CampaignNotificationSent implements ShouldBroadcast
     public $contentItem;
     public $userId;
     public $channel;
+    public $notificationId;
 
-    public function __construct(ContentItem $contentItem, int $userId, string $channel)
+    public function __construct(ContentItem $contentItem, int $userId, string $channel, $notificationId = null)
     {
         $this->contentItem = $contentItem;
         $this->userId = $userId;
         $this->channel = $channel;
+        $this->notificationId = $notificationId;
     }
 
     /**
@@ -42,7 +44,7 @@ class CampaignNotificationSent implements ShouldBroadcast
      */
     public function broadcastAs(): string
     {
-        return 'campaign.notification';
+        return 'campaign.event.notification';
     }
 
     /**
@@ -51,7 +53,7 @@ class CampaignNotificationSent implements ShouldBroadcast
     public function broadcastWith(): array
     {
         return [
-            'id' => uniqid('notif_'),
+            'id' => $this->notificationId ?? uniqid('notif_'),
             'title' => $this->contentItem->title,
             'body' => strip_tags($this->contentItem->body),
             'content_item_id' => $this->contentItem->id,
