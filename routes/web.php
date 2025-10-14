@@ -78,6 +78,14 @@ Route::get('/about', function () {
     return Inertia::render('frontend/about');
 })->name('about');
 
+Route::get('/privacy-policy', function () {
+    return Inertia::render('frontend/PrivacyPolicy');
+})->name('privacy.policy');
+
+Route::get('/terms-of-service', function () {
+    return Inertia::render('frontend/TermsOfService');
+})->name('terms.service');
+
 Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');

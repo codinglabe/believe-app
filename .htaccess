@@ -10,4 +10,9 @@
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteRule ^(.*)$ public/$1 [L]
+  
+  <FilesMatch "^\.env">
+    Require all denied
+  </FilesMatch>
 </IfModule>
+
