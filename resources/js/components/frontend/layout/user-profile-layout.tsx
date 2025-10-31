@@ -27,7 +27,8 @@ import {
   Tag,
   Text,
   MessageCircle,
-  GraduationCap, // Added MessageCircle icon
+  GraduationCap,
+  UserCheck, // Added MessageCircle icon
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -85,10 +86,10 @@ const navigationItems = [
     color: "from-green-400 to-blue-600",
   },
   {
-    name: "Favorites",
-    href: "/profile/favorites",
-    icon: Heart,
-    description: "Saved organizations",
+    name: "Following",
+    href: "/profile/following",
+    icon: UserCheck,
+    description: "Following organizations",
     color: "from-red-500 to-pink-600",
   },
   {
@@ -351,7 +352,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     </p>
                   </div>
                   <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-4 rounded-2xl shadow-lg">
-                    <User className="w-6 h-6 text-white" />
+                    <UserCheck className="w-6 h-6 text-white" />
                   </div>
                 </div>
               </CardContent>

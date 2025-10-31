@@ -54,7 +54,7 @@ export default function ProfileFavorites() {
   }
 
   return (
-    <ProfileLayout title="Favorite Organizations" description="Organizations you follow and support regularly">
+    <ProfileLayout title="Following Organizations" description="Organizations you follow and support regularly">
       <div className="space-y-6">
         {/* Favorites List */}
         {favoriteOrganizations.length > 0 ? (

@@ -67,7 +67,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                 if (!childItem.permission && !childItem.role) return true;
                 return can(childItem.permission ?? '') || role(childItem.role ?? '');
             });
-            
+
             // Show group if user has group permission OR if any child is visible
             const hasGroupPermission = can(item.permission ?? '') || role(item.role ?? '');
             return hasGroupPermission || hasVisibleChild;
@@ -108,7 +108,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
                             </SidebarMenu>
-                            
+
                             {isExpanded && (
                                 <div className="ml-4 space-y-1">
                                     {item.items.map((subItem) => (

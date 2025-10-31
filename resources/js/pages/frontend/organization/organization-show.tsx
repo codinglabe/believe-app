@@ -22,6 +22,8 @@ import {
   Clock,
   Users,
   Info,
+  UserCheck,
+  UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -150,7 +152,7 @@ function YouTubeChannelVideos({ channelUrl }: { channelUrl: string }) {
 }
 
 export default function OrganizationPage({ auth, organization, isFav }: { organization: any; isFav: boolean }) {
-  const [isFavorite, setIsFavorite] = useState(isFav || false)
+  const [isFavorite, setIsFavorite] = useState(organization.is_favorited || false)
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [currentProductPage, setCurrentProductPage] = useState(1)
   const [currentjobPostsPage, setCurrentjobPostsPage] = useState(1)
@@ -177,7 +179,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   const { post, processing } = useForm()
 
   const toggleFavorite = () => {
-    post(route("user.organizations.toggle-favorite", { id: organization.id }), {
+    post(route("user.organizations.toggle-favorite", organization.id), {
       preserveScroll: true,
       preserveState: true,
       onSuccess: () => setIsFavorite(!isFavorite),
@@ -423,15 +425,19 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                       Donate Now
                     </Button>
                     <Button
-                      onClick={toggleFavorite}
-                      variant="outline"
-                      size="lg"
-                      className="bg-white/10 border-white/20 text-white hover:bg-white/20 w-full sm:w-auto"
-                    >
-                      <Heart className={`mr-2 h-5 w-5 ${isFavorite ? "fill-current text-red-500" : ""}`} />
-                      <span className="hidden sm:inline">{isFavorite ? "Favorited" : "Add to Favorites"}</span>
-                      <span className="sm:hidden">{isFavorite ? "Favorited" : "Favorite"}</span>
-                    </Button>
+  onClick={toggleFavorite}
+  variant="outline"
+  size="lg"
+  className="bg-white/10 border-white/20 text-white hover:bg-white/20 w-full sm:w-auto"
+>
+  {isFavorite ? (
+    <UserCheck className="mr-2 h-5 w-5" />
+  ) : (
+    <UserPlus className="mr-2 h-5 w-5" />
+  )}
+  <span className="hidden sm:inline">{isFavorite ? "Following" : "Follow"}</span>
+  <span className="sm:hidden">{isFavorite ? "Following" : "Follow"}</span>
+</Button>
                     {getCartItemCount() > 0 && (
                       <Button
                         onClick={() => setShowCartModal(true)}

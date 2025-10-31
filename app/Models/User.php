@@ -561,4 +561,9 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->notifications()->whereNull('read_at');
     }
 
+    public function pushTokens()
+    {
+        return $this->hasMany(UserPushToken::class);
+    }
+
 }

@@ -31,9 +31,11 @@ import {
     Plus,
     Mail,
     CalendarPlus,
-    PlusCircle
+    PlusCircle,
+    Star
 } from 'lucide-react';
 import AppLogo from './app-logo';
+import SiteTitle from './site-title';
 
 
 const mainNavItems: (NavItem | NavGroup)[] = [
@@ -84,6 +86,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Create Campaign',
                 href: '/campaigns/create',
                 icon: CalendarPlus, // or Send for create campaign
+                role: "organization"
+            },
+            {
+                title: 'AI Campaign Generator',
+                href: '/campaigns/ai/create',
+                icon: Star, // or Send for create campaign
                 role: "organization"
             },
         ],
@@ -326,9 +334,10 @@ export function AppSidebar() {
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild className="hover:bg-accent/50 transition-colors">
-                            <Link href="/dashboard" prefetch>
-                                <AppLogo />
-                            </Link>
+                            {/* <Link href="/dashboard" prefetch> */}
+                                {/* <AppLogo /> */}
+                                <SiteTitle href={route("dashboard")} />
+                            {/* </Link> */}
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                 </SidebarMenu>

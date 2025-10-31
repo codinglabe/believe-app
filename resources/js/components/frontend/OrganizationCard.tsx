@@ -3,7 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 
-import { MapPin, Star, ArrowRight, Heart } from "lucide-react"
+import { MapPin, Star, ArrowRight, Heart, UserCheck, UserPlus } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
@@ -66,27 +66,25 @@ export default function OrganizationCard({
     setIsFavorited(newFavoriteState)
 
     try {
-      await router.post(
-        `/organizations/${organization.id}/toggle-favorite`,
-        {},
-        {
-          preserveScroll: true,
-          onSuccess: () => {
-            setIsFavorited(newFavoriteState)
-          },
-          onError: () => {
-            // Revert on error
-            setIsFavorited(!newFavoriteState)
-          },
-          onFinish: () => {
-            setIsLoading(false)
-          },
-        },
-      )
-    } catch (error) {
-      setIsFavorited(!newFavoriteState)
-      setIsLoading(false)
-    }
+  router.post(route("user.organizations.toggle-favorite", organization.id),{},
+    {
+      preserveScroll: true,
+      onSuccess: () => {
+        setIsFavorited(newFavoriteState)
+      },
+      onError: () => {
+        // Revert on error
+        setIsFavorited(!newFavoriteState)
+      },
+      onFinish: () => {
+        setIsLoading(false)
+      },
+    },
+  )
+} catch (error) {
+  setIsFavorited(!newFavoriteState)
+  setIsLoading(false)
+}
   }
 
   return (
@@ -117,8 +115,8 @@ export default function OrganizationCard({
             </Badge>
           </div>
 
-          {showFavorite && organization.is_registered && (
-            <div className="absolute top-4 right-4">
+          {/* {showFavorite && organization.is_registered && (
+            <div className="absolute top-4 right-4 z-50 cursor-pointer">
               <button
                 onClick={handleToggleFavorite}
                 disabled={isLoading}
@@ -129,7 +127,25 @@ export default function OrganizationCard({
                 <Heart className={`h-5 w-5 ${isFavorited ? "fill-current" : ""}`} />
               </button>
             </div>
-          )}
+                  )} */}
+
+                  {showFavorite && organization.is_registered && (
+  <div className="absolute top-4 right-4 z-50 cursor-pointer">
+    <button
+      onClick={handleToggleFavorite}
+      disabled={isLoading}
+      className={`bg-white/90 rounded-full p-1.5 transition-all duration-200 ${
+        isFavorited ? "text-blue-500 hover:bg-blue-50" : "text-gray-400 hover:text-blue-500 hover:bg-white"
+      } ${isLoading ? "opacity-50 cursor-not-allowed" : ""}`}
+    >
+      {isFavorited ? (
+        <UserCheck className="h-5 w-5" />
+      ) : (
+        <UserPlus className="h-5 w-5" />
+      )}
+    </button>
+  </div>
+)}
 
           <div className="absolute bottom-4 left-4 right-4">
             <div className="flex items-center justify-between text-white text-sm">

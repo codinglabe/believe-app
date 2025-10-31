@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Campaign;
 use App\Models\ContentItem;
 use App\Models\User;
+use App\Services\AIContentGenerator;
 use App\Services\CampaignPlanner;
 use Illuminate\Http\Request;
 use Inertia\Inertia;

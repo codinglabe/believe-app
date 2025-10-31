@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExcelDataController;
@@ -57,6 +58,7 @@ use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
+use App\Http\Controllers\PushTokenController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
@@ -73,6 +75,10 @@ use Illuminate\Support\Facades\Http;
 Broadcast::routes(['middleware' => ['auth']]);
 
 Route::get('/', [HomeController::class, "index"])->name('home');
+
+Route::get("pwa-setup", function () {
+    return Inertia::render('pwa-setup/page');
+})->name('pwa.install');
 
 Route::get('/about', function () {
     return Inertia::render('frontend/about');
@@ -129,8 +135,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
-    Route::get('/profile/favorites', [UserProfileController::class, 'favorites'])->name('profile.favorites');
-    Route::delete("/profile/favorites/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+    Route::get('/profile/following', [UserProfileController::class, 'favorites'])->name('profile.favorites');
+    Route::delete("/profile/following/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
 
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
@@ -199,13 +205,19 @@ Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEma
     Route::get('/states', [ExcelDataExportController::class, 'getStates'])->name('states');
 });
 
-Route::middleware(["auth", 'EnsureEmailIsVerified', 'topics.selected'])->group(function (){
+Route::middleware(["auth", 'EnsureEmailIsVerified'])->group(function (){
     Route::get('/notifications', [NotificationController::class, 'index']);
     Route::post('/notifications/{notification}/read', [NotificationController::class, 'markAsRead']);
     Route::post('/notifications/mark-all-read', [NotificationController::class, 'markAllAsRead']);
     Route::post('/notifications/clear-all', [NotificationController::class, 'clearAll']);
 
     Route::get("/notifications/content/{content_item}", [NotificationController::class, 'show'])->name('notifications.content.show');
+});
+
+// Push notification routes
+Route::middleware(["auth", 'EnsureEmailIsVerified'])->group(function () {
+    Route::post('/push-token', [PushTokenController::class, 'store']);
+    Route::delete('/push-token', [PushTokenController::class, 'destroy']);
 });
 
 
@@ -223,6 +235,9 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/campaigns', [CampaignController::class, 'store'])->name('campaigns.store');
     Route::get('/campaigns/{campaign}', [CampaignController::class, 'show'])->name('campaigns.show');
     Route::delete('/campaigns/{campaign}', [CampaignController::class, 'destroy'])->name('campaigns.destroy');
+
+    Route::get('/campaigns/ai/create', [AiCampaignController::class, 'create'])->name('campaigns.ai-create');
+    Route::post('/campaigns/ai', [AiCampaignController::class, 'store'])->name('campaigns.ai-store');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {

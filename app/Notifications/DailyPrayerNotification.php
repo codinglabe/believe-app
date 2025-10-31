@@ -3,6 +3,7 @@
 namespace App\Notifications;
 
 use App\Models\ContentItem;
+use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
@@ -39,11 +40,11 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
 
             case 'push':
                 // Push: Only broadcast and database
-                return ['broadcast', 'database'];
+                return ['broadcast', 'database', 'firebase'];
 
             case 'web':
                 // Web: Only broadcast and database
-                return ['broadcast', 'database'];
+                return ['broadcast', 'database', 'firebase'];
 
             default:
                 // Default: Only database
@@ -51,6 +52,78 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
         }
     }
 
+    public function toFirebase($notifiable)
+    {
+        if (!$notifiable->pushTokens) {
+            Log::warning('User has no push token', ['user_id' => $notifiable->id]);
+            return null;
+        }
+
+        Log::info('Sending Firebase notification for content item', [
+            'content_item_id' => $this->contentItem->id,
+            'title' => $this->contentItem->title,
+            'user_id' => $notifiable->id,
+        ]);
+
+        try {
+            $firebaseService = new FirebaseService();
+
+            $data = [
+                'content_item_id' => (string) $this->contentItem->id,
+                'type' => $this->contentItem->type,
+                'channel' => $this->channel,
+                'click_action' => route('notifications.content.show', ['content_item' => $this->contentItem->id]),
+                'url' => route('notifications.content.show', ['content_item' => $this->contentItem->id]),
+            ];
+
+            // Add meta data if exists
+            if ($this->contentItem->meta && is_array($this->contentItem->meta)) {
+                foreach ($this->contentItem->meta as $key => $value) {
+                    if (is_array($value)) {
+                        $data['meta_' . $key] = json_encode($value);
+                    } else {
+                        $data['meta_' . $key] = (string) $value;
+                    }
+                }
+            }
+
+            // Add image URL if available
+            if (isset($this->contentItem->meta['image_url'])) {
+                $data['image_url'] = $this->contentItem->meta['image_url'];
+            }
+
+
+            $result = $firebaseService->sendToUser(
+                $notifiable->id,
+                $this->contentItem->title,
+                strip_tags($this->contentItem->body),
+                $data
+            );
+
+            // $result = $firebaseService->sendToDevice(
+            //     $notifiable->push_token,
+            //     $this->contentItem->title,
+            //     strip_tags($this->contentItem->body),
+            //     $data
+            // );
+
+            Log::info('Firebase notification sent successfully', [
+                'user_id' => $notifiable->id,
+                'content_item_id' => $this->contentItem->id,
+            ]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('Firebase notification error', [
+                'user_id' => $notifiable->id,
+                'content_item_id' => $this->contentItem->id,
+                'error_message' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
+    }
     /**
      * Define the broadcast channels
      */

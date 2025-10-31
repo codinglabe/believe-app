@@ -18,6 +18,7 @@ import {
   MapPin,
   Phone,
   User,
+  UserCheck,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -367,7 +368,7 @@ export default function Dashboard({
           {userRole === "organization" && (
             <>
               <StatCard title="My Volunteers" value={stats.myVolunteers} icon={<User className="h-6 w-6" />} />
-              <StatCard title="Total Favorites" value={stats.totalFav} icon={<Heart className="h-6 w-6" />} />
+              <StatCard title="Total Followers" value={stats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
             </>
           )}
         </div>

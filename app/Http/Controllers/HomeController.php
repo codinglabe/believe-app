@@ -14,12 +14,18 @@ class HomeController extends Controller
     public function index(Request $request)
     {
         // Get filter options for search
-        $categories = NteeCode::select('category')
+        // $categories = NteeCode::select('category')
+        //     ->distinct()
+        //     ->orderBy('category')
+        //     ->pluck('category')
+        //     ->prepend('All Categories')
+        //     ->toArray(); // Convert to array
+
+        $categories = DB::table('ntee_codes')
             ->distinct()
             ->orderBy('category')
             ->pluck('category')
-            ->prepend('All Categories')
-            ->toArray(); // Convert to array
+            ->prepend('All Categories');
 
         // Get featured organizations (latest 6 verified organizations)
         $featuredOrganizations = ExcelData::where('status', 'complete')

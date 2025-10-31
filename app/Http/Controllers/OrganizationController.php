@@ -151,14 +151,20 @@ class OrganizationController extends BaseController
             ];
         });
 
-        $categories = NteeCode::select('category')
+        // $categories = NteeCode::select('category')
+        //     ->distinct()
+        //     ->orderBy('category')
+        //     ->pluck('category')
+        //     ->prepend('All Categories');
+
+        $categories = DB::table('ntee_codes')
             ->distinct()
             ->orderBy('category')
             ->pluck('category')
             ->prepend('All Categories');
 
         $filterOptions = [
-            'categories' => $categories->toArray(),
+            'categories' => $categories,
             'states' => $this->getStates(),
             'cities' => ['All Cities'], // Initially empty, will be loaded dynamically
         ];
@@ -347,6 +353,7 @@ class OrganizationController extends BaseController
             $isFav = UserFavoriteOrganization::where('user_id', Auth::id())
                 ->where('organization_id', $registeredOrg->id)
                 ->exists();
+                // dd($isFav);
         }
 
         $transformedOrganization = [
@@ -385,10 +392,10 @@ class OrganizationController extends BaseController
         // Find the registered organization by EIN
         $org = Organization::where('ein', $excelDataOrg->ein)
             ->where('registration_status', 'approved')
-            ->firstOrFail();
+            ->first();
 
         if (!$org) {
-            return redirect()->route('organizations.show', ['id' => $id])
+            return redirect()->route('organizations.show', $id)
                 ->with('error', 'You can only favorite registered organizations.');
         }
 
@@ -405,6 +412,6 @@ class OrganizationController extends BaseController
             ]);
         }
 
-        return redirect()->route('organizations.show', ['id' => $id]);
+        return redirect()->route('organizations.show', $id);
     }
 }

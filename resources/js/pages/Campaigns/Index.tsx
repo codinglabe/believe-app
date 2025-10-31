@@ -13,7 +13,6 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
     // Safely handle campaigns data without breaking pagination
     const safeCampaigns = campaigns || {
         data: [],
-        meta: {
             current_page: 1,
             from: null,
             last_page: 1,
@@ -22,10 +21,8 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
             per_page: 10,
             to: null,
             total: 0
-        }
     };
 
-    console.log(safeCampaigns);
 
     const getStatusColor = (status: string) => {
         switch (status) {

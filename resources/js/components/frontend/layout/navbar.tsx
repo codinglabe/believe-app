@@ -36,6 +36,7 @@ import { Input } from "@/components/frontend/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/frontend/ui/dialog"
 import { showSuccessToast, showErrorToast } from "@/lib/toast" // Import toast utilities
 import { NotificationBell } from "@/components/notification-bell"
+import SiteTitle from "@/components/site-title"
 
 // Extending SharedData interface to include wallet_balance
 interface SharedData {
@@ -138,14 +139,7 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <Link href={route("home")} className="flex items-center space-x-2">
-            <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-2 rounded-xl shadow-lg">
-              <Heart className="h-6 w-6 text-white" />
-            </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-              CareConnect
-            </span>
-          </Link>
+          <SiteTitle/>
 
           {/* Desktop Navigation */}
           <div className="hidden xl:flex items-center space-x-1">
@@ -551,12 +545,12 @@ export default function Navbar() {
                           </Dialog>
                         </div>
                       </div>
-                      <Link href={route("user.profile.index")}>
+                      <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <Button variant="ghost" className="w-full justify-start">
                           <User className="mr-2 h-4 w-4" />
                           Profile
                         </Button>
-                      </Link>
+                                          </Link>
                       {auth?.user?.role === "user" && (
                         <Link href={route("chat.index")}>
                           <Button variant="ghost" className="w-full justify-start">
@@ -564,11 +558,15 @@ export default function Navbar() {
                             Chat
                           </Button>
                         </Link>
-                      )}
-                      <Button variant="ghost" className="w-full justify-start">
-                        <Settings className="mr-2 h-4 w-4" />
-                        Settings
-                      </Button>
+         )}
+                        {(auth?.user?.role === "admin" || auth?.user?.role === "organization") && (
+                            <Link href={route("dashboard")}>
+                          <Button variant="ghost" className="w-full justify-start">
+                            <LayoutGrid className="mr-2 h-4 w-4" />
+                            Dashboard
+                          </Button>
+                        </Link>
+                    )}
                       <Button
                         variant="ghost"
                         className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"

@@ -1,5 +1,6 @@
+import SiteTitle from "@/components/site-title"
 import { Link } from "@inertiajs/react"
-import { Heart, Facebook, Twitter, Instagram, Linkedin, Mail, Phone, MapPin } from "lucide-react"
+import {  Facebook, Twitter, Instagram, Linkedin, Mail, Phone, MapPin } from "lucide-react"
 
 export default function Footer() {
   return (
@@ -8,12 +9,8 @@ export default function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
           {/* Logo and Description */}
           <div className="lg:col-span-2">
-            <Link href={route("home")} className="flex items-center space-x-2 mb-6">
-              <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-3 rounded-xl">
-                <Heart className="h-6 w-6 text-white" />
-              </div>
-              <span className="text-2xl font-bold">CareConnect</span>
-            </Link>
+            {/* Logo */}
+            <SiteTitle className="mb-6"/>
             <p className="text-gray-400 mb-6 max-w-md leading-relaxed">
               Connecting hearts with causes worldwide. We help you discover and support verified non-profit
               organizations making a real difference in communities across the globe.

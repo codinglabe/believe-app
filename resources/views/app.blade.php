@@ -5,6 +5,21 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
+        <!-- PWA Meta Tags -->
+        <link rel="manifest" href="/manifest.json">
+        <meta name="theme-color" content="#000000">
+
+        <!-- Icons -->
+        <link rel="icon" href="/web-app-manifest-192x192.png">
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+         <meta name="mobile-web-app-capable" content="yes">
+
+        <!-- PWA Capabilities -->
+        <meta name="apple-mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+        <meta name="apple-mobile-web-app-title" content="501c3ers">
+
         {{-- Inline script to detect system dark mode preference and apply it immediately --}}
         <script>
             (function() {
@@ -36,6 +51,8 @@
         <Link rel="icon" href="/favicon.ico" sizes="any">
         <Link rel="icon" href="/favicon.svg" type="image/svg+xml">
         <Link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+
 
         <Link rel="preconnect" href="https://fonts.bunny.net">
         <Link href="https://fonts.bunny.net/css?family=instrument-sans:400,500,600" rel="stylesheet" />

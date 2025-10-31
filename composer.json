@@ -12,6 +12,7 @@
         "php": "^8.2",
         "doctrine/dbal": "*",
         "google/apiclient": "^2.18",
+        "google/auth": "^1.48",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel-notification-channels/fcm": "^5.1",
         "laravel-notification-channels/twilio": "^4.1",
