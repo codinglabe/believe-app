@@ -37,6 +37,7 @@ import { showErrorToast } from "@/lib/toast"
 import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge"
 import type React from "react"
 import { useEffect, useState } from "react"
+import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
 
 // Helper to extract channel ID from a YouTube URL
 function extractYouTubeChannelId(url: string): string | null {
@@ -423,8 +424,14 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                     >
                       <Heart className="mr-2 h-5 w-5" />
                       Donate Now
-                    </Button>
-                    <Button
+                                      </Button>
+                                      <OrgFollowButton
+  organization={organization}
+  auth={auth}
+  initialIsFollowing={organization.is_favorited || false}
+  initialNotifications={organization.notifications_enabled || false}
+/>
+                    {/* <Button
   onClick={toggleFavorite}
   variant="outline"
   size="lg"
@@ -437,7 +444,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   )}
   <span className="hidden sm:inline">{isFavorite ? "Following" : "Follow"}</span>
   <span className="sm:hidden">{isFavorite ? "Following" : "Follow"}</span>
-</Button>
+</Button> */}
                     {getCartItemCount() > 0 && (
                       <Button
                         onClick={() => setShowCartModal(true)}

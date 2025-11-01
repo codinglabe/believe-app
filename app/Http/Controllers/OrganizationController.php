@@ -349,11 +349,16 @@ class OrganizationController extends BaseController
             ->first();
 
         $isFav = false;
+        $notificationsEnabled = false;
         if ($registeredOrg && Auth::check()) {
-            $isFav = UserFavoriteOrganization::where('user_id', Auth::id())
+            $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
                 ->where('organization_id', $registeredOrg->id)
-                ->exists();
-                // dd($isFav);
+                ->first();
+
+            if ($favorite) {
+                $isFav = true;
+                $notificationsEnabled = $favorite->notifications;
+            }
         }
 
         $transformedOrganization = [
@@ -370,6 +375,7 @@ class OrganizationController extends BaseController
             'created_at' => $organization->created_at,
             'is_registered' => (bool) $registeredOrg,
             'is_favorited' => $isFav,
+            'notifications_enabled' => $notificationsEnabled,
             'registered_organization' => $registeredOrg,
             'description' => $registeredOrg ? $registeredOrg->description : 'This organization is listed in our database but has not yet registered for additional features.',
             'mission' => $registeredOrg ? $registeredOrg->mission : 'Mission statement not available for unregistered organizations.',
@@ -383,7 +389,6 @@ class OrganizationController extends BaseController
 
     public function toggleFavorite(Request $request, int $id)
     {
-        // $this->authorizePermission($request, 'organization.read');
         $user = Auth::user();
 
         // Get the ExcelData organization
@@ -396,7 +401,7 @@ class OrganizationController extends BaseController
 
         if (!$org) {
             return redirect()->route('organizations.show', $id)
-                ->with('error', 'You can only favorite registered organizations.');
+                ->with('error', 'You can only follow registered organizations.');
         }
 
         $fav = UserFavoriteOrganization::where('user_id', $user->id)
@@ -405,13 +410,53 @@ class OrganizationController extends BaseController
 
         if ($fav) {
             $fav->delete();
+            return redirect()->route('organizations.show', $id)
+                ->with('success', 'Unfollowed organization');
         } else {
             UserFavoriteOrganization::create([
                 'user_id' => $user->id,
                 'organization_id' => $org->id,
+                'notifications' => true
             ]);
+
+            return redirect()->route('organizations.show', $id)
+                ->with('success', 'Following organization with notifications');
+        }
+    }
+
+    public function toggleNotifications(Request $request, int $id)
+    {
+        $user = Auth::user();
+
+        // Get the ExcelData organization
+        $excelDataOrg = ExcelData::findOrFail($id);
+
+        // Find the registered organization by EIN
+        $org = Organization::where('ein', $excelDataOrg->ein)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$org) {
+            return redirect()->route('organizations.show', $id)
+                ->with('error', 'Organization not found');
         }
 
-        return redirect()->route('organizations.show', $id);
+        $fav = UserFavoriteOrganization::where('user_id', $user->id)
+            ->where('organization_id', $org->id)
+            ->first();
+
+        if (!$fav) {
+            return redirect()->route('organizations.show', $id)
+                ->with('error', 'You are not following this organization');
+        }
+
+        $fav->update([
+            'notifications' => !$fav->notifications
+        ]);
+
+        $message = $fav->notifications ? 'Notifications enabled' : 'Notifications disabled';
+
+        return redirect()->route('organizations.show', $id)
+            ->with('success', $message);
     }
 }

@@ -11,6 +11,7 @@ class UserFavoriteOrganization extends Model
     protected $fillable = [
         'user_id',
         'organization_id',
+        'notifications',
     ];
 
     public function user()
