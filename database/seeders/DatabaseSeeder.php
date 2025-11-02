@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\User;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Google\Service\AndroidEnterprise\Permission;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -33,12 +34,14 @@ class DatabaseSeeder extends Seeder
             SubsectionCodesTableSeeder::class,
             RoleSeeder::class,
             AdminPermissionsSeeder::class,
+            PermissionsSeeder::class,
             ComprehensivePermissionsSeeder::class,
             JobPostsPermisstionSeeder::class,
             assignRole::class,
             AssignRolePermissionToUsersSeeder::class,
             UsernameSeeder::class,
             CategorySeeder::class,
+            RegenerateStripeCustomerIdSeeder::class,
             ExistingUserReferralGenerate::class,
             PositionCategoriesAndJobPositionsSeeder::class,
             EventTypesTableSeeder::class,

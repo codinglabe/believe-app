@@ -184,4 +184,11 @@ class Organization extends Model
     {
         return $this->hasMany(Event::class, 'organization_id');
     }
+
+    public function followers()
+    {
+        return $this->belongsToMany(User::class, 'user_favorite_organizations', 'organization_id', 'user_id')
+            ->withPivot('notifications') // notifications column include
+            ->withTimestamps();
+    }
 }

@@ -100,13 +100,6 @@ class DailyPrayerNotification extends Notification implements ShouldQueue, Shoul
                 $data
             );
 
-            // $result = $firebaseService->sendToDevice(
-            //     $notifiable->push_token,
-            //     $this->contentItem->title,
-            //     strip_tags($this->contentItem->body),
-            //     $data
-            // );
-
             Log::info('Firebase notification sent successfully', [
                 'user_id' => $notifiable->id,
                 'content_item_id' => $this->contentItem->id,

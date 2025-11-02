@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendJobPostNotification;
 use App\Models\JobPost;
 use App\Models\JobPosition;
 use App\Models\Organization;
@@ -118,12 +119,14 @@ class JobPostController extends BaseController
 
         if ($request->user()) {
             $validated['organization_id'] = $request->user()->organization?->id;
-
         }
 
         $validated['date_posted'] = now()->toDateString();
 
-        JobPost::create($validated);
+        $jobPost = JobPost::create($validated);
+
+        // Dispatch job to queue for sending notifications
+        SendJobPostNotification::dispatch($jobPost);
 
         return redirect()->route('job-posts.index')
             ->with('success', 'Job post created successfully.');
