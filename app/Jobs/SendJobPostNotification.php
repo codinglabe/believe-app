@@ -53,7 +53,7 @@ class SendJobPostNotification implements ShouldQueue
                 return;
             }
 
-            $positionName = $this->jobPost->position->name ?? 'New Position';
+            $positionName = $this->jobPost->position->title ?? 'New Position';
             $title = "New Job Opportunity";
             $body = "{$organization->name} posted a new {$positionName} position";
             $jobUrl = route('jobs.show', ['id' => $this->jobPost->id]);
