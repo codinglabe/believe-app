@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\EventRequest;
+use App\Jobs\SendEventNotification;
 use App\Models\Event;
 use App\Models\EventType;
 use App\Models\Organization;
@@ -101,7 +102,11 @@ class EventController extends BaseController
             $data['poster_image'] = $path;
         }
 
-        Event::create($data);
+        $event = Event::create($data);
+
+        if($request->visibility === 'public' && $request->status !== 'cancelled') {
+            SendEventNotification::dispatch($event);
+        }
 
         return redirect()->route('events.index')->with('success', 'Event created successfully!');
     }

@@ -126,7 +126,9 @@ class JobPostController extends BaseController
         $jobPost = JobPost::create($validated);
 
         // Dispatch job to queue for sending notifications
-        SendJobPostNotification::dispatch($jobPost);
+        if ($jobPost->status === 'open') {
+            SendJobPostNotification::dispatch($jobPost);
+        }
 
         return redirect()->route('job-posts.index')
             ->with('success', 'Job post created successfully.');

@@ -170,13 +170,13 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
 
           playNotificationSound()
 
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(newNotification.title, {
-              body: newNotification.body,
-              icon: "/icon.png",
-              tag: newNotification.id,
-            })
-          }
+        //   if ("Notification" in window && Notification.permission === "granted") {
+        //     new Notification(newNotification.title, {
+        //       body: newNotification.body,
+        //       icon: "/icon.png",
+        //       tag: newNotification.id,
+        //     })
+        //   }
         })
         .listen(".Illuminate\\Notifications\\Events\\BroadcastNotificationCreated", (data: any) => {
           console.log("[v0] Received Laravel notification:", data)
@@ -200,13 +200,13 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
 
           playNotificationSound()
 
-          if ("Notification" in window && Notification.permission === "granted") {
-            new Notification(newNotification.title, {
-              body: newNotification.body,
-              icon: "/icon.png",
-              tag: newNotification.id,
-            })
-          }
+        //   if ("Notification" in window && Notification.permission === "granted") {
+        //     new Notification(newNotification.title, {
+        //       body: newNotification.body,
+        //       icon: "/icon.png",
+        //       tag: newNotification.id,
+        //     })
+        //   }
         })
 
       if ("Notification" in window && Notification.permission === "default") {

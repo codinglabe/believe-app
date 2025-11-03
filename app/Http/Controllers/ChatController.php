@@ -8,6 +8,7 @@ use App\Events\MessageSent;
 use App\Events\RoomCreated;
 use App\Events\RoomUpdated;
 use App\Events\UserTyping;
+use App\Jobs\SendChatMessageNotification;
 use App\Models\ChatMessage;
 use App\Models\ChatRoom;
 use App\Models\ChatTopic;
@@ -245,6 +246,8 @@ class ChatController extends Controller
         $message->reads()->attach(auth()->id());
 
         broadcast(new MessageSent($message));
+
+        SendChatMessageNotification::dispatch($message);
 
         return response()->json(['message' => $message->load('user.organization', 'replyToMessage.user.organization')]);
     }

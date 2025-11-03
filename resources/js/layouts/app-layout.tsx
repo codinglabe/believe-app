@@ -21,7 +21,6 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
 
     const { auth } = usePage<PageProps>().props;
 
-
     function getDeviceInfo() {
         return {
             device_id: localStorage.getItem('device_id') || generateDeviceId(),
@@ -148,6 +147,6 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
                 }}
             />
             </AppLayoutTemplate>
-            </NotificationProvider>
+         </NotificationProvider>
     );
 };

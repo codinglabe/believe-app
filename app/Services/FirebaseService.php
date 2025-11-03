@@ -56,11 +56,11 @@ class FirebaseService
 
         // Extract content_item_id from data or use default
         $contentItemId = $data['content_item_id'] ?? null;
+        $clickAction = $data['click_action'] ?? null;
 
         // Build the notification URL
-        $notificationUrl = $contentItemId
-            ? route('notifications.content.show', ['content_item' => $contentItemId])
-            : url('/');
+        $notificationUrl = $clickAction
+            ?? url('/');
 
         $message = [
             'message' => [
@@ -80,7 +80,7 @@ class FirebaseService
                     'notification' => [
                         'title' => $title,
                         'body' => $body,
-                        'icon' => url('/icon.png'),
+                        'icon' => url('/favicon-96x96.png'),
                         'badge' => url('/badge.png'),
                         'actions' => [
                             [

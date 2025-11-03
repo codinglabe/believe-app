@@ -28,7 +28,7 @@ export const initializeMessaging = async () => {
                 registration = await navigator.serviceWorker.register("/firebase-messaging-sw.js", {
                     scope: "/",
                 });
-                console.log("[Firebase] Service Worker registered:", registration);
+                // console.log("[Firebase] Service Worker registered:", registration);
             } else {
                 console.log("[Firebase] Service Worker already registered:", registration);
             }
@@ -37,30 +37,30 @@ export const initializeMessaging = async () => {
             messaging = getMessaging(app);
 
             // Handle foreground messages
-            // onMessage(messaging, (payload) => {
-            //     console.log("[Firebase] Message received in foreground:", payload);
+            onMessage(messaging, (payload) => {
+                console.log("[Firebase] Message received in foreground:", payload);
 
-            //     // Dispatch custom event for React components to listen to
-            //     window.dispatchEvent(
-            //         new CustomEvent("firebase-notification", {
-            //             detail: {
-            //                 title: payload.notification?.title,
-            //                 body: payload.notification?.body,
-            //                 data: payload.data,
-            //             },
-            //         }),
-            //     );
+                // Dispatch custom event for React components to listen to
+                window.dispatchEvent(
+                    new CustomEvent("firebase-notification", {
+                        detail: {
+                            title: payload.notification?.title,
+                            body: payload.notification?.body,
+                            data: payload.data,
+                        },
+                    }),
+                );
 
-            //     // Show notification even in foreground
-            //     if (Notification.permission === "granted") {
-            //         new Notification(payload.notification?.title || "Notification", {
-            //             body: payload.notification?.body,
-            //             icon: payload.notification?.icon || "/icon.png",
-            //             badge: payload.notification?.badge || "/badge.png",
-            //             tag: payload.data?.content_item_id || "notification",
-            //         });
-            //     }
-            // });
+                // // Show notification even in foreground
+                if (Notification.permission === "granted") {
+                    new Notification(payload.notification?.title || "Notification", {
+                        body: payload.notification?.body,
+                        icon: payload.notification?.icon || "/favicon-96x96.png",
+                        badge: payload.notification?.badge || "/badge.png",
+                        tag: payload.data?.content_item_id || "notification",
+                    });
+                }
+            });
 
             return registration;
         } catch (error) {
@@ -82,7 +82,7 @@ export const requestNotificationPermission = async (): Promise<string | null> =>
         const permission = await Notification.requestPermission();
 
         if (permission === "granted") {
-            console.log("[Firebase] Notification permission granted");
+            // console.log("[Firebase] Notification permission granted");
 
             // Use your VAPID key directly
             const vapidKey = "BC_RUtntF6QVwsng1uiwnd6qHozF8Q8y_P4qG0G1BrgtAK5GKQr4_J8k2509yhssNFB7ZqgqrzHN_frrOVcN-2I";
@@ -92,7 +92,7 @@ export const requestNotificationPermission = async (): Promise<string | null> =>
                 vapidKey: vapidKey,
             });
 
-            console.log("[Firebase] FCM Token:", token);
+            // console.log("[Firebase] FCM Token:", token);
             return token;
         } else {
             console.log("[Firebase] Notification permission denied");

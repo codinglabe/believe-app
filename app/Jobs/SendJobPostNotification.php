@@ -56,19 +56,14 @@ class SendJobPostNotification implements ShouldQueue
             $positionName = $this->jobPost->position->title ?? 'New Position';
             $title = "New Job Opportunity";
             $body = "{$organization->name} posted a new {$positionName} position";
-            $jobUrl = route('jobs.show', ['id' => $this->jobPost->id]);
+            $jobUrl = route('jobs.show', $this->jobPost->id);
 
+
+            $firebaseService = app(FirebaseService::class);
 
             foreach ($followers as $follower) {
-                $this->sendNotificationToFollower($follower, $title, $body, $jobUrl);
+                $this->sendNotificationToFollower($follower, $title, $body, $jobUrl, $firebaseService);
             }
-
-            Log::info('Job post notifications sent via queue', [
-                'job_post_id' => $this->jobPost->id,
-                'organization' => $organization->name,
-                'followers_count' => $followers->count(),
-                'position' => $positionName
-            ]);
 
         } catch (\Exception $e) {
             Log::error('Error in SendJobPostNotification job: ' . $e->getMessage(), [
@@ -82,10 +77,10 @@ class SendJobPostNotification implements ShouldQueue
     /**
      * Send notification to individual follower
      */
-    private function sendNotificationToFollower($follower, $title, $body, $jobUrl): void
+    private function sendNotificationToFollower($follower, $title, $body, $jobUrl, $firebaseService): void
     {
         try {
-            $firebaseService = new FirebaseService();
+
 
             $data = [
                 'content_item_id' => (string) $this->jobPost->id,
@@ -96,10 +91,22 @@ class SendJobPostNotification implements ShouldQueue
             ];
 
             // Send Firebase notification
-            $firebaseService->sendToUser($follower->id, $title, $body, $data);
+            $result =  $firebaseService->sendToUser($follower->id, $title, $body, $data);
 
             // Store in database notifications
-            $this->storeDatabaseNotification($follower, $title, $body, $data);
+            // $this->storeDatabaseNotification($follower, $title, $body, $data);
+
+            if ($result) {
+                Log::info('✅ Firebase Job notification sent successfully', [
+                    'user_id' => $follower->id,
+                    'job_post_id' => $this->jobPost->id,
+                ]);
+            } else {
+                Log::warning('❌ Firebase Job notification failed', [
+                    'user_id' => $follower->id,
+                    'job_post_id' => $this->jobPost->id,
+                ]);
+            }
 
         } catch (\Exception $e) {
             Log::error('Error sending notification to follower: ' . $e->getMessage(), [

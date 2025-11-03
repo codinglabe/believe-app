@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\SendCourseNotification;
 use App\Models\Course;
 use App\Models\Topic;
 use App\Models\Enrollment;
@@ -108,7 +109,7 @@ class CourseController extends BaseController
 
         // ✅ If user is not admin → restrict by organization
         if ($user->role !== 'admin') {
-            $query->where('organization_id', $user->organization_id);
+            $query->where('organization_id', $user->id);
         }
 
         // 🔍 Search functionality
@@ -347,6 +348,8 @@ class CourseController extends BaseController
 
 
             DB::commit();
+
+            SendCourseNotification::dispatch($course);
 
             return redirect()->route('admin.courses.index')->with('success', 'Community course created successfully!');
         } catch (\Exception $e) {

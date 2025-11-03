@@ -46,11 +46,11 @@ class HandleInertiaRequests extends Middleware
 
         // Debug: Log permissions being shared
         if ($user && count($permissions) > 0) {
-            \Log::info('Sharing permissions with frontend for user: ' . $user->name, [
-                'user_id' => $user->id,
-                'permissions' => $permissions,
-                'role' => $role?->name
-            ]);
+            // \Log::info('Sharing permissions with frontend for user: ' . $user->name, [
+            //     'user_id' => $user->id,
+            //     'permissions' => $permissions,
+            //     'role' => $role?->name
+            // ]);
         }
         return [
             ...parent::share($request),
