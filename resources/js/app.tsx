@@ -9,6 +9,7 @@ import { NotificationProvider } from './components/frontend/notification-provide
 import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
 import { initializeTheme } from './hooks/use-appearance';
 import { registerServiceWorker } from './pwa/register-service-worker';
+import { PWAUpdatePrompt } from './components/PWAUpdatePrompt';
 
 
 configureEcho({
@@ -26,7 +27,8 @@ createInertiaApp({
         root.render(
           <NotificationProvider>
             <App {...props} />
-            <PwaInstallPrompt/>
+                <PwaInstallPrompt />
+                <PWAUpdatePrompt />
           </NotificationProvider>
         );
     },

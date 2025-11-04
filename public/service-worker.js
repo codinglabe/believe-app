@@ -1,4 +1,4 @@
-const CACHE_NAME = 'believe-app-cache-v1';
+const CACHE_NAME = `believe-app-cache-${new Date().getTime()}`;
 const PRECACHE_URLS = ['/', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
@@ -53,12 +53,14 @@ self.addEventListener('fetch', (event) => {
 
                     const responseToCache = networkResponse.clone();
 
-                    caches
-                        .open(CACHE_NAME)
-                        .then((cache) => cache.put(request, responseToCache))
-                        .catch((error) => {
-                            console.error('Cache put failed:', error);
-                        });
+                    // ✅ Only cache valid HTTP(S) requests
+                    if (request.url.startsWith('http')) {
+                        caches.open(CACHE_NAME)
+                            .then((cache) => cache.put(request, responseToCache))
+                            .catch((error) => {
+                                console.error('Cache put failed:', error);
+                            });
+                    }
 
                     return networkResponse;
                 })
@@ -75,4 +77,5 @@ self.addEventListener('fetch', (event) => {
         })
     );
 });
+
 

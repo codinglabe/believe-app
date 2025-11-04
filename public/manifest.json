@@ -1,27 +1,68 @@
 {
-    "name": "Believe App",
-    "short_name": "Believe",
-    "id": "/",
-    "start_url": "/",
-    "scope": "/",
-    "display": "standalone",
-    "background_color": "#ffffff",
-    "theme_color": "#7F03DB",
-    "description": "Install the Believe App PWA for quick access to courses, campaigns, and community content.",
-    "icons": [
+  "name": "501c3ers",
+  "short_name": "501c3ers",
+  "description": "Progressive Web App with Firebase Push Notifications",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#ffffff",
+  "theme_color": "#7F03DB",
+  "icons": [
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/web-app-manifest-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/web-app-manifest-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "/screenshots/screenshot-540x720.jpg",
+      "sizes": "540x720",
+      "type": "image/png",
+      "form_factor": "narrow"
+    },
+    {
+      "src": "/screenshots/screenshot-1280x720.jpg",
+      "sizes": "1280x720",
+      "type": "image/png",
+      "form_factor": "wide"
+    }
+  ],
+  "categories": ["productivity"],
+  "shortcuts": [
+    {
+      "name": "Notifications",
+      "short_name": "Notifications",
+      "description": "Open notification settings",
+      "url": "/debug/notifications",
+      "icons": [
         {
-            "src": "/logo.svg",
-            "sizes": "512x512",
-            "type": "image/svg+xml",
-            "purpose": "any"
-        },
-        {
-            "src": "/apple-touch-icon.png",
-            "sizes": "180x180",
-            "type": "image/png",
-            "purpose": "any"
+          "src": "/web-app-manifest-192x192.png",
+          "sizes": "192x192"
         }
-    ],
-    "prefer_related_applications": false
+      ]
+    }
+  ],
+  "prefer_related_applications": false
 }
-

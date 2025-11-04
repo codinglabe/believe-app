@@ -286,8 +286,9 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Building,
                 permission: "ntee.code.read"
             },
-        ]
+        ],
         // Removed group permission - nav-main will show group if any child is visible
+        permission: "classification.code.read"
     },
 
     // Communication Section

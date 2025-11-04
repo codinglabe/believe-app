@@ -5,7 +5,7 @@ import { RefreshCw, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 // Simple version tracking - you can update this manually
-const APP_VERSION = "1.1.0"
+// const APP_VERSION = "1.1.0"
 
 export function PWAUpdatePrompt() {
   const [showUpdate, setShowUpdate] = useState(false)
@@ -16,7 +16,7 @@ export function PWAUpdatePrompt() {
 
     // Check if user has dismissed this specific version
     const dismissedVersion = localStorage.getItem("pwaUpdateDismissedVersion")
-    if (dismissedVersion === APP_VERSION) {
+    if (dismissedVersion === import.meta.env.VITE_APP_VERSION) {
       return
     }
 
@@ -87,7 +87,7 @@ export function PWAUpdatePrompt() {
 
   const handleDismissPermanently = () => {
     // Store dismissal for this specific version
-    localStorage.setItem("pwaUpdateDismissedVersion", APP_VERSION)
+    localStorage.setItem("pwaUpdateDismissedVersion", import.meta.env.VITE_APP_VERSION)
     setShowUpdate(false)
   }
 

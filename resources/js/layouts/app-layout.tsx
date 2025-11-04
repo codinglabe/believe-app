@@ -8,7 +8,7 @@ import { useEffect } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
-import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
+// import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import { initializeMessaging, requestNotificationPermission } from '@/lib/firebase';
 import axios from 'axios';
 
@@ -110,7 +110,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
             <NotificationProvider user={auth.user}>
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
-        <PWAUpdatePrompt />
+        {/* <PWAUpdatePrompt /> */}
             {children}
 
             {/* Toast Container */}

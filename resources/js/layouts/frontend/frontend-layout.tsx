@@ -7,7 +7,7 @@ import toast, { Toaster } from "react-hot-toast"
 import { use, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
 // import { PWAInstallPrompt } from "@/components/PWAInstallPrompt"
-import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
+// import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase"
 import axios from "axios"
 
@@ -123,7 +123,7 @@ export default function RootLayout({
         <Navbar />
               <main>
                   {/* <PWAInstallPrompt /> */}
-                          <PWAUpdatePrompt />
+                          {/* <PWAUpdatePrompt /> */}
           {children}
         </main>
         <Footer />
