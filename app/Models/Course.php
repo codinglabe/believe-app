@@ -16,6 +16,8 @@ class Course extends Model
         'organization_id',
         'user_id',
         'topic_id',
+        'type',
+        'event_type_id',
         'name',
         'slug',
         'description',
@@ -58,12 +60,17 @@ class Course extends Model
         'last_updated' => 'datetime',
     ];
 
-    protected $appends = ['image_url', 'formatted_price'];
+    protected $appends = ['image_url', 'formatted_price', 'formatted_duration', 'formatted_format'];
 
     // Relationships
     public function topic(): BelongsTo
     {
         return $this->belongsTo(Topic::class);
+    }
+
+    public function eventType(): BelongsTo
+    {
+        return $this->belongsTo(EventType::class);
     }
 
     public function organization(): BelongsTo
@@ -81,6 +88,17 @@ class Course extends Model
         return $this->hasMany(Enrollment::class)->where('status', 'active');
     }
 
+    public function enrollments(): HasMany
+    {
+        return $this->hasMany(Enrollment::class);
+    }
+
+    public function enrollmentsCount(): HasMany
+    {
+        return $this->hasMany(Enrollment::class)
+            ->whereIn('status', ['active', 'completed', 'pending']);
+    }
+
     public function getImageUrlAttribute()
     {
         if ($this->image && Storage::disk('public')->exists($this->image)) {
@@ -94,5 +112,28 @@ class Course extends Model
         return $this->pricing_type === "paid"
             ? "$" . number_format($this->course_fee, 2)
             : "Free";
+    }
+
+    public function getFormattedDurationAttribute(): string
+    {
+        return match($this->duration) {
+            '1_session' => '1 Session',
+            '1_week' => '1 Week',
+            '2_weeks' => '2 Weeks',
+            '1_month' => '1 Month',
+            '6_weeks' => '6 Weeks',
+            '3_months' => '3 Months',
+            default => ucfirst(str_replace('_', ' ', $this->duration ?? '')),
+        };
+    }
+
+    public function getFormattedFormatAttribute(): string
+    {
+        return match($this->format) {
+            'online' => 'Online',
+            'in_person' => 'In-Person',
+            'hybrid' => 'Hybrid',
+            default => ucfirst(str_replace('_', ' ', $this->format ?? '')),
+        };
     }
 }

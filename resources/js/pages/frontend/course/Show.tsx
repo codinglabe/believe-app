@@ -38,6 +38,12 @@ interface Topic {
   name: string
 }
 
+interface EventType {
+  id: number
+  name: string
+  category: string
+}
+
 interface Organization {
   id: number
   name: string
@@ -53,11 +59,13 @@ interface Creator {
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
   slug: string
   description: string
+  type: "course" | "event"
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -83,6 +91,7 @@ interface Course {
   created_at: string
   updated_at: string
   topic: Topic | null
+  event_type: EventType | null
   organization: Organization
   creator: Creator
   image_url: string | null
@@ -142,7 +151,7 @@ export default function FrontendCourseShow({
   const handleCancelEnrollment = () => {
     if (!userEnrollment) return
 
-    if (confirm("Are you sure you want to cancel your enrollment? This action cannot be undone.")) {
+    if (confirm(`Are you sure you want to cancel your ${course.type === "course" ? "enrollment" : "registration"}? This action cannot be undone.`)) {
       router.post(`/courses/${course.slug}/cancel`, {
         reason: "User requested cancellation",
       })
@@ -154,7 +163,7 @@ export default function FrontendCourseShow({
 
     if (
       confirm(
-        "Are you sure you want to request a refund? This will cancel your enrollment and process a refund to your original payment method.",
+        `Are you sure you want to request a refund? This will cancel your ${course.type === "course" ? "enrollment" : "registration"} and process a refund to your original payment method.`,
       )
     ) {
       router.post(`/courses/${course.slug}/refund`)
@@ -222,7 +231,7 @@ export default function FrontendCourseShow({
                     className="bg-white/10 border-white/20 text-white hover:bg-white/20"
                   >
                     <ArrowLeft className="mr-2 h-4 w-4" />
-                    Back to Courses
+                    Back to Courses & Events
                   </Button>
                 </Link>
               </div>
@@ -261,9 +270,9 @@ export default function FrontendCourseShow({
                     >
                       <div className="flex items-center justify-between">
                         <div>
-                          <strong>Enrollment Status: {userEnrollment.status_label}</strong>
+                          <strong>{course.type === "course" ? "Enrollment" : "Registration"} Status: {userEnrollment.status_label}</strong>
                           <br />
-                          Enrolled on {new Date(userEnrollment.enrolled_at).toLocaleDateString()}
+                          {course.type === "course" ? "Enrolled" : "Registered"} on {new Date(userEnrollment.enrolled_at).toLocaleDateString()}
                           {userEnrollment.amount_paid > 0 && ` • Paid: $${userEnrollment.amount_paid}`}
                         </div>
                         <div className="flex gap-2 ml-4">
@@ -318,9 +327,19 @@ export default function FrontendCourseShow({
                 {/* Course Info */}
                 <div className="lg:col-span-2 text-white">
                   <div className="flex flex-wrap items-center gap-2 mb-4">
-                    <Badge variant="outline" className="bg-white/20 text-white border-white/50">
-                      {course.topic?.name || "General"}
+                    <Badge className={course.type === "course" ? "bg-blue-600 text-white" : "bg-purple-600 text-white"}>
+                      {course.type === "course" ? "Course" : "Event"}
                     </Badge>
+                    {course.type === "course" && course.topic && (
+                      <Badge variant="outline" className="bg-white/20 text-white border-white/50">
+                        {course.topic.name}
+                      </Badge>
+                    )}
+                    {course.type === "event" && course.event_type && (
+                      <Badge variant="outline" className="bg-white/20 text-white border-white/50">
+                        {course.event_type.name}
+                      </Badge>
+                    )}
                     <Badge variant="outline" className="bg-white/20 text-white border-white/50">
                       {course.language}
                     </Badge>
@@ -339,14 +358,9 @@ export default function FrontendCourseShow({
                   {/* Course Stats */}
                   <div className="flex flex-wrap items-center gap-6 text-white/90">
                     <div className="flex items-center">
-                      <Star className="w-5 h-5 fill-yellow-400 text-yellow-400 mr-2" />
-                      <span className="font-semibold">{course.rating}</span>
-                      <span className="text-sm ml-1">({course.total_reviews} reviews)</span>
-                    </div>
-                    <div className="flex items-center">
                       <Users className="w-5 h-5 mr-2" />
                       <span className="font-semibold">{course.enrolled}</span>
-                      <span className="text-sm ml-1">students enrolled</span>
+                      <span className="text-sm ml-1">{course.type === "course" ? "students enrolled" : "participants registered"}</span>
                     </div>
                     <div className="flex items-center">
                       <Clock className="w-5 h-5 mr-2" />
@@ -373,7 +387,7 @@ export default function FrontendCourseShow({
                     <CardHeader>
                       <CardTitle className="text-xl sm:text-2xl flex items-center text-gray-900 dark:text-white">
                         <User className="mr-3 h-6 w-6 text-blue-500" />
-                        Meet Your Instructor
+                        {course.type === "course" ? "Meet Your Instructor" : "Meet Your Event Organizer"}
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="flex items-start gap-6">
@@ -388,7 +402,7 @@ export default function FrontendCourseShow({
                       </Avatar>
                       <div className="flex-1">
                         <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">{course.creator.name}</h3>
-                        <p className="text-blue-600 dark:text-blue-400 font-medium mb-3">Course Instructor</p>
+                        <p className="text-blue-600 dark:text-blue-400 font-medium mb-3">{course.type === "course" ? "Course Instructor" : "Event Organizer"}</p>
                         <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <div className="flex items-center">
                             <Mail className="w-4 h-4 mr-1" />
@@ -409,7 +423,7 @@ export default function FrontendCourseShow({
                     <CardHeader>
                       <CardTitle className="text-xl sm:text-2xl flex items-center text-gray-900 dark:text-white">
                         <BookOpen className="mr-3 h-6 w-6 text-green-500" />
-                        Course Overview
+                        {course.type === "course" ? "Course Overview" : "Event Overview"}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
@@ -454,7 +468,7 @@ export default function FrontendCourseShow({
                       <CardHeader>
                         <CardTitle className="text-xl sm:text-2xl flex items-center text-gray-900 dark:text-white">
                           <CheckCircle className="mr-3 h-6 w-6 text-green-500" />
-                          What You'll Learn
+                          {course.type === "course" ? "What You'll Learn" : "Event Highlights"}
                         </CardTitle>
                       </CardHeader>
                       <CardContent>
@@ -549,14 +563,16 @@ export default function FrontendCourseShow({
                           )}
                         </div>
                         <p className="text-gray-600 dark:text-gray-400">
-                          {course.pricing_type === "free" ? "No cost to enroll" : "One-time payment"}
+                          {course.pricing_type === "free" 
+                            ? (course.type === "course" ? "No cost to enroll" : "No cost to register")
+                            : "One-time payment"}
                         </p>
                       </div>
                       {/* Enrollment Progress */}
                       <div className="mb-6">
                         <div className="flex justify-between items-center mb-2">
                           <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                            Enrollment Progress
+                            {course.type === "course" ? "Enrollment Progress" : "Registration Progress"}
                           </span>
                           <span className="text-sm text-gray-600 dark:text-gray-400">
                             {enrollmentStats.total_enrolled}/{enrollmentStats.max_participants}
@@ -576,16 +592,16 @@ export default function FrontendCourseShow({
                               variant="secondary"
                               className={`mb-3 px-4 py-2 ${getEnrollmentStatusColor(userEnrollment.status)}`}
                             >
-                              {userEnrollment.status === "active" && "✓ Enrolled"}
+                              {userEnrollment.status === "active" && (course.type === "course" ? "✓ Enrolled" : "✓ Registered")}
                               {userEnrollment.status === "completed" && "✓ Completed"}
                               {userEnrollment.status === "cancelled" && "✗ Cancelled"}
                               {userEnrollment.status === "refunded" && "↻ Refunded"}
                             </Badge>
                             <p className="text-sm text-gray-600 dark:text-gray-400">
-                              {userEnrollment.status === "active" && "You're enrolled in this course!"}
-                              {userEnrollment.status === "completed" && "You've completed this course!"}
-                              {userEnrollment.status === "cancelled" && "Your enrollment was cancelled"}
-                              {userEnrollment.status === "refunded" && "Your enrollment was refunded"}
+                              {userEnrollment.status === "active" && (course.type === "course" ? "You're enrolled in this course!" : "You're registered for this event!")}
+                              {userEnrollment.status === "completed" && (course.type === "course" ? "You've completed this course!" : "You've attended this event!")}
+                              {userEnrollment.status === "cancelled" && (course.type === "course" ? "Your enrollment was cancelled" : "Your registration was cancelled")}
+                              {userEnrollment.status === "refunded" && (course.type === "course" ? "Your enrollment was refunded" : "Your registration was refunded")}
                             </p>
                           </div>
                         ) : canEnroll ? (
@@ -597,10 +613,10 @@ export default function FrontendCourseShow({
                                   className="w-full bg-green-600 hover:bg-green-700 text-lg py-3"
                                 >
                                   <Play className="mr-2 h-5 w-5" />
-                                  Sign In to Enroll
+                                  {course.type === "course" ? "Sign In to Enroll" : "Sign In to Register"}
                                 </Button>
                                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                                  You need to sign in to enroll in this course
+                                  {course.type === "course" ? "You need to sign in to enroll in this course" : "You need to sign in to register for this event"}
                                 </p>
                               </div>
                             ) : (
@@ -612,17 +628,25 @@ export default function FrontendCourseShow({
                                 <Play className="mr-2 h-5 w-5" />
                                 {processing
                                   ? "Processing..."
-                                  : `Enroll Now${course.pricing_type === "paid" ? ` - ${course.formatted_price}` : " - Free"}`}
+                                  : `${course.type === "course" ? "Enroll" : "Register"} Now${course.pricing_type === "paid" ? ` - ${course.formatted_price}` : " - Free"}`}
                               </Button>
                             )}
                           </>
                         ) : (
                           <div className="text-center">
                             <Button disabled className="w-full" size="lg">
-                              {status === "full" ? "Course Full" : status === "unavailable" ? "Enrollment Unavailable" : "Enrollment Closed"}
+                              {status === "full" 
+                                ? (course.type === "course" ? "Course Full" : "Event Full")
+                                : status === "unavailable" 
+                                  ? (course.type === "course" ? "Enrollment Unavailable" : "Registration Unavailable")
+                                  : (course.type === "course" ? "Enrollment Closed" : "Registration Closed")}
                             </Button>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                              {status === "full" ? "No spots available" : status === "unavailable" ? "You are not authorized to enroll in this course" : "Registration has ended"}
+                              {status === "full" 
+                                ? "No spots available" 
+                                : status === "unavailable" 
+                                  ? (course.type === "course" ? "You are not authorized to enroll in this course" : "You are not authorized to register for this event")
+                                  : (course.type === "course" ? "Enrollment has ended" : "Registration has ended")}
                             </p>
                           </div>
                         )}

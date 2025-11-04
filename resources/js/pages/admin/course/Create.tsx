@@ -22,21 +22,40 @@ interface Topic {
   name: string
 }
 
+interface EventType {
+  id: number
+  name: string
+  category: string
+}
+
 interface AdminCoursesCreateProps {
   topics: Topic[]
+  eventTypes: EventType[]
 }
 
 export default function NonprofitCoursesCreate() {
-  const { topics } = usePage<AdminCoursesCreateProps>().props
+  const { topics, eventTypes } = usePage<AdminCoursesCreateProps>().props
   const { auth } = usePage().props as { auth: { user: User } }
 
   const [currentTab, setCurrentTab] = useState("basics")
   const [tabErrors, setTabErrors] = useState<Record<string, boolean>>({})
 
+  // Group event types by category
+  const groupedEventTypes = eventTypes.reduce((acc, type) => {
+    const category = type.category || 'Other'
+    if (!acc[category]) {
+      acc[category] = []
+    }
+    acc[category].push(type)
+    return acc
+  }, {} as Record<string, EventType[]>)
+
   const { data, setData, post, processing, errors, reset } = useForm({
+    type: "course" as "course" | "event",
     name: "",
     description: "",
     topic_id: topics.length > 0 ? topics[0].id.toString() : "",
+    event_type_id: "",
     target_audience: "",
     meeting_link: "",
     pricing_type: "free",
@@ -61,7 +80,12 @@ export default function NonprofitCoursesCreate() {
   const validateTab = (tab: string): boolean => {
     switch (tab) {
       case "basics":
-        return !!(data.name && data.description && data.topic_id && data.target_audience)
+        const hasType = !!data.type
+        const hasTopicOrEventType = data.type === "course" 
+          ? !!data.topic_id 
+          : !!data.event_type_id
+        const hasPricing = !!data.pricing_type && (data.pricing_type === "free" || (data.pricing_type === "paid" && !!data.course_fee))
+        return !!(data.name && data.description && hasType && hasTopicOrEventType && data.target_audience && hasPricing)
       case "schedule":
         return !!(
           data.meeting_link &&
@@ -95,7 +119,7 @@ export default function NonprofitCoursesCreate() {
       const errorFields = Object.keys(errors)
       if (
         errorFields.some((field) =>
-          ["name", "description", "topic_id", "target_audience", "pricing_type", "course_fee"].includes(field),
+          ["name", "description", "topic_id", "event_type_id", "type", "target_audience", "pricing_type", "course_fee"].includes(field),
         )
       ) {
         setCurrentTab("basics")
@@ -119,19 +143,44 @@ export default function NonprofitCoursesCreate() {
     }
   }
 
+  // Check if all required tabs are valid
+  const isFormValid = () => {
+    return validateTab("basics") && validateTab("schedule") && validateTab("content")
+  }
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validate all required tabs before submission
+    if (!validateTab("basics")) {
+      setCurrentTab("basics")
+      toast.error("Please complete all required fields in the Basics tab before submitting.")
+      return
+    }
+    
+    if (!validateTab("schedule")) {
+      setCurrentTab("schedule")
+      toast.error("Please complete all required fields in the Schedule tab before submitting.")
+      return
+    }
+    
+    if (!validateTab("content")) {
+      setCurrentTab("content")
+      toast.error("Please complete all required fields in the Content tab before submitting.")
+      return
+    }
+    
     post(route("admin.courses.store"), {
       forceFormData: true,
       onSuccess: () => {
         reset()
-        toast.success("Course created successfully!", {
-          description: "Your community course is now available.",
+        toast.success(`${data.type === "course" ? "Course" : "Event"} created successfully!`, {
+          description: `Your ${data.type === "course" ? "community course" : "event"} is now available.`,
         })
       },
       onError: (err) => {
         console.error("Form submission error:", err)
-        toast.error("Failed to create course.", {
+        toast.error(`Failed to create ${data.type === "course" ? "course" : "event"}.`, {
           description: "Please check the form for errors and try again.",
         })
       },
@@ -140,7 +189,7 @@ export default function NonprofitCoursesCreate() {
 
   return (
     <AppLayout>
-      <Head title="Create Community Course" />
+      <Head title={`Create ${data.type === "course" ? "Course" : "Event"} - Courses & Events`} />
 
       <div className="space-y-6 m-6">
         <div className="flex items-center gap-4">
@@ -155,8 +204,12 @@ export default function NonprofitCoursesCreate() {
               <Heart className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">Create Community Course</h1>
-              <p className="text-sm text-muted-foreground">Share knowledge and empower your community</p>
+            <h1 className="text-2xl font-bold">Create {data.type === "course" ? "Course" : "Event"}</h1>
+            <p className="text-sm text-muted-foreground">
+              {data.type === "course" 
+                ? "Share knowledge and empower your community" 
+                : "Create an event for your community"}
+            </p>
             </div>
           </div>
         </div>
@@ -188,41 +241,98 @@ export default function NonprofitCoursesCreate() {
             <TabsContent value="basics">
               <Card>
                 <CardHeader>
-                  <CardTitle>Course Basics</CardTitle>
+                  <CardTitle>{data.type === "course" ? "Course" : "Event"} Basics</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
+                      <label htmlFor="type" className="text-sm font-medium">
+                        Type *
+                      </label>
+                      <Select value={data.type} onValueChange={(value) => {
+                        setData("type", value as "course" | "event")
+                        // Reset topic/event type when switching
+                        if (value === "course") {
+                          setData("event_type_id", "")
+                          setData("topic_id", topics.length > 0 ? topics[0].id.toString() : "")
+                        } else {
+                          setData("topic_id", "")
+                          setData("event_type_id", "")
+                        }
+                      }}>
+                        <SelectTrigger className={errors.type ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Select type" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="course">Course</SelectItem>
+                          <SelectItem value="event">Event</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {errors.type && <p className="text-sm text-destructive">{errors.type}</p>}
+                    </div>
+
+                    <div className="space-y-2">
                       <label htmlFor="name" className="text-sm font-medium">
-                        Course Name *
+                        {data.type === "course" ? "Course" : "Event"} Name *
                       </label>
                       <Input
                         id="name"
                         value={data.name}
                         onChange={(e) => setData("name", e.target.value)}
-                        placeholder="e.g., Digital Literacy for Seniors"
+                        placeholder={data.type === "course" ? "e.g., Digital Literacy for Seniors" : "e.g., Community Health Fair"}
                         className={errors.name ? "border-destructive" : ""}
                       />
                       {errors.name && <p className="text-sm text-destructive">{errors.name}</p>}
                     </div>
 
-                    <div className="space-y-2">
-                      <label htmlFor="topic_id" className="text-sm font-medium">
-                        Course Topic *
-                      </label>
-                      <Select value={data.topic_id.toString()} onValueChange={(value) => setData("topic_id", value)}>
-                        <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
-                          <SelectValue placeholder="Select topic" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {topics.map((topic) => (
-                            <SelectItem key={topic.id} value={topic.id.toString()}>
-                              {topic.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
+                    {data.type === "course" && (
+                      <div className="space-y-2">
+                        <label htmlFor="topic_id" className="text-sm font-medium">
+                          Course Topic *
+                        </label>
+                        <Select value={data.topic_id || ""} onValueChange={(value) => setData("topic_id", value)}>
+                          <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
+                            <SelectValue placeholder="Select topic" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {topics.map((topic) => (
+                              <SelectItem key={topic.id} value={topic.id.toString()}>
+                                {topic.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.topic_id && <p className="text-sm text-destructive">{errors.topic_id}</p>}
+                      </div>
+                    )}
+
+                    {data.type === "event" && (
+                      <div className="space-y-2">
+                        <label htmlFor="event_type_id" className="text-sm font-medium">
+                          Event Type *
+                        </label>
+                        <Select value={data.event_type_id || ""} onValueChange={(value) => setData("event_type_id", value)}>
+                          <SelectTrigger className={errors.event_type_id ? "border-destructive" : ""}>
+                            <SelectValue placeholder="Select event type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Object.entries(groupedEventTypes).map(([category, types]) => (
+                              <div key={category}>
+                                <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                                  {category}
+                                </div>
+                                {types.map((type) => (
+                                  <SelectItem key={type.id} value={type.id.toString()}>
+                                    {type.name}
+                                  </SelectItem>
+                                ))}
+                              </div>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.event_type_id && <p className="text-sm text-destructive">{errors.event_type_id}</p>}
+                      </div>
+                    )}
 
                     <div className="space-y-2">
                       <label htmlFor="target_audience" className="text-sm font-medium">
@@ -266,7 +376,7 @@ export default function NonprofitCoursesCreate() {
 
                   <div className="space-y-2">
                     <label htmlFor="description" className="text-sm font-medium">
-                      Course Description *
+                      {data.type === "course" ? "Course" : "Event"} Description *
                     </label>
                     <RichTextEditor
                       label=""
@@ -278,7 +388,7 @@ export default function NonprofitCoursesCreate() {
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-sm font-medium">Course Image</label>
+                    <label className="text-sm font-medium">{data.type === "course" ? "Course" : "Event"} Image</label>
                     <ImageUpload label="" value={null} onChange={(file) => setData("image", file)} />
                   </div>
                 </CardContent>
@@ -305,7 +415,7 @@ export default function NonprofitCoursesCreate() {
                     />
                     {errors.meeting_link && <p className="text-sm text-destructive">{errors.meeting_link}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Provide the meeting link where participants will join the course
+                      Provide the meeting link where participants will join the {data.type === "course" ? "course" : "event"}
                     </p>
                   </div>
 
@@ -351,7 +461,9 @@ export default function NonprofitCoursesCreate() {
                         className={errors.end_date ? "border-destructive" : ""}
                       />
                       {errors.end_date && <p className="text-sm text-destructive">{errors.end_date}</p>}
-                      <p className="text-xs text-muted-foreground">Optional: Leave blank for single session courses</p>
+                      <p className="text-xs text-muted-foreground">
+                        Optional: Leave blank for single session {data.type === "course" ? "courses" : "events"}
+                      </p>
                     </div>
 
                     <div className="space-y-2">
@@ -425,16 +537,16 @@ export default function NonprofitCoursesCreate() {
             <TabsContent value="content">
               <Card>
                 <CardHeader>
-                  <CardTitle>Course Content & Impact</CardTitle>
+                  <CardTitle>{data.type === "course" ? "Course Content & Impact" : "Event Content & Impact"}</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <ArrayInput
                     id="learning_outcomes"
-                    label="Learning Outcomes *"
+                    label={data.type === "course" ? "Learning Outcomes *" : "Event Outcomes *"}
                     values={data.learning_outcomes}
                     onChange={(values) => setData("learning_outcomes", values)}
                     error={errors.learning_outcomes}
-                    placeholder="What will participants learn?"
+                    placeholder={data.type === "course" ? "What will participants learn?" : "What will participants experience or gain?"}
                   />
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -509,7 +621,7 @@ export default function NonprofitCoursesCreate() {
                           Volunteer Opportunities
                         </label>
                         <p className="text-xs text-muted-foreground">
-                          Allow participants to volunteer for future courses
+                          Allow participants to volunteer for future {data.type === "course" ? "courses" : "events"}
                         </p>
                       </div>
                       <Switch
@@ -530,16 +642,35 @@ export default function NonprofitCoursesCreate() {
                 Cancel
               </Button>
             </Link>
-            <Button type="submit" disabled={processing} className="min-w-[140px]">
+            <Button 
+              type={currentTab === "settings" ? "submit" : "button"} 
+              disabled={processing || (currentTab === "settings" && !isFormValid()) || (currentTab !== "settings" && !validateTab(currentTab))} 
+              onClick={currentTab !== "settings" ? () => {
+                if (validateTab(currentTab)) {
+                  const tabs = ["basics", "schedule", "content", "settings"]
+                  const currentIndex = tabs.indexOf(currentTab)
+                  if (currentIndex < tabs.length - 1) {
+                    setCurrentTab(tabs[currentIndex + 1])
+                  }
+                } else {
+                  toast.error("Please complete all required fields in the current tab before proceeding.")
+                }
+              } : undefined}
+              className="min-w-[140px]"
+            >
               {processing ? (
                 <>
                   <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
-                  Creating...
+                  {currentTab === "settings" ? (data.type === "course" ? "Creating Course..." : "Creating Event...") : "Processing..."}
+                </>
+              ) : currentTab === "settings" ? (
+                <>
+                  <Save className="mr-2 h-4 w-4" />
+                  Create {data.type === "course" ? "Course" : "Event"}
                 </>
               ) : (
                 <>
-                  <Save className="mr-2 h-4 w-4" />
-                  Create Course
+                  Continue
                 </>
               )}
             </Button>

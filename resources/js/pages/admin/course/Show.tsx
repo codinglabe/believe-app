@@ -13,6 +13,12 @@ import {
   BookOpen,
   ExternalLink,
   Copy,
+  DollarSign,
+  Tag,
+  User,
+  Image as ImageIcon,
+  Hash,
+  FileText,
 } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
@@ -39,14 +45,22 @@ interface Creator {
   email: string
 }
 
+interface EventType {
+  id: number
+  name: string
+  category: string
+}
+
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
   slug: string
   description: string
+  type: "course" | "event"
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -73,6 +87,7 @@ interface Course {
   updated_at: string
   meeting_link: string | null
   topic: Topic | null
+  event_type: EventType | null
   organization: Organization
   creator: Creator
   image_url: string | null
@@ -137,7 +152,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
 
   return (
     <AppLayout>
-      <Head title={`Course Details - ${course.name}`} />
+      <Head title={`${course.type === "event" ? "Event" : "Course"} Details - ${course.name} - Courses & Events`} />
 
       <div className="space-y-6 m-10">
         {/* Header */}
@@ -153,13 +168,19 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               <Heart className="h-7 w-7 text-primary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold tracking-tight text-foreground">Course Details</h1>
-              <p className="text-muted-foreground">View and manage course information</p>
+              <h1 className="text-3xl font-bold tracking-tight text-foreground">{course.type === "event" ? "Event" : "Course"} Details</h1>
+              <p className="text-muted-foreground">View and manage {course.type === "event" ? "event" : "course"} information</p>
             </div>
           </div>
           <div className="ml-auto flex gap-2">
+            <Link href={route("admin.courses.enrollments", course.slug)}>
+              <Button variant="outline">
+                <Users className="mr-2 h-4 w-4" />
+                Enrollments
+              </Button>
+            </Link>
             <Link href={route("admin.courses.edit", course.slug)}>
-              <Button>Edit Course</Button>
+              <Button>Edit {course.type === "event" ? "Event" : "Course"}</Button>
             </Link>
             <Link href={`/courses/${course.slug}`} target="_blank">
               <Button variant="outline">View Public</Button>
@@ -177,8 +198,12 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                   <div>
                     <CardTitle className="text-2xl mb-2">{course.name}</CardTitle>
                     <div className="flex items-center gap-2 mb-4">
+                      <Badge className={course.type === "event" ? "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200" : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"}>
+                        {course.type === "event" ? "Event" : "Course"}
+                      </Badge>
                       <Badge className={getStatusColor(status)}>{status.replace("_", " ")}</Badge>
-                      {course.topic && <Badge variant="outline">{course.topic.name}</Badge>}
+                      {course.type === "course" && course.topic && <Badge variant="outline">{course.topic.name}</Badge>}
+                      {course.type === "event" && course.event_type && <Badge variant="outline">{course.event_type.name}</Badge>}
                       <Badge variant={course.pricing_type === "free" ? "secondary" : "default"}>
                         {course.formatted_price}
                       </Badge>
@@ -220,7 +245,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                 {/* Learning Outcomes */}
                 {course.learning_outcomes.length > 0 && (
                   <div>
-                    <h3 className="font-semibold mb-2">Learning Outcomes</h3>
+                    <h3 className="font-semibold mb-2">{course.type === "course" ? "Learning Outcomes" : "Event Outcomes"}</h3>
                     <ul className="list-disc list-inside space-y-1">
                       {course.learning_outcomes.map((outcome, index) => (
                         <li key={index} className="text-muted-foreground">
@@ -272,6 +297,112 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                     </ul>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+
+            {/* Basic Information */}
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Hash className="h-5 w-5" />
+                  Basic Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {course.last_updated && (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Last Updated</span>
+                    </div>
+                    <span className="text-sm text-muted-foreground">
+                      {new Date(course.last_updated).toLocaleDateString()}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Created At</span>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(course.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Updated At</span>
+                  </div>
+                  <span className="text-sm text-muted-foreground">
+                    {new Date(course.updated_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pricing Details */}
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Pricing Details
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Pricing Type</span>
+                  <Badge variant={course.pricing_type === "free" ? "secondary" : "default"}>
+                    {course.pricing_type === "free" ? "Free" : "Paid"}
+                  </Badge>
+                </div>
+                {course.pricing_type === "paid" && course.course_fee && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-medium">Course Fee</span>
+                    <span className="text-sm font-bold text-primary">${course.course_fee}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-medium">Display Price</span>
+                  <span className="text-sm text-muted-foreground">{course.formatted_price}</span>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Image Display */}
+            {course.image_url && (
+              <Card className="mt-6">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ImageIcon className="h-5 w-5" />
+                    {course.type === "course" ? "Course" : "Event"} Image
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="relative w-full h-64 rounded-lg overflow-hidden border">
+                    <img
+                      src={course.image_url}
+                      alt={course.name}
+                      className="w-full h-full object-cover"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Creator Information */}
+            <Card className="mt-6">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <User className="h-5 w-5" />
+                  Creator Information
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <div>
+                  <div className="text-sm font-medium">{course.creator.name}</div>
+                  <div className="text-sm text-muted-foreground">{course.creator.email}</div>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -338,7 +469,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <BookOpen className="h-5 w-5" />
-                  Course Details
+                  {course.type === "course" ? "Course" : "Event"} Details
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -382,6 +513,14 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
                   <div>
                     <div className="font-medium">{course.formatted_duration}</div>
                     <div className="text-sm text-muted-foreground">Duration</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <Users className="w-5 h-5 text-indigo-500" />
+                  <div>
+                    <div className="font-medium">{course.max_participants} participants</div>
+                    <div className="text-sm text-muted-foreground">Maximum Participants</div>
                   </div>
                 </div>
 

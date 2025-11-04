@@ -127,6 +127,7 @@ Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('vi
     // Organization routes
     Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
     Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
+    Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -609,11 +610,12 @@ Route::middleware(['auth', 'topics.selected'])->group(function () {
 });
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     // Admin Course Management Routes
-    Route::prefix('admin/courses')->name('admin.courses.')->group(function () {
+    Route::prefix('admin/courses-events')->name('admin.courses.')->group(function () {
         Route::get('/', [CourseController::class, 'adminIndex'])->name('index')->middleware('permission:course.read');
         Route::get('/create', [CourseController::class, 'create'])->name('create')->middleware('permission:course.create');
         Route::post('/', [CourseController::class, 'store'])->name('store')->middleware('permission:course.create');
         Route::get('/{course:slug}', [CourseController::class, 'adminShow'])->name('show')->middleware('permission:course.read');
+        Route::get('/{course:slug}/enrollments', [CourseController::class, 'adminEnrollments'])->name('enrollments')->middleware('permission:course.read');
         Route::get('/{course:slug}/edit', [CourseController::class, 'edit'])->name('edit')->middleware('permission:course.edit');
         Route::put('/{course:slug}', [CourseController::class, 'update'])->name('update')->middleware('permission:course.update');
         Route::delete('/{course:slug}', [CourseController::class, 'destroy'])->name('destroy')->middleware('permission:course.delete');

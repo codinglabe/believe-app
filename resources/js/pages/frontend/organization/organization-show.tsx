@@ -425,6 +425,20 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                       <Heart className="mr-2 h-5 w-5" />
                       Donate Now
                                       </Button>
+                    {organization.registered_organization?.user?.slug && (
+                      <Link
+                        href={route('organizations.enrollments', { slug: organization.registered_organization.user.slug })}
+                      >
+                        <Button
+                          size="lg"
+                          variant="outline"
+                          className="bg-white/10 border-white/20 text-white hover:bg-white/20 px-6 sm:px-8 w-full sm:w-auto"
+                        >
+                          <UserCheck className="mr-2 h-5 w-5" />
+                          Enrolled
+                        </Button>
+                      </Link>
+                    )}
                                       <OrgFollowButton
   organization={organization}
   auth={auth}

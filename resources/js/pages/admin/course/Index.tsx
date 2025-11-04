@@ -1,5 +1,5 @@
 "use client"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useMemo } from "react"
 import { Head, Link, router } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/admin/ui/button"
@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/
 import { Badge } from "@/components/admin/ui/badge"
 import { Input } from "@/components/admin/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/admin/ui/table"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Plus, Eye, Edit, Trash2, Users, DollarSign, TrendingUp, Heart, Star, ChevronLeft, ChevronRight, CheckCircle, XCircle, Clock, Ban, Globe, MapPin, Calendar, Award, Copy, ExternalLink, BookOpen, GraduationCap } from 'lucide-react'
 import { showSuccessToast } from "@/lib/toast"
 import type { Auth } from "@/types"
@@ -30,14 +31,22 @@ interface Creator {
   email: string
 }
 
+interface EventType {
+  id: number
+  name: string
+  category: string
+}
+
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
   slug: string
   description: string
+  type: "course" | "event"
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -63,6 +72,7 @@ interface Course {
   created_at: string
   updated_at: string
   topic: Topic | null
+  event_type: EventType | null
   organization: Organization
   creator: Creator
   image_url: string | null
@@ -105,17 +115,18 @@ interface Props {
   auth: Auth
   courses: LaravelPagination<Course>
   topics: Topic[]
+  eventTypes: EventType[]
   filters: {
     courses_search: string
     courses_status: string
     courses_type: string
-    courses_format: string
+    courses_course_type: string
     courses_topic: string
   }
   statistics: Statistics
 }
 
-export default function CoursesIndex({ courses, topics, filters, statistics }: Props) {
+export default function CoursesIndex({ courses, topics, eventTypes, filters, statistics }: Props) {
   const [isLoading, setIsLoading] = useState(false)
   const [copiedLink, setCopiedLink] = useState<string | null>(null)
 
@@ -123,8 +134,25 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
   const [coursesSearch, setCoursesSearch] = useState(filters.courses_search || "")
   const [coursesStatus, setCoursesStatus] = useState(filters.courses_status || "")
   const [coursesType, setCoursesType] = useState(filters.courses_type || "")
-  const [coursesFormat, setCoursesFormat] = useState(filters.courses_format || "")
+  const [coursesCourseType, setCoursesCourseType] = useState(filters.courses_course_type || "")
   const [coursesTopic, setCoursesTopic] = useState(filters.courses_topic || "")
+
+  // Clear topic filter when type changes
+  useEffect(() => {
+    setCoursesTopic("")
+  }, [coursesCourseType])
+
+  // Group event types by category
+  const groupedEventTypes = useMemo(() => {
+    return eventTypes.reduce((acc, type) => {
+      const category = type.category || 'Other'
+      if (!acc[category]) {
+        acc[category] = []
+      }
+      acc[category].push(type)
+      return acc
+    }, {} as Record<string, EventType[]>)
+  }, [eventTypes])
 
   // Modal states
   const [deleteModal, setDeleteModal] = useState<{
@@ -142,16 +170,12 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
 
   // Auto-filter with debounce
   useEffect(() => {
-    if (!coursesSearch && !coursesStatus && !coursesType && !coursesFormat && !coursesTopic) {
-      return
-    }
-
     const timeoutId = setTimeout(() => {
       const params: Record<string, string> = {}
       if (coursesSearch.trim()) params.courses_search = coursesSearch
       if (coursesStatus) params.courses_status = coursesStatus
       if (coursesType) params.courses_type = coursesType
-      if (coursesFormat) params.courses_format = coursesFormat
+      if (coursesCourseType) params.courses_course_type = coursesCourseType
       if (coursesTopic) params.courses_topic = coursesTopic
 
       router.get(route("admin.courses.index"), params, {
@@ -162,13 +186,13 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     }, 500)
 
     return () => clearTimeout(timeoutId)
-  }, [coursesSearch, coursesStatus, coursesType, coursesFormat, coursesTopic])
+  }, [coursesSearch, coursesStatus, coursesType, coursesCourseType, coursesTopic])
 
   const clearAllFilters = () => {
     setCoursesSearch("")
     setCoursesStatus("")
     setCoursesType("")
-    setCoursesFormat("")
+    setCoursesCourseType("")
     setCoursesTopic("")
     router.get(
       route("admin.courses.index"),
@@ -201,8 +225,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     setDeleteModal({
       isOpen: true,
       id: slug,
-      title: "Delete Course",
-      message: `Are you sure you want to delete the course "${courseName}"? This action cannot be undone and will affect all enrolled students.`,
+      title: "Delete Course/Event",
+      message: `Are you sure you want to delete the course/event "${courseName}"? This action cannot be undone and will affect all enrolled students.`,
     })
   }
 
@@ -298,6 +322,24 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     }
   }
 
+  const getTypeBadge = (type: string) => {
+    if (type === "event") {
+      return (
+        <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200 max-w-max">
+          <Calendar className="h-3 w-3 mr-1" />
+          Event
+        </Badge>
+      )
+    } else {
+      return (
+        <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200 max-w-max">
+          <BookOpen className="h-3 w-3 mr-1" />
+          Course
+        </Badge>
+      )
+    }
+  }
+
   const getPricingBadge = (pricingType: string, courseFee: number | null) => {
     if (pricingType === "free") {
       return (
@@ -324,20 +366,20 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
     })
   }
 
-  const hasActiveFilters = coursesSearch || coursesStatus || coursesType || coursesFormat || coursesTopic
+  const hasActiveFilters = coursesSearch || coursesStatus || coursesType || coursesCourseType || coursesTopic
 
   return (
     <AppLayout>
-      <Head title="Course Management" />
+      <Head title="Courses & Events Management" />
       <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-2 animate-in slide-in-from-left duration-700">
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-gray-900 dark:text-white">
-              Course Management
+              Courses & Events Management
             </h1>
             <p className="text-sm sm:text-base lg:text-lg text-gray-600 dark:text-gray-400">
-              Manage community courses and track enrollment
+              Manage community courses and events and track enrollment
             </p>
           </div>
           <div className="animate-in slide-in-from-right duration-700">
@@ -357,12 +399,12 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
         </div>
 
         {/* Statistics Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4 sm:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-6">
           <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Courses & Events</p>
                   <p className="text-2xl font-bold text-gray-900 dark:text-white">{statistics?.total_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -376,7 +418,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Free Courses & Events</p>
                   <p className="text-2xl font-bold text-green-600 dark:text-green-400">{statistics?.free_courses}</p>
                 </div>
                 <div className="p-3 bg-green-100 dark:bg-green-900/50 rounded-full">
@@ -390,7 +432,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Paid Courses & Events</p>
                   <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">{statistics?.paid_courses}</p>
                 </div>
                 <div className="p-3 bg-blue-100 dark:bg-blue-900/50 rounded-full">
@@ -404,7 +446,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <CardContent className="p-4 sm:p-6">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Courses</p>
+                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Active Courses & Events</p>
                   <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{statistics?.active_courses}</p>
                 </div>
                 <div className="p-3 bg-purple-100 dark:bg-purple-900/50 rounded-full">
@@ -444,21 +486,6 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             </CardContent>
           </Card>
 
-          <Card className="shadow-lg hover:shadow-xl transition-all duration-300">
-            <CardContent className="p-4 sm:p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Avg Rating</p>
-                  <p className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
-                    {Number(statistics.average_rating).toFixed(1)}
-                  </p>
-                </div>
-                <div className="p-3 bg-yellow-100 dark:bg-yellow-900/50 rounded-full">
-                  <Star className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
         {/* Courses Table */}
@@ -467,19 +494,8 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
               <CardTitle className="flex items-center gap-2 text-lg sm:text-xl text-gray-900 dark:text-white">
                 <Heart className="h-5 w-5 text-red-500" />
-                Community Courses ({courses.total})
+                Courses & Events ({courses.total})
               </CardTitle>
-              {hasActiveFilters && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={clearAllFilters}
-                  className="hover:scale-105 transition-all duration-200 bg-transparent text-red-600 hover:text-red-700 border-red-300 hover:border-red-400"
-                >
-                  <XCircle className="mr-2 h-4 w-4" />
-                  Clear Filters
-                </Button>
-              )}
             </div>
 
             {/* Search and Filter Controls */}
@@ -493,41 +509,83 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                 />
               </div>
               <div className="flex flex-wrap gap-3">
+                {/* Type filter - First */}
                 <select
-                  value={coursesTopic}
-                  onChange={(e) => setCoursesTopic(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  value={coursesCourseType}
+                  onChange={(e) => setCoursesCourseType(e.target.value)}
+                  className="px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
-                  <option value="">All Topics</option>
-                  {topics.map((topic) => (
-                    <option key={topic.id} value={topic.id.toString()}>
-                      {topic.name}
-                    </option>
-                  ))}
+                  <option value="">All Types</option>
+                  <option value="course">Course</option>
+                  <option value="event">Event</option>
                 </select>
+                {/* Topic/Event Type filter - Dynamic based on Type */}
+                {coursesCourseType === "event" ? (
+                  <Select 
+                    value={coursesTopic || "all"} 
+                    onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
+                    disabled={!coursesCourseType}
+                  >
+                    <SelectTrigger className="w-[180px]" disabled={!coursesCourseType}>
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Event Types</SelectItem>
+                      {Object.entries(groupedEventTypes).map(([category, types]) => (
+                        <div key={category}>
+                          <div className="px-2 py-1.5 text-sm font-semibold text-gray-500 bg-gray-100 dark:bg-gray-800">
+                            {category}
+                          </div>
+                          {types.map((type) => (
+                            <SelectItem key={type.id} value={type.id.toString()}>
+                              {type.name}
+                            </SelectItem>
+                          ))}
+                        </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : coursesCourseType === "course" ? (
+                  <Select 
+                    value={coursesTopic || "all"} 
+                    onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
+                    disabled={!coursesCourseType}
+                  >
+                    <SelectTrigger className="w-[180px]" disabled={!coursesCourseType}>
+                      <SelectValue placeholder="All" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Course Topics</SelectItem>
+                      {topics.map((topic) => (
+                        <SelectItem key={topic.id} value={topic.id.toString()}>
+                          {topic.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <Select value="all" disabled>
+                    <SelectTrigger className="w-[180px]" disabled>
+                      <SelectValue>All</SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All</SelectItem>
+                    </SelectContent>
+                  </Select>
+                )}
                 <select
                   value={coursesType}
                   onChange={(e) => setCoursesType(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="">All Pricing</option>
                   <option value="free">Free</option>
                   <option value="paid">Paid</option>
                 </select>
                 <select
-                  value={coursesFormat}
-                  onChange={(e) => setCoursesFormat(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                >
-                  <option value="">All Formats</option>
-                  <option value="online">Online</option>
-                  <option value="in_person">In-Person</option>
-                  <option value="hybrid">Hybrid</option>
-                </select>
-                <select
                   value={coursesStatus}
                   onChange={(e) => setCoursesStatus(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                  className="px-3 py-2 border border-border rounded-md bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 >
                   <option value="">All Status</option>
                   <option value="available">Available</option>
@@ -545,15 +603,12 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                 <TableHeader>
                   <TableRow>
                     <TableHead className="font-semibold">Course</TableHead>
-                    <TableHead className="font-semibold">Topic</TableHead>
+                    <TableHead className="font-semibold">Type</TableHead>
+                    <TableHead className="font-semibold">Course Topic/Event Type</TableHead>
                     <TableHead className="font-semibold">Format</TableHead>
                     <TableHead className="font-semibold">Pricing</TableHead>
                     <TableHead className="font-semibold">Enrollment</TableHead>
                     <TableHead className="font-semibold">Schedule</TableHead>
-                    <TableHead className="font-semibold">Rating</TableHead>
-                    <TableHead className="font-semibold">Status</TableHead>
-                    <TableHead className="font-semibold">Features</TableHead>
-                    <TableHead className="font-semibold">Link</TableHead>
                     <TableHead className="font-semibold">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -579,12 +634,20 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                         </TableCell>
 
                         <TableCell>
-                          {course.topic ? (
+                          {getTypeBadge(course.type)}
+                        </TableCell>
+
+                        <TableCell>
+                          {course.type === "course" && course.topic ? (
                             <Badge variant="outline" className="max-w-max">
                               {course.topic.name}
                             </Badge>
+                          ) : course.type === "event" && course.event_type ? (
+                            <Badge variant="outline" className="max-w-max">
+                              {course.event_type.name}
+                            </Badge>
                           ) : (
-                            <span className="text-gray-400">No topic</span>
+                            <span className="text-gray-400">No {course.type === "course" ? "topic" : "event type"}</span>
                           )}
                         </TableCell>
 
@@ -630,76 +693,6 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
                                 Until {new Date(course.end_date).toLocaleDateString()}
                               </div>
                             )}
-                          </div>
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-1">
-                              <Star className="h-3 w-3 text-yellow-500 fill-current" />
-                              <span className="font-medium">{course.rating}</span>
-                            </div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">
-                              {course.total_reviews} reviews
-                            </div>
-                          </div>
-                        </TableCell>
-
-                        <TableCell>
-                          <Badge variant={getStatusVariant(course.enrolled, course.max_participants, course.start_date)}>
-                            {getStatusIcon(course.enrolled, course.max_participants, course.start_date)}
-                            <span className="ml-1">
-                              {getStatusText(course.enrolled, course.max_participants, course.start_date)}
-                            </span>
-                          </Badge>
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="flex flex-wrap gap-1">
-                            {course.certificate_provided && (
-                              <Badge variant="secondary" className="text-xs px-2 py-1">
-                                <Award className="w-3 h-3 mr-1" />
-                                Cert
-                              </Badge>
-                            )}
-                            {course.volunteer_opportunities && (
-                              <Badge variant="secondary" className="text-xs px-2 py-1">
-                                <Heart className="w-3 h-3 mr-1" />
-                                Vol
-                              </Badge>
-                            )}
-                            {course.accessibility_features.length > 0 && (
-                              <Badge variant="secondary" className="text-xs px-2 py-1">
-                                ♿ Access
-                              </Badge>
-                            )}
-                          </div>
-                        </TableCell>
-
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <div className="text-xs font-mono text-gray-600 dark:text-gray-400 max-w-[80px] truncate">
-                              /{course.slug}
-                            </div>
-                            <div className="flex gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-6 w-6 p-0"
-                                onClick={() => copyCourseLink(course.slug, course.name)}
-                              >
-                                {copiedLink === course.slug ? (
-                                  <CheckCircle className="h-3 w-3 text-green-600" />
-                                ) : (
-                                  <Copy className="h-3 w-3" />
-                                )}
-                              </Button>
-                              <Link href={`/courses/${course.slug}`} target="_blank">
-                                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                                  <ExternalLink className="h-3 w-3" />
-                                </Button>
-                              </Link>
-                            </div>
                           </div>
                         </TableCell>
 

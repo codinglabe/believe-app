@@ -18,11 +18,14 @@ class Enrollment extends Model
         'payment_intent_id',
         'payment_status',
         'refund_id',
+        'enrollment_id',
         'enrolled_at',
         'completed_at',
         'cancelled_at',
         'refunded_at',
         'cancellation_reason',
+        'payment_method',
+        'transaction_id',
     ];
 
     protected $casts = [

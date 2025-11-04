@@ -361,6 +361,11 @@ class OrganizationController extends BaseController
             }
         }
 
+        // Load user relationship for registered organization
+        if ($registeredOrg) {
+            $registeredOrg->load('user:id,slug,name,email');
+        }
+
         $transformedOrganization = [
             'id' => $organization->id,
             'ein' => $organization->ein,
@@ -376,7 +381,16 @@ class OrganizationController extends BaseController
             'is_registered' => (bool) $registeredOrg,
             'is_favorited' => $isFav,
             'notifications_enabled' => $notificationsEnabled,
-            'registered_organization' => $registeredOrg,
+            'registered_organization' => $registeredOrg ? [
+                'id' => $registeredOrg->id,
+                'name' => $registeredOrg->name,
+                'user' => $registeredOrg->user ? [
+                    'id' => $registeredOrg->user->id,
+                    'slug' => $registeredOrg->user->slug,
+                    'name' => $registeredOrg->user->name,
+                    'email' => $registeredOrg->user->email,
+                ] : null,
+            ] : null,
             'description' => $registeredOrg ? $registeredOrg->description : 'This organization is listed in our database but has not yet registered for additional features.',
             'mission' => $registeredOrg ? $registeredOrg->mission : 'Mission statement not available for unregistered organizations.',
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A', // Ruling year from excel data
@@ -384,6 +398,53 @@ class OrganizationController extends BaseController
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $transformedOrganization,
+        ]);
+    }
+
+    /**
+     * Display enrollments for an organization's courses/events
+     */
+    public function enrollments(Request $request, string $slug)
+    {
+        // Find organization by user slug
+        $user = \App\Models\User::where('slug', $slug)
+            ->where('role', 'organization')
+            ->firstOrFail();
+
+        $organization = Organization::where('user_id', $user->id)->firstOrFail();
+
+        // Get all courses/events created by this organization
+        $courses = \App\Models\Course::where('organization_id', $user->id)
+            ->with(['topic', 'eventType'])
+            ->get();
+
+        // Get all enrollments grouped by course/event
+        $enrollmentsByCourse = [];
+        foreach ($courses as $course) {
+            $enrollments = \App\Models\Enrollment::where('course_id', $course->id)
+                ->whereIn('status', ['active', 'completed', 'pending'])
+                ->with('user:id,name,email')
+                ->orderBy('enrolled_at', 'desc')
+                ->get();
+
+            if ($enrollments->count() > 0) {
+                $enrollmentsByCourse[] = [
+                    'course' => $course,
+                    'enrollments' => $enrollments,
+                    'total_enrolled' => $enrollments->count(),
+                ];
+            }
+        }
+
+        return Inertia::render('frontend/organization/enrollments', [
+            'organization' => [
+                'id' => $organization->id,
+                'name' => $organization->name,
+                'user' => [
+                    'slug' => $user->slug,
+                ],
+            ],
+            'enrollmentsByCourse' => $enrollmentsByCourse,
         ]);
     }
 

@@ -93,7 +93,7 @@ export default function Navbar() {
     { name: "Event Calendar", href: "/all-events" },
     { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
-    { name: "Courses", href: route("course.index") },
+    { name: "Courses & Events", href: route("course.index") },
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index") }] : []),
     { name: "Node Boss", href: "/nodeboss" },
     { name: "Contact", href: "/contact" },
