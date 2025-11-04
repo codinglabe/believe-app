@@ -7,7 +7,7 @@ import { usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
-import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
+// import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
 import { PWAUpdatePrompt } from '@/components/PWAUpdatePrompt';
 import { initializeMessaging, requestNotificationPermission } from '@/lib/firebase';
 import axios from 'axios';
@@ -109,7 +109,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     return (
             <NotificationProvider user={auth.user}>
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
-                 <PWAInstallPrompt />
+                 {/* <PWAInstallPrompt /> */}
         <PWAUpdatePrompt />
             {children}
 

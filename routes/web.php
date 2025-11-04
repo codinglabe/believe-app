@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\AiCampaignController;
+use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\ExcelDataController;
@@ -12,6 +13,7 @@ use App\Http\Controllers\NodeBossController;
 use App\Http\Controllers\NodeReferralController;
 use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
+use App\Http\Controllers\PwaInstallController;
 use App\Http\Controllers\TestMeetingController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use Inertia\Inertia;
@@ -63,6 +65,7 @@ use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\RaffleController;
+use App\Http\Controllers\CreditPurchaseController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
 
@@ -79,6 +82,7 @@ Route::get('/', [HomeController::class, "index"])->name('home');
 Route::get("pwa-setup", function () {
     return Inertia::render('pwa-setup/page');
 })->name('pwa.install');
+Route::get('/pwa/install-qr', [PwaInstallController::class, 'installQr'])->name('pwa.install-qr');
 
 Route::get('/about', function () {
     return Inertia::render('frontend/about');
@@ -239,6 +243,20 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
     Route::get('/campaigns/ai/create', [AiCampaignController::class, 'create'])->name('campaigns.ai-create');
     Route::post('/campaigns/ai', [AiCampaignController::class, 'store'])->name('campaigns.ai-store');
+
+    // AI Chat
+    Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
+    Route::post('/ai-chat/send', [AiChatController::class, 'sendMessage'])->name('ai-chat.send');
+    Route::get('/ai-chat/conversations', [AiChatController::class, 'getConversations'])->name('ai-chat.conversations');
+    Route::get('/ai-chat/conversations/{id}', [AiChatController::class, 'getConversation'])->name('ai-chat.conversation');
+    Route::put('/ai-chat/conversations/{id}', [AiChatController::class, 'updateConversation'])->name('ai-chat.update-conversation');
+    Route::delete('/ai-chat/conversations/{id}', [AiChatController::class, 'deleteConversation'])->name('ai-chat.delete-conversation');
+    
+    // Credit Purchase Routes
+    Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
+    Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
+    Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
+    Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {
@@ -736,6 +754,10 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
     Route::post('/raffles/{raffle}/purchase', [App\Http\Controllers\RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');
 });
 
+
+// Note: Stripe webhooks are handled by Laravel Cashier at /stripe/webhook
+// Configure this URL in your Stripe dashboard
+// The webhook will process checkout.session.completed events automatically
 
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';

@@ -111,26 +111,26 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
             <Head title="Campaigns" />
 
             <div className="py-6">
-                <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8">
                     {flash?.success && (
-                        <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded dark:bg-green-900/20 dark:border-green-800 dark:text-green-300">
+                        <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg dark:bg-green-900/20 dark:border-green-800 dark:text-green-300">
                             {flash?.success}
                         </div>
                     )}
 
-                    <div className="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg">
-                        <div className="p-6 bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+                    <div className="bg-card border border-border overflow-hidden shadow-sm sm:rounded-lg">
+                        <div className="p-6 bg-card border-b border-border">
                             {/* Header */}
                             <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-6 space-y-4 sm:space-y-0">
                                 <div>
-                                    <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Campaigns</h2>
-                                    <p className="text-gray-600 dark:text-gray-400 mt-1">
+                                    <h2 className="text-2xl font-bold">Campaigns</h2>
+                                    <p className="text-muted-foreground mt-1">
                                         Manage your daily prayer campaigns
                                     </p>
                                 </div>
                                 <Link
                                     href={route('campaigns.create')}
-                                    className="bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-medium py-2 px-4 rounded-lg flex items-center transition-colors self-start"
+                                    className="bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2 px-4 rounded-lg flex items-center transition-colors self-start"
                                 >
                                     <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -208,61 +208,61 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
 
                             {/* Campaigns Table */}
                             <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-50 dark:bg-gray-700">
+                                <table className="min-w-full divide-y divide-border">
+                                    <thead className="bg-muted/50">
                                         <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Campaign
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Period
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Send Time
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Channels
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Status
                                             </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                                            <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">
                                                 Actions
                                             </th>
                                         </tr>
                                     </thead>
-                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                                    <tbody className="bg-card divide-y divide-border">
                                         {safeCampaigns.data.map((campaign) => (
-                                            <tr key={campaign.id} className="hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors">
+                                            <tr key={campaign.id} className="hover:bg-accent transition-colors">
                                                 <td className="px-6 py-4 whitespace-nowrap">
                                                     <div className="flex items-center">
-                                                        <div className="bg-blue-100 dark:bg-blue-900 p-2 rounded-lg mr-3">
-                                                            <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                        <div className="bg-primary/10 p-2 rounded-lg mr-3">
+                                                            <svg className="w-5 h-5 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
                                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
                                                             </svg>
                                                         </div>
                                                         <div>
-                                                            <div className="text-sm font-medium text-gray-900 dark:text-white">
+                                                            <div className="text-sm font-medium">
                                                                 {campaign.name}
                                                             </div>
-                                                            <div className="text-sm text-gray-500 dark:text-gray-400">
+                                                            <div className="text-sm text-muted-foreground">
                                                                 {campaign.scheduled_drops_count || 0} scheduled drops
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="text-sm text-gray-900 dark:text-white">
+                                                    <div className="text-sm">
                                                         {formatDate(campaign.start_date)}
                                                     </div>
-                                                    <div className="text-sm text-gray-500 dark:text-gray-400">
+                                                    <div className="text-sm text-muted-foreground">
                                                         to {formatDate(campaign.end_date)}
                                                     </div>
                                                 </td>
                                                 <td className="px-6 py-4 whitespace-nowrap">
-                                                    <div className="flex items-center text-sm text-gray-900 dark:text-white">
-                                                        <svg className="w-4 h-4 mr-1 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                    <div className="flex items-center text-sm">
+                                                        <svg className="w-4 h-4 mr-1 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                                                         </svg>
                                                         {campaign.send_time_local}
@@ -273,7 +273,7 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                                         {campaign.channels?.map((channel) => (
                                                             <span
                                                                 key={channel}
-                                                                className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300"
+                                                                className="inline-flex items-center px-2 py-1 rounded text-xs font-medium bg-primary/10 text-primary"
                                                             >
                                                                 {getChannelIcon(channel)}
                                                                 {channel}
@@ -291,7 +291,7 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                                     <div className="flex space-x-3">
                                                         <Link
                                                             href={route('campaigns.show', campaign.id)}
-                                                            className="text-blue-600 hover:text-blue-900 dark:text-blue-400 dark:hover:text-blue-300 transition-colors flex items-center"
+                                                            className="text-primary hover:text-primary/80 transition-colors flex items-center"
                                                             title="View campaign details"
                                                         >
                                                             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -304,7 +304,7 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                                             href={route('campaigns.destroy', campaign.id)}
                                                             method="delete"
                                                             as="button"
-                                                            className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 transition-colors flex items-center"
+                                                            className="text-destructive hover:text-destructive/80 transition-colors flex items-center"
                                                             title="Cancel campaign"
                                                             onClick={(e: React.MouseEvent) => {
                                                                 if (!confirm('Are you sure you want to cancel this campaign? All pending scheduled drops will be cancelled.')) {
@@ -327,20 +327,20 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                 {/* Empty State */}
                                 {safeCampaigns.data.length === 0 && (
                                     <div className="text-center py-12">
-                                        <div className="mx-auto w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center mb-4">
-                                            <svg className="w-12 h-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-4">
+                                            <svg className="w-12 h-12 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" />
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" />
                                             </svg>
                                         </div>
-                                        <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">No campaigns</h3>
-                                        <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-md mx-auto">
+                                        <h3 className="text-lg font-medium mb-2">No campaigns</h3>
+                                        <p className="text-muted-foreground mb-6 max-w-md mx-auto">
                                             Get started by creating your first prayer campaign to schedule daily content delivery.
                                         </p>
                                         <div className="flex justify-center space-x-4">
                                             <Link
                                                 href={route('campaigns.create')}
-                                                className="inline-flex items-center px-4 py-2 bg-blue-600 hover:bg-blue-700 dark:bg-blue-700 dark:hover:bg-blue-600 text-white font-medium rounded-lg transition-colors"
+                                                className="inline-flex items-center px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium rounded-lg transition-colors"
                                             >
                                                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -349,7 +349,7 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                             </Link>
                                             <Link
                                                 href={route('content.items.index')}
-                                                className="inline-flex items-center px-4 py-2 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium rounded-lg transition-colors"
+                                                className="inline-flex items-center px-4 py-2 border border-border hover:bg-accent font-medium rounded-lg transition-colors"
                                             >
                                                 <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -364,7 +364,7 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                             {/* Pagination - Fixed */}
                             {safeCampaigns && safeCampaigns.last_page > 1 && (
                                 <div className="mt-6 flex flex-col sm:flex-row justify-between items-center space-y-4 sm:space-y-0">
-                                    <div className="text-sm text-gray-700 dark:text-gray-300">
+                                    <div className="text-sm text-muted-foreground">
                                         Showing {safeCampaigns.from || 0} to {safeCampaigns.to || 0} of {safeCampaigns.total} results
                                     </div>
                                     <nav className="flex space-x-1">
@@ -374,8 +374,8 @@ const CampaignsIndex: React.FC<CampaignsIndexProps> = ({ campaigns }) => {
                                                 href={link.url || '#'}
                                                 className={`px-3 py-2 rounded-md text-sm font-medium transition-colors ${
                                                     link.active
-                                                        ? 'bg-blue-600 text-white'
-                                                        : 'bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-600 border border-gray-300 dark:border-gray-600'
+                                                        ? 'bg-primary text-primary-foreground'
+                                                        : 'bg-card text-muted-foreground hover:bg-accent border border-border'
                                                 } ${!link.url && 'opacity-50 cursor-not-allowed pointer-events-none'}`}
                                                 dangerouslySetInnerHTML={{ __html: link.label }}
                                             />

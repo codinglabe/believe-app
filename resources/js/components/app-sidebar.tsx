@@ -32,7 +32,8 @@ import {
     Mail,
     CalendarPlus,
     PlusCircle,
-    Star
+    Star,
+    Bot
 } from 'lucide-react';
 import AppLogo from './app-logo';
 import SiteTitle from './site-title';
@@ -45,6 +46,15 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         href: '/dashboard',
         icon: BarChart3,
         permission: "dashboard.read"
+    },
+
+    // AI Chat Assistant
+    {
+        title: 'AI Chat Assistant',
+        href: '/ai-chat',
+        icon: Bot,
+        permission: "ai.chat.use",
+        role: "organization"
     },
 
     {

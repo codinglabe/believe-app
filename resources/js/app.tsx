@@ -3,10 +3,13 @@ import './bootstrap'; // <--- Add this line
 
 import { createInertiaApp } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
-import { createRoot } from 'react-dom/client';
-import { initializeTheme } from './hooks/use-appearance';
-import { NotificationProvider } from './components/frontend/notification-provider';
 import { configureEcho } from '@laravel/echo-react';
+import { createRoot } from 'react-dom/client';
+import { NotificationProvider } from './components/frontend/notification-provider';
+import { PwaInstallPrompt } from './components/pwa/pwa-install-prompt';
+import { initializeTheme } from './hooks/use-appearance';
+import { registerServiceWorker } from './pwa/register-service-worker';
+
 
 configureEcho({
     broadcaster: 'reverb',
@@ -23,6 +26,7 @@ createInertiaApp({
         root.render(
           <NotificationProvider>
             <App {...props} />
+            <PwaInstallPrompt/>
           </NotificationProvider>
         );
     },
@@ -34,3 +38,4 @@ createInertiaApp({
 
 // This will set light / dark mode on load...
 initializeTheme();
+registerServiceWorker();

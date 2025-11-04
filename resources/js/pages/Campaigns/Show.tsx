@@ -2,6 +2,7 @@ import React from 'react';
 import { Head, Link, usePage } from '@inertiajs/react';
 import { PageProps, Campaign, CampaignStats } from '@/types';
 import AppLayout from '@/layouts/app-layout';
+import { Calendar, Clock, Radio, CheckCircle2, User, ArrowLeft, FileText, Send } from 'lucide-react';
 
 interface CampaignsShowProps {
     campaign: Campaign & {
@@ -72,26 +73,50 @@ const CampaignsShow: React.FC<CampaignsShowProps> = ({ campaign, stats }) => {
             <Head title={`Campaign - ${campaign.name}`} />
 
             <div className="py-6">
-                <div className="max-w-7xl mx-auto sm:px-6 lg:px-8">
+                <div className="w-full px-4 sm:px-6 lg:px-8">
                     {flash?.success && (
-                        <div className="mb-4 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded dark:bg-green-900 dark:border-green-700 dark:text-green-200">
+                        <div className="mb-6 bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded-lg dark:bg-green-900/20 dark:border-green-800 dark:text-green-300">
                             {flash?.success}
                         </div>
                     )}
 
-                    {/* Header */}
-                    <div className="mb-6">
-                        <div className="flex justify-between items-start">
-                            <div>
-                                <h1 className="text-2xl font-bold text-gray-900 dark:text-white">{campaign.name}</h1>
-                                <p className="text-gray-600 dark:text-gray-400">
-                                    Created by {campaign.user.name} on {new Date(campaign.created_at).toLocaleDateString()}
-                                </p>
+                    {/* Professional Header */}
+                    <div className="mb-8">
+                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-6">
+                            <div className="flex items-start gap-4 flex-1 min-w-0">
+                                <div className="p-3 rounded-xl bg-primary/10 flex-shrink-0">
+                                    <Radio className="h-6 w-6 text-primary" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <Link
+                                            href={route('campaigns.index')}
+                                            className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
+                                        >
+                                            <ArrowLeft className="h-3 w-3" />
+                                            Campaigns
+                                        </Link>
+                                        <span className="text-muted-foreground">/</span>
+                                        <span className="text-sm text-muted-foreground truncate">{campaign.name}</span>
+                                    </div>
+                                    <h1 className="text-3xl font-bold mb-2">{campaign.name}</h1>
+                                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                                        <div className="flex items-center gap-1.5">
+                                            <User className="h-4 w-4" />
+                                            <span>Created by {campaign.user.name}</span>
+                                        </div>
+                                        <div className="flex items-center gap-1.5">
+                                            <Calendar className="h-4 w-4" />
+                                            <span>{new Date(campaign.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
                             <Link
                                 href={route('campaigns.index')}
-                                className="bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-md dark:bg-gray-700 dark:hover:bg-gray-600 dark:text-gray-200"
+                                className="inline-flex items-center gap-2 bg-card border border-border hover:bg-accent font-medium py-2.5 px-4 rounded-lg transition-colors shadow-sm hover:shadow-md"
                             >
+                                <ArrowLeft className="h-4 w-4" />
                                 Back to Campaigns
                             </Link>
                         </div>
@@ -99,148 +124,211 @@ const CampaignsShow: React.FC<CampaignsShowProps> = ({ campaign, stats }) => {
 
                     {/* Stats Cards */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-                        <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                        <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 overflow-hidden rounded-lg shadow-sm">
                             <div className="px-4 py-5 sm:p-6">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Drops</dt>
-                                <dd className="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{stats.total_drops}</dd>
+                                <dt className="text-sm font-medium text-blue-600 dark:text-blue-400 truncate">Total Drops</dt>
+                                <dd className="mt-1 text-3xl font-semibold text-blue-900 dark:text-blue-300">{stats.total_drops}</dd>
                             </div>
                         </div>
-                        <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 overflow-hidden rounded-lg shadow-sm">
                             <div className="px-4 py-5 sm:p-6">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Sent Drops</dt>
-                                <dd className="mt-1 text-3xl font-semibold text-green-600 dark:text-green-400">{stats.sent_drops}</dd>
+                                <dt className="text-sm font-medium text-green-600 dark:text-green-400 truncate">Sent Drops</dt>
+                                <dd className="mt-1 text-3xl font-semibold text-green-900 dark:text-green-300">{stats.sent_drops}</dd>
                             </div>
                         </div>
-                        <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 overflow-hidden rounded-lg shadow-sm">
                             <div className="px-4 py-5 sm:p-6">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Pending Drops</dt>
-                                <dd className="mt-1 text-3xl font-semibold text-yellow-600 dark:text-yellow-400">{stats.pending_drops}</dd>
+                                <dt className="text-sm font-medium text-yellow-600 dark:text-yellow-400 truncate">Pending Drops</dt>
+                                <dd className="mt-1 text-3xl font-semibold text-yellow-900 dark:text-yellow-300">{stats.pending_drops}</dd>
                             </div>
                         </div>
-                        <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                        <div className="bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 overflow-hidden rounded-lg shadow-sm">
                             <div className="px-4 py-5 sm:p-6">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Total Sends</dt>
-                                <dd className="mt-1 text-3xl font-semibold text-gray-900 dark:text-white">{stats.total_sends}</dd>
+                                <dt className="text-sm font-medium text-purple-600 dark:text-purple-400 truncate">Total Sends</dt>
+                                <dd className="mt-1 text-3xl font-semibold text-purple-900 dark:text-purple-300">{stats.total_sends}</dd>
                             </div>
                         </div>
-                        <div className="bg-white dark:bg-gray-800 overflow-hidden shadow rounded-lg">
+                        <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 overflow-hidden rounded-lg shadow-sm">
                             <div className="px-4 py-5 sm:p-6">
-                                <dt className="text-sm font-medium text-gray-500 dark:text-gray-400 truncate">Successful</dt>
-                                <dd className="mt-1 text-3xl font-semibold text-green-600 dark:text-green-400">{stats.successful_sends}</dd>
+                                <dt className="text-sm font-medium text-green-600 dark:text-green-400 truncate">Successful</dt>
+                                <dd className="mt-1 text-3xl font-semibold text-green-900 dark:text-green-300">{stats.successful_sends}</dd>
                             </div>
                         </div>
                     </div>
 
-                    {/* Campaign Details */}
-                    <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg mb-6">
-                        <div className="px-4 py-5 sm:px-6">
-                            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Campaign Details</h3>
+                    {/* Campaign Details - Professional Design */}
+                    <div className="bg-card border border-border rounded-xl shadow-sm mb-8 overflow-hidden">
+                        <div className="px-6 py-4 border-b border-border bg-muted/30">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                                <FileText className="h-5 w-5 text-primary" />
+                                Campaign Details
+                            </h3>
                         </div>
-                        <div className="border-t border-gray-200 dark:border-gray-700">
-                            <dl>
-                                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Period</dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-gray-200 sm:mt-0 sm:col-span-2">
-                                        {new Date(campaign.start_date).toLocaleDateString()} to {new Date(campaign.end_date).toLocaleDateString()}
-                                    </dd>
-                                </div>
-                                <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Send Time</dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-gray-200 sm:mt-0 sm:col-span-2">
-                                        {campaign.send_time_local} (Local Time)
-                                    </dd>
-                                </div>
-                                <div className="bg-gray-50 dark:bg-gray-700 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Channels</dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-gray-200 sm:mt-0 sm:col-span-2">
-                                        <div className="flex flex-wrap gap-2">
-                                            {campaign.channels.map((channel) => (
-                                                <span key={channel} className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                                                    {channel}
-                                                </span>
-                                            ))}
+                        <div className="p-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                {/* Period */}
+                                <div className="bg-muted/30 rounded-lg p-4 border border-border">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 rounded-lg bg-primary/10">
+                                            <Calendar className="h-5 w-5 text-primary" />
                                         </div>
-                                    </dd>
+                                        <div className="flex-1 min-w-0">
+                                            <dt className="text-sm font-medium text-muted-foreground mb-1">Campaign Period</dt>
+                                            <dd className="text-sm font-semibold">
+                                                {new Date(campaign.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })} - {new Date(campaign.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            </dd>
+                                        </div>
+                                    </div>
                                 </div>
-                                <div className="bg-white dark:bg-gray-800 px-4 py-5 sm:grid sm:grid-cols-3 sm:gap-4 sm:px-6">
-                                    <dt className="text-sm font-medium text-gray-500 dark:text-gray-400">Status</dt>
-                                    <dd className="mt-1 text-sm text-gray-900 dark:text-gray-200 sm:mt-0 sm:col-span-2">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(campaign.status)}`}>
-                                            {campaign.status}
-                                        </span>
-                                    </dd>
+
+                                {/* Send Time */}
+                                <div className="bg-muted/30 rounded-lg p-4 border border-border">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 rounded-lg bg-primary/10">
+                                            <Clock className="h-5 w-5 text-primary" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <dt className="text-sm font-medium text-muted-foreground mb-1">Send Time</dt>
+                                            <dd className="text-sm font-semibold">
+                                                {campaign.send_time_local}
+                                                <span className="text-xs text-muted-foreground ml-1">(Local Time)</span>
+                                            </dd>
+                                        </div>
+                                    </div>
                                 </div>
-                            </dl>
+
+                                {/* Channels */}
+                                <div className="bg-muted/30 rounded-lg p-4 border border-border">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 rounded-lg bg-primary/10">
+                                            <Send className="h-5 w-5 text-primary" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <dt className="text-sm font-medium text-muted-foreground mb-2">Delivery Channels</dt>
+                                            <dd className="flex flex-wrap gap-2">
+                                                {campaign.channels.map((channel) => (
+                                                    <span key={channel} className="inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold bg-primary/10 text-primary border border-primary/20">
+                                                        {channel}
+                                                    </span>
+                                                ))}
+                                            </dd>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Status */}
+                                <div className="bg-muted/30 rounded-lg p-4 border border-border">
+                                    <div className="flex items-start gap-3">
+                                        <div className="p-2 rounded-lg bg-primary/10">
+                                            <CheckCircle2 className="h-5 w-5 text-primary" />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <dt className="text-sm font-medium text-muted-foreground mb-1">Campaign Status</dt>
+                                            <dd>
+                                                <span className={`inline-flex items-center px-3 py-1 rounded-lg text-xs font-semibold ${getStatusColor(campaign.status)}`}>
+                                                    {campaign.status.charAt(0).toUpperCase() + campaign.status.slice(1)}
+                                                </span>
+                                            </dd>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
-                    {/* Scheduled Drops */}
-                    <div className="bg-white dark:bg-gray-800 shadow overflow-hidden sm:rounded-lg">
-                        <div className="px-4 py-5 sm:px-6 flex justify-between items-center">
-                            <h3 className="text-lg leading-6 font-medium text-gray-900 dark:text-white">Scheduled Drops</h3>
-                            <span className="text-sm text-gray-500 dark:text-gray-400">
-                                {campaign.scheduled_drops.length} total
-                            </span>
+                    {/* Scheduled Drops - Professional Design */}
+                    <div className="bg-card border border-border rounded-xl shadow-sm overflow-hidden">
+                        <div className="px-6 py-4 border-b border-border bg-muted/30 flex justify-between items-center">
+                            <h3 className="text-lg font-semibold flex items-center gap-2">
+                                <Calendar className="h-5 w-5 text-primary" />
+                                Scheduled Drops
+                            </h3>
+                            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20">
+                                <span className="text-sm font-semibold text-primary">{campaign.scheduled_drops.length}</span>
+                                <span className="text-xs text-muted-foreground">total drops</span>
+                            </div>
                         </div>
-                        <div className="border-t border-gray-200 dark:border-gray-700">
-                            <div className="overflow-x-auto">
-                                <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
-                                    <thead className="bg-gray-50 dark:bg-gray-700">
-                                        <tr>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                                Date & Time
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                                Content
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                                Status
-                                            </th>
-                                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                                                Sends
-                                            </th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
-                                        {campaign.scheduled_drops.map((drop) => (
-                                            <tr key={drop.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                                                    {formatDateTime(drop.publish_at_utc)}
-                                                </td>
-                                                <td className="px-6 py-4">
-                                                    <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        <div className="overflow-x-auto">
+                            <table className="min-w-full divide-y divide-border">
+                                <thead className="bg-muted/50">
+                                    <tr>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                            Date & Time
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                            Content
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                            Status
+                                        </th>
+                                        <th className="px-6 py-4 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                                            Delivery Channels
+                                        </th>
+                                    </tr>
+                                </thead>
+                                <tbody className="bg-card divide-y divide-border">
+                                    {campaign.scheduled_drops.map((drop, index) => (
+                                        <tr key={drop.id} className="hover:bg-accent/50 transition-colors">
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="p-1.5 rounded-md bg-primary/10">
+                                                        <Clock className="h-3.5 w-3.5 text-primary" />
+                                                    </div>
+                                                    <div>
+                                                        <div className="text-sm font-semibold">
+                                                            {formatDateTime(drop.publish_at_utc).split(',')[0]}
+                                                        </div>
+                                                        <div className="text-xs text-muted-foreground">
+                                                            {formatDateTime(drop.publish_at_utc).split(',')[1]?.trim()}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="max-w-md">
+                                                    <div className="text-sm font-semibold mb-1.5 line-clamp-1">
                                                         {drop.content_item.title}
                                                     </div>
-                                                    <div className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
-                                                        {drop.content_item.body.replace(/<[^>]*>/g, '').substring(0, 100)}...
+                                                    <div className="text-sm text-muted-foreground line-clamp-2">
+                                                        {drop.content_item.body.replace(/<[^>]*>/g, '').substring(0, 120)}
+                                                        {drop.content_item.body.replace(/<[^>]*>/g, '').length > 120 && '...'}
                                                     </div>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap">
-                                                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(drop.status)}`}>
-                                                        {drop.status}
-                                                    </span>
-                                                </td>
-                                                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 dark:text-gray-200">
-                                                    <div className="flex flex-col space-y-1">
-                                                        {drop.send_jobs.reduce((acc: any, job) => {
-                                                            acc[job.channel] = (acc[job.channel] || 0) + 1;
-                                                            return acc;
-                                                        }, {}) && Object.entries(drop.send_jobs.reduce((acc: any, job) => {
-                                                            acc[job.channel] = (acc[job.channel] || 0) + 1;
-                                                            return acc;
-                                                        }, {})).map(([channel, count]) => (
-                                                            <div key={channel} className="flex items-center text-xs">
-                                                                <span className="font-medium text-gray-900 dark:text-gray-200">{channel}:</span>
-                                                                <span className="ml-1 text-gray-600 dark:text-gray-400">{count as number}</span>
-                                                            </div>
-                                                        ))}
-                                                    </div>
-                                                </td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className={`inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-semibold ${getStatusColor(drop.status)}`}>
+                                                    {drop.status.charAt(0).toUpperCase() + drop.status.slice(1)}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <div className="flex flex-wrap gap-1.5 max-w-xs">
+                                                    {drop.send_jobs.reduce((acc: any, job) => {
+                                                        acc[job.channel] = (acc[job.channel] || 0) + 1;
+                                                        return acc;
+                                                    }, {}) && Object.entries(drop.send_jobs.reduce((acc: any, job) => {
+                                                        acc[job.channel] = (acc[job.channel] || 0) + 1;
+                                                        return acc;
+                                                    }, {})).map(([channel, count]) => (
+                                                        <div
+                                                            key={channel}
+                                                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20"
+                                                        >
+                                                            <span className="text-xs font-semibold text-primary">{channel}</span>
+                                                            <span className="text-xs text-muted-foreground">({count as number})</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {campaign.scheduled_drops.length === 0 && (
+                                <div className="text-center py-12">
+                                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                                    <p className="text-sm text-muted-foreground">No scheduled drops found</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

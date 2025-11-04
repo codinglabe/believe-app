@@ -187,6 +187,35 @@
   line-height: 1.6;
   padding: 16px;
   min-height: 240px;
+}
+
+/* AI Chat Custom Scrollbar */
+.ai-chat-scrollbar::-webkit-scrollbar {
+  width: 8px;
+}
+
+.ai-chat-scrollbar::-webkit-scrollbar-track {
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 4px;
+}
+
+.ai-chat-scrollbar::-webkit-scrollbar-thumb {
+  background: hsl(var(--primary) / 0.4);
+  border-radius: 4px;
+  transition: background 0.2s ease;
+}
+
+.ai-chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--primary) / 0.6);
+}
+
+/* Firefox scrollbar */
+.ai-chat-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--primary) / 0.4) hsl(var(--muted) / 0.3);
+}
+
+.rich-text-editor-complete .ql-editor {
   font-family: inherit;
 }
 

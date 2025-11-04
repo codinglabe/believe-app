@@ -200,4 +200,45 @@ PROMPT;
 
         return $validatedItems;
     }
+
+    public function chatCompletion(array $messages): string
+    {
+        try {
+            $response = Http::withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])
+                ->timeout(120)
+                ->connectTimeout(30)
+                ->post($this->apiUrl, [
+                    'model' => 'gpt-4o-mini',
+                    'messages' => $messages,
+                    'temperature' => 0.7,
+                    'max_tokens' => 2000,
+                    'top_p' => 0.9,
+                ]);
+
+            if ($response->failed()) {
+                $errorBody = $response->body();
+                Log::error('OpenAI Chat API Error', [
+                    'status' => $response->status(),
+                    'body' => $errorBody,
+                ]);
+                throw new \Exception('OpenAI API Error: ' . $response->status() . ' - ' . $errorBody);
+            }
+
+            $content = $response->json('choices.0.message.content');
+
+            if (empty($content)) {
+                throw new \Exception('Empty response from OpenAI');
+            }
+
+            return trim($content);
+        } catch (\Exception $e) {
+            Log::error('OpenAI Chat Service Error', [
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
+        }
+    }
 }

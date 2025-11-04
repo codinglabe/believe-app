@@ -6,7 +6,7 @@ import { NotificationProvider } from "@/components/frontend/notification-provide
 import toast, { Toaster } from "react-hot-toast"
 import { use, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
-import { PWAInstallPrompt } from "@/components/PWAInstallPrompt"
+// import { PWAInstallPrompt } from "@/components/PWAInstallPrompt"
 import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase"
 import axios from "axios"
@@ -122,7 +122,7 @@ export default function RootLayout({
       <div>
         <Navbar />
               <main>
-                  <PWAInstallPrompt />
+                  {/* <PWAInstallPrompt /> */}
                           <PWAUpdatePrompt />
           {children}
         </main>
