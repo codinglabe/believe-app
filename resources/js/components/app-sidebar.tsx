@@ -1,7 +1,6 @@
 import { NavMain } from '@/components/nav-main';
 import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
-import { Link } from '@inertiajs/react';
 import {
     Download,
     FileText,
@@ -35,7 +34,6 @@ import {
     Star,
     Bot
 } from 'lucide-react';
-import AppLogo from './app-logo';
 import SiteTitle from './site-title';
 
 
@@ -218,13 +216,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "node.referral.read"
     },
 
-    // Course Management Section
+    // Virtual (Course,Event) Management Section
     {
-        title: 'Course Management',
+        title: 'Virtual (Course,Event)',
         items: [
             {
-                title: 'Courses',
-                href: '/admin/courses',
+                title: 'Courses & Events',
+                href: '/admin/courses-events',
                 icon: GraduationCap,
                 permission: "course.read"
             },
@@ -261,6 +259,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Code Management Section
     {
         title: 'Code Management',
+        role: "admin",
         items: [
             {
                 title: 'Classification Codes',

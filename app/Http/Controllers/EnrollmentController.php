@@ -36,7 +36,7 @@ class EnrollmentController extends Controller
             ->first();
 
         if ($existingEnrollment) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'You are already enrolled in this course.');
         }
 
@@ -46,7 +46,7 @@ class EnrollmentController extends Controller
             ->count();
 
         if ($totalEnrolled >= $course->max_participants) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'This course is full.');
         }
 
@@ -54,12 +54,15 @@ class EnrollmentController extends Controller
         $startDateTime = $this->parseDateTime($course->start_date, $course->start_time);
 
         if ($startDateTime->isPast()) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'This course has already started.');
         }
 
         try {
             DB::beginTransaction();
+
+            // Generate unique enrollment ID
+            $enrollmentId = $this->generateUniqueEnrollmentId();
 
             // Create enrollment record
             $enrollment = Enrollment::create([
@@ -69,7 +72,7 @@ class EnrollmentController extends Controller
                 'amount_paid' => $course->pricing_type === 'paid' ? $course->course_fee : 0,
                 'payment_method' => $course->pricing_type === 'paid' ? 'stripe' : 'free',
                 'enrolled_at' => now(),
-                'enrollment_id' => 'ENR-' . strtoupper(Str::random(8)),
+                'enrollment_id' => $enrollmentId,
             ]);
 
             if ($course->pricing_type === 'free') {
@@ -104,7 +107,8 @@ class EnrollmentController extends Controller
 
                 DB::commit();
 
-                return redirect()->route('courses.enrollment.success', $enrollment->id)
+                // Redirect to success page with enrollment_id as query parameter
+                return redirect(route('courses.enrollment.success') . '?enrollment_id=' . $enrollment->id)
                     ->with('success', 'Successfully enrolled in the course!');
             } else {
                 // Create pending transaction record for paid enrollment
@@ -173,22 +177,53 @@ class EnrollmentController extends Controller
         $sessionId = $request->get('session_id');
         $enrollmentId = $request->get('enrollment_id');
 
-        // Handle free enrollment success
+        // Handle free enrollment success - check for enrollment_id first
         if ($enrollmentId && !$sessionId) {
-            $enrollment = Enrollment::with(['course', 'user'])->findOrFail($enrollmentId);
-
-            return Inertia::render('frontend/course/enrollment/Success', [
-                'enrollment' => $enrollment,
-                'course' => $enrollment->course,
-                'type' => 'free',
-                'meetingLink' => $enrollment->course->meeting_link,
-            ]);
+            $enrollment = Enrollment::with([
+                'course.organization',
+                'course.topic',
+                'course.eventType',
+                'user'
+            ])->find($enrollmentId);
+            
+            if ($enrollment) {
+                // Verify it's a free enrollment
+                if ($enrollment->course->pricing_type === 'free') {
+                    return Inertia::render('frontend/course/enrollment/Success', [
+                        'enrollment' => $enrollment,
+                        'course' => $enrollment->course,
+                        'type' => 'free',
+                        'meetingLink' => $enrollment->course->meeting_link,
+                    ]);
+                } else {
+                    // Enrollment exists but it's a paid course, should have session_id
+                    return redirect()->route('course.index')->with([
+                        'warning' => 'Payment session missing. Please complete your payment.'
+                    ]);
+                }
+            } else {
+                // Enrollment not found
+                return redirect()->route('course.index')->with([
+                    'error' => 'Enrollment not found. Please contact support if you believe this is an error.'
+                ]);
+            }
         }
 
-        // Handle paid enrollment success
+        // Handle paid enrollment success - must have session_id
         if (!$sessionId) {
-            return redirect()->route('courses.index')->with([
-                'warning' => 'Invalid enrollment session'
+            // If we have an enrollment_id but it's not free, or enrollment not found
+            if ($enrollmentId) {
+                $enrollment = Enrollment::with(['course', 'user'])->find($enrollmentId);
+                if ($enrollment && $enrollment->course->pricing_type === 'paid') {
+                    // This is a paid course, should have session_id
+                    return redirect()->route('course.index')->with([
+                        'warning' => 'Payment session missing. Please try enrolling again.'
+                    ]);
+                }
+            }
+            // No enrollment_id or session_id found
+            return redirect()->route('course.index')->with([
+                'warning' => 'Invalid enrollment session. Please try enrolling again.'
             ]);
         }
 
@@ -199,6 +234,7 @@ class EnrollmentController extends Controller
             $enrollment = Enrollment::with([
                 'course.organization',
                 'course.topic',
+                'course.eventType',
                 'user'
             ])->findOrFail($session->metadata->enrollment_id);
 
@@ -240,7 +276,7 @@ class EnrollmentController extends Controller
         } catch (\Exception $e) {
             DB::rollBack();
 
-            return redirect()->route('courses.index')->withErrors([
+            return redirect()->route('course.index')->withErrors([
                 'message' => 'Error verifying payment: ' . $e->getMessage()
             ]);
         }
@@ -289,7 +325,7 @@ class EnrollmentController extends Controller
             ->first();
 
         if (!$enrollment) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'No active enrollment found.');
         }
 
@@ -298,7 +334,7 @@ class EnrollmentController extends Controller
         $hoursUntilStart = now()->diffInHours($startDateTime, false);
 
         if ($hoursUntilStart < 24) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'Cancellation is only allowed 24 hours before course start.');
         }
 
@@ -336,7 +372,7 @@ class EnrollmentController extends Controller
 
             DB::commit();
 
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('success', 'Your enrollment has been cancelled successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -362,7 +398,7 @@ class EnrollmentController extends Controller
             ->first();
 
         if (!$enrollment) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'No eligible enrollment found for refund.');
         }
 
@@ -370,7 +406,7 @@ class EnrollmentController extends Controller
         $daysSinceEnrollment = $enrollment->enrolled_at->diffInDays(now());
 
         if ($daysSinceEnrollment > 7) {
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('error', 'Refund requests are only allowed within 7 days of enrollment.');
         }
 
@@ -419,7 +455,7 @@ class EnrollmentController extends Controller
 
             DB::commit();
 
-            return redirect()->route('courses.show', $course->slug)
+            return redirect()->route('course.show', $course->slug)
                 ->with('success', 'Your refund request has been processed successfully.');
         } catch (\Exception $e) {
             DB::rollBack();
@@ -437,7 +473,12 @@ class EnrollmentController extends Controller
     {
         $user = Auth::user();
 
-        $query = Enrollment::with(['course.topic', 'course.organization'])
+        $query = Enrollment::with([
+            'course.topic',
+            'course.eventType',
+            'course.organization',
+            'course.creator'
+        ])
             ->where('user_id', $user->id);
 
         // Apply search filter
@@ -457,7 +498,7 @@ class EnrollmentController extends Controller
 
         $enrollments->getCollection()->transform(function ($enrollment) use ($user) {
             if ($enrollment->status === 'active') {
-                $enrollment->meeting_link = $enrollment->course->meeting_link;
+                $enrollment->course->meeting_link = $enrollment->course->meeting_link;
             }
             return $enrollment;
         });
@@ -465,7 +506,7 @@ class EnrollmentController extends Controller
         // Calculate enrollment statistics
         $enrollmentStats = [
             'total_enrolled' => Enrollment::where('user_id', $user->id)->count(),
-            'total_spent' => Enrollment::where('user_id', $user->id)->sum('amount_paid'),
+            'total_spent' => Enrollment::where('user_id', $user->id)->sum('amount_paid') ?? 0,
             'active_enrollments' => Enrollment::where('user_id', $user->id)->where('status', 'active')->count(),
             'completed_enrollments' => Enrollment::where('user_id', $user->id)->where('status', 'completed')->count(),
         ];
@@ -478,6 +519,45 @@ class EnrollmentController extends Controller
                 'status' => $request->get('status', ''),
             ],
         ]);
+    }
+
+    /**
+     * Generate a unique enrollment ID
+     * Format: ENR-YYYYMMDD-XXXXXXXX (e.g., ENR-20250115-A1B2C3D4)
+     */
+    private function generateUniqueEnrollmentId(): string
+    {
+        $maxAttempts = 10;
+        $attempt = 0;
+
+        do {
+            // Generate ID with date prefix for better uniqueness
+            $datePrefix = now()->format('Ymd');
+            $randomPart = strtoupper(Str::random(8));
+            $enrollmentId = 'ENR-' . $datePrefix . '-' . $randomPart;
+
+            // Check if this ID already exists
+            $exists = Enrollment::where('enrollment_id', $enrollmentId)->exists();
+            
+            if (!$exists) {
+                return $enrollmentId;
+            }
+
+            $attempt++;
+            
+            // If we've tried too many times, add more randomness
+            if ($attempt >= $maxAttempts) {
+                $randomPart = strtoupper(Str::random(12));
+                $enrollmentId = 'ENR-' . $datePrefix . '-' . $randomPart . '-' . time();
+                // Final check before returning
+                if (!Enrollment::where('enrollment_id', $enrollmentId)->exists()) {
+                    return $enrollmentId;
+                }
+            }
+        } while ($attempt < $maxAttempts);
+
+        // Fallback: use timestamp-based ID
+        return 'ENR-' . now()->format('YmdHis') . '-' . strtoupper(Str::random(8));
     }
 
     /**

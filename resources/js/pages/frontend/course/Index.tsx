@@ -18,6 +18,12 @@ interface Topic {
   name: string
 }
 
+interface EventType {
+  id: number
+  name: string
+  category: string
+}
+
 interface Organization {
   id: number
   name: string
@@ -34,11 +40,13 @@ interface Creator {
 interface Course {
   id: number
   topic_id: number | null
+  event_type_id: number | null
   organization_id: number
   user_id: number
   name: string
   slug: string
   description: string
+  type: "course" | "event"
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
@@ -64,6 +72,7 @@ interface Course {
   created_at: string
   updated_at: string
   topic: Topic | null
+  event_type: EventType | null
   organization: Organization
   organization_name: string | null
   creator: Creator
@@ -90,6 +99,7 @@ interface FrontendCoursesListPageProps {
     to: number
   }
   topics: Topic[]
+  eventTypes: EventType[]
   user?: CourseListUser | null
   message?: string
   filters: {
@@ -97,12 +107,15 @@ interface FrontendCoursesListPageProps {
     topic_id?: string
     format?: string
     pricing_type?: string
+    type?: string
+    event_type_id?: string
   }
 }
 
 export default function FrontendCoursesListPage({
   courses: initialCourses,
   topics,
+  eventTypes,
   organizations,
   user,
   filters,
@@ -110,8 +123,12 @@ export default function FrontendCoursesListPage({
   const flash = usePage().props
   const { showNotification } = useNotification()
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
+  const [selectedType, setSelectedType] = useState(filters.type || "all")
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(
     filters.topic_id ? Number.parseInt(filters.topic_id) : null,
+  )
+  const [selectedEventTypeId, setSelectedEventTypeId] = useState<number | null>(
+    filters.event_type_id ? Number.parseInt(filters.event_type_id) : null,
   )
   const [selectedOrganization, setSelectedOrganization] = useState<string | null>(
     filters.organization ? filters.organization : null,
@@ -124,12 +141,14 @@ export default function FrontendCoursesListPage({
   const searchContainerRef = useRef<HTMLDivElement>(null)
 
   // Perform search with debouncing
-  const performSearch = useCallback(async (query: string, topicId: number | null, format: string, pricing: string, organization: string) => {
+  const performSearch = useCallback(async (query: string, type: string, topicId: number | null, eventTypeId: number | null, format: string, pricing: string, organization: string) => {
     setIsSearching(true)
 
     const params: any = {}
     if (query) params.search = query
+    if (type !== "all") params.type = type
     if (topicId) params.topic_id = topicId.toString()
+    if (eventTypeId) params.event_type_id = eventTypeId.toString()
     if (organization) {
       params.organization = organization
       setSelectedOrganization(params.organization)
@@ -145,14 +164,20 @@ export default function FrontendCoursesListPage({
     })
   }, [])
 
+  // Clear topic/event type when type changes
+  useEffect(() => {
+    setSelectedTopicId(null)
+    setSelectedEventTypeId(null)
+  }, [selectedType])
+
   // Debounced search effect
   useEffect(() => {
     const timer = setTimeout(() => {
-      performSearch(searchQuery, selectedTopicId, selectedFormat, selectedPricing, selectedOrganization)
+      performSearch(searchQuery, selectedType, selectedTopicId, selectedEventTypeId, selectedFormat, selectedPricing, selectedOrganization)
     }, 500)
 
     return () => clearTimeout(timer)
-  }, [searchQuery, selectedTopicId, selectedFormat, selectedPricing, selectedOrganization, performSearch])
+  }, [searchQuery, selectedType, selectedTopicId, selectedEventTypeId, selectedFormat, selectedPricing, selectedOrganization, performSearch])
 
   // Close search/filters when clicking outside
   useEffect(() => {
@@ -201,7 +226,9 @@ export default function FrontendCoursesListPage({
 
   const clearFilters = () => {
     setSearchQuery("")
+    setSelectedType("all")
     setSelectedTopicId(null)
+    setSelectedEventTypeId(null)
     setSelectedFormat("all")
     setSelectedPricing("all")
   }
@@ -249,7 +276,7 @@ export default function FrontendCoursesListPage({
     }
   }
 
-  const hasActiveFilters = searchQuery || selectedTopicId || selectedFormat !== "all" || selectedPricing !== "all"
+  const hasActiveFilters = searchQuery || selectedType !== "all" || selectedTopicId || selectedEventTypeId || selectedFormat !== "all" || selectedPricing !== "all"
 
   return (
     <FrontendLayout>
@@ -265,16 +292,16 @@ export default function FrontendCoursesListPage({
             >
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-4 sm:mb-6 text-white flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
                 <Heart className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 text-red-300" />
-                <span>Community Courses</span>
+                <span>Courses & Events</span>
               </h1>
               <p className="text-base sm:text-lg md:text-xl mb-6 sm:mb-8 opacity-90 text-white px-4 sm:px-0">
-                Discover courses that make a difference. Learn new skills while contributing to your community's growth
+                Discover courses and events that make a difference. Learn new skills while contributing to your community's growth
                 and development.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-3xl mx-auto px-4 sm:px-0">
                 <div className="text-center">
                   <div className="text-2xl sm:text-3xl font-bold mb-2 text-white">{initialCourses.total}+</div>
-                  <div className="opacity-90 text-blue-100 text-sm sm:text-base">Active Courses</div>
+                  <div className="opacity-90 text-blue-100 text-sm sm:text-base">Courses & Events</div>
                 </div>
                 <div className="text-center">
                   <div className="text-2xl sm:text-3xl font-bold mb-2 text-white">5,000+</div>
@@ -304,7 +331,7 @@ export default function FrontendCoursesListPage({
                   <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4 sm:w-5 sm:h-5" />
                   <Input
                     type="text"
-                    placeholder="Search courses, topics, organizations..."
+                    placeholder="Search courses, events, topics, organizations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
@@ -363,31 +390,63 @@ export default function FrontendCoursesListPage({
                       transition={{ duration: 0.3 }}
                       className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
                     >
-                      {/* Topic Filter */}
+                      {/* Type Filter - First */}
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Topic</Label>
+                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Type</Label>
                         <select
-                          value={selectedTopicId || ""}
-                          onChange={(e) => setSelectedTopicId(e.target.value ? Number.parseInt(e.target.value) : null)}
+                          value={selectedType}
+                          onChange={(e) => setSelectedType(e.target.value)}
                           className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
                         >
-                          <option value="">All Topics</option>
-                          {topics.map((topic) => (
-                            <option key={topic.id} value={topic.id}>
-                              {topic.name}
-                            </option>
-                          ))}
+                          <option value="all">All Types</option>
+                          <option value="course">Course</option>
+                          <option value="event">Event</option>
                         </select>
                       </div>
 
+                      {/* Topic/Event Type Filter - Dynamic */}
+                      {selectedType === "event" ? (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Event Type</Label>
+                          <select
+                            value={selectedEventTypeId || ""}
+                            onChange={(e) => setSelectedEventTypeId(e.target.value ? Number.parseInt(e.target.value) : null)}
+                            className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">All Event Types</option>
+                            {eventTypes.map((eventType) => (
+                              <option key={eventType.id} value={eventType.id}>
+                                {eventType.category ? `${eventType.category} - ${eventType.name}` : eventType.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ) : (
+                        <div>
+                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Course Topic</Label>
+                          <select
+                            value={selectedTopicId || ""}
+                            onChange={(e) => setSelectedTopicId(e.target.value ? Number.parseInt(e.target.value) : null)}
+                            className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          >
+                            <option value="">All Topics</option>
+                            {topics.map((topic) => (
+                              <option key={topic.id} value={topic.id}>
+                                {topic.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Topic</Label>
+                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Organization</Label>
                         <select
                           value={selectedOrganization || ""}
                           onChange={(e) => setSelectedOrganization(e.target.value ? e.target.value : null)}
                           className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
                         >
-                          <option value="">All Organization</option>
+                          <option value="">All Organizations</option>
                           {organizations.map((organization) => (
                             <option key={organization.slug} value={organization.slug}>
                               {organization.name}
@@ -439,7 +498,7 @@ export default function FrontendCoursesListPage({
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 mb-6 sm:mb-8">
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
               <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">
-                Showing {initialCourses.from}-{initialCourses.to} of {initialCourses.total} courses
+                Showing {initialCourses.from}-{initialCourses.to} of {initialCourses.total} courses & events
               </p>
               {hasActiveFilters && (
                 <p className="text-xs sm:text-sm text-blue-600 dark:text-blue-400">
@@ -488,7 +547,9 @@ export default function FrontendCoursesListPage({
                       </Badge>
                     </div>
                     <div className="absolute bottom-4 right-4">
-                      <Badge className={getDurationColor(course.duration)}>{course.formatted_duration}</Badge>
+                      <Badge className={course.type === "course" ? "bg-blue-600 text-white" : "bg-purple-600 text-white"}>
+                        {course.type === "course" ? "Course" : "Event"}
+                      </Badge>
                     </div>
                   </div>
 
@@ -501,16 +562,16 @@ export default function FrontendCoursesListPage({
                     </div>
 
                     <div className="flex justify-between items-start mb-2">
-                      {course.topic && (
+                      {course.type === "course" && course.topic && (
                         <Badge variant="outline" className="text-xs">
                           {course.topic.name}
                         </Badge>
                       )}
-                      <div className="flex items-center text-yellow-500">
-                        <Star className="w-4 h-4 fill-current" />
-                        <span className="text-sm font-medium ml-1">{course.rating}</span>
-                        <span className="text-xs text-slate-500 ml-1">({course.total_reviews})</span>
-                      </div>
+                      {course.type === "event" && course.event_type && (
+                        <Badge variant="outline" className="text-xs">
+                          {course.event_type.name}
+                        </Badge>
+                      )}
                     </div>
 
                     {/* Target Audience */}
@@ -562,10 +623,17 @@ export default function FrontendCoursesListPage({
                       <div className="flex justify-between text-sm">
                         <span className="text-slate-600 dark:text-slate-400">Enrollment</span>
                         <span className="text-slate-900 dark:text-white font-medium">
-                          {Math.round((course.enrolled / course.max_participants) * 100)}%
+                          {course.max_participants > 0 
+                            ? Math.round((course.enrolled / course.max_participants) * 100)
+                            : 0}%
                         </span>
                       </div>
-                      <Progress value={(course.enrolled / course.max_participants) * 100} className="h-2" />
+                      <Progress 
+                        value={course.max_participants > 0 
+                          ? (course.enrolled / course.max_participants) * 100 
+                          : 0} 
+                        className="h-2" 
+                      />
                     </div>
 
                     {/* Features */}

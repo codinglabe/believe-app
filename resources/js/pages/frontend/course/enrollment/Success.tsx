@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Link } from "@inertiajs/react"
+import { route } from "ziggy-js"
 
 interface Course {
   id: number
@@ -17,19 +18,23 @@ interface Course {
   pricing_type: "free" | "paid"
   course_fee: number | null
   start_date: string
-  start_time: string
+  start_time: string | null
   duration: string
   format: string
   formatted_price: string
   formatted_duration: string
   formatted_format: string
   image_url?: string
+  meeting_link?: string | null
   topic: {
     name: string
-  }
+  } | null
+  event_type: {
+    name: string
+  } | null
   organization: {
     name: string
-  }
+  } | null
 }
 
 interface Enrollment {
@@ -135,21 +140,55 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                           <div className="flex items-center gap-2">
                             <Calendar className="h-4 w-4 text-blue-600" />
                             <span>
-                              {new Date(course.start_date).toLocaleDateString()} at {course.start_time}
+                              <strong>Date:</strong> {new Date(course.start_date).toLocaleDateString("en-US", {
+                                year: "numeric",
+                                month: "long",
+                                day: "numeric"
+                              })}
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Clock className="h-4 w-4 text-blue-600" />
-                            <span>{course.formatted_duration}</span>
+                            <span>
+                              <strong>Time:</strong> {course.start_time || "TBD"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-blue-600" />
+                            <span>
+                              <strong>Duration:</strong> {course.formatted_duration}
+                            </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <MapPin className="h-4 w-4 text-blue-600" />
-                            <span>{course.formatted_format}</span>
+                            <span>
+                              <strong>Format:</strong> {course.formatted_format}
+                            </span>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <User className="h-4 w-4 text-blue-600" />
-                            <span>{course.organization.name}</span>
-                          </div>
+                          {course.organization && (
+                            <div className="flex items-center gap-2">
+                              <User className="h-4 w-4 text-blue-600" />
+                              <span>
+                                <strong>Organization:</strong> {course.organization.name}
+                              </span>
+                            </div>
+                          )}
+                          {course.meeting_link && (
+                            <div className="flex items-center gap-2">
+                              <MapPin className="h-4 w-4 text-blue-600" />
+                              <span>
+                                <strong>Meeting Link:</strong>{" "}
+                                <a 
+                                  href={course.meeting_link} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-blue-600 hover:underline"
+                                >
+                                  Join Meeting
+                                </a>
+                              </span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -227,10 +266,14 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                         />
                       )}
                       <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{course.name}</h3>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">by {course.organization.name}</p>
-                      <Badge variant="secondary" className="mb-4">
-                        {course.topic.name}
-                      </Badge>
+                      {course.organization && (
+                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">by {course.organization.name}</p>
+                      )}
+                      {(course.topic || course.event_type) && (
+                        <Badge variant="secondary" className="mb-4">
+                          {course.topic?.name || course.event_type?.name}
+                        </Badge>
+                      )}
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span className="text-gray-600 dark:text-gray-400">Price:</span>
@@ -250,7 +293,7 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
 
                   {/* Action Buttons */}
                   <div className="space-y-3">
-                    <Link href="/my-enrollments">
+                    <Link href={route('enrollments.my')}>
                       <Button className="w-full" variant="default">
                         <Download className="mr-2 h-4 w-4" />
                         View My Enrollments

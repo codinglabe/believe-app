@@ -31,33 +31,36 @@ interface Enrollment {
     id: number
     name: string
     slug: string
-    image: string
-    image_url: string
+    type?: "course" | "event"
+    image: string | null
+    image_url: string | null
     description: string
-    course_fee: number
+    course_fee: number | null
     pricing_type: string
     start_date: string
-    start_time: string
-    end_date: string
-    end_time: string
-    location: string
+    start_time: string | null
+    end_date: string | null
+    end_time: string | null
     max_participants: number
     enrolled: number
-    meeting_link?: string // Added meeting_link field
+    meeting_link?: string | null
     organization: {
       name: string
       logo?: string
-    }
+    } | null
     topic: {
       name: string
-    }
+    } | null
+    event_type: {
+      name: string
+    } | null
   }
   status: string
   amount_paid: number
-  payment_method: string
+  payment_method: string | null
   enrolled_at: string
-  enrollment_id: string
-  transaction_id?: string
+  enrollment_id: string | null
+  transaction_id?: string | null
 }
 
 interface EnrollmentStats {
@@ -84,8 +87,27 @@ interface PageProps {
 
 export default function MyEnrollments() {
   const { enrollments, enrollmentStats, filters } = usePage<PageProps>().props
-  const [search, setSearch] = useState(filters.search)
-  const [statusFilter, setStatusFilter] = useState(filters.status)
+  
+  // Ensure we have default values if data is missing
+  const safeEnrollments = enrollments || {
+    data: [],
+    total: 0,
+    current_page: 1,
+    last_page: 1,
+    per_page: 10,
+  }
+  
+  const safeEnrollmentStats = enrollmentStats || {
+    total_spent: 0,
+    total_enrolled: 0,
+    active_enrollments: 0,
+    completed_enrollments: 0,
+  }
+  
+  const safeFilters = filters || { search: '', status: '' }
+  
+  const [search, setSearch] = useState(safeFilters.search)
+  const [statusFilter, setStatusFilter] = useState(safeFilters.status)
   const isInitialMount = useRef(true)
 
   // Auto-filter when search/status changes, but not on initial mount or pagination
@@ -248,7 +270,7 @@ export default function MyEnrollments() {
                 <div>
                   <p className="text-sm font-medium text-green-600 dark:text-green-400">Total Spent</p>
                   <p className="text-3xl font-bold text-green-700 dark:text-green-300">
-                    ${enrollmentStats.total_spent.toLocaleString()}
+                    ${safeEnrollmentStats.total_spent.toLocaleString()}
                   </p>
                 </div>
                 <div className="p-4 bg-green-500 rounded-full shadow-lg">
@@ -267,7 +289,7 @@ export default function MyEnrollments() {
                 <div>
                   <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Total Enrolled</p>
                   <p className="text-3xl font-bold text-blue-700 dark:text-blue-300">
-                    {enrollmentStats.total_enrolled}
+                    {safeEnrollmentStats.total_enrolled}
                   </p>
                 </div>
                 <div className="p-4 bg-blue-500 rounded-full shadow-lg">
@@ -286,7 +308,7 @@ export default function MyEnrollments() {
                 <div>
                   <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Active</p>
                   <p className="text-3xl font-bold text-purple-700 dark:text-purple-300">
-                    {enrollmentStats.active_enrollments}
+                    {safeEnrollmentStats.active_enrollments}
                   </p>
                 </div>
                 <div className="p-4 bg-purple-500 rounded-full shadow-lg">
@@ -297,7 +319,7 @@ export default function MyEnrollments() {
                 <div
                   className="h-full bg-purple-500 rounded-full animate-pulse"
                   style={{
-                    width: `${enrollmentStats.total_enrolled ? (enrollmentStats.active_enrollments / enrollmentStats.total_enrolled) * 100 : 0}%`,
+                    width: `${safeEnrollmentStats.total_enrolled ? (safeEnrollmentStats.active_enrollments / safeEnrollmentStats.total_enrolled) * 100 : 0}%`,
                   }}
                 ></div>
               </div>
@@ -310,7 +332,7 @@ export default function MyEnrollments() {
                 <div>
                   <p className="text-sm font-medium text-orange-600 dark:text-orange-400">Completed</p>
                   <p className="text-3xl font-bold text-orange-700 dark:text-orange-300">
-                    {enrollmentStats.completed_enrollments}
+                    {safeEnrollmentStats.completed_enrollments}
                   </p>
                 </div>
                 <div className="p-4 bg-orange-500 rounded-full shadow-lg">
@@ -321,7 +343,7 @@ export default function MyEnrollments() {
                 <div
                   className="h-full bg-orange-500 rounded-full animate-pulse"
                   style={{
-                    width: `${enrollmentStats.total_enrolled ? (enrollmentStats.completed_enrollments / enrollmentStats.total_enrolled) * 100 : 0}%`,
+                    width: `${safeEnrollmentStats.total_enrolled ? (safeEnrollmentStats.completed_enrollments / safeEnrollmentStats.total_enrolled) * 100 : 0}%`,
                   }}
                 ></div>
               </div>
@@ -372,9 +394,9 @@ export default function MyEnrollments() {
         </Card>
 
         {/* Enrollments List */}
-        {enrollments.data.length > 0 ? (
+        {safeEnrollments.data && safeEnrollments.data.length > 0 ? (
           <div className="grid grid-cols-1 gap-6">
-            {enrollments.data.map((enrollment, index) => (
+            {safeEnrollments.data.map((enrollment, index) => (
               <Card
                 key={enrollment.id}
                 className="border border-gray-200 dark:border-gray-600 hover:shadow-xl dark:bg-gray-900 transition-all duration-300 hover:scale-[1.02] animate-in fade-in"
@@ -389,14 +411,22 @@ export default function MyEnrollments() {
                             {enrollment.course.name}
                           </h4>
                           <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300 mb-3">
-                            <span className="text-blue-600 dark:text-blue-400 font-medium">
-                              {enrollment.course.organization.name}
-                            </span>
-                            <span>•</span>
-                            <span className="text-purple-600 dark:text-purple-400 font-medium">
-                              {enrollment.course.topic.name}
-                            </span>
-                            <span>•</span>
+                            {enrollment.course.organization && (
+                              <>
+                                <span className="text-blue-600 dark:text-blue-400 font-medium">
+                                  {enrollment.course.organization.name}
+                                </span>
+                                <span>•</span>
+                              </>
+                            )}
+                            {(enrollment.course.topic || enrollment.course.event_type) && (
+                              <>
+                                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                                  {enrollment.course.topic?.name || enrollment.course.event_type?.name}
+                                </span>
+                                <span>•</span>
+                              </>
+                            )}
                             <span className={`capitalize font-medium ${getStatusColor(enrollment.status)}`}>
                               {enrollment.status}
                             </span>
@@ -555,26 +585,26 @@ export default function MyEnrollments() {
         )}
 
         {/* Pagination */}
-        {enrollments.last_page > 1 && (
+        {safeEnrollments.last_page > 1 && (
           <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between pt-8">
             <div className="text-sm text-gray-600 dark:text-gray-400 text-center sm:text-left">
               Showing{" "}
               <span className="font-semibold text-gray-900 dark:text-white">
-                {(enrollments.current_page - 1) * enrollments.per_page + 1}
+                {(safeEnrollments.current_page - 1) * safeEnrollments.per_page + 1}
               </span>{" "}
               to{" "}
               <span className="font-semibold text-gray-900 dark:text-white">
-                {Math.min(enrollments.current_page * enrollments.per_page, enrollments.total)}
+                {Math.min(safeEnrollments.current_page * safeEnrollments.per_page, safeEnrollments.total)}
               </span>{" "}
-              of <span className="font-semibold text-gray-900 dark:text-white">{enrollments.total}</span> enrollments
+              of <span className="font-semibold text-gray-900 dark:text-white">{safeEnrollments.total}</span> enrollments
             </div>
             <div className="flex items-center justify-center space-x-2">
               {/* Previous Button */}
-              {enrollments.current_page > 1 && (
+              {safeEnrollments.current_page > 1 && (
                 <Button
                   variant="outline"
                   size="lg"
-                  onClick={() => handlePageChange(enrollments.current_page - 1)}
+                  onClick={() => handlePageChange(safeEnrollments.current_page - 1)}
                   className="w-12 h-12 rounded-full hover:shadow-lg transition-all duration-200 hover:scale-110 bg-transparent p-0"
                 >
                   <ChevronLeft className="h-5 w-5" />
@@ -582,9 +612,9 @@ export default function MyEnrollments() {
               )}
 
               {/* Page Numbers */}
-              {Array.from({ length: Math.min(enrollments.last_page, 5) }).map((_, index) => {
+              {Array.from({ length: Math.min(safeEnrollments.last_page, 5) }).map((_, index) => {
                 const pageNumber = index + 1
-                const isActive = pageNumber === enrollments.current_page
+                const isActive = pageNumber === safeEnrollments.current_page
                 return (
                   <Button
                     key={pageNumber}
@@ -601,11 +631,11 @@ export default function MyEnrollments() {
               })}
 
               {/* Next Button */}
-              {enrollments.current_page < enrollments.last_page && (
+              {safeEnrollments.current_page < safeEnrollments.last_page && (
                 <Button
                   variant="outline"
                   size="lg"
-                  onClick={() => handlePageChange(enrollments.current_page + 1)}
+                  onClick={() => handlePageChange(safeEnrollments.current_page + 1)}
                   className="w-12 h-12 rounded-full hover:shadow-lg transition-all duration-200 hover:scale-110 bg-transparent p-0"
                 >
                   <ChevronRight className="h-5 w-5" />
