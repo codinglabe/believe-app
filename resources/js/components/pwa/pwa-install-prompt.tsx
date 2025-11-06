@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, Download, DownloadCloud, Loader2, Share2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Copy, Download, DownloadCloud, Loader2, Share2, X, CheckCircle2 } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -14,6 +14,11 @@ type NavigatorExtended = Navigator & {
     getInstalledRelatedApps?: () => Promise<unknown[]>;
 };
 
+interface BeforeInstallPromptEvent extends Event {
+    prompt: () => Promise<void>;
+    userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
+
 export function PwaInstallPrompt() {
     const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
     const [isVisible, setIsVisible] = useState(false);
@@ -26,30 +31,10 @@ export function PwaInstallPrompt() {
     const [alreadyInstalled, setAlreadyInstalled] = useState(false);
     const [isQrLoading, setIsQrLoading] = useState(true);
     const [hasBeenDismissed, setHasBeenDismissed] = useState(false);
+    const installButtonRef = useRef<HTMLButtonElement>(null);
+    const deferredPromptRef = useRef<BeforeInstallPromptEvent | null>(null);
 
-    const handleInstall = useCallback(
-        async (auto = false) => {
-            const prompt = deferredPrompt;
-
-            if (!prompt) {
-                if (!auto) {
-                    setIsVisible(false);
-                }
-                return;
-            }
-
-            try {
-                await prompt.prompt();
-                await prompt.userChoice;
-            } catch (error) {
-                console.error('Install prompt failed:', error);
-            } finally {
-                setDeferredPrompt(null);
-                setInstallRequested(false);
-            }
-        },
-        [deferredPrompt]
-    );
+    // Removed handleInstall callback - using native event listener instead to preserve user gesture
 
     useEffect(() => {
         if (typeof window === 'undefined') {
@@ -63,6 +48,7 @@ export function PwaInstallPrompt() {
 
         const params = new URLSearchParams(window.location.search);
         if (params.has(INSTALL_PARAM)) {
+            console.log('[PWA] Install parameter detected in URL');
             setInstallRequested(true);
             params.delete(INSTALL_PARAM);
 
@@ -91,14 +77,18 @@ export function PwaInstallPrompt() {
             return () => mediaQuery.removeEventListener('change', listener);
         }
 
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-expect-error addListener is supported in older browsers
-        mediaQuery.addListener(listener);
+        // addListener is supported in older browsers (fallback)
+        if (typeof mediaQuery.addListener === 'function') {
+            mediaQuery.addListener(listener);
+            return () => {
+                if (typeof mediaQuery.removeListener === 'function') {
+                    mediaQuery.removeListener(listener);
+                }
+            };
+        }
 
         return () => {
-            // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-            // @ts-expect-error removeListener is supported in older browsers
-            mediaQuery.removeListener(listener);
+            // Cleanup handled above
         };
     }, []);
 
@@ -155,6 +145,7 @@ export function PwaInstallPrompt() {
         const handler = (event: Event) => {
             event.preventDefault();
             const promptEvent = event as BeforeInstallPromptEvent;
+            console.log('[PWA] beforeinstallprompt event fired');
             setDeferredPrompt(promptEvent);
             setHasBeenDismissed(false);
         };
@@ -184,23 +175,91 @@ export function PwaInstallPrompt() {
         };
     }, []);
 
+    // When install is requested via QR code, show the panel immediately
+    // Note: We cannot auto-trigger prompt() because it requires a user gesture
+    // The user gesture from clicking the QR link expires before React mounts
+    // So we show the panel and highlight the install button for user to click
+    useEffect(() => {
+        if (installRequested && deferredPrompt) {
+            console.log('[PWA] Install requested - showing install panel');
+            setIsVisible(true);
+        }
+    }, [installRequested, deferredPrompt]);
+
+    // Show prompt panel when deferredPrompt is available (if not auto-installing)
     useEffect(() => {
         if (!deferredPrompt) {
             return;
         }
 
-        if (installRequested) {
-            handleInstall(true);
-        } else {
+        if (!installRequested) {
             setIsVisible(true);
         }
-    }, [deferredPrompt, installRequested, handleInstall]);
+    }, [deferredPrompt, installRequested]);
 
     useEffect(() => {
         if (isStandalone) {
             setIsVisible(false);
         }
     }, [isStandalone]);
+
+    // Use native DOM event listener with mousedown to capture gesture EARLIER
+    // mousedown fires before click and preserves user gesture better
+    useEffect(() => {
+        const button = installButtonRef.current;
+        if (!button) return;
+
+        const handleMouseDown = () => {
+            // Get the current deferredPrompt from ref
+            const currentPrompt = deferredPromptRef.current;
+            if (!currentPrompt) {
+                return;
+            }
+
+            // Call prompt() IMMEDIATELY on mousedown - this fires before click
+            // This better preserves the user gesture
+            try {
+                console.log('[PWA] Triggering install prompt (user mousedown - native event)...');
+                const promptPromise = currentPrompt.prompt();
+                
+                // Handle results asynchronously
+                promptPromise
+                    .then(() => currentPrompt.userChoice)
+                    .then((choiceResult: { outcome: 'accepted' | 'dismissed' }) => {
+                        console.log('[PWA] User choice:', choiceResult.outcome);
+                        setDeferredPrompt(null);
+                        setInstallRequested(false);
+                    })
+                    .catch((error: unknown) => {
+                        // Only log if it's not a user gesture error (expected in some cases)
+                        if (error instanceof Error && !error.message.includes('user gesture')) {
+                            console.error('[PWA] Install prompt failed:', error);
+                        }
+                        setDeferredPrompt(null);
+                        setInstallRequested(false);
+                    });
+            } catch (error) {
+                // Only log if it's not a user gesture error
+                if (error instanceof Error && !error.message.includes('user gesture')) {
+                    console.error('[PWA] Install prompt failed synchronously:', error);
+                }
+                setDeferredPrompt(null);
+                setInstallRequested(false);
+            }
+        };
+
+        // Use mousedown instead of click - fires earlier and preserves gesture better
+        button.addEventListener('mousedown', handleMouseDown, { capture: true, passive: false });
+
+        return () => {
+            button.removeEventListener('mousedown', handleMouseDown, { capture: true });
+        };
+    }, []); // Empty deps - we use refs to access current values
+
+    // Keep deferredPrompt in a ref for the native event listener
+    useEffect(() => {
+        deferredPromptRef.current = deferredPrompt;
+    }, [deferredPrompt]);
 
     const shareLabel = canShare ? 'Share install link' : 'Copy link';
 
@@ -271,7 +330,8 @@ export function PwaInstallPrompt() {
         [alreadyInstalled, deferredPrompt, isStandalone, isVisible, hasBeenDismissed]
     );
 
-    const shouldRenderPanel = isVisible && !isStandalone && !alreadyInstalled;
+    // Show panel if visible OR if install was requested (to show install button immediately)
+    const shouldRenderPanel = (isVisible || installRequested) && !isStandalone && !alreadyInstalled;
 
     if (alreadyInstalled || isStandalone) {
         return null;
@@ -285,7 +345,9 @@ export function PwaInstallPrompt() {
                         <div>
                             <h2 className="text-base font-semibold text-primary">Install Believe App</h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Scan the QR code or use the link below to install the Believe App on your device.
+                                {installRequested 
+                                    ? 'Click the "Click to Install" button below to install the app on your device.'
+                                    : 'Scan the QR code or use the link below to install the Believe App on your device.'}
                             </p>
                         </div>
                         <button
@@ -335,9 +397,13 @@ export function PwaInstallPrompt() {
                                 variant="outline"
                                 onClick={handleCopy}
                                 className="shrink-0"
+                                title={copied ? 'Copied!' : 'Copy link'}
                             >
-                                <Copy className="size-4" />
-                                {copied ? 'Copied!' : 'Copy'}
+                                {copied ? (
+                                    <CheckCircle2 className="size-4 text-green-600 dark:text-green-400 transition-all duration-300" />
+                                ) : (
+                                    <Copy className="size-4 transition-all duration-300" />
+                                )}
                             </Button>
                         </div>
                     </div>
@@ -360,16 +426,15 @@ export function PwaInstallPrompt() {
                                 </a>
                             </Button>
                         )}
-                        <Button
+                        <button
+                            ref={installButtonRef}
                             type="button"
-                            variant="default"
                             disabled={deferredPrompt === null}
-                            onClick={() => handleInstall()}
-                            className="justify-center gap-2"
+                            className={`inline-flex items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 ${installRequested ? 'animate-pulse ring-2 ring-primary ring-offset-2 bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-primary text-primary-foreground hover:bg-primary/90'}`}
                         >
                             <Download className="size-4" />
-                            Install now
-                        </Button>
+                            {installRequested ? 'Click to Install' : 'Install now'}
+                        </button>
                     </div>
                 </div>
             )}

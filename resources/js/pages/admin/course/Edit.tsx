@@ -375,22 +375,22 @@ export default function AdminCoursesEdit() {
                     </div>
 
                     {data.type === "course" && (
-                      <div className="space-y-2">
-                        <label htmlFor="topic_id" className="text-sm font-medium">
-                          Course Topic *
-                        </label>
+                    <div className="space-y-2">
+                      <label htmlFor="topic_id" className="text-sm font-medium">
+                        Course Topic *
+                      </label>
                         <Select value={data.topic_id || ""} onValueChange={(value) => setData("topic_id", value)}>
-                          <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
-                            <SelectValue placeholder="Select topic" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {topics.map((topic) => (
-                              <SelectItem key={topic.id} value={topic.id.toString()}>
-                                {topic.name}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <SelectTrigger className={errors.topic_id ? "border-destructive" : ""}>
+                          <SelectValue placeholder="Select topic" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {topics.map((topic) => (
+                            <SelectItem key={topic.id} value={topic.id.toString()}>
+                              {topic.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                         {errors.topic_id && <p className="text-sm text-destructive">{errors.topic_id}</p>}
                       </div>
                     )}
@@ -420,7 +420,7 @@ export default function AdminCoursesEdit() {
                           </SelectContent>
                         </Select>
                         {errors.event_type_id && <p className="text-sm text-destructive">{errors.event_type_id}</p>}
-                      </div>
+                    </div>
                     )}
 
                     <div className="space-y-2">

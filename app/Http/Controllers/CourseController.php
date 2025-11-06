@@ -153,7 +153,7 @@ class CourseController extends BaseController
                 $query->where('event_type_id', $filters['courses_topic']);
             } else {
                 // Filter by topic_id when type is course or not specified
-                $query->where('topic_id', $filters['courses_topic']);
+            $query->where('topic_id', $filters['courses_topic']);
             }
         }
 
@@ -301,15 +301,15 @@ class CourseController extends BaseController
             'end_date' => 'nullable|date|after_or_equal:start_date',
             'duration' => ['required', Rule::in(['1_session', '1_week', '2_weeks', '1_month', '6_weeks', '3_months'])],
             'format' => ['required', Rule::in(['online', 'in_person', 'hybrid'])],
-            
+
             // Configuration
             'max_participants' => 'required|integer|min:1|max:100',
             'language' => ['required', Rule::in(['English', 'Spanish', 'French', 'Other'])],
-            
+
             // Target Audience & Impact
             'target_audience' => 'required|string|max:255',
             'community_impact' => 'nullable|string',
-            
+
             // Course Content
             'learning_outcomes' => 'required|array|min:1',
             'learning_outcomes.*' => 'string|max:255',
@@ -319,11 +319,11 @@ class CourseController extends BaseController
             'materials_needed.*' => 'string|max:255',
             'accessibility_features' => 'nullable|array',
             'accessibility_features.*' => 'string|max:255',
-            
+
             // Settings
             'certificate_provided' => 'boolean',
             'volunteer_opportunities' => 'boolean',
-            
+
             // Media
             'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg|max:2048',
         ], [
@@ -734,7 +734,7 @@ class CourseController extends BaseController
         $type = $request->input('type', $course->type ?? 'course');
         $typeLabel = $type === 'course' ? 'course' : 'event';
         $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
-        
+
         $validated = $request->validate([
             // Basic Information
             'name' => [

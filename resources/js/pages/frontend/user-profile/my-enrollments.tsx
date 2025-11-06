@@ -413,18 +413,18 @@ export default function MyEnrollments() {
                           <div className="flex items-center gap-3 text-sm text-gray-600 dark:text-gray-300 mb-3">
                             {enrollment.course.organization && (
                               <>
-                                <span className="text-blue-600 dark:text-blue-400 font-medium">
-                                  {enrollment.course.organization.name}
-                                </span>
-                                <span>•</span>
+                            <span className="text-blue-600 dark:text-blue-400 font-medium">
+                              {enrollment.course.organization.name}
+                            </span>
+                            <span>•</span>
                               </>
                             )}
                             {(enrollment.course.topic || enrollment.course.event_type) && (
                               <>
-                                <span className="text-purple-600 dark:text-purple-400 font-medium">
+                            <span className="text-purple-600 dark:text-purple-400 font-medium">
                                   {enrollment.course.topic?.name || enrollment.course.event_type?.name}
-                                </span>
-                                <span>•</span>
+                            </span>
+                            <span>•</span>
                               </>
                             )}
                             <span className={`capitalize font-medium ${getStatusColor(enrollment.status)}`}>

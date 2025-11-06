@@ -35,6 +35,19 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    // Filter out unsupported URL schemes
+    const url = new URL(request.url);
+    const unsupportedSchemes = ['chrome-extension:', 'chrome:', 'moz-extension:', 'safari-extension:'];
+    if (unsupportedSchemes.some(scheme => url.protocol.startsWith(scheme))) {
+        // Let the browser handle these requests normally
+        return;
+    }
+
+    // Only cache requests from the same origin
+    if (url.origin !== location.origin && !url.protocol.startsWith('http')) {
+        return;
+    }
+
     event.respondWith(
         caches.match(request).then((cachedResponse) => {
             if (cachedResponse) {
@@ -51,13 +64,23 @@ self.addEventListener('fetch', (event) => {
                         return networkResponse;
                     }
 
+                    // Double-check the URL before caching
+                    const responseUrl = new URL(networkResponse.url);
+                    if (unsupportedSchemes.some(scheme => responseUrl.protocol.startsWith(scheme))) {
+                        return networkResponse;
+                    }
+
                     const responseToCache = networkResponse.clone();
 
                     caches
                         .open(CACHE_NAME)
                         .then((cache) => cache.put(request, responseToCache))
                         .catch((error) => {
-                            console.error('Cache put failed:', error);
+                            // Silently fail for unsupported schemes
+                            if (!error.message.includes('chrome-extension') && 
+                                !error.message.includes('Request scheme')) {
+                                console.error('Cache put failed:', error);
+                            }
                         });
 
                     return networkResponse;
