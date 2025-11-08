@@ -386,7 +386,7 @@ export default function Dashboard({
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
               <div className="lg:col-span-3">
                 <Tabs defaultValue="about" className="w-full">
-                  <TabsList className="grid w-full grid-cols-6 mb-8">
+                  <TabsList className="grid w-full grid-cols-7 mb-8">
                     <TabsTrigger value="about" className="text-xs sm:text-sm cursor-pointer">
                       About
                     </TabsTrigger>
