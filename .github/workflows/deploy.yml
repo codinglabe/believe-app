@@ -1,4 +1,4 @@
-name: Deploy Laravel to cPanel
+name: Deploy Laravel Inertia React to cPanel
 
 on:
   push:
@@ -26,7 +26,7 @@ jobs:
           tools: composer:v2
           extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
 
-      - name: Install Dependencies
+      - name: Install PHP Dependencies
         run: |
           composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
           mkdir -p resources/views storage/framework/views
@@ -34,11 +34,21 @@ jobs:
           php artisan route:cache
           php artisan view:cache
 
-      - name: Build Assets
-        if: hashFiles('package.json') != ''
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install Node Dependencies
         run: |
           npm ci --legacy-peer-deps
+
+      - name: Build React Assets (Vite)
+        run: |
           npm run build
+          echo "Build complete. Contents of public/build:"
+          ls -la public/build/ || echo "Build folder missing!"
 
       - name: Setup SSH Key
         run: |
@@ -47,11 +57,7 @@ jobs:
           chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -p ${{ env.SSH_PORT }} -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null || true
 
-      - name: Test SSH Connection
-        run: |
-          ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo 'SSH OK'"
-
-      - name: Deploy (Safe Storage)
+      - name: Deploy (Safe Storage + Assets)
         run: |
           rsync -avz --delete \
             -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
@@ -66,19 +72,39 @@ jobs:
             --exclude='storage/framework/cache/data/' \
             . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
 
-      - name: Post-Deploy
+      - name: Post-Deploy Fix Permissions & Debug
         run: |
           ssh -p ${{ env.SSH_PORT }} ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} << 'EOF'
             cd ${{ env.DEPLOY_PATH }}
+
+            # Permissions
             find . -type f -exec chmod 644 {} \;
             find . -type d -exec chmod 755 {} \;
             chmod -R 775 storage bootstrap/cache
+
+            # Clear caches
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
+            php artisan cache:clear
+            php artisan inertia:clear
+
+            # Rebuild caches
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
+
+            # Create .env if missing
             [ ! -f .env ] && cp .env.example .env && php artisan key:generate --force
+
+            # DEBUG: Check if build files exist
+            echo "Checking public/build/manifest.json..."
+            if [ -f public/build/manifest.json ]; then
+              echo "Build OK: manifest.json found"
+            else
+              echo "ERROR: manifest.json MISSING!"
+              ls -la public/build/ || echo "Build folder empty!"
+            fi
+
             echo "Deployed to 501c3ers.com!"
           EOF
