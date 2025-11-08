@@ -1,95 +1,99 @@
-name: CI/CD Pipeline
+name: Deploy Laravel to cPanel
 
 on:
   push:
-    branches: [main, develop]
-  pull_request:
-    branches: [main, develop]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  ci:
-    name: Continuous Integration
+  deploy:
     runs-on: ubuntu-latest
 
+    env:
+      PHP_VERSION: '8.3'
+      DEPLOY_HOST: 501c3ers.com          # CHANGE
+      DEPLOY_USER: c3ers          # CHANGE
+      DEPLOY_PATH: /home/c3ers/public_html  # CHANGE
+      SSH_PORT: 22                      # CHANGE IF NEEDED
+
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Setup PHP
         uses: shivammathur/setup-php@v2
         with:
-          php-version: '8.3'
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+          extensions: mbstring, intl, bcmath, ctype, curl, dom, fileinfo, json, openssl, pdo, pdo_mysql, tokenizer, xml
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Cache Composer
+        uses: actions/cache@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-
-      - name: Cache Composer dependencies
-        uses: actions/cache@v3
-        with:
-          path: ~/.composer/cache
+          path: ~/.composer/cache/files
           key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
           restore-keys: ${{ runner.os }}-composer-
 
-      - name: Cache Node modules
-        uses: actions/cache@v3
-        with:
-          path: node_modules
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: ${{ runner.os }}-node-
-
-      - name: Install PHP dependencies
-        run: composer install --no-interaction --prefer-dist --optimize-autoloader
-
-      - name: Install Node dependencies
-        run: npm ci
-
-      - name: Build assets
-        run: npm run build
-
-      - name: Copy environment file
-        run: cp .env.example .env
-
-      - name: Generate app key
-        run: php artisan key:generate
-
-      - name: Run tests
+      - name: Install Dependencies
         run: |
-          php artisan config:clear
-          ./vendor/bin/pest
+          composer install --no-dev --prefer-dist --no-interaction --optimize-autoloader
+          mkdir -p resources/views storage/framework/views
+          php artisan config:cache
+          php artisan route:cache
+          php artisan view:cache
 
-  deploy:
-    name: Deploy via SSH
-    needs: ci
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Setup SSH
-        uses: webfactory/ssh-agent@v0.9.0
+      - name: Setup Node (if needed)
+        if: hashFiles('package.json') != ''
+        uses: actions/setup-node@v4
         with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          node-version: '20'
 
-      - name: Deploy Application
+      - name: Build Assets
+        if: hashFiles('package.json') != ''
         run: |
-          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
-            set -e
-            cd ${{ secrets.SSH_DEPLOY_PATH }}
-            git pull origin main
+          npm ci --legacy-peer-deps
+          npm run build
 
-            composer install --no-dev --optimize-autoloader
-            mkdir -p resources/views
-            php artisan migrate --force
-            php artisan storage:link
+      - name: Setup SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.CPANEL_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p ${{ env.SSH_PORT }} -H ${{ env.DEPLOY_HOST }} >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Deploy via rsync
+        run: |
+          rsync -avz --delete \
+            -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
+            --exclude='.git*' \
+            --exclude='.github' \
+            --exclude='node_modules' \
+            --exclude='tests' \
+            --exclude='storage/logs/*.log' \
+            --exclude='.env' \
+            . ${{ env.DEPLOY_USER }}@${ env.DEPLOY_HOST }:${ env.DEPLOY_PATH }/
+
+      - name: Post-Deploy: Permissions & Cache
+        run: |
+          ssh -p ${{ env.SSH_PORT }} ${{ env.DEPLOY_USER }}@${ env.DEPLOY_HOST }} << 'EOF'
+            cd ${{ env.DEPLOY_PATH }}
+
+            # Permissions
+            find . -type f -exec chmod 644 {} \;
+            find . -type d -exec chmod 755 {} \;
+            chmod -R 775 storage bootstrap/cache
+
+            # Clear & recache
+            php artisan config:clear
+            php artisan route:clear
+            php artisan view:clear
+            php artisan cache:clear
+
             php artisan config:cache
             php artisan route:cache
-            php artisan view:cache || true
+            php artisan view:cache
 
-            npm install --production
-            npm run production
+            # Create .env if missing
+            [ ! -f .env ] && cp .env.example .env && php artisan key:generate --force
 
-            sudo chown -R www-data:www-data storage bootstrap/cache
-            sudo chmod -R 775 storage bootstrap/cache
+            echo "Deployed & ready!"
           EOF
