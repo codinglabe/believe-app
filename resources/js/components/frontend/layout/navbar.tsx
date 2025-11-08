@@ -64,6 +64,8 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
 
+    console.log("Auth User in Navbar:", auth) // Debugging line
+
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
