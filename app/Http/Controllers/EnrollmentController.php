@@ -185,16 +185,16 @@ class EnrollmentController extends Controller
                 'course.eventType',
                 'user'
             ])->find($enrollmentId);
-            
+
             if ($enrollment) {
                 // Verify it's a free enrollment
                 if ($enrollment->course->pricing_type === 'free') {
-                    return Inertia::render('frontend/course/enrollment/Success', [
-                        'enrollment' => $enrollment,
-                        'course' => $enrollment->course,
-                        'type' => 'free',
-                        'meetingLink' => $enrollment->course->meeting_link,
-                    ]);
+            return Inertia::render('frontend/course/enrollment/Success', [
+                'enrollment' => $enrollment,
+                'course' => $enrollment->course,
+                'type' => 'free',
+                'meetingLink' => $enrollment->course->meeting_link,
+            ]);
                 } else {
                     // Enrollment exists but it's a paid course, should have session_id
                     return redirect()->route('course.index')->with([

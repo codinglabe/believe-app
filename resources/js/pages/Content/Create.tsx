@@ -124,13 +124,13 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <div className="flex items-center gap-2 mb-2">
-                                        <Link
-                                            href={route('content.items.index')}
+                                <Link
+                                    href={route('content.items.index')}
                                             className="text-sm text-muted-foreground hover:text-primary transition-colors flex items-center gap-1"
-                                        >
+                                >
                                             <ArrowLeft className="h-3 w-3" />
                                             Content
-                                        </Link>
+                                </Link>
                                         <span className="text-muted-foreground">/</span>
                                         <span className="text-sm text-muted-foreground">Create</span>
                                     </div>
@@ -141,7 +141,7 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 </div>
                             </div>
                         </div>
-                    </div>
+                            </div>
 
                     <form onSubmit={handleSubmit} className="space-y-8">
                         {/* Content Type Section */}
@@ -151,32 +151,32 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 <h2 className="text-lg font-semibold">Content Type</h2>
                                 <span className="text-sm text-muted-foreground">*</span>
                             </div>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                                {(['prayer', 'devotional', 'scripture'] as const).map((type) => (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        {(['prayer', 'devotional', 'scripture'] as const).map((type) => (
                                     <button
-                                        key={type}
+                                                key={type}
                                         type="button"
                                         onClick={() => setData('type', type)}
                                         className={`relative flex flex-col items-center justify-center rounded-xl border-2 p-6 transition-all ${
-                                            data.type === type
+                                                    data.type === type
                                                 ? 'border-primary bg-primary/10'
                                                 : 'border-border bg-background hover:border-primary/50'
-                                        }`}
-                                    >
+                                                }`}
+                                            >
                                         <div className={`mb-3 ${data.type === type ? 'text-primary' : 'text-muted-foreground'}`}>
-                                            {getTypeIcon(type)}
-                                        </div>
+                                                            {getTypeIcon(type)}
+                                                        </div>
                                         <div className={`font-semibold text-sm ${data.type === type ? 'text-primary' : ''}`}>
-                                            {type.charAt(0).toUpperCase() + type.slice(1)}
-                                        </div>
-                                        {data.type === type && (
+                                                                {type.charAt(0).toUpperCase() + type.slice(1)}
+                                                    </div>
+                                                    {data.type === type && (
                                             <div className="absolute top-3 right-3">
                                                 <CheckCircle2 className="h-5 w-5 text-primary" />
-                                            </div>
-                                        )}
+                                                        </div>
+                                                    )}
                                     </button>
-                                ))}
-                            </div>
+                                        ))}
+                                    </div>
                             {errors.type && (
                                 <div className="flex items-center gap-1.5 mt-4 text-sm text-destructive">
                                     <X className="h-4 w-4" />
@@ -190,7 +190,7 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                             <div className="flex items-center gap-2 mb-6">
                                 <FileText className="h-5 w-5 text-primary" />
                                 <h2 className="text-lg font-semibold">Basic Information</h2>
-                            </div>
+                                </div>
 
                             <div className="space-y-6">
                                 <div>
@@ -233,7 +233,7 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                     )}
                                 </div>
                             </div>
-                        </div>
+                                </div>
 
                         {/* Featured Image Section */}
                         <div className="bg-card border border-border rounded-xl shadow-sm p-6">
@@ -242,23 +242,23 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 <h2 className="text-lg font-semibold">Featured Image</h2>
                             </div>
 
-                            {imagePreview ? (
-                                <div className="relative group">
-                                    <img
-                                        src={imagePreview}
-                                        alt="Preview"
+                                    {imagePreview ? (
+                                        <div className="relative group">
+                                            <img
+                                                src={imagePreview}
+                                                alt="Preview"
                                         className="w-full h-64 object-cover rounded-lg border border-border"
-                                    />
-                                    <button
-                                        type="button"
-                                        onClick={removeImage}
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={removeImage}
                                         className="absolute top-3 right-3 bg-destructive text-destructive-foreground p-2 rounded-full hover:bg-destructive/90 transition-colors shadow-lg"
-                                        title="Remove image"
-                                    >
+                                                title="Remove image"
+                                            >
                                         <X className="h-4 w-4" />
-                                    </button>
-                                </div>
-                            ) : (
+                                            </button>
+                                        </div>
+                                    ) : (
                                 <label className="flex flex-col items-center justify-center px-6 pt-8 pb-8 border-2 border-dashed border-border rounded-lg cursor-pointer hover:border-primary/50 transition-colors bg-muted/30">
                                     <div className="flex flex-col items-center space-y-3">
                                         <div className="p-3 rounded-full bg-primary/10">
@@ -269,22 +269,22 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                             <p className="text-xs text-muted-foreground mt-1">or drag and drop</p>
                                         </div>
                                         <p className="text-xs text-muted-foreground">PNG, JPG, GIF up to 2MB</p>
-                                        <input
-                                            type="file"
-                                            className="sr-only"
-                                            accept="image/*"
-                                            onChange={handleImageChange}
-                                        />
+                                                        <input
+                                                            type="file"
+                                                            className="sr-only"
+                                                            accept="image/*"
+                                                            onChange={handleImageChange}
+                                                        />
                                     </div>
-                                </label>
-                            )}
+                                                    </label>
+                                    )}
                             {errors['meta.image'] && (
                                 <div className="flex items-center gap-1.5 mt-4 text-sm text-destructive">
                                     <X className="h-4 w-4" />
                                     {errors['meta.image']}
                                 </div>
                             )}
-                        </div>
+                                </div>
 
                         {/* Content Body Section */}
                         <div className="bg-card border border-border rounded-xl shadow-sm p-6">
@@ -293,20 +293,20 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 <h2 className="text-lg font-semibold">Content Body</h2>
                                 <span className="text-sm text-muted-foreground">*</span>
                             </div>
-                            <textarea
-                                value={data.body}
-                                onChange={(e) => setData('body', e.target.value)}
-                                rows={12}
+                                    <textarea
+                                        value={data.body}
+                                        onChange={(e) => setData('body', e.target.value)}
+                                        rows={12}
                                 className="w-full px-4 py-3 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all resize-vertical"
-                                placeholder="Write your prayer or devotional content here..."
-                            />
+                                        placeholder="Write your prayer or devotional content here..."
+                                    />
                             {errors.body && (
                                 <div className="flex items-center gap-1.5 mt-4 text-sm text-destructive">
                                     <X className="h-4 w-4" />
                                     {errors.body}
                                 </div>
                             )}
-                        </div>
+                                </div>
 
                         {/* Tags Section */}
                         <div className="bg-card border border-border rounded-xl shadow-sm p-6">
@@ -316,61 +316,61 @@ const ContentCreate: React.FC<ContentCreateProps> = () => {
                                 <span className="text-xs text-muted-foreground">(Press Enter to add tags)</span>
                             </div>
                             <div className="flex flex-wrap gap-2 mb-4">
-                                {data.meta.tags.map((tag, index) => (
-                                    <span
-                                        key={index}
+                                        {data.meta.tags.map((tag, index) => (
+                                            <span
+                                                key={index}
                                         className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary/10 text-primary border border-primary/20"
-                                    >
-                                        {tag}
-                                        <button
-                                            type="button"
-                                            onClick={() => removeTag(index)}
+                                            >
+                                                {tag}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removeTag(index)}
                                             className="hover:bg-primary/20 rounded-full p-0.5 transition-colors"
-                                            title="Remove tag"
-                                        >
+                                                    title="Remove tag"
+                                                >
                                             <X className="h-3 w-3" />
-                                        </button>
-                                    </span>
-                                ))}
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Type a tag and press Enter..."
-                                onKeyDown={addTag}
+                                                </button>
+                                            </span>
+                                        ))}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Type a tag and press Enter..."
+                                        onKeyDown={addTag}
                                 className="w-full px-4 py-2.5 border border-border rounded-lg bg-background focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary transition-all"
-                            />
+                                    />
                             <p className="text-xs text-muted-foreground mt-2">
-                                Add tags to help organize and search your content
-                            </p>
-                        </div>
+                                        Add tags to help organize and search your content
+                                    </p>
+                                </div>
 
                         {/* Actions */}
                         <div className="flex justify-end gap-4 pt-6 border-t border-border">
-                            <Link
-                                href={route('content.items.index')}
+                                    <Link
+                                        href={route('content.items.index')}
                                 className="px-6 py-2.5 border border-border rounded-lg hover:bg-accent focus:outline-none focus:ring-2 focus:ring-primary transition-all font-medium"
-                            >
-                                Cancel
-                            </Link>
-                            <button
-                                type="submit"
-                                disabled={processing}
+                                    >
+                                        Cancel
+                                    </Link>
+                                    <button
+                                        type="submit"
+                                        disabled={processing}
                                 className="px-8 py-2.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed transition-all font-medium flex items-center gap-2 shadow-sm hover:shadow-md"
-                            >
-                                {processing ? (
-                                    <>
+                                    >
+                                        {processing ? (
+                                            <>
                                         <div className="h-4 w-4 border-2 border-primary-foreground/30 border-t-primary-foreground rounded-full animate-spin" />
-                                        Creating...
-                                    </>
-                                ) : (
-                                    <>
+                                                Creating...
+                                            </>
+                                        ) : (
+                                            <>
                                         <FileText className="h-4 w-4" />
-                                        Create Content
-                                    </>
-                                )}
-                            </button>
-                        </div>
-                    </form>
+                                                Create Content
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </form>
                 </div>
             </div>
         </AppLayout>

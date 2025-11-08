@@ -166,8 +166,8 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                             </span>
                           </div>
                           {course.organization && (
-                            <div className="flex items-center gap-2">
-                              <User className="h-4 w-4 text-blue-600" />
+                          <div className="flex items-center gap-2">
+                            <User className="h-4 w-4 text-blue-600" />
                               <span>
                                 <strong>Organization:</strong> {course.organization.name}
                               </span>
@@ -187,7 +187,7 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                                   Join Meeting
                                 </a>
                               </span>
-                            </div>
+                          </div>
                           )}
                         </div>
                       </div>
@@ -267,12 +267,12 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                       )}
                       <h3 className="font-bold text-lg text-gray-900 dark:text-white mb-2">{course.name}</h3>
                       {course.organization && (
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">by {course.organization.name}</p>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">by {course.organization.name}</p>
                       )}
                       {(course.topic || course.event_type) && (
-                        <Badge variant="secondary" className="mb-4">
+                      <Badge variant="secondary" className="mb-4">
                           {course.topic?.name || course.event_type?.name}
-                        </Badge>
+                      </Badge>
                       )}
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">

@@ -427,16 +427,16 @@ export default function FrontendCoursesListPage({
                           <select
                             value={selectedTopicId || ""}
                             onChange={(e) => setSelectedTopicId(e.target.value ? Number.parseInt(e.target.value) : null)}
-                            className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="">All Topics</option>
-                            {topics.map((topic) => (
-                              <option key={topic.id} value={topic.id}>
-                                {topic.name}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
+                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="">All Topics</option>
+                          {topics.map((topic) => (
+                            <option key={topic.id} value={topic.id}>
+                              {topic.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       )}
 
                       <div>

@@ -16,7 +16,7 @@ const contactMethods = [
     icon: Mail,
     title: "Email Us",
     description: "Send us an email and we'll respond within 24 hours",
-    contact: "hello@careconnect.org",
+    contact: "support@believeinunity.org",
     action: "mailto:hello@careconnect.org",
   },
   {
