@@ -283,9 +283,9 @@ export function PwaInstallPrompt() {
                 <div className="fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-lg border border-primary/40 bg-primary/10 p-4 shadow-xl backdrop-blur transition-all dark:border-primary/30 dark:bg-primary/20 sm:bottom-6 sm:right-6 sm:w-full">
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                         <div>
-                            <h2 className="text-base font-semibold text-primary">Install Believe App</h2>
+                            <h2 className="text-base font-semibold text-primary">Install { import.meta.env.VITE_APP_NAME}</h2>
                             <p className="mt-1 text-sm text-muted-foreground">
-                                Scan the QR code or use the link below to install the Believe App on your device.
+                                Scan the QR code or use the link below to install the {import.meta.env.VITE_APP_NAME} on your device.
                             </p>
                         </div>
                         <button

@@ -390,7 +390,7 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                   className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"
                 >
                   <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
-                  <span className="hidden sm:inline">Create Course</span>
+                  <span className="hidden sm:inline">Create Course/Event</span>
                   <span className="sm:hidden">Create</span>
                 </Button>
               </Link>
@@ -521,8 +521,8 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                 </select>
                 {/* Topic/Event Type filter - Dynamic based on Type */}
                 {coursesCourseType === "event" ? (
-                  <Select 
-                    value={coursesTopic || "all"} 
+                  <Select
+                    value={coursesTopic || "all"}
                     onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
                     disabled={!coursesCourseType}
                   >
@@ -546,8 +546,8 @@ export default function CoursesIndex({ courses, topics, eventTypes, filters, sta
                     </SelectContent>
                   </Select>
                 ) : coursesCourseType === "course" ? (
-                  <Select 
-                    value={coursesTopic || "all"} 
+                  <Select
+                    value={coursesTopic || "all"}
                     onValueChange={(value) => setCoursesTopic(value === "all" ? "" : value)}
                     disabled={!coursesCourseType}
                   >

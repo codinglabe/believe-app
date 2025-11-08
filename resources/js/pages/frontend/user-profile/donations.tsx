@@ -5,7 +5,7 @@ import { Download, Calendar, DollarSign, TrendingUp } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
-import { usePage } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 
 interface Donation {
   id: number
@@ -158,11 +158,13 @@ export default function ProfileDonations() {
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No donations yet</h3>
             <p className="text-gray-600 dark:text-gray-300 mb-8 max-w-md mx-auto">
               Start making a difference by supporting organizations you care about.
-            </p>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+                          </p>
+                          <Button className="bg-blue-600 hover:bg-blue-700">
+            <Link className="flex items-center" href={route("donate")}>
               <TrendingUp className="h-4 w-4 mr-2" />
               Make Your First Donation
-            </Button>
+            </Link>
+                          </Button>
           </div>
         )}
       </div>

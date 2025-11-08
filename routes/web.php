@@ -252,7 +252,7 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/ai-chat/conversations/{id}', [AiChatController::class, 'getConversation'])->name('ai-chat.conversation');
     Route::put('/ai-chat/conversations/{id}', [AiChatController::class, 'updateConversation'])->name('ai-chat.update-conversation');
     Route::delete('/ai-chat/conversations/{id}', [AiChatController::class, 'deleteConversation'])->name('ai-chat.delete-conversation');
-    
+
     // Credit Purchase Routes
     Route::get('/credits/purchase', [CreditPurchaseController::class, 'index'])->name('credits.purchase');
     Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import React, { use, useState } from 'react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -45,6 +45,7 @@ interface Props {
 }
 
 export default function Index({ categories, filters, allowedPerPage }: Props) {
+    const auth = usePage().props.auth;
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [itemToDelete, setItemToDelete] = useState<Category | null>(null);
     const [loading, setLoading] = useState(false);
@@ -229,6 +230,8 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                             </Button>
                                                         </Link>
                                                     </PermissionButton>
+                                                    {
+                                                        auth.user.role !== 'organization' && (
                                                     <PermissionButton permission="category.delete">
                                                         <Button
                                                             variant="outline"
@@ -240,6 +243,8 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                             Delete
                                                         </Button>
                                                     </PermissionButton>
+                                                        )
+                                                    }
                                                 </div>
                                             </td>
                                         </tr>

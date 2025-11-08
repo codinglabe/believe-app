@@ -5,7 +5,7 @@ import { Download, Eye, RotateCcw, ExternalLink, Package, Truck, CheckCircle, XC
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
-import { usePage } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 
 interface OrderItem {
   name: string
@@ -191,10 +191,12 @@ export default function ProfileOrders() {
             <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">No orders yet</h3>
             <p className="text-gray-600 dark:text-gray-300 mb-8 max-w-md mx-auto">
               Start shopping for products from organizations you support.
-            </p>
-            <Button className="bg-blue-600 hover:bg-blue-700">
+                          </p>
+                          <Button className="bg-blue-600 hover:bg-blue-700">
+                              <Link className="flex items-center" href={route("marketplace.index")}>
               <Package className="h-4 w-4 mr-2" />
               Browse Products
+                              </Link>
             </Button>
           </div>
         )}

@@ -298,13 +298,13 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     Edit Profile
                   </Button>
                 </Link>
-                <Button
+                {/* <Button
                   variant="outline"
                   className="bg-transparent border-white/30 text-white hover:bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105"
                 >
                   <Settings className="w-4 h-4 mr-2" />
                   Settings
-                </Button>
+                </Button> */}
               </div>
             </motion.div>
           </div>
@@ -526,7 +526,8 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, delay: index * 0.1 }}
                       >
-                        <Link href={item.href}>
+                        <Link href={item.href}  preserveScroll={true}
+  preserveState={true}>
                           <div
                             className={`group relative p-3 rounded-2xl border-2 transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer ${
                               isActive
