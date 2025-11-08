@@ -70,9 +70,9 @@ jobs:
             --exclude='tests' \
             --exclude='storage/logs/*.log' \
             --exclude='.env' \
-            . ${{ env.DEPLOY_USER }}@${ env.DEPLOY_HOST }:${ env.DEPLOY_PATH }/
+            . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
 
-      - name: Post-Deploy: Permissions & Cache
+      - name: Post-Deploy Permissions & Cache
         run: |
           ssh -p ${{ env.SSH_PORT }} ${{ env.DEPLOY_USER }}@${ env.DEPLOY_HOST }} << 'EOF'
             cd ${{ env.DEPLOY_PATH }}
