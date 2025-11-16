@@ -62,7 +62,7 @@ class OrderController extends Controller
     {
 
         $order = Order::with('user','orderShippingInfo','orderProduct.product')->where('id',$order->id)->first();
-       
+
 
         return Inertia::render('orders/show', [
             'order' => $order,

@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\ExcelData;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
@@ -95,11 +96,43 @@ class UserProfileController extends Controller
 
         // Eager-load donations sum for this user on each favorite org
         $favoriteOrganizations = $user->favoriteOrganizations()
-            ->withSum(['donations as total_donated' => function ($query) use ($user) {
-                $query->where('user_id', $user->id)
-                    ->where('status', 'completed');
-            }], 'amount')
-            ->get();
+            ->with(['user', 'nteeCode'])
+            ->withSum([
+                'donations as total_donated' => function ($query) use ($user) {
+                    $query->where('user_id', $user->id)
+                        ->where('status', 'completed');
+                }
+            ], 'amount')
+            ->get()
+            ->map(function ($org) use ($user) {
+                // Get the latest donation date
+                $latestDonation = $org->donations()
+                    ->where('user_id', $user->id)
+                    ->where('status', 'completed')
+                    ->latest()
+                    ->first();
+
+                // Get EIN data
+                $einData = ExcelData::where('ein', $org->ein)->first();
+
+                return [
+                    'id' => $org->id,
+                    'name' => $org->name,
+                    'description' => $org->description,
+                    'mission' => $org->mission,
+                    'ein' => $org->ein,
+                    'slug' => $org->user->slug ?? null,
+                    'user' => [
+                        'image' => $org->user->image ?? null,
+                    ],
+                    'nteeCode' => $org->nteeCode ? [
+                        'category' => $org->nteeCode->broad_category ?? 'Nonprofit',
+                        'description' => $org->nteeCode->description ?? '',
+                    ] : null,
+                    'excel_data_id' => $einData->id ?? null,
+                ];
+            });
+
         return Inertia::render('frontend/user-profile/favorites', [
             'favoriteOrganizations' => $favoriteOrganizations,
         ]);
@@ -141,7 +174,7 @@ class UserProfileController extends Controller
     public function raffleTickets(Request $request)
     {
         $user = $request->user();
-        
+
         $raffleTickets = RaffleTicket::with([
             'raffle.organization',
             'raffle.winners.ticket'

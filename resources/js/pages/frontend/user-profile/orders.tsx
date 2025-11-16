@@ -195,7 +195,7 @@ export default function ProfileOrders() {
                           <Button className="bg-blue-600 hover:bg-blue-700">
                               <Link className="flex items-center" href={route("marketplace.index")}>
               <Package className="h-4 w-4 mr-2" />
-              Browse Products
+              Browse Order
                               </Link>
             </Button>
           </div>

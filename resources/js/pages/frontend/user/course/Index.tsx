@@ -332,7 +332,7 @@ export default function CoursesIndex({ courses, topics, filters, statistics }: P
         {/* Header */}
         <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-end">
           <div className="animate-in slide-in-from-right duration-700">
-            <Link href={route("profile.course.create")}>
+            <Link href={route("profile.course.create")} preserveScroll={true} preserveState={true}>
               <Button
                 size="lg"
                 className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 cursor-pointer"

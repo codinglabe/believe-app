@@ -28,9 +28,9 @@ class NewsletterController extends BaseController
 
         $newsletters = Newsletter::with(['template', 'organization'])
             ->select([
-                'id', 'subject', 'status', 'scheduled_at', 'send_date', 
-                'sent_at', 'schedule_type', 'total_recipients', 'sent_count', 
-                'delivered_count', 'opened_count', 'clicked_count', 
+                'id', 'subject', 'status', 'scheduled_at', 'send_date',
+                'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
+                'delivered_count', 'opened_count', 'clicked_count',
                 'newsletter_template_id', 'organization_id'
             ])
             ->latest()
@@ -64,7 +64,7 @@ class NewsletterController extends BaseController
 
         $templates = NewsletterTemplate::with('organization')
             ->select([
-                'id', 'name', 'subject', 'template_type', 'is_active', 
+                'id', 'name', 'subject', 'template_type', 'is_active',
                 'created_at', 'html_content', 'organization_id',
                 'frequency_limit', 'custom_frequency_days', 'frequency_notes'
             ])
@@ -85,7 +85,7 @@ class NewsletterController extends BaseController
 
         $templates = NewsletterTemplate::where('is_active', true)
             ->select([
-                'id', 'name', 'subject', 'template_type', 'html_content',
+                'id', 'name', 'subject', 'content' , 'template_type', 'html_content',
                 'frequency_limit', 'custom_frequency_days', 'frequency_notes'
             ])
             ->get();
@@ -117,7 +117,7 @@ class NewsletterController extends BaseController
     public function storeTemplate(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         $request->validate([
             'name' => 'required|string|max:255',
             'subject' => 'required|string|max:255',
@@ -176,7 +176,7 @@ class NewsletterController extends BaseController
     public function updateTemplate(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.edit');
-        
+
         $request->validate([
             'name' => 'required|string|max:255',
             'subject' => 'required|string|max:255',
@@ -187,7 +187,7 @@ class NewsletterController extends BaseController
         ]);
 
         $template = NewsletterTemplate::findOrFail($id);
-        
+
         $template->update([
             'name' => $request->name,
             'subject' => $request->subject,
@@ -209,7 +209,7 @@ class NewsletterController extends BaseController
         $this->authorizePermission($request, 'newsletter.delete');
 
         $template = NewsletterTemplate::findOrFail($id);
-        
+
         // Check if template is being used by any newsletters
         $newsletterCount = $template->newsletters()->count();
         if ($newsletterCount > 0) {
@@ -273,7 +273,7 @@ class NewsletterController extends BaseController
         $activeSubscriptions = NewsletterRecipient::active()->count();
         $unsubscribed = NewsletterRecipient::unsubscribed()->count();
         $bounced = NewsletterRecipient::bounced()->count();
-        
+
         // Calculate not subscribed organizations (organizations without any newsletter subscription)
         $notSubscribed = Organization::whereDoesntHave('newsletterRecipients')->count();
 
@@ -287,7 +287,7 @@ class NewsletterController extends BaseController
 
         // Get manual recipients (not associated with organizations) with pagination
         $manualRecipientsQuery = NewsletterRecipient::whereNull('organization_id');
-        
+
         // Apply search filter for manual recipients
         $manualSearch = $request->input('manual_search', '');
         if (!empty($manualSearch) && trim($manualSearch) !== '') {
@@ -296,7 +296,7 @@ class NewsletterController extends BaseController
                     ->orWhere('name', 'LIKE', "%{$manualSearch}%");
             });
         }
-        
+
         $manualRecipients = $manualRecipientsQuery->latest()->paginate(10);
 
         return Inertia::render('newsletter/recipients', [
@@ -315,7 +315,7 @@ class NewsletterController extends BaseController
     public function storeRecipient(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         $request->validate([
             'email' => 'required|email|max:255',
             'name' => 'nullable|string|max:255',
@@ -345,12 +345,12 @@ class NewsletterController extends BaseController
     public function subscribeOrganization(Request $request, $organizationId)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         $organization = Organization::findOrFail($organizationId);
-        
+
         // Check if already has an active subscription
         $existingRecipient = NewsletterRecipient::where('email', $organization->email)->first();
-        
+
         if ($existingRecipient && $existingRecipient->status === 'active') {
             return back()->with('error', 'This organization is already subscribed to the newsletter.');
         }
@@ -382,14 +382,14 @@ class NewsletterController extends BaseController
     public function unsubscribeOrganization(Request $request, $organizationId)
     {
         $this->authorizePermission($request, 'newsletter.edit');
-        
+
         $organization = Organization::findOrFail($organizationId);
-        
+
         // Find and update the recipient status
         $recipient = NewsletterRecipient::where('organization_id', $organization->id)
             ->orWhere('email', $organization->email)
             ->first();
-        
+
         if ($recipient) {
             $recipient->update([
                 'status' => 'unsubscribed',
@@ -407,7 +407,7 @@ class NewsletterController extends BaseController
     public function sendTestEmail(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.send');
-        
+
         $request->validate([
             'email' => 'required|email',
             'subject' => 'required|string',
@@ -425,7 +425,7 @@ class NewsletterController extends BaseController
     public function exportRecipients(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.read');
-        
+
         $search = $request->input('search', '');
         $statusFilter = $request->input('status_filter', 'all');
 
@@ -466,7 +466,7 @@ class NewsletterController extends BaseController
         $organizations = $organizationsQuery->get();
 
         $filename = 'newsletter_recipients_' . date('Y-m-d_H-i-s') . '.csv';
-        
+
         $headers = [
             'Content-Type' => 'text/csv',
             'Content-Disposition' => 'attachment; filename="' . $filename . '"',
@@ -474,7 +474,7 @@ class NewsletterController extends BaseController
 
         $callback = function() use ($organizations) {
             $file = fopen('php://output', 'w');
-            
+
             // CSV headers
             fputcsv($file, [
                 'Organization Name',
@@ -490,7 +490,7 @@ class NewsletterController extends BaseController
             foreach ($organizations as $org) {
                 $subscription = $org->newsletterRecipients?->first();
                 $subscriptionStatus = $subscription?->status ?? 'not_subscribed';
-                
+
                 fputcsv($file, [
                     $org->name,
                     $org->email,
@@ -515,30 +515,30 @@ class NewsletterController extends BaseController
     public function importRecipients(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         $request->validate([
             'file' => 'required|file|mimes:csv,txt|max:2048'
         ]);
 
         $file = $request->file('file');
         $path = $file->getRealPath();
-        
+
         $imported = 0;
         $errors = [];
-        
+
         if (($handle = fopen($path, 'r')) !== FALSE) {
             // Skip header row
             fgetcsv($handle);
-            
+
             while (($data = fgetcsv($handle, 1000, ',')) !== FALSE) {
                 if (count($data) >= 2) {
                     $email = trim($data[0]);
                     $name = isset($data[1]) ? trim($data[1]) : null;
-                    
+
                     if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
                         // Check if recipient already exists
                         $existing = NewsletterRecipient::where('email', $email)->first();
-                        
+
                         if (!$existing) {
                             NewsletterRecipient::create([
                                 'organization_id' => null,
@@ -576,9 +576,9 @@ class NewsletterController extends BaseController
     public function subscribeManualRecipient(Request $request, $recipientId)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         $recipient = NewsletterRecipient::findOrFail($recipientId);
-        
+
         if ($recipient->status === 'active') {
             return back()->with('error', 'This recipient is already subscribed.');
         }
@@ -598,9 +598,9 @@ class NewsletterController extends BaseController
     public function unsubscribeManualRecipient(Request $request, $recipientId)
     {
         $this->authorizePermission($request, 'newsletter.edit');
-        
+
         $recipient = NewsletterRecipient::findOrFail($recipientId);
-        
+
         if ($recipient->status !== 'active') {
             return back()->with('error', 'This recipient is not currently subscribed.');
         }
@@ -633,16 +633,16 @@ class NewsletterController extends BaseController
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'newsletter.create');
-        
+
         // Debug the request data
-        \Illuminate\Support\Facades\Log::info('Newsletter store request data:', [
+        \Log::info('Newsletter store request data:', [
             'send_date' => $request->send_date,
             'schedule_type' => $request->schedule_type,
             'user_timezone' => session('user_timezone'),
             'browser_timezone' => $request->header('X-Timezone'),
             'all_data' => $request->all()
         ]);
-        
+
         // Custom validation for send_date based on schedule_type
         $rules = [
             'newsletter_template_id' => 'required|exists:newsletter_templates,id',
@@ -666,18 +666,18 @@ class NewsletterController extends BaseController
         } else {
             $rules['send_date'] = 'nullable|date|after_or_equal:now';
         }
-        
+
         $request->validate($rules);
 
         $template = NewsletterTemplate::findOrFail($request->newsletter_template_id);
-        
+
         // Calculate send date based on schedule type
         $sendDate = null;
         $status = 'draft';
-        
+
         // Get user's timezone from session or default to UTC
         $userTimezone = session('user_timezone', config('app.timezone', 'UTC'));
-        
+
         switch ($request->schedule_type) {
             case 'immediate':
                 $status = 'draft';
@@ -730,10 +730,10 @@ class NewsletterController extends BaseController
 
         $newsletter = Newsletter::with(['template', 'organization', 'emails.recipient'])
             ->select([
-                'id', 'subject', 'content', 'html_content', 'status', 
+                'id', 'subject', 'content', 'html_content', 'status',
                 'scheduled_at', 'send_date', 'sent_at', 'schedule_type',
-                'total_recipients', 'sent_count', 'delivered_count', 
-                'opened_count', 'clicked_count', 'bounced_count', 
+                'total_recipients', 'sent_count', 'delivered_count',
+                'opened_count', 'clicked_count', 'bounced_count',
                 'unsubscribed_count', 'newsletter_template_id', 'organization_id'
             ])
             ->findOrFail($id);
@@ -757,7 +757,7 @@ class NewsletterController extends BaseController
     public function send(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.send');
-        
+
         $newsletter = Newsletter::findOrFail($id);
 
         if (!in_array($newsletter->status, ['draft', 'paused'])) {
@@ -823,7 +823,7 @@ class NewsletterController extends BaseController
     public function edit(Request $request, $id): Response
     {
         $this->authorizePermission($request, 'newsletter.edit');
-        
+
         $newsletter = Newsletter::with(['template'])->findOrFail($id);
         $templates = NewsletterTemplate::where('is_active', true)->get();
 
@@ -839,9 +839,9 @@ class NewsletterController extends BaseController
     public function update(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.update');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         $request->validate([
             'subject' => 'required|string|max:255',
             'content' => 'required|string',
@@ -867,36 +867,36 @@ class NewsletterController extends BaseController
     public function updateSchedule(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.update');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         // Only allow schedule update for scheduled newsletters
         if ($newsletter->status !== 'scheduled') {
             return back()->with('error', 'Only scheduled newsletters can have their schedule updated.');
         }
-        
+
         $request->validate([
             'scheduled_at' => 'required|date|after:now',
         ]);
 
         // Get user's timezone from session or default to UTC
         $userTimezone = session('user_timezone', config('app.timezone', 'UTC'));
-        
+
         \Illuminate\Support\Facades\Log::info('Update schedule debug:', [
             'scheduled_at_input' => $request->scheduled_at,
             'user_timezone' => $userTimezone,
             'browser_timezone' => $request->header('X-Timezone'),
         ]);
-        
+
         // Parse the scheduled time in the user's timezone and convert to UTC
         $scheduledAt = \Carbon\Carbon::parse($request->scheduled_at, $userTimezone)->utc();
-        
+
         \Illuminate\Support\Facades\Log::info('Schedule conversion result:', [
             'original' => $request->scheduled_at,
             'converted_utc' => $scheduledAt->toISOString(),
             'converted_local' => $scheduledAt->setTimezone($userTimezone)->toISOString(),
         ]);
-        
+
         // Update both scheduled_at and send_date to keep them in sync
         $newsletter->update([
             'scheduled_at' => $scheduledAt,
@@ -921,9 +921,9 @@ class NewsletterController extends BaseController
     public function pause(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.update');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         // Allow pausing for scheduled and sending newsletters
         if (!in_array($newsletter->status, ['scheduled', 'sending'])) {
             return back()->with('error', 'Only scheduled or sending newsletters can be paused.');
@@ -944,9 +944,9 @@ class NewsletterController extends BaseController
     public function resume(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.update');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         // Only allow resuming for paused newsletters
         if ($newsletter->status !== 'paused') {
             return back()->with('error', 'Only paused newsletters can be resumed.');
@@ -961,8 +961,8 @@ class NewsletterController extends BaseController
             'scheduled_at' => $request->scheduled_at,
         ]);
 
-        $message = $request->scheduled_at ? 
-            'Newsletter scheduled successfully!' : 
+        $message = $request->scheduled_at ?
+            'Newsletter scheduled successfully!' :
             'Newsletter resumed and ready to send!';
 
         return redirect()->route('newsletter.index')
@@ -979,17 +979,17 @@ class NewsletterController extends BaseController
             'user_id' => Auth::id(),
             'request_data' => $request->all()
         ]);
-        
+
         $this->authorizePermission($request, 'newsletter.send');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         Log::info('Newsletter found for manual send', [
             'newsletter_id' => $newsletter->id,
             'current_status' => $newsletter->status,
             'subject' => $newsletter->subject
         ]);
-        
+
         // Allow manual sending for any status (including sent for "Send Again" functionality)
         // Only prevent sending if currently in sending status
         if ($newsletter->status === 'sending') {
@@ -1050,7 +1050,7 @@ class NewsletterController extends BaseController
             $recipientCount = $newsletter->getTargetedUsers()->count();
         }
 
-        $message = $wasSent ? 
+        $message = $wasSent ?
             'Newsletter is being sent again to ' . $recipientCount . ' recipients.' :
             'Newsletter is being sent to ' . $recipientCount . ' recipients.';
 
@@ -1071,9 +1071,9 @@ class NewsletterController extends BaseController
     public function destroy(Request $request, $id)
     {
         $this->authorizePermission($request, 'newsletter.delete');
-        
+
         $newsletter = Newsletter::findOrFail($id);
-        
+
         // Allow deletion of draft, paused, scheduled, sending, and sent newsletters
         if (!in_array($newsletter->status, ['draft', 'paused', 'scheduled', 'sending', 'sent'])) {
             return back()->with('error', 'Only draft, paused, scheduled, sending, and sent newsletters can be deleted.');

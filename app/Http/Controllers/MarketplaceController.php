@@ -28,24 +28,26 @@ class MarketplaceController extends Controller
         $search = $request->input('search');
 
         $products = Product::query()
-            ->with(['organization', 'productCategory'])
+            ->with(['organization', 'categories'])
             ->when($search, function ($query, $search) {
-                $query->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%');
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'like', '%' . $search . '%')
+                        ->orWhere('description', 'like', '%' . $search . '%');
+                });
             })
             ->when(!empty($categoryIds), function ($query) use ($categoryIds) {
-                $query->whereHas('productCategory', function ($q) use ($categoryIds) {
-                    $q->whereIn('product_associated_categories.category_id', $categoryIds);
-                });
+                $query->whereIn('category_id', $categoryIds);
             })
             ->when(!empty($organizationIds), function ($query) use ($organizationIds) {
                 $query->whereIn('organization_id', $organizationIds);
             })
             ->where('status', 'active')
+            ->where('quantity_available', '>', 0)
+            ->orderBy('created_at', 'desc')
             ->get();
 
         $categories = Category::where('status', 'active')->get();
-        $organizations = Organization::get(['id', 'name']);
+        $organizations = Organization::where('status', 'active')->get(['id', 'name']);
 
         return Inertia::render('frontend/marketplace', [
             'products' => $products,

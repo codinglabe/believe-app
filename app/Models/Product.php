@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Casts\Attribute;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Product extends Model
 {
@@ -21,6 +22,9 @@ class Product extends Model
         'sku',
         'type',
         'tags',
+        'image',
+        'quantity_ordered',
+        'quantity_available',
     ];
 
     /**
@@ -95,6 +99,16 @@ class Product extends Model
     public function productCategory()
     {
         return $this->hasMany(ProductAssociatedCategory::class, 'product_id');
+    }
+
+    public function cartItems(): HasMany
+    {
+        return $this->hasMany(CartItem::class);
+    }
+
+    public function orderItems(): HasMany
+    {
+        return $this->hasMany(OrderItem::class);
     }
 }
 

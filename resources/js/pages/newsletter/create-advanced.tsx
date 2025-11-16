@@ -14,8 +14,8 @@ import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { useState } from "react"
 import { useForm } from "@inertiajs/react"
 import { getBrowserTimezone, formatDateInTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
-import { 
-    Mail, 
+import {
+    Mail,
     Calendar,
     Users,
     Building,
@@ -32,6 +32,7 @@ interface Template {
     id: number
     name: string
     subject: string
+    content: string
     template_type: string
     html_content?: string
 }
@@ -57,11 +58,11 @@ interface CreateAdvancedNewsletterProps {
     roles: string[]
 }
 
-export default function CreateAdvancedNewsletter({ 
-    templates, 
-    users, 
-    organizations, 
-    roles 
+export default function CreateAdvancedNewsletter({
+    templates,
+    users,
+    organizations,
+    roles
 }: CreateAdvancedNewsletterProps) {
     const { data, setData, post, processing, errors } = useForm({
         newsletter_template_id: '',
@@ -87,28 +88,28 @@ export default function CreateAdvancedNewsletter({
     const [recurringInterval, setRecurringInterval] = useState(1)
 
     const handleUserToggle = (userId: number) => {
-        const newUsers = selectedUsers.includes(userId) 
+        const newUsers = selectedUsers.includes(userId)
             ? selectedUsers.filter(id => id !== userId)
             : [...selectedUsers, userId]
-        
+
         setSelectedUsers(newUsers)
         setData('target_users', newUsers)
     }
 
     const handleOrganizationToggle = (orgId: number) => {
-        const newOrgs = selectedOrganizations.includes(orgId) 
+        const newOrgs = selectedOrganizations.includes(orgId)
             ? selectedOrganizations.filter(id => id !== orgId)
             : [...selectedOrganizations, orgId]
-        
+
         setSelectedOrganizations(newOrgs)
         setData('target_organizations', newOrgs)
     }
 
     const handleRoleToggle = (role: string) => {
-        const newRoles = selectedRoles.includes(role) 
+        const newRoles = selectedRoles.includes(role)
             ? selectedRoles.filter(r => r !== role)
             : [...selectedRoles, role]
-        
+
         setSelectedRoles(newRoles)
         setData('target_roles', newRoles)
     }
@@ -116,26 +117,28 @@ export default function CreateAdvancedNewsletter({
     const handleTemplateSelect = (templateId: string) => {
         const template = templates.find(t => t.id === parseInt(templateId))
         setSelectedTemplate(template || null)
-        
+
         if (template) {
             setData({
                 ...data,
                 newsletter_template_id: templateId,
                 subject: template.subject,
-                content: template.html_content || '',
+                content: template.content || '',
                 html_content: template.html_content || '',
             })
         }
+
+        console.log('Selected template:', template)
     }
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        
+
         console.log('Form data before submit:', data)
         console.log('Selected users:', selectedUsers)
         console.log('Selected organizations:', selectedOrganizations)
         console.log('Selected roles:', selectedRoles)
-        
+
         // Update recurring settings
         const recurringSettings = data.schedule_type === 'recurring' ? {
             type: recurringType,
@@ -185,7 +188,7 @@ export default function CreateAdvancedNewsletter({
     return (
         <AppSidebarLayout>
             <Head title="Create Advanced Newsletter" />
-            
+
             <form onSubmit={handleSubmit} className="space-y-6 animate-in fade-in duration-500 m-10">
                 {/* Header */}
                 <div className="flex items-center gap-4">
@@ -241,19 +244,19 @@ export default function CreateAdvancedNewsletter({
                                         </Badge>
                                     </div>
                                 )}
-                                
+
                                 {errors.newsletter_template_id && (
                                     <p className="text-sm text-red-600 dark:text-red-400">
                                         {errors.newsletter_template_id}
                                     </p>
                                 )}
-                                
+
                                 {errors.send_date && (
                                     <p className="text-sm text-red-600 dark:text-red-400">
                                         {errors.send_date}
                                     </p>
                                 )}
-                                
+
                                 {Object.keys(errors).length > 0 && (
                                     <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
                                         <p className="text-sm text-red-600 dark:text-red-400 font-medium mb-2">
@@ -483,14 +486,14 @@ export default function CreateAdvancedNewsletter({
 
                         {/* Actions */}
                         <div className="flex items-center justify-end gap-4">
-                            <Button 
+                            <Button
                                 type="button"
-                                variant="outline" 
+                                variant="outline"
                                 onClick={() => window.history.back()}
                             >
                                 Cancel
                             </Button>
-                            <Button 
+                            <Button
                                 type="submit"
                                 disabled={!selectedTemplate || processing}
                                 className="flex items-center gap-2"

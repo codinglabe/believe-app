@@ -27,6 +27,7 @@
         "simplesoftwareio/simple-qrcode": "^4.2",
         "spatie/laravel-permission": "^6.20",
         "srmklive/paypal": "*",
+        "stripe/stripe-php": "^16.6",
         "tightenco/ziggy": "^2.4"
     },
     "require-dev": {

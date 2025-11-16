@@ -4,6 +4,7 @@ use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
+use App\Http\Controllers\CartController;
 use App\Http\Controllers\ExcelDataController;
 use App\Http\Controllers\ExcelDataExportController;
 use App\Http\Controllers\PaymentMethodSettingController;
@@ -26,6 +27,7 @@ use PhpOffice\PhpSpreadsheet\Worksheet\Row;
 use App\Http\Controllers\CategoryController;
 use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatTopicController;
+use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\DonationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ManageDataController;
@@ -119,15 +121,36 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 
+// Cart routes (protected)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
+    Route::get('/cart/data', [CartController::class, 'getCartData'])->name('cart.data');
+    Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
+    Route::put('/cart/items/{cartItem}', [CartController::class, 'update'])->name('cart.update');
+    Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.destroy');
+    Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
+
+    // Checkout routes
+    Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
+    Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
+    Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
+
+    // Order routes
+    Route::get('/orders', [OrderController::class, 'index'])->name('order.index');
+    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('order.show');
+    Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('order.confirmation');
+    Route::get('/orders/{order}/tracking', [OrderController::class, 'tracking'])->name('order.tracking');
+});
+
 /* events */
 Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
 
 
-    // Organization routes
-    Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
-    Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
-    Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
+// Organization routes
+Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
+Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
+Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -650,6 +673,9 @@ Route::post('/api/plaid/webhook', function () {
     // Handle Plaid webhooks
     return response()->json(['status' => 'success']);
 });
+
+// printify webhook
+// Route::post('/webhook/printify', [WebhookController::class, 'printify']);
 
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {

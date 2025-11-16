@@ -36,7 +36,7 @@ export function useNotifications(userId: number) {
       if ("Notification" in window && Notification.permission === "granted") {
         new Notification(notification.data.title, {
           body: notification.data.body,
-          icon: "/icon.png",
+          icon: "/favicon-96x96.png",
         })
       }
     })

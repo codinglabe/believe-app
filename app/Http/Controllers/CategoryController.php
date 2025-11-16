@@ -9,8 +9,6 @@ use Inertia\Response;
 
 class CategoryController extends BaseController
 {
-
-
     public function index(Request $request): Response
     {
         $this->authorizePermission($request, 'category.read');

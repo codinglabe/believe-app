@@ -27,6 +27,7 @@ import {
   Eye,
   EyeOff,
   Text,
+  ShoppingBag,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -332,7 +333,15 @@ export default function Navbar() {
                         </p>
                       </div>
                     </div>
-                    <DropdownMenuSeparator />
+                                      <DropdownMenuSeparator />
+                    {/* {auth?.user?.role === "user" && ( */}
+                                      <DropdownMenuItem asChild>
+                                    <Link href={route("cart.index")}>
+                                        <ShoppingBag className="mr-2 h-4 w-4" />
+                                        <span>Cart</span>
+                                    </Link>
+                                    </DropdownMenuItem>
+                    {/* )} */}
                     <DropdownMenuItem asChild>
                       <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <User className="mr-2 h-4 w-4" />

@@ -25,7 +25,7 @@ class ProductController extends BaseController
         $perPage = $request->get('per_page', 10);
         $page = $request->get('page', 1);
         $search = $request->get('search', '');
-        
+
         $query = Product::query();
 
         // Only show products for current user
@@ -106,7 +106,9 @@ class ProductController extends BaseController
 
 
         $product->update([
+            'user_id' => Auth::id(),
             'image' => $imagePath,
+            'quantity_available' => $validated['quantity'],
         ]);
 
         if (Auth::user()->role == "organization") {
@@ -126,7 +128,7 @@ class ProductController extends BaseController
     public function edit(Request $request, Product $product): Response
     {
         $this->authorizePermission($request, 'product.edit');
-        
+
         $categories = Category::all();
         $organizations = Organization::all(['id', 'name']);
 
@@ -151,6 +153,7 @@ class ProductController extends BaseController
         if ($product->user_id !== Auth::id()) {
             abort(403, 'Unauthorized action.');
         }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
@@ -251,7 +254,7 @@ class ProductController extends BaseController
     public function destroy(Request $request, Product $product)
     {
         $this->authorizePermission($request, 'product.delete');
-        
+
         $product->categories()->detach();
         $product->delete();
         return redirect()->route('products.index')->with('success', 'Product deleted successfully');

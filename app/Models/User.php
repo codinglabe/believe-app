@@ -566,4 +566,14 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(UserPushToken::class);
     }
 
+    public function orders(): HasMany
+    {
+        return $this->hasMany(Order::class);
+    }
+
+    public function cart(): HasOne
+    {
+        return $this->hasOne(Cart::class);
+    }
+
 }

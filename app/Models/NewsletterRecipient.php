@@ -29,7 +29,7 @@ class NewsletterRecipient extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($recipient) {
             if (empty($recipient->unsubscribe_token)) {
                 $recipient->unsubscribe_token = Str::random(32);

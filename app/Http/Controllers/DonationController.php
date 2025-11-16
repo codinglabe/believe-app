@@ -20,7 +20,13 @@ class DonationController extends Controller
     // In your DonationController.php
     public function index(Request $request)
     {
-        $query = Organization::whereHas('user', function ($query) {
+        $user = Auth::user();
+
+        $query = Organization::when($user, function ($q) use ($user) {
+            return $q->whereHas('followers', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            });
+        })->whereHas('user', function ($query) {
             $query->where('role', 'organization')
                 ->where('login_status', 1);
         });
@@ -39,9 +45,9 @@ class DonationController extends Controller
         return Inertia::render('frontend/donate', [
             'organizations' => $organizations, // This will now be the filtered list
             'message' => 'Please log in to view your donations.',
-            'user' => $request->user() ? [
-                'name' => $request->user()->name,
-                'email' => $request->user()->email,
+            'user' => $user ? [
+                'name' => $user->name,
+                'email' => $user->email,
             ] : null,
             'searchQuery' => $request->input('search', ''), // Pass back the current search query
         ]);
