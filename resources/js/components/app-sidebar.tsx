@@ -32,7 +32,12 @@ import {
     CalendarPlus,
     PlusCircle,
     Star,
-    Bot
+    Bot,
+    ClipboardList,
+    FileCheck,
+    DollarSign,
+    Coins,
+    PieChart
 } from 'lucide-react';
 import SiteTitle from './site-title';
 
@@ -314,6 +319,74 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "communication.read"
+    },
+
+    // Application Management Section
+    {
+        title: 'Application Management',
+        permission: "form1023.application.read",
+        items: [
+            {
+                title: 'Form 1023 Applications',
+                href: '/admin/form1023',
+                icon: FileCheck,
+                permission: "form1023.application.read"
+            },
+            {
+                title: 'Compliance Reviews',
+                href: '/admin/compliance',
+                icon: ClipboardList,
+                permission: "compliance.review"
+            },
+            {
+                title: 'Fees',
+                href: '/admin/fees',
+                icon: DollarSign,
+                permission: "application.fees.read"
+            },
+        ]
+        // Removed group permission - nav-main will show group if any child is visible
+    },
+
+    // Fractional Ownership Section (Admin Only)
+    {
+        title: 'Fractional Ownership',
+        role: "admin",
+        items: [
+            {
+                title: 'Orders & Buyers',
+                href: '/admin/fractional/orders',
+                icon: ShoppingCart,
+                role: "admin"
+            },
+            {
+                title: 'Assets',
+                href: '/admin/fractional/assets',
+                icon: Coins,
+                role: "admin"
+            },
+            {
+                title: 'Offerings',
+                href: '/admin/fractional/offerings',
+                icon: PieChart,
+                role: "admin"
+            },
+        ],
+        role: "admin"
+    },
+
+    // User Management Section
+    {
+        title: 'User Management',
+        permission: "role.management.read",
+        items: [
+            {
+                title: 'Users',
+                href: route('users.list'),
+                icon: Users,
+                permission: "role.management.read"
+            },
+        ]
     },
 
     // System Management Section

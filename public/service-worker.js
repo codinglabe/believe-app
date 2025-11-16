@@ -35,6 +35,14 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
+    const acceptHeader = request.headers.get('accept') || '';
+    const isHtmlRequest = request.mode === 'navigate' || acceptHeader.includes('text/html');
+    const isInertiaRequest = request.headers.has('x-inertia');
+
+    if (isHtmlRequest || isInertiaRequest || request.destination === 'document') {
+        return;
+    }
+
     // Filter out unsupported URL schemes
     const url = new URL(request.url);
     const unsupportedSchemes = ['chrome-extension:', 'chrome:', 'moz-extension:', 'safari-extension:'];

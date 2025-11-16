@@ -21,34 +21,50 @@ class DatabaseSeeder extends Seeder
         //     'email' => 'test@example.com',
         // ]);
 
-        $this->call([
-            ActivityCodesTableSeeder::class,
-            AffiliationCodesTableSeeder::class,
-            ClassificationCodesTableSeeder::class,
-            DeductibilityCodesTableSeeder::class,
-            FoundationTypesTableSeeder::class,
-            GroupCodesTableSeeder::class,
-            NteeCodesTableSeeder::class,
-            OrganizationStructuresTableSeeder::class,
-            StatusCodesTableSeeder::class,
-            SubsectionCodesTableSeeder::class,
-            RoleSeeder::class,
-            AdminPermissionsSeeder::class,
-            PermissionsSeeder::class,
-            ComprehensivePermissionsSeeder::class,
-            JobPostsPermisstionSeeder::class,
-            assignRole::class,
-            AssignRolePermissionToUsersSeeder::class,
-            UsernameSeeder::class,
-            CategorySeeder::class,
-            RegenerateStripeCustomerIdSeeder::class,
-            ExistingUserReferralGenerate::class,
-            PositionCategoriesAndJobPositionsSeeder::class,
-            EventTypesTableSeeder::class,
-            ChatRoomsSeeder::class,
+        // Run seeders sequentially (serialized) in the correct order
+        
+        // Step 1: Seed code tables first (foundation data)
+        $this->call(ActivityCodesTableSeeder::class);
+        $this->call(AffiliationCodesTableSeeder::class);
+        $this->call(ClassificationCodesTableSeeder::class);
+        $this->call(DeductibilityCodesTableSeeder::class);
+        $this->call(FoundationTypesTableSeeder::class);
+        $this->call(GroupCodesTableSeeder::class);
+        $this->call(NteeCodesTableSeeder::class);
+        $this->call(OrganizationStructuresTableSeeder::class);
+        $this->call(StatusCodesTableSeeder::class);
+        $this->call(SubsectionCodesTableSeeder::class);
 
-            OrganizationBoardMembersSeeder::class,
-            OrganizationRoleSeeder::class,
-        ]);
+        // Step 2: Seed roles and permissions
+        $this->call(RoleSeeder::class);
+        $this->call(AdminPermissionsSeeder::class);
+        $this->call(permissionsSeeder::class);
+        $this->call(ComprehensivePermissionsSeeder::class);
+        $this->call(ComplianceReviewPermissionSeeder::class);
+        $this->call(JobPostsPermisstionSeeder::class);
+        $this->call(assignRole::class);
+
+        // Step 3: Seed users and assign roles/permissions
+        $this->call(AssignRolePermissionToUsersSeeder::class);
+        $this->call(UsernameSeeder::class);
+        $this->call(OrganizationPendingRoleSeeder::class);
+        $this->call(testUserSeeder::class);
+        
+        // Step 6: Seed fractional ownership test data
+        $this->call(FractionalOwnershipSeeder::class);
+
+        // Step 4: Seed categories and other content
+        $this->call(CategorySeeder::class);
+        $this->call(PositionCategoriesAndJobPositionsSeeder::class);
+        $this->call(EventTypesTableSeeder::class);
+        $this->call(ChatRoomsSeeder::class);
+
+        // Step 5: Seed organization-related data
+        $this->call(OrganizationBoardMembersSeeder::class);
+        $this->call(OrganizationRoleSeeder::class);
+
+        // Step 6: Seed additional data and utilities
+        $this->call(RegenerateStripeCustomerIdSeeder::class);
+        $this->call(ExistingUserReferralGenerate::class);
     }
 }

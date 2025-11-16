@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { ArrowLeft, Save, X } from "lucide-react" // Added UserCog icon
+import { ArrowLeft, Save, X } from "lucide-react"
 import { Link, router } from "@inertiajs/react" // Import Inertia router
 import { usePage } from "@inertiajs/react" // To access Inertia props like errors
 import PermissionSelector from "@/components/ui/permission-selector"
@@ -20,6 +20,7 @@ interface EditUserProps {
         roleId: string | null
         status: "active" | "inactive"
         customPermissions: string[]
+        rolePermissions?: string[] // Permissions from role (read-only reference)
     }
     allPermissions: { id: string; name: string; category: string }[]
     allRoles: { id: string; name: string }[]
@@ -38,13 +39,19 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
     const [loading, setLoading] = useState(true)
     useEffect(() => {
         if (initialUserData) {
+            // Merge role permissions with custom permissions for initial display
+            const rolePermissions = initialUserData.rolePermissions || []
+            const customPermissions = initialUserData.customPermissions || []
+            // Combine both - role permissions are shown as selected initially
+            const allSelectedPermissions = [...new Set([...rolePermissions, ...customPermissions])]
+            
             setFormData({
                 name: initialUserData.name,
                 email: initialUserData.email,
                 password: "",
                 roleId: initialUserData.roleId || "",
                 status: initialUserData.status,
-                customPermissions: initialUserData.customPermissions, // <-- This line is key!
+                customPermissions: allSelectedPermissions, // Show both role and custom permissions as selected
             })
         }
         setLoading(false)
@@ -53,14 +60,24 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
         
+        // Get role permissions to exclude from custom permissions
+        const rolePermissions = initialUserData.rolePermissions || []
+        // Only send custom permissions (exclude role permissions)
+        const customPermissionsOnly = formData.customPermissions.filter(
+            perm => !rolePermissions.includes(perm)
+        )
+        
         // Debug: Log the form data being sent
         console.log('Submitting user update:', {
             userId: initialUserData.id,
             formData: formData,
-            customPermissions: formData.customPermissions
+            customPermissions: customPermissionsOnly
         })
         
-        router.put(route("users.update", initialUserData.id), formData, {
+        router.put(route("users.update", initialUserData.id), {
+            ...formData,
+            customPermissions: customPermissionsOnly, // Only send custom permissions, not role permissions
+        }, {
             onSuccess: () => {
                 router.visit(route('users.list'))
             },
@@ -86,16 +103,16 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
 
     return (
         <AppLayout>
-            <div className="min-h-screen">
-                <div className="container mx-auto p-4 md:p-6 lg:p-8 max-w-full">
+            <div className="h-[calc(100vh-4rem)] flex flex-col">
+                <div className="w-full p-4 md:p-6 flex-1 flex flex-col min-h-0">
                     {/* Header */}
-                    <div className="mb-8 animate-in fade-in-0 slide-in-from-top-4 duration-500">
-                        <div className="flex items-center gap-4 mb-6">
+                    <div className="mb-4 flex-shrink-0">
+                        <div className="flex items-center gap-4">
                             <Link href={route('permissions.overview')}>
                                 <Button
                                     variant="ghost"
                                     size="sm"
-                                    className="flex items-center gap-2 hover:bg-white/80 dark:hover:bg-slate-800/80 backdrop-blur-sm transition-all duration-200"
+                                    className="flex items-center gap-2"
                                 >
                                     <ArrowLeft className="w-4 h-4" />
                                     Back to Users
@@ -104,149 +121,43 @@ export default function EditUser({ user: initialUserData, allPermissions, allRol
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-4 gap-8">
-                        {/* Form Section */}
-                        <div className="xl:col-span-1">
-                            <Card className="animate-in fade-in-0 slide-in-from-left-4 duration-500 delay-200 sticky top-6 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-slate-200/50 dark:border-slate-700/50 shadow-2xl">
-                                <CardHeader className="pb-4">
-                                    <CardTitle className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
-                                        User Details
-                                    </CardTitle>
-                                </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="space-y-3">
-                                        <Label htmlFor="name" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                            Full Name *
-                                        </Label>
-                                        <Input
-                                            id="name"
-                                            value={formData.name}
-                                            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                            placeholder="Enter full name"
-                                            required
-                                            className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                        />
-                                        {errors.name && <p className="text-red-500 text-xs mt-1">{errors.name}</p>}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <Label htmlFor="email" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                            Email Address *
-                                        </Label>
-                                        <Input
-                                            id="email"
-                                            type="email"
-                                            value={formData.email}
-                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                            placeholder="Enter email address"
-                                            required
-                                            className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                        />
-                                        {errors.email && <p className="text-red-500 text-xs mt-1">{errors.email}</p>}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <Label htmlFor="password" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                            New Password (optional)
-                                        </Label>
-                                        <Input
-                                            id="password"
-                                            type="password"
-                                            value={formData.password}
-                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                            placeholder="Leave blank to keep current password"
-                                            className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                                        />
-                                        {errors.password && <p className="text-red-500 text-xs mt-1">{errors.password}</p>}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <Label htmlFor="role" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                            Primary Role *
-                                        </Label>
-                                        <Select
-                                            value={formData.roleId}
-                                            onValueChange={(value) => setFormData({ ...formData, roleId: value })}
-                                        >
-                                            <SelectTrigger className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-purple-500">
-                                                <SelectValue placeholder="Select a role" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {allRoles.map((role) => (
-                                                    <SelectItem key={role.id} value={role.id}>
-                                                        {role.name}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.roleId && <p className="text-red-500 text-xs mt-1">{errors.roleId}</p>}
-                                    </div>
-
-                                    <div className="space-y-3">
-                                        <Label htmlFor="status" className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                                            Status *
-                                        </Label>
-                                        <Select
-                                            value={formData.status}
-                                            onValueChange={(value: "active" | "inactive") => setFormData({ ...formData, status: value })}
-                                        >
-                                            <SelectTrigger className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-purple-500">
-                                                <SelectValue placeholder="Select status" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="active">Active</SelectItem>
-                                                <SelectItem value="inactive">Inactive</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.status && <p className="text-red-500 text-xs mt-1">{errors.status}</p>}
-                                    </div>
-
-                                    {/* Permission Summary */}
-                                    <div className="p-4 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-xl border border-purple-200/50 dark:border-purple-700/50">
-                                        <h4 className="font-semibold text-slate-800 dark:text-slate-200 mb-2">Additional Permissions</h4>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-8 h-8 bg-purple-500 rounded-full flex items-center justify-center">
-                                                <span className="text-white text-sm font-bold">{formData.customPermissions.length}</span>
-                                            </div>
-                                            <span className="text-sm text-slate-600 dark:text-slate-400">custom permissions</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Action Buttons */}
-                                    <div className="flex flex-col gap-3 pt-6 border-t border-slate-200/50 dark:border-slate-700/50">
-                                        <Button
-                                            type="submit"
-                                            onClick={handleSubmit}
-                                            className="flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 transition-all duration-200 hover:scale-105 shadow-lg"
-                                            disabled={!formData.name.trim() || !formData.email.trim() || !formData.roleId}
-                                        >
-                                            <Save className="w-4 h-4" />
-                                            Save Changes
-                                        </Button>
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            onClick={handleCancel}
-                                            className="flex items-center justify-center gap-2 transition-all duration-200 hover:scale-105 bg-white/50 dark:bg-slate-800/50 backdrop-blur-sm"
-                                        >
-                                            <X className="w-4 h-4" />
-                                            Cancel
-                                        </Button>
-                                    </div>
-                                </CardContent>
-                            </Card>
-                        </div>
-
-                        {/* Permissions Section */}
-                        <div className="xl:col-span-3">
-                            <div className="animate-in fade-in-0 slide-in-from-right-4 duration-500 delay-300">
-                                <PermissionSelector
-                                    permissions={allPermissions}
-                                    selectedPermissions={formData.customPermissions}
-                                    onChange={(permissions) => setFormData({ ...formData, customPermissions: permissions })}
-                                    title="Additional Permissions"
-                                />
-                            </div>
+                    {/* Permissions Section */}
+                    <div className="flex flex-col min-h-0 flex-1">
+                        <PermissionSelector
+                            permissions={allPermissions}
+                            selectedPermissions={formData.customPermissions}
+                            onChange={(permissions) => setFormData({ ...formData, customPermissions: permissions })}
+                            title="User Permissions"
+                            userInfo={{
+                                name: formData.name,
+                                email: formData.email,
+                                role: formData.roleId,
+                                roles: allRoles,
+                            }}
+                        />
+                        
+                        {/* Action Buttons */}
+                        <div className="flex items-center gap-3 mt-4 p-4 bg-muted/50 rounded-lg border">
+                            <Button
+                                type="submit"
+                                onClick={handleSubmit}
+                                size="sm"
+                                className="flex items-center justify-center gap-2"
+                                disabled={!formData.name.trim() || !formData.email.trim() || !formData.roleId}
+                            >
+                                <Save className="w-4 h-4" />
+                                Save Changes
+                            </Button>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCancel}
+                                className="flex items-center justify-center gap-2"
+                            >
+                                <X className="w-4 h-4" />
+                                Cancel
+                            </Button>
                         </div>
                     </div>
                 </div>

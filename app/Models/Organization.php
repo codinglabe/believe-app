@@ -41,13 +41,20 @@ class Organization extends Model
         'registration_status',
         'has_edited_irs_data',
         'original_irs_data',
-        'social_accounts'
+        'social_accounts',
+        'tax_compliance_status',
+        'tax_compliance_checked_at',
+        'tax_compliance_meta',
+        'is_compliance_locked'
     ];
 
     protected $casts = [
         'original_irs_data' => 'array',
         'has_edited_irs_data' => 'boolean',
         'social_accounts' => 'array',
+        'tax_compliance_checked_at' => 'datetime',
+        'tax_compliance_meta' => 'array',
+        'is_compliance_locked' => 'boolean',
     ];
 
     public function user()
@@ -73,6 +80,27 @@ class Organization extends Model
     public function activeMembers()
     {
         return $this->users()->where('login_status', true);
+    }
+
+    public function form990Filings()
+    {
+        return $this->hasMany(Form990Filing::class);
+    }
+
+    public function getLatestForm990Filing()
+    {
+        return $this->form990Filings()->latest('tax_year')->first();
+    }
+
+    public function getOverdueForm990Filings()
+    {
+        return $this->form990Filings()
+            ->where('is_filed', false)
+            ->where(function ($query) {
+                $query->where('due_date', '<', now())
+                    ->orWhere('extended_due_date', '<', now());
+            })
+            ->get();
     }
 
     // Helper methods
@@ -178,6 +206,16 @@ class Organization extends Model
     public function jobPosts()
     {
         return $this->hasMany(JobPost::class, 'organization_id', 'id');
+    }
+
+    public function complianceApplications()
+    {
+        return $this->hasMany(ComplianceApplication::class);
+    }
+
+    public function form1023Applications()
+    {
+        return $this->hasMany(Form1023Application::class);
     }
 
     public function events()

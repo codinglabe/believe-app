@@ -8,8 +8,7 @@ export default defineConfig({
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],
-            // Only enable SSR in dev
-            ssr: process.env.NODE_ENV === 'development' ? 'resources/js/ssr.tsx' : undefined,
+            ssr: 'resources/js/ssr.tsx',
             refresh: true,
         }),
         react(),
@@ -20,15 +19,8 @@ export default defineConfig({
     },
     resolve: {
         alias: {
+            // '@': resolve(__dirname, 'resources/js'),
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),
-        },
-    },
-    build: {
-        outDir: 'public/build',
-        manifest: true,
-        rollupOptions: {
-            // Prevent SSR entry in production
-            input: ['resources/css/app.css', 'resources/js/app.tsx'],
         },
     },
 });

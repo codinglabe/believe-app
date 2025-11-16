@@ -32,9 +32,15 @@ class AppServiceProvider extends ServiceProvider
         NodeSell::observe(NodeSellObserver::class);
         Cashier::useCustomerModel(User::class);
         Inertia::share([
-            'auth' => fn () => [
-                'user' => Auth::user(),
-            ],
+            'auth' => function () {
+                $user = Auth::user();
+
+                return [
+                    'user' => $user,
+                    'roles' => $user?->getRoleNames()->toArray() ?? [],
+                    'permissions' => $user?->getAllPermissions()->pluck('name')->toArray() ?? [],
+                ];
+            },
         ]);
         $this->app->make(ChannelManager::class)->extend('firebase', function ($app) {
             return new FirebaseChannel();

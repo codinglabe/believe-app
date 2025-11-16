@@ -64,7 +64,7 @@ export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false)
   const [isLoggedIn, setIsLoggedIn] = useState(!!auth?.user)
 
-    console.log("Auth User in Navbar:", auth) // Debugging line
+  console.log("Auth User in Navbar:", auth) // Debugging line
 
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
@@ -97,7 +97,7 @@ export default function Navbar() {
     { name: "Donate", href: "/donate" },
     { name: "Courses & Events", href: route("course.index") },
     ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index") }] : []),
-    { name: "Node Boss", href: "/nodeboss" },
+    { name: "Fractional Ownership", href: "/fractional" },
     { name: "Contact", href: "/contact" },
   ]
 
@@ -141,7 +141,7 @@ export default function Navbar() {
       <div className="container mx-auto px-4">
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
-          <SiteTitle/>
+          <SiteTitle />
 
           {/* Desktop Navigation */}
           <div className="hidden xl:flex items-center space-x-1">
@@ -162,7 +162,7 @@ export default function Navbar() {
                 {/* <Button variant="ghost" size="sm" className="h-9 w-9 px-0">
                                   <Bell className="h-4 w-4" />
                               </Button> */}
-                              <NotificationBell userId={auth.user.id}/>
+                <NotificationBell userId={auth.user.id} />
 
                 {/* Wallet Dropdown */}
                 <DropdownMenu>
@@ -347,7 +347,7 @@ export default function Navbar() {
                         </Link>
                       </DropdownMenuItem>
                     )}
-                    {(auth?.user?.role === "admin" || auth?.user?.role === "organization") && (
+                    {(auth?.user?.role === "admin" || auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") && (
                       <DropdownMenuItem asChild>
                         <Link href={route("dashboard")}>
                           <LayoutGrid className="mr-2 h-4 w-4" />
@@ -386,11 +386,11 @@ export default function Navbar() {
 
           {/* Mobile menu button */}
           <div className="xl:hidden flex items-center space-x-2">
-                      <ThemeToggle />
-                      {isLoggedIn ? (
+            <ThemeToggle />
+            {isLoggedIn ? (
               <>
-                              <NotificationBell userId={auth.user.id} />
-                </>) : null}
+                <NotificationBell userId={auth.user.id} />
+              </>) : null}
             <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)}>
               {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </Button>
@@ -552,7 +552,7 @@ export default function Navbar() {
                           <User className="mr-2 h-4 w-4" />
                           Profile
                         </Button>
-                                          </Link>
+                      </Link>
                       {auth?.user?.role === "user" && (
                         <Link href={route("chat.index")}>
                           <Button variant="ghost" className="w-full justify-start">
@@ -560,23 +560,23 @@ export default function Navbar() {
                             Chat
                           </Button>
                         </Link>
-         )}
-                        {(auth?.user?.role === "admin" || auth?.user?.role === "organization") && (
-                            <Link href={route("dashboard")}>
+                      )}
+                      {(auth?.user?.role === "admin" || auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") && (
+                        <Link href={route("dashboard")}>
                           <Button variant="ghost" className="w-full justify-start">
                             <LayoutGrid className="mr-2 h-4 w-4" />
                             Dashboard
                           </Button>
                         </Link>
-                    )}
+                      )}
                       <Button
                         variant="ghost"
                         className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
                         onClick={handleLogout}
-                                          >
+                      >
                         <Link method="post" className="w-full flex justify-start align-items-center cursor-pointer" href={route("logout")} onClick={handleLogout}>
-                            <LogOut className="mr-3 mt-0.5 h-3 w-3 d-flex justify-center align-middle align-items-center" />
-                            Log out
+                          <LogOut className="mr-3 mt-0.5 h-3 w-3 d-flex justify-center align-middle align-items-center" />
+                          Log out
                         </Link>
                       </Button>
                     </div>

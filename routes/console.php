@@ -30,3 +30,17 @@ Schedule::command('drops:dispatch-due')
 Schedule::command('sendJobs:cleanup')
     ->daily()
     ->at('02:00');
+
+// Send daily payment reminders for Form 1023 applications
+Schedule::command('form1023:send-payment-reminders')
+    ->daily()
+    ->at('09:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
+// Check IRS Form 990 filings monthly and send notifications
+Schedule::command('irs:check-form990-filings --notify')
+    ->monthly()
+    ->at('03:00')
+    ->withoutOverlapping()
+    ->runInBackground();
