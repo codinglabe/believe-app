@@ -585,7 +585,7 @@ class Form1023ApplicationController extends Controller
                         'organization_id' => $organization->id,
                         'user_id' => $user->id,
                     ],
-                    'payment_method_types' => ['card'],
+                    'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
                 ]
             );
 
@@ -773,7 +773,7 @@ class Form1023ApplicationController extends Controller
                         'organization_id' => $organization->id,
                         'user_id' => $user->id,
                     ],
-                    'payment_method_types' => ['card'],
+                    'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
                 ]
             );
 
@@ -1115,7 +1115,7 @@ class Form1023ApplicationController extends Controller
                         'organization_id' => $organization->id,
                         'user_id' => $user->id,
                     ],
-                    'payment_method_types' => ['card'],
+                    'payment_method_types' => ['card', 'afterpay_clearpay', 'affirm'],
                 ]
             );
 

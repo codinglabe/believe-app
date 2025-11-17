@@ -299,3 +299,4 @@ class FractionalOwnershipSeeder extends Seeder
     }
 }
 
+

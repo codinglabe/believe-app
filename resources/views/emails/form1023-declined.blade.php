@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Complete Your Form 1023 Application Payment</title>
+    <title>Form 1023 Application Status Update</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -19,7 +19,7 @@
             background-color: #ffffff;
         }
         .email-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
             padding: 40px 30px;
             text-align: center;
         }
@@ -44,17 +44,21 @@
             margin-bottom: 25px;
             line-height: 1.8;
         }
-        .highlight-box {
-            background-color: #f8f9fa;
-            border-left: 4px solid #667eea;
+        .declined-box {
+            background-color: #fee2e2;
+            border-left: 4px solid #ef4444;
             padding: 20px;
             margin: 30px 0;
             border-radius: 4px;
         }
-        .highlight-box h3 {
+        .declined-box h3 {
             margin: 0 0 10px 0;
-            color: #1a1a1a;
+            color: #991b1b;
             font-size: 18px;
+        }
+        .declined-box p {
+            margin: 0;
+            color: #991b1b;
         }
         .info-row {
             display: flex;
@@ -75,7 +79,7 @@
         }
         .cta-button {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
             color: #ffffff !important;
             text-decoration: none;
             padding: 16px 40px;
@@ -84,28 +88,16 @@
             font-size: 16px;
             text-align: center;
             margin: 30px 0;
-            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 4px 6px rgba(59, 130, 246, 0.3);
             transition: transform 0.2s;
         }
         .cta-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 12px rgba(59, 130, 246, 0.4);
         }
         .button-container {
             text-align: center;
             margin: 40px 0;
-        }
-        .urgency-note {
-            background-color: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 25px 0;
-        }
-        .urgency-note p {
-            margin: 0;
-            color: #856404;
-            font-size: 14px;
         }
         .footer {
             background-color: #f8f9fa;
@@ -119,13 +111,35 @@
             font-size: 14px;
         }
         .footer a {
-            color: #667eea;
+            color: #3b82f6;
             text-decoration: none;
         }
         .divider {
             height: 1px;
             background-color: #e5e5e5;
             margin: 30px 0;
+        }
+        .admin-message {
+            background-color: #fef2f2;
+            border-left: 4px solid #ef4444;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .admin-message p {
+            margin: 0;
+            color: #991b1b;
+        }
+        .help-box {
+            background-color: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .help-box p {
+            margin: 0;
+            color: #1e40af;
         }
         @media only screen and (max-width: 600px) {
             .email-body {
@@ -148,7 +162,7 @@
     <div class="email-container">
         <!-- Header -->
         <div class="email-header">
-            <h1>🔔 Payment Reminder</h1>
+            <h1>📋 Application Status Update</h1>
         </div>
 
         <!-- Body -->
@@ -157,66 +171,81 @@
                 Dear {{ $organization->name ?? 'Valued Organization' }},
             </div>
 
-            <div class="message">
-                We hope this message finds you well. We noticed that your Form 1023 application is still pending payment completion. To proceed with the certification process and get your organization certified, please complete the payment as soon as possible.
+            <div class="declined-box">
+                <h3>⚠️ Application Declined</h3>
+                <p>We regret to inform you that your Form 1023 application has been <strong>declined</strong>.</p>
             </div>
 
-            <div class="highlight-box">
-                <h3>📋 Application Details</h3>
+            <div class="message">
+                After careful review of your application, we have determined that it does not meet the requirements for approval at this time. We understand this may be disappointing, and we want to help you understand the reasons for this decision.
+            </div>
+
+            <div class="highlight-box" style="background-color: #f8f9fa; border-left: 4px solid #ef4444; padding: 20px; margin: 30px 0; border-radius: 4px;">
+                <h3 style="margin: 0 0 10px 0; color: #1a1a1a; font-size: 18px;">📋 Application Details</h3>
                 <div class="info-row">
                     <span class="info-label">Application Number:</span>
                     <span class="info-value"><strong>{{ $application->application_number }}</strong></span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Application Fee:</span>
-                    <span class="info-value"><strong>${{ number_format($applicationFee, 2) }}</strong></span>
+                    <span class="info-label">Organization Name:</span>
+                    <span class="info-value"><strong>{{ $organization->name }}</strong></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">EIN:</span>
+                    <span class="info-value">{{ $organization->ein }}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Status:</span>
-                    <span class="info-value">Payment Pending</span>
+                    <span class="info-value" style="color: #ef4444; font-weight: 600;">Declined</span>
                 </div>
-                @if($application->submitted_at)
+                @if($application->reviewed_at)
                 <div class="info-row">
-                    <span class="info-label">Submitted:</span>
-                    <span class="info-value">{{ $application->submitted_at->format('F j, Y') }}</span>
+                    <span class="info-label">Reviewed Date:</span>
+                    <span class="info-value">{{ $application->reviewed_at->format('F j, Y') }}</span>
                 </div>
                 @endif
             </div>
 
-            <div class="urgency-note">
+            @if(isset($reviewMessage) && $reviewMessage)
+            <div class="admin-message">
+                <p><strong>Reason for Decline:</strong></p>
+                <p>{{ $reviewMessage }}</p>
+            </div>
+            @endif
+
+            <div class="help-box">
                 <p>
-                    <strong>⏰ Important:</strong> Your application cannot be reviewed until payment is completed. Complete your payment today to avoid any delays in the certification process.
+                    <strong>💡 What Can You Do?</strong><br>
+                    If you believe there has been an error or if you have additional information that may affect this decision, please contact our support team. We're here to help you understand the requirements and guide you through the process.
                 </p>
             </div>
 
-            <div class="message">
-                Once payment is received, your application will be immediately moved to the review queue, and our team will begin processing your certification request.
-            </div>
-
             <div class="button-container">
-                <a href="{{ $paymentUrl }}" class="cta-button">
-                    Complete Payment Now
+                <a href="{{ $applicationUrl }}" class="cta-button">
+                    View Application Details
                 </a>
             </div>
 
             <div class="divider"></div>
 
             <div class="message" style="font-size: 14px; color: #666666;">
-                <strong>Need Help?</strong><br>
-                If you have any questions or need assistance with the payment process, please don't hesitate to contact our support team. We're here to help you complete your certification successfully.
+                <strong>Next Steps:</strong><br>
+                • Review the feedback provided above<br>
+                • Address any issues or concerns mentioned<br>
+                • Contact our support team if you have questions<br>
+                • You may be able to submit a new application after addressing the concerns
             </div>
 
-            <div class="button-container" style="margin-top: 20px;">
-                <a href="{{ $applicationUrl }}" style="color: #667eea; text-decoration: none; font-size: 14px;">
-                    View Application Details →
-                </a>
+            <div class="message" style="font-size: 14px; color: #666666; margin-top: 20px;">
+                <strong>Need Help?</strong><br>
+                Our support team is available to assist you. Please don't hesitate to reach out if you need clarification or guidance on how to proceed.
             </div>
         </div>
 
         <!-- Footer -->
         <div class="footer">
             <p><strong>{{ config('app.name') }}</strong></p>
-            <p>This is an automated reminder. Please do not reply to this email.</p>
+            <p>This is an automated notification. Please do not reply to this email.</p>
             <p>
                 <a href="{{ config('app.url') }}">Visit our website</a> | 
                 <a href="{{ config('app.url') }}/contact">Contact Support</a>
@@ -228,6 +257,4 @@
     </div>
 </body>
 </html>
-
-
 

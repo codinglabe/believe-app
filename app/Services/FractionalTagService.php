@@ -11,9 +11,9 @@ class FractionalTagService
     /**
      * Assign tag number to a purchase based on tokens
      * Logic:
-     * 1. First fill any incomplete shares (same tag number)
-     * 2. Then create new full shares (new tag numbers)
-     * 3. Then add remaining tokens to the current incomplete share (same tag as step 1)
+     * 1. First create new full shares (new tag numbers) - buyer owns these full shares
+     * 2. Then fill incomplete shares with remaining tokens (existing incomplete tags)
+     * 3. Then add remaining tokens to a new incomplete share (new tag number)
      */
     public function assignTagNumber(FractionalOffering $offering, int $tokens): array
     {
@@ -21,34 +21,7 @@ class FractionalTagService
         $remainingTokens = $tokens;
         $assignedTags = [];
 
-        // Step 1: Fill incomplete shares first
-        $incompleteTag = FractionalShareTag::where('offering_id', $offering->id)
-            ->where('is_complete', false)
-            ->first();
-
-        if ($incompleteTag && $remainingTokens > 0) {
-            $tokensAvailable = $tokensPerShare - $incompleteTag->tokens_filled;
-            $tokensToFill = min($remainingTokens, $tokensAvailable);
-
-            if ($tokensToFill > 0) {
-                $incompleteTag->tokens_filled += $tokensToFill;
-                
-                if ($incompleteTag->tokens_filled >= $tokensPerShare) {
-                    $incompleteTag->is_complete = true;
-                }
-                
-                $incompleteTag->save();
-
-                $assignedTags[] = [
-                    'tag_number' => $incompleteTag->tag_number,
-                    'tokens' => $tokensToFill,
-                ];
-
-                $remainingTokens -= $tokensToFill;
-            }
-        }
-
-        // Step 2: Create new full shares
+        // Step 1: Create new full shares first (buyer owns these full shares, so they get new tags)
         while ($remainingTokens >= $tokensPerShare) {
             $tagNumber = $this->generateNextTagNumber($offering);
             $newTag = FractionalShareTag::create([
@@ -67,35 +40,53 @@ class FractionalTagService
             $remainingTokens -= $tokensPerShare;
         }
 
-        // Step 3: Add remaining tokens to incomplete share (or create new one)
-        if ($remainingTokens > 0) {
-            // Get the current incomplete tag (might be the one from step 1, or a new one)
-            $currentIncompleteTag = FractionalShareTag::where('offering_id', $offering->id)
+        // Step 2: Fill incomplete shares with remaining tokens (existing incomplete tags)
+        while ($remainingTokens > 0) {
+            $incompleteTag = FractionalShareTag::where('offering_id', $offering->id)
                 ->where('is_complete', false)
                 ->first();
 
-            if (!$currentIncompleteTag) {
-                // Create a new incomplete share tag
-                $tagNumber = $this->generateNextTagNumber($offering);
-                $currentIncompleteTag = FractionalShareTag::create([
-                    'offering_id' => $offering->id,
-                    'tag_number' => $tagNumber,
-                    'tokens_filled' => 0,
-                    'tokens_per_share' => $tokensPerShare,
-                    'is_complete' => false,
-                ]);
+            if (!$incompleteTag) {
+                break; // No more incomplete shares to fill
             }
 
-            $currentIncompleteTag->tokens_filled += $remainingTokens;
-            
-            if ($currentIncompleteTag->tokens_filled >= $tokensPerShare) {
-                $currentIncompleteTag->is_complete = true;
+            $tokensNeeded = $tokensPerShare - $incompleteTag->tokens_filled;
+            $tokensToFill = min($remainingTokens, $tokensNeeded);
+
+            if ($tokensToFill > 0) {
+                $incompleteTag->tokens_filled += $tokensToFill;
+                
+                if ($incompleteTag->tokens_filled >= $tokensPerShare) {
+                    $incompleteTag->is_complete = true;
+                }
+                
+                $incompleteTag->save();
+
+                $assignedTags[] = [
+                    'tag_number' => $incompleteTag->tag_number,
+                    'tokens' => $tokensToFill,
+                ];
+
+                $remainingTokens -= $tokensToFill;
+            } else {
+                break;
             }
-            
-            $currentIncompleteTag->save();
+        }
+
+        // Step 3: Add remaining tokens to a NEW incomplete share (create new tag)
+        if ($remainingTokens > 0) {
+            // Always create a new incomplete share tag for remaining tokens
+            $tagNumber = $this->generateNextTagNumber($offering);
+            $newIncompleteTag = FractionalShareTag::create([
+                'offering_id' => $offering->id,
+                'tag_number' => $tagNumber,
+                'tokens_filled' => $remainingTokens,
+                'tokens_per_share' => $tokensPerShare,
+                'is_complete' => false,
+            ]);
 
             $assignedTags[] = [
-                'tag_number' => $currentIncompleteTag->tag_number,
+                'tag_number' => $tagNumber,
                 'tokens' => $remainingTokens,
             ];
         }

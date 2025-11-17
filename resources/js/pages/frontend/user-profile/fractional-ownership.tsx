@@ -2,7 +2,7 @@
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { Head, Link, router } from "@inertiajs/react"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/frontend/ui/button"
@@ -86,19 +86,27 @@ interface FractionalOwnershipProps {
 export default function FractionalOwnership({ orders, stats, filters }: FractionalOwnershipProps) {
     const [searchQuery, setSearchQuery] = useState(filters.search || '')
 
+    const performSearch = useCallback((search: string) => {
+        const params: Record<string, string> = {}
+        if (search.trim()) {
+            params.search = search.trim()
+        }
+        router.get(route('user.profile.fractional-ownership'), params, {
+            preserveState: true,
+            replace: true
+        })
+    }, [])
+
     const debouncedSearch = useMemo(
-        () => debounce((search: string) => {
-            const params: Record<string, string> = {}
-            if (search.trim()) {
-                params.search = search.trim()
-            }
-            router.get(route('profile.fractional-ownership'), params, {
-                preserveState: true,
-                replace: true
-            })
-        }, 300),
-        []
+        () => debounce(performSearch, 300),
+        [performSearch]
     )
+
+    useEffect(() => {
+        return () => {
+            debouncedSearch.cancel()
+        }
+    }, [debouncedSearch])
 
     const handleSearchChange = (value: string) => {
         setSearchQuery(value)
@@ -176,13 +184,13 @@ export default function FractionalOwnership({ orders, stats, filters }: Fraction
                 <Card>
                     <CardContent className="p-4">
                         <div className="relative">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400 dark:text-gray-500 z-10" />
                             <Input
                                 type="text"
                                 placeholder="Search by order number, tag number, offering, or asset..."
                                 value={searchQuery}
                                 onChange={(e) => handleSearchChange(e.target.value)}
-                                className="pl-10"
+                                className="pl-10 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400 focus:bg-white dark:focus:bg-gray-800"
                             />
                         </div>
                     </CardContent>
@@ -354,4 +362,5 @@ export default function FractionalOwnership({ orders, stats, filters }: Fraction
         </ProfileLayout>
     )
 }
+
 

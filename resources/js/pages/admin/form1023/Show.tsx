@@ -16,7 +16,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { TextArea as Textarea } from "@/components/ui/textarea"
+import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
@@ -247,11 +247,13 @@ export default function AdminForm1023Show() {
 
   const [showRequestInfoModal, setShowRequestInfoModal] = useState(false)
   const [showDeclineModal, setShowDeclineModal] = useState(false)
+  const [showApproveModal, setShowApproveModal] = useState(false)
   const [showRejectDocumentModal, setShowRejectDocumentModal] = useState(false)
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [showEditFeeModal, setShowEditFeeModal] = useState(false)
   const [requestInfoMessage, setRequestInfoMessage] = useState("")
   const [declineMessage, setDeclineMessage] = useState("")
+  const [approveMessage, setApproveMessage] = useState("")
   const [rejectDocumentReason, setRejectDocumentReason] = useState("")
   const [rejectingDocument, setRejectingDocument] = useState<{ fieldName: string; fileIndex: number | null } | null>(null)
   const [feeAmount, setFeeAmount] = useState("")
@@ -362,13 +364,20 @@ export default function AdminForm1023Show() {
   }
 
   const handleApprove = () => {
+    setShowApproveModal(true)
+  }
+
+  const submitApprove = () => {
     setIsSubmitting(true)
     router.patch(route("admin.form1023.update", application.id), { 
-      status: "approved" 
+      status: "approved",
+      message: approveMessage || null
     }, {
       preserveScroll: true,
       onSuccess: () => {
         showSuccessToast("Application approved successfully")
+        setShowApproveModal(false)
+        setApproveMessage("")
         setIsSubmitting(false)
       },
       onError: () => {
@@ -501,37 +510,45 @@ export default function AdminForm1023Show() {
             </Link>
           </Button>
           <div className="flex flex-wrap items-center gap-2">
-            {application.status === "awaiting_review" && (
-              <>
-                <Button 
-                  variant="secondary" 
-                  size="sm"
-                  onClick={handleRequestInfo}
-                  disabled={isSubmitting}
-                  className="text-xs sm:text-sm"
-                >
-                  Request More Info
-                </Button>
-                <Button 
-                  variant="destructive" 
-                  size="sm"
-                  onClick={handleDecline}
-                  disabled={isSubmitting}
-                  className="text-xs sm:text-sm"
-                >
-                  Decline
-                </Button>
-                <Button 
-                  variant="default" 
-                  size="sm"
-                  onClick={handleApprove}
-                  disabled={isSubmitting}
-                  className="text-xs sm:text-sm"
-                >
-                  Approve
-                </Button>
-              </>
+            {/* Request More Info Button - Hide if current status is needs_more_info */}
+            {application.status !== "needs_more_info" && (
+              <Button 
+                variant="secondary" 
+                size="sm"
+                onClick={handleRequestInfo}
+                disabled={isSubmitting}
+                className="text-xs sm:text-sm"
+              >
+                Request More Info
+              </Button>
             )}
+            
+            {/* Decline Button - Hide if current status is declined */}
+            {application.status !== "declined" && (
+              <Button 
+                variant="destructive" 
+                size="sm"
+                onClick={handleDecline}
+                disabled={isSubmitting}
+                className="text-xs sm:text-sm"
+              >
+                Decline
+              </Button>
+            )}
+            
+            {/* Approve Button - Hide if current status is approved */}
+            {application.status !== "approved" && (
+              <Button 
+                variant="default" 
+                size="sm"
+                onClick={handleApprove}
+                disabled={isSubmitting}
+                className="text-xs sm:text-sm"
+              >
+                Approve
+              </Button>
+            )}
+            
             <Button
               variant="outline"
               size="sm"
@@ -737,6 +754,64 @@ export default function AdminForm1023Show() {
                 disabled={isSubmitting || !declineMessage.trim()}
               >
                 {isSubmitting ? "Declining..." : "Decline Application"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Approve Application Modal */}
+        <Dialog open={showApproveModal} onOpenChange={setShowApproveModal}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl">
+                <CheckCircle className="h-5 w-5 text-green-600" />
+                Approve Application
+              </DialogTitle>
+              <DialogDescription>
+                Approve this Form 1023 application. You can optionally include a congratulatory message for the organization.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 p-4">
+                <p className="text-sm font-semibold text-green-800 dark:text-green-200 mb-1">Success</p>
+                <p className="text-xs text-green-700 dark:text-green-300">
+                  Approving this application will grant the organization full access and update their registration status.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="approve-message" className="text-sm font-semibold">
+                  Message (Optional)
+                </Label>
+                <Textarea
+                  id="approve-message"
+                  placeholder="Optional: Add a congratulatory message or notes for the organization..."
+                  value={approveMessage}
+                  onChange={(e) => setApproveMessage(e.target.value)}
+                  rows={6}
+                  className="resize-none"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This optional message will be included in the approval email sent to the organization.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowApproveModal(false)
+                  setApproveMessage("")
+                }}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={submitApprove}
+                disabled={isSubmitting}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isSubmitting ? "Approving..." : "Approve Application"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -38,6 +38,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import TopicsCard from "@/components/admin/topics-card"
 import { router, usePage, Link } from "@inertiajs/react"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/frontend/ui/chart"
+import { Area, AreaChart, XAxis } from "recharts"
 
 const showSuccessToast = (message: string) => {
   console.log("Success:", message)
@@ -143,8 +145,27 @@ const AdminDashboard = ({
   stats, 
   recentForm1023Applications, 
   recentOrganizations, 
-  paymentStats 
+  paymentStats,
+  recentTransactions = [],
+  monthlyRevenue = []
 }: AdminDashboardProps) => {
+  const [isDark, setIsDark] = React.useState(false)
+
+  React.useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    }
+    
+    checkTheme()
+    const observer = new MutationObserver(checkTheme)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    })
+    
+    return () => observer.disconnect()
+  }, [])
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
   }
@@ -157,6 +178,10 @@ const AdminDashboard = ({
       day: 'numeric' 
     })
   }
+
+  // Theme-aware colors
+  const chartColor = isDark ? 'hsl(264, 70%, 58%)' : 'hsl(25, 95%, 53%)'
+  const tickColor = isDark ? 'hsl(0, 0%, 70.8%)' : 'hsl(0, 0%, 55.6%)' // muted-foreground colors
 
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { label: string; className: string }> = {
@@ -200,7 +225,7 @@ const AdminDashboard = ({
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="border-l-4 border-l-blue-500">
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Organizations</p>
@@ -217,7 +242,7 @@ const AdminDashboard = ({
           </Card>
 
           <Card className="border-l-4 border-l-emerald-500">
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Users</p>
@@ -231,7 +256,7 @@ const AdminDashboard = ({
           </Card>
 
           <Card className="border-l-4 border-l-purple-500">
-            <CardContent className="p-6">
+            <CardContent className="p-3">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Form 1023 Applications</p>
@@ -248,8 +273,8 @@ const AdminDashboard = ({
           </Card>
 
           <Card className="border-l-4 border-l-amber-500">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
                   <p className="text-3xl font-bold mt-2">{formatCurrency(paymentStats?.totalRevenue || 0)}</p>
@@ -261,6 +286,57 @@ const AdminDashboard = ({
                   <DollarSign className="h-6 w-6 text-amber-500" />
                 </div>
               </div>
+              {monthlyRevenue && monthlyRevenue.length > 0 && (
+                <div className="h-12 -mx-3 -mb-2">
+                  <ChartContainer
+                    config={{
+                      revenue: {
+                        label: "Revenue",
+                        theme: {
+                          light: "hsl(25, 95%, 53%)",
+                          dark: "hsl(264, 70%, 58%)",
+                        },
+                      },
+                    }}
+                    className="h-full w-full [&>div]:!aspect-auto"
+                  >
+                    <AreaChart data={monthlyRevenue} margin={{ left: 2, right: 2, top: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={`fillRevenue-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={chartColor} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="monthShort"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={2}
+                        interval={0}
+                        angle={0}
+                        tick={{ 
+                          fontSize: 9, 
+                          fill: tickColor
+                        }}
+                      />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value) => formatCurrency(Number(value))}
+                          />
+                        }
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke={chartColor}
+                        strokeWidth={1.5}
+                        fill={`url(#fillRevenue-${isDark ? 'dark' : 'light'})`}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -316,38 +392,63 @@ const AdminDashboard = ({
           </Card>
         </div>
 
-        {/* Quick Actions */}
+        {/* Recent Transactions Table */}
         <Card>
           <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
+            <CardTitle>Recent Transactions</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Link href={route('admin.form1023.index')}>
-                <Button variant="outline" className="w-full justify-start">
-                  <FileCheck className="h-4 w-4 mr-2" />
-                  Form 1023 Applications
-                </Button>
-              </Link>
-              <Link href={route('admin.compliance.index')}>
-                <Button variant="outline" className="w-full justify-start">
-                  <ClipboardList className="h-4 w-4 mr-2" />
-                  Compliance Reviews
-                </Button>
-              </Link>
-              <Link href={route('admin.fees.index')}>
-                <Button variant="outline" className="w-full justify-start">
-                  <DollarSign className="h-4 w-4 mr-2" />
-                  Manage Fees
-                </Button>
-              </Link>
-              <Link href={route('permissions.overview')}>
-                <Button variant="outline" className="w-full justify-start">
-                  <Shield className="h-4 w-4 mr-2" />
-                  Permissions
-                </Button>
-              </Link>
-            </div>
+            {recentTransactions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No transactions yet</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Description</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">User</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTransactions.map((transaction) => (
+                      <tr key={transaction.id} className="border-b hover:bg-muted/50 transition-colors">
+                        <td className="py-3 px-4 text-sm">
+                          {formatDate(transaction.date)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge className={
+                            transaction.type === 'Fractional Ownership' 
+                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                              : transaction.type === 'Form 1023'
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          }>
+                            {transaction.type}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium">{transaction.description}</td>
+                        <td className="py-3 px-4 text-sm text-muted-foreground">{transaction.user_name}</td>
+                        <td className="py-3 px-4 text-sm font-bold text-right">
+                          {new Intl.NumberFormat('en-US', { 
+                            style: 'currency', 
+                            currency: transaction.currency || 'USD' 
+                          }).format(transaction.amount)}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                            {transaction.status === 'completed' ? 'Completed' : transaction.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -467,6 +568,21 @@ interface AdminDashboardProps {
     pendingPayments: number
     paidApplications: number
   }
+  recentTransactions?: Array<{
+    id: string
+    type: string
+    description: string
+    amount: number
+    status: string
+    user_name: string
+    date: string | null
+    currency: string
+  }>
+  monthlyRevenue?: Array<{
+    month: string
+    monthShort: string
+    revenue: number
+  }>
 }
 
 export default function Dashboard({
@@ -482,6 +598,8 @@ export default function Dashboard({
   recentForm1023Applications = [],
   recentOrganizations = [],
   paymentStats,
+  recentTransactions = [],
+  monthlyRevenue = [],
 }: { 
   totalOrg?: number
   orgInfo?: any
@@ -503,6 +621,8 @@ export default function Dashboard({
       recentForm1023Applications={recentForm1023Applications}
       recentOrganizations={recentOrganizations}
       paymentStats={paymentStats}
+      recentTransactions={recentTransactions}
+      monthlyRevenue={monthlyRevenue}
     />
   }
 

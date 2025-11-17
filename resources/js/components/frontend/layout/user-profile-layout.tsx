@@ -357,7 +357,11 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                 <CardContent className="p-4">
                   <div className="space-y-1">
                     {navigationItems.map((item, index) => {
-                      const isActive = currentPath === item.href || currentPath.startsWith(item.href + '/')
+                      // For Overview, only match exactly /profile
+                      // For other items, match exact path or paths starting with the href + '/'
+                      const isActive = item.href === '/profile' 
+                        ? currentPath === item.href
+                        : currentPath === item.href || currentPath.startsWith(item.href + '/')
                       const Icon = item.icon
                       return (
                         <Link 

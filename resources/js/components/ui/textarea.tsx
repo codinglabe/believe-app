@@ -18,3 +18,5 @@ const Textarea = React.forwardRef<
 Textarea.displayName = "Textarea";
 
 export { Textarea };
+// Export as TextArea for backward compatibility
+export { Textarea as TextArea };

@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\Form1023Application;
 use App\Models\ComplianceApplication;
 use App\Models\Form990Filing;
+use App\Models\FractionalOrder;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -73,15 +74,112 @@ class DashboardController extends Controller
                     ];
                 });
 
-            // Payment Statistics
+            // Payment Statistics - Include Fractional Ownership revenue
+            $form1023Revenue = Form1023Application::where('payment_status', 'paid')->sum('amount');
+            $complianceRevenue = ComplianceApplication::where('payment_status', 'paid')->sum('amount');
+            $fractionalRevenue = FractionalOrder::where('status', 'paid')->sum('amount');
+            
             $paymentStats = [
-                'totalRevenue' => Form1023Application::where('payment_status', 'paid')->sum('amount') +
-                                 ComplianceApplication::where('payment_status', 'paid')->sum('amount'),
+                'totalRevenue' => $form1023Revenue + $complianceRevenue + $fractionalRevenue,
                 'pendingPayments' => Form1023Application::where('payment_status', 'pending')->sum('amount') +
                                     ComplianceApplication::where('payment_status', 'pending')->sum('amount'),
                 'paidApplications' => Form1023Application::where('payment_status', 'paid')->count() +
                                      ComplianceApplication::where('payment_status', 'paid')->count(),
             ];
+
+            // Monthly Revenue Data (Last 6 months)
+            $monthlyRevenue = [];
+            for ($i = 5; $i >= 0; $i--) {
+                $date = Carbon::now()->subMonths($i);
+                $startOfMonth = $date->copy()->startOfMonth();
+                $endOfMonth = $date->copy()->endOfMonth();
+                
+                $monthForm1023 = Form1023Application::where('payment_status', 'paid')
+                    ->whereBetween('submitted_at', [$startOfMonth, $endOfMonth])
+                    ->sum('amount');
+                
+                $monthCompliance = ComplianceApplication::where('payment_status', 'paid')
+                    ->whereBetween('created_at', [$startOfMonth, $endOfMonth])
+                    ->sum('amount');
+                
+                $monthFractional = FractionalOrder::where('status', 'paid')
+                    ->whereBetween('paid_at', [$startOfMonth, $endOfMonth])
+                    ->sum('amount');
+                
+                $monthlyRevenue[] = [
+                    'month' => $date->format('M Y'),
+                    'monthShort' => $date->format('M'),
+                    'revenue' => $monthForm1023 + $monthCompliance + $monthFractional,
+                ];
+            }
+
+            // Recent Transactions - Combine Form1023, Compliance, and Fractional Orders
+            $recentTransactions = collect();
+            
+            // Form 1023 Applications
+            $form1023Transactions = Form1023Application::with(['organization.user'])
+                ->where('payment_status', 'paid')
+                ->latest('submitted_at')
+                ->limit(10)
+                ->get()
+                ->map(function ($app) {
+                    return [
+                        'id' => 'form1023_' . $app->id,
+                        'type' => 'Form 1023',
+                        'description' => $app->application_number . ' - ' . ($app->organization->name ?? 'N/A'),
+                        'amount' => $app->amount,
+                        'status' => 'completed',
+                        'user_name' => $app->organization->user->name ?? 'N/A',
+                        'date' => $app->submitted_at?->toIso8601String(),
+                        'currency' => 'USD',
+                    ];
+                });
+            
+            // Compliance Applications
+            $complianceTransactions = ComplianceApplication::with(['organization.user'])
+                ->where('payment_status', 'paid')
+                ->latest('created_at')
+                ->limit(10)
+                ->get()
+                ->map(function ($app) {
+                    return [
+                        'id' => 'compliance_' . $app->id,
+                        'type' => 'Compliance',
+                        'description' => 'Compliance Application - ' . ($app->organization->name ?? 'N/A'),
+                        'amount' => $app->amount,
+                        'status' => 'completed',
+                        'user_name' => $app->organization->user->name ?? 'N/A',
+                        'date' => $app->created_at->toIso8601String(),
+                        'currency' => 'USD',
+                    ];
+                });
+            
+            // Fractional Orders
+            $fractionalTransactions = FractionalOrder::with(['user', 'offering'])
+                ->where('status', 'paid')
+                ->latest('paid_at')
+                ->limit(10)
+                ->get()
+                ->map(function ($order) {
+                    return [
+                        'id' => 'fractional_' . $order->id,
+                        'type' => 'Fractional Ownership',
+                        'description' => $order->offering->title . ' - Order ' . ($order->order_number ?? '#' . $order->id),
+                        'amount' => $order->amount,
+                        'status' => 'completed',
+                        'user_name' => $order->user->name ?? 'N/A',
+                        'date' => $order->paid_at?->toIso8601String(),
+                        'currency' => $order->offering->currency ?? 'USD',
+                    ];
+                });
+            
+            // Combine and sort by date
+            $recentTransactions = $form1023Transactions
+                ->concat($complianceTransactions)
+                ->concat($fractionalTransactions)
+                ->sortByDesc('date')
+                ->take(10)
+                ->values();
 
             return Inertia::render('dashboard', [
                 'isAdmin' => true,
@@ -89,6 +187,8 @@ class DashboardController extends Controller
                 'recentForm1023Applications' => $recentForm1023Applications,
                 'recentOrganizations' => $recentOrganizations,
                 'paymentStats' => $paymentStats,
+                'recentTransactions' => $recentTransactions,
+                'monthlyRevenue' => $monthlyRevenue,
             ]);
         }
 
@@ -243,6 +343,37 @@ class DashboardController extends Controller
         $user = $organization->user;
 
         if (!$user) {
+            return;
+        }
+
+        // Check if there's an approved Form 1023 application
+        // If approved, user should have organization role
+        $hasApprovedForm1023 = $organization->form1023Applications()
+            ->where('status', 'approved')
+            ->exists();
+
+        // If there's an approved Form 1023 application, ensure user has organization role
+        if ($hasApprovedForm1023) {
+            if (!$user->hasRole('organization') || $user->role !== 'organization') {
+                $organizationRole = Role::firstOrCreate(
+                    ['name' => 'organization', 'guard_name' => 'web']
+                );
+                
+                // Remove organization_pending role if it exists
+                if ($user->hasRole('organization_pending')) {
+                    $user->removeRole('organization_pending');
+                }
+                
+                $user->syncRoles([$organizationRole]);
+                $user->role = 'organization';
+                $user->save();
+                
+                // Ensure registration_status is approved
+                if ($organization->registration_status !== 'approved') {
+                    $organization->registration_status = 'approved';
+                    $organization->save();
+                }
+            }
             return;
         }
 

@@ -4,7 +4,13 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\Form1023Application;
+use App\Mail\Form1023Approved;
+use App\Mail\Form1023Declined;
+use App\Mail\Form1023NeedsMoreInfo;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Log;
+use Spatie\Permission\Models\Role;
 use Inertia\Inertia;
 
 class Form1023ApplicationController extends Controller
@@ -136,10 +142,66 @@ class Form1023ApplicationController extends Controller
             'message' => ['nullable', 'string', 'max:2000'],
         ]);
 
-        $application->status = $request->input('status');
+        $oldStatus = $application->status;
+        $newStatus = $request->input('status');
+        $message = $request->input('message');
+
+        $application->status = $newStatus;
+        $application->reviewed_at = now();
+        $application->reviewed_by = $request->user()->id;
+        
+        // Store review message in meta
+        $meta = $application->meta ?? [];
+        $meta['review_message'] = $message;
+        $meta['reviewed_at'] = now()->toIso8601String();
+        $application->meta = $meta;
+        
         $application->save();
 
-        return redirect()->back()->with('success', 'Application status updated successfully.');
+        // Handle role assignment based on status
+        if ($application->organization && $application->organization->user) {
+            if ($newStatus === 'approved') {
+                // If approved, assign organization role to the user
+                $this->assignOrganizationRole($application->organization->user);
+            } elseif ($newStatus === 'declined' && $oldStatus === 'approved') {
+                // If declining an approved application, revert to organization_pending role
+                $this->revertToPendingRole($application->organization->user);
+            }
+        }
+
+        // Send email notification via queue if status changed
+        if ($oldStatus !== $newStatus) {
+            // Ensure relationships are loaded before queuing
+            $application->load('organization.user');
+            
+            if ($application->organization && $application->organization->user) {
+                try {
+                    switch ($newStatus) {
+                        case 'approved':
+                            Mail::to($application->organization->user->email)
+                                ->queue(new Form1023Approved($application, $message));
+                            break;
+                        case 'declined':
+                            Mail::to($application->organization->user->email)
+                                ->queue(new Form1023Declined($application, $message));
+                            break;
+                        case 'needs_more_info':
+                            Mail::to($application->organization->user->email)
+                                ->queue(new Form1023NeedsMoreInfo($application, $message));
+                            break;
+                    }
+                } catch (\Exception $e) {
+                    // Log error but don't fail the request
+                    Log::error('Failed to send Form 1023 status email', [
+                        'application_id' => $application->id,
+                        'status' => $newStatus,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+        }
+
+        return redirect()->back()->with('success', 'Application status updated successfully. Email notification has been sent.');
     }
 
     public function rejectDocument(Request $request, Form1023Application $application)
@@ -172,8 +234,27 @@ class Form1023ApplicationController extends Controller
 
         $meta['rejected_documents'] = $rejectedDocuments;
         $application->meta = $meta;
+        
+        $oldStatus = $application->status;
         $application->status = 'needs_more_info'; // Set status to needs_more_info when document is rejected
+        $application->reviewed_at = now();
+        $application->reviewed_by = $request->user()->id;
         $application->save();
+
+        // Send email notification via queue if status changed to needs_more_info
+        if ($oldStatus !== 'needs_more_info' && $application->organization && $application->organization->user) {
+            try {
+                $message = "A document has been rejected. Reason: {$reason}. Please review and re-upload the required document.";
+                Mail::to($application->organization->user->email)
+                    ->queue(new Form1023NeedsMoreInfo($application, $message));
+            } catch (\Exception $e) {
+                // Log error but don't fail the request
+                \Log::error('Failed to send Form 1023 document rejection email', [
+                    'application_id' => $application->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
 
         return redirect()->back()->with('success', 'Document rejected successfully. Organization will be notified to re-upload.');
     }
@@ -246,6 +327,146 @@ class Form1023ApplicationController extends Controller
         ]);
 
         return redirect()->back()->with('success', 'Application fee updated successfully.');
+    }
+
+    /**
+     * Assign organization role and remove organization_pending role
+     */
+    private function assignOrganizationRole($user): void
+    {
+        if (!$user) {
+            return;
+        }
+
+        // Only assign role for organization users, not admins
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        $organization = $user->organization;
+        if (!$organization) {
+            Log::warning('Cannot assign organization role: user has no organization', [
+                'user_id' => $user->id,
+                'user_role' => $user->role,
+            ]);
+            return;
+        }
+
+        try {
+            // Ensure organization role exists with guard
+            $organizationRole = Role::firstOrCreate(
+                ['name' => 'organization', 'guard_name' => 'web']
+            );
+
+            // Remove organization_pending role if it exists
+            if ($user->hasRole('organization_pending')) {
+                $user->removeRole('organization_pending');
+            }
+
+            // Assign organization role (this will remove all other roles and assign only this one)
+            $user->syncRoles([$organizationRole]);
+
+            // Update user's role field
+            $user->role = 'organization';
+            $user->save();
+
+            // Set organization registration_status to approved when organization role is assigned
+            if ($organization->registration_status !== 'approved') {
+                $organization->registration_status = 'approved';
+                $organization->save();
+            }
+
+            // Clear permission cache to ensure changes take effect immediately
+            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+            // Refresh user model to ensure roles are updated
+            $user->refresh();
+
+            Log::info('Role assigned successfully from Form 1023 approval', [
+                'user_id' => $user->id,
+                'old_role' => $user->getOriginal('role'),
+                'new_role' => 'organization',
+                'roles' => $user->getRoleNames()->toArray(),
+                'organization_registration_status' => $organization->registration_status,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to assign organization role', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
+    }
+
+    /**
+     * Revert user to organization_pending role when declining an approved application
+     */
+    private function revertToPendingRole($user): void
+    {
+        if (!$user) {
+            return;
+        }
+
+        // Only revert role for organization users, not admins
+        if ($user->role === 'admin') {
+            return;
+        }
+
+        $organization = $user->organization;
+        if (!$organization) {
+            Log::warning('Cannot revert role: user has no organization', [
+                'user_id' => $user->id,
+                'user_role' => $user->role,
+            ]);
+            return;
+        }
+
+        try {
+            // Ensure organization_pending role exists with guard
+            $pendingRole = Role::firstOrCreate(
+                ['name' => 'organization_pending', 'guard_name' => 'web']
+            );
+
+            // Remove organization role if it exists
+            if ($user->hasRole('organization')) {
+                $user->removeRole('organization');
+            }
+
+            // Assign organization_pending role
+            $user->syncRoles([$pendingRole]);
+
+            // Update user's role field
+            $user->role = 'organization_pending';
+            $user->save();
+
+            // Set organization registration_status to pending when application is declined
+            if ($organization->registration_status === 'approved') {
+                $organization->registration_status = 'pending';
+                $organization->save();
+            }
+
+            // Clear permission cache to ensure changes take effect immediately
+            app()[\Spatie\Permission\PermissionRegistrar::class]->forgetCachedPermissions();
+
+            // Refresh user model to ensure roles are updated
+            $user->refresh();
+
+            Log::info('Role reverted to organization_pending after declining approved Form 1023', [
+                'user_id' => $user->id,
+                'old_role' => $user->getOriginal('role'),
+                'new_role' => 'organization_pending',
+                'roles' => $user->getRoleNames()->toArray(),
+                'organization_registration_status' => $organization->registration_status,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to revert organization role', [
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            throw $e;
+        }
     }
 }
 

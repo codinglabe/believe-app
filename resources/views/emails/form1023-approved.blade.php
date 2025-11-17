@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Complete Your Form 1023 Application Payment</title>
+    <title>Form 1023 Application Approved</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
@@ -19,7 +19,7 @@
             background-color: #ffffff;
         }
         .email-header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             padding: 40px 30px;
             text-align: center;
         }
@@ -44,17 +44,21 @@
             margin-bottom: 25px;
             line-height: 1.8;
         }
-        .highlight-box {
-            background-color: #f8f9fa;
-            border-left: 4px solid #667eea;
+        .success-box {
+            background-color: #d1fae5;
+            border-left: 4px solid #10b981;
             padding: 20px;
             margin: 30px 0;
             border-radius: 4px;
         }
-        .highlight-box h3 {
+        .success-box h3 {
             margin: 0 0 10px 0;
-            color: #1a1a1a;
+            color: #065f46;
             font-size: 18px;
+        }
+        .success-box p {
+            margin: 0;
+            color: #047857;
         }
         .info-row {
             display: flex;
@@ -75,7 +79,7 @@
         }
         .cta-button {
             display: inline-block;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
             color: #ffffff !important;
             text-decoration: none;
             padding: 16px 40px;
@@ -84,28 +88,16 @@
             font-size: 16px;
             text-align: center;
             margin: 30px 0;
-            box-shadow: 0 4px 6px rgba(102, 126, 234, 0.3);
+            box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3);
             transition: transform 0.2s;
         }
         .cta-button:hover {
             transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 6px 12px rgba(16, 185, 129, 0.4);
         }
         .button-container {
             text-align: center;
             margin: 40px 0;
-        }
-        .urgency-note {
-            background-color: #fff3cd;
-            border: 1px solid #ffc107;
-            border-radius: 6px;
-            padding: 15px;
-            margin: 25px 0;
-        }
-        .urgency-note p {
-            margin: 0;
-            color: #856404;
-            font-size: 14px;
         }
         .footer {
             background-color: #f8f9fa;
@@ -119,13 +111,25 @@
             font-size: 14px;
         }
         .footer a {
-            color: #667eea;
+            color: #10b981;
             text-decoration: none;
         }
         .divider {
             height: 1px;
             background-color: #e5e5e5;
             margin: 30px 0;
+        }
+        .admin-message {
+            background-color: #f0f9ff;
+            border-left: 4px solid #3b82f6;
+            padding: 20px;
+            margin: 25px 0;
+            border-radius: 4px;
+        }
+        .admin-message p {
+            margin: 0;
+            color: #1e40af;
+            font-style: italic;
         }
         @media only screen and (max-width: 600px) {
             .email-body {
@@ -148,7 +152,7 @@
     <div class="email-container">
         <!-- Header -->
         <div class="email-header">
-            <h1>🔔 Payment Reminder</h1>
+            <h1>🎉 Congratulations!</h1>
         </div>
 
         <!-- Body -->
@@ -157,66 +161,74 @@
                 Dear {{ $organization->name ?? 'Valued Organization' }},
             </div>
 
-            <div class="message">
-                We hope this message finds you well. We noticed that your Form 1023 application is still pending payment completion. To proceed with the certification process and get your organization certified, please complete the payment as soon as possible.
+            <div class="success-box">
+                <h3>✅ Application Approved</h3>
+                <p>We are pleased to inform you that your Form 1023 application has been <strong>approved</strong>!</p>
             </div>
 
-            <div class="highlight-box">
-                <h3>📋 Application Details</h3>
+            <div class="message">
+                Your organization's application for recognition of exemption under section 501(c)(3) has been successfully reviewed and approved by our team. This is a significant milestone, and we congratulate you on this achievement.
+            </div>
+
+            <div class="highlight-box" style="background-color: #f8f9fa; border-left: 4px solid #10b981; padding: 20px; margin: 30px 0; border-radius: 4px;">
+                <h3 style="margin: 0 0 10px 0; color: #1a1a1a; font-size: 18px;">📋 Application Details</h3>
                 <div class="info-row">
                     <span class="info-label">Application Number:</span>
                     <span class="info-value"><strong>{{ $application->application_number }}</strong></span>
                 </div>
                 <div class="info-row">
-                    <span class="info-label">Application Fee:</span>
-                    <span class="info-value"><strong>${{ number_format($applicationFee, 2) }}</strong></span>
+                    <span class="info-label">Organization Name:</span>
+                    <span class="info-value"><strong>{{ $organization->name }}</strong></span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">EIN:</span>
+                    <span class="info-value">{{ $organization->ein }}</span>
                 </div>
                 <div class="info-row">
                     <span class="info-label">Status:</span>
-                    <span class="info-value">Payment Pending</span>
+                    <span class="info-value" style="color: #10b981; font-weight: 600;">Approved</span>
                 </div>
-                @if($application->submitted_at)
+                @if($application->reviewed_at)
                 <div class="info-row">
-                    <span class="info-label">Submitted:</span>
-                    <span class="info-value">{{ $application->submitted_at->format('F j, Y') }}</span>
+                    <span class="info-label">Approved Date:</span>
+                    <span class="info-value">{{ $application->reviewed_at->format('F j, Y') }}</span>
                 </div>
                 @endif
             </div>
 
-            <div class="urgency-note">
-                <p>
-                    <strong>⏰ Important:</strong> Your application cannot be reviewed until payment is completed. Complete your payment today to avoid any delays in the certification process.
-                </p>
+            @if(isset($reviewMessage) && $reviewMessage)
+            <div class="admin-message">
+                <p><strong>Message from Review Team:</strong></p>
+                <p>{{ $reviewMessage }}</p>
             </div>
+            @endif
 
             <div class="message">
-                Once payment is received, your application will be immediately moved to the review queue, and our team will begin processing your certification request.
+                <strong>What's Next?</strong><br>
+                Your organization is now recognized as a tax-exempt organization under section 501(c)(3). You can now proceed with your charitable activities and begin accepting tax-deductible donations.
             </div>
 
             <div class="button-container">
-                <a href="{{ $paymentUrl }}" class="cta-button">
-                    Complete Payment Now
+                <a href="{{ $applicationUrl }}" class="cta-button">
+                    View Application Details
                 </a>
             </div>
 
             <div class="divider"></div>
 
             <div class="message" style="font-size: 14px; color: #666666;">
-                <strong>Need Help?</strong><br>
-                If you have any questions or need assistance with the payment process, please don't hesitate to contact our support team. We're here to help you complete your certification successfully.
-            </div>
-
-            <div class="button-container" style="margin-top: 20px;">
-                <a href="{{ $applicationUrl }}" style="color: #667eea; text-decoration: none; font-size: 14px;">
-                    View Application Details →
-                </a>
+                <strong>Important Notes:</strong><br>
+                • Keep a copy of this approval for your records<br>
+                • You may need to provide this documentation to donors and grantors<br>
+                • Ensure you maintain compliance with IRS requirements for tax-exempt organizations<br>
+                • If you have any questions, please don't hesitate to contact our support team
             </div>
         </div>
 
         <!-- Footer -->
         <div class="footer">
             <p><strong>{{ config('app.name') }}</strong></p>
-            <p>This is an automated reminder. Please do not reply to this email.</p>
+            <p>This is an automated notification. Please do not reply to this email.</p>
             <p>
                 <a href="{{ config('app.url') }}">Visit our website</a> | 
                 <a href="{{ config('app.url') }}/contact">Contact Support</a>
@@ -228,6 +240,4 @@
     </div>
 </body>
 </html>
-
-
 
