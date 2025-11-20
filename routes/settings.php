@@ -23,6 +23,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');
         })->name('appearance');
+        
+        Route::get('settings/billing', [\App\Http\Controllers\Settings\BillingController::class, 'index'])->name('billing.index');
     });
 
     Route::get("settings/topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])

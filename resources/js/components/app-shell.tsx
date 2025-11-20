@@ -16,7 +16,7 @@ export function AppShell({ children, variant = 'header' }: AppShellProps) {
     }
 
     return (
-        <SidebarProvider defaultOpen={isOpen}>
+        <SidebarProvider defaultOpen={isOpen} className="[&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&[data-collapsible=icon]_header]:md:!left-[calc(var(--sidebar-width-icon,3rem)+1rem+2px)]">
             <div className="md:w-64 md:shrink-0">
                 <AppSidebar />
             </div>

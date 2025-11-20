@@ -1,9 +1,13 @@
 "use client"
 
+import { useState, useEffect } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Mail, Phone, MapPin } from "lucide-react"
+import { Mail, Phone, MapPin, Wallet, DollarSign, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
-import { usePage } from "@inertiajs/react"
+import { Button } from "@/components/frontend/ui/button"
+import { Badge } from "@/components/frontend/ui/badge"
+import { usePage, router } from "@inertiajs/react"
+import { WalletConnectPopup } from "@/components/wallet-connect-popup"
 
 interface User {
   id: number
@@ -25,16 +29,106 @@ interface Donation {
   impact?: string
 }
 
+interface WalletData {
+  connected: boolean
+  expired: boolean
+  connected_at: string | null
+  expires_at: string | null
+  wallet_user_id: number | null
+  balance: number
+}
+
 interface PageProps {
   auth: {
     user: User
   }
   recentDonations: Donation[]
+  wallet: WalletData
 }
 
 export default function ProfileIndex() {
-  const { auth, recentDonations } = usePage<PageProps>().props
+  const { auth, recentDonations, wallet: initialWallet } = usePage<PageProps>().props
   const user = auth.user
+  const [wallet, setWallet] = useState<WalletData>(initialWallet)
+  const [showWalletPopup, setShowWalletPopup] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+
+  // Check wallet status on mount
+  useEffect(() => {
+    checkWalletStatus()
+  }, [])
+
+  const checkWalletStatus = async () => {
+    try {
+      const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        cache: 'no-cache',
+      })
+
+      if (statusResponse.ok) {
+        const statusData = await statusResponse.json()
+        if (statusData.success && statusData.connected) {
+          // Wallet IS connected, fetch balance
+          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+              'X-Requested-With': 'XMLHttpRequest',
+            },
+            credentials: 'include',
+            cache: 'no-cache',
+          })
+
+          if (balanceResponse.ok) {
+            const balanceData = await balanceResponse.json()
+            setWallet({
+              connected: true,
+              expired: false,
+              connected_at: statusData.connected_at,
+              expires_at: statusData.expires_at,
+              wallet_user_id: statusData.wallet_user_id,
+              balance: balanceData.balance || balanceData.local_balance || 0,
+            })
+          } else {
+            setWallet(prev => ({ ...prev, connected: true, balance: prev.balance || 0 }))
+          }
+        } else {
+          setWallet(prev => ({ ...prev, connected: false, balance: 0 }))
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check wallet status:', error)
+    }
+  }
+
+  const refreshWalletData = async () => {
+    setIsRefreshing(true)
+    await checkWalletStatus()
+    setIsRefreshing(false)
+    router.reload({ only: ['wallet'] })
+  }
+
+  const handleWalletConnect = async () => {
+    await refreshWalletData()
+  }
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  }
 
   return (
     <ProfileLayout title="Profile Overview" description="Your account information and recent activity">
@@ -69,8 +163,102 @@ export default function ProfileIndex() {
           </CardContent>
         </Card>
 
-        {/* Recent Activity */}
+        {/* Wallet Connection Card */}
         <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+          <CardHeader className="pb-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-gray-900 dark:text-white text-lg sm:text-xl flex items-center gap-2">
+                <Wallet className="h-5 w-5" />
+                Digital Wallet
+              </CardTitle>
+              {wallet.connected && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshWalletData}
+                  disabled={isRefreshing}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Connection Status */}
+            <div className="flex items-center justify-between p-4 rounded-lg border bg-gray-50 dark:bg-gray-700/50">
+              <div className="flex items-center gap-3">
+                {wallet.connected ? (
+                  <CheckCircle2 className="h-6 w-6 text-green-500" />
+                ) : (
+                  <XCircle className="h-6 w-6 text-red-500" />
+                )}
+                <div>
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {wallet.connected ? 'Wallet Connected' : 'Wallet Not Connected'}
+                  </p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {wallet.connected 
+                      ? 'Your wallet is connected and ready to use'
+                      : 'Connect your wallet to start managing payments'
+                    }
+                  </p>
+                </div>
+              </div>
+              <Badge variant={wallet.connected ? 'default' : 'destructive'}>
+                {wallet.connected ? 'Active' : 'Not Connected'}
+              </Badge>
+            </div>
+
+            {/* Wallet Details - Only show if connected */}
+            {wallet.connected && (
+              <>
+                {/* Balance Display */}
+                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Wallet Balance</p>
+                      <p className="text-2xl font-bold text-primary">
+                        ${wallet.balance.toLocaleString('en-US', {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </p>
+                    </div>
+                    <DollarSign className="h-8 w-8 text-primary/50" />
+                  </div>
+                </div>
+
+                {/* Wallet Info */}
+                {wallet.wallet_user_id && (
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <p>Wallet User ID: <span className="font-semibold text-gray-900 dark:text-white">{wallet.wallet_user_id}</span></p>
+                    {wallet.connected_at && (
+                      <p className="mt-1">Connected: <span className="font-semibold text-gray-900 dark:text-white">{formatDate(wallet.connected_at)}</span></p>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Connect Wallet Button - Only show if not connected */}
+            {!wallet.connected && (
+              <div className="flex justify-center pt-2">
+                <Button
+                  onClick={() => setShowWalletPopup(true)}
+                  className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                >
+                  <Wallet className="h-4 w-4" />
+                  Connect Wallet
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 lg:col-span-2">
           <CardHeader className="pb-4">
             <CardTitle className="text-gray-900 dark:text-white text-lg sm:text-xl">Recent Activity</CardTitle>
           </CardHeader>
@@ -105,6 +293,19 @@ export default function ProfileIndex() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Wallet Connect Popup */}
+      {showWalletPopup && (
+        <WalletConnectPopup
+          isOpen={showWalletPopup}
+          onClose={() => setShowWalletPopup(false)}
+          onConnect={handleWalletConnect}
+          isConnected={wallet.connected}
+          walletAppName="Believe Wallet"
+          walletAppLogo="/logo.png"
+          variant="frontend"
+        />
+      )}
     </ProfileLayout>
   )
 }

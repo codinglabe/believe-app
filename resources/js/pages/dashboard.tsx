@@ -1,8 +1,9 @@
 "use client"
 
 import React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import AppLayout from "@/layouts/app-layout"
+import { WalletConnectPopup } from "@/components/wallet-connect-popup"
 import type { BreadcrumbItem } from "@/types"
 import {
   Activity,
@@ -611,8 +612,150 @@ export default function Dashboard({
 } & AdminDashboardProps) {
   const auth = usePage().props.auth
   const organization = orgInfo
-  const userRole = auth.user?.role // 'admin' or 'organization'
+  const userRole = auth?.user?.role // 'admin' or 'organization'
   const isOrgUser = userRole === "organization" || userRole === "organization_pending"
+  const userId = auth?.user?.id // Get user ID to detect user changes
+  
+  // Wallet Connect Popup State
+  const [showWalletPopup, setShowWalletPopup] = useState(false)
+  const [walletConnected, setWalletConnected] = useState(false)
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [isCheckingWallet, setIsCheckingWallet] = useState(true)
+  const [userDismissedPopup, setUserDismissedPopup] = useState(false)
+  
+  // Check wallet connection status - FORCE CHECK FOR EACH ORGANIZATION USER
+  // Re-check when user ID changes (different organization account)
+  useEffect(() => {
+    const checkWalletStatus = async () => {
+      if (!isOrgUser) {
+        setIsCheckingWallet(false)
+        setShowWalletPopup(false)
+        setWalletConnected(false)
+        return
+      }
+      
+      // Reset state when checking (but preserve user dismissal if switching users)
+      setIsCheckingWallet(true)
+      setWalletConnected(false)
+      // Reset dismissal flag when user changes (different organization account)
+      if (userId) {
+        setUserDismissedPopup(false)
+      }
+      setShowWalletPopup(false)
+      
+      try {
+        // Add cache-busting parameter to ensure fresh check
+        const response = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          cache: 'no-cache',
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.connected) {
+            // Wallet IS connected
+            setWalletConnected(true)
+            setShowWalletPopup(false)
+            
+            // Fetch balance
+            try {
+              const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-cache',
+              })
+              
+              if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json()
+                if (balanceData.success) {
+                  setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+                }
+              }
+            } catch (balanceError) {
+              // Balance fetch failed, but wallet is connected
+            }
+          } else {
+            // Wallet NOT connected - SHOW POPUP (unless user dismissed it)
+            setWalletConnected(false)
+            if (!userDismissedPopup) {
+              setShowWalletPopup(true)
+            }
+          }
+        } else {
+          // Error checking status - show popup (assume not connected)
+          setWalletConnected(false)
+          if (!userDismissedPopup) {
+            setShowWalletPopup(true)
+          }
+        }
+      } catch (error) {
+        // Error - show popup (assume not connected)
+        setWalletConnected(false)
+        if (!userDismissedPopup) {
+          setShowWalletPopup(true)
+        }
+      } finally {
+        setIsCheckingWallet(false)
+      }
+    }
+    
+    // Always check wallet status for organization users
+    // Check immediately when component mounts or user changes
+    checkWalletStatus()
+  }, [isOrgUser, userId]) // Add userId to dependencies to re-check when user changes
+  
+  // Check if wallet is connected
+  const isWalletConnected = walletConnected || (auth.user?.balance !== undefined && auth.user?.balance !== null)
+  
+  const handleWalletConnect = async () => {
+    // Wallet is connected via the popup form
+    // Hide the popup and refresh wallet data
+    setShowWalletPopup(false)
+    setWalletConnected(true)
+    
+    try {
+      // Fetch wallet balance with cache-busting
+      const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        cache: 'no-cache',
+      })
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json()
+        if (balanceData.success) {
+          setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        }
+      }
+      
+      // Refresh user data to get updated wallet status
+      router.reload({ only: ['auth'] })
+    } catch (error) {
+      console.error('Failed to fetch wallet balance:', error)
+    }
+  }
+  
+  const handleCloseWalletPopup = () => {
+    // Allow closing the popup and remember user dismissed it
+    setShowWalletPopup(false)
+    setUserDismissedPopup(true)
+  }
 
   // Admin Dashboard
   if (isAdmin && stats) {
@@ -952,21 +1095,33 @@ export default function Dashboard({
 
           {/* Welcome Content */}
           <div className="flex-1 text-center md:text-left">
-            <h1 className="text-2xl md:text-3xl font-bold text-white">
-              {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
-            </h1>
-            <VerificationBanner user={auth?.user} />
-            <p className="text-muted-foreground mt-2">
-            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
-            </p>
-
-            {/* User Stats */}
-            {/* <div className="mt-4 flex flex-wrap gap-4 justify-center md:justify-start">
-              <div className="bg-blue-50 px-4 py-2 rounded-lg">
-                <p className="text-sm text-blue-600">Balance</p>
-                <p className="font-semibold text-blue-800">${auth.user?.balance?.toLocaleString() || '0'}</p>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white">
+                  {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+                </h1>
+                <VerificationBanner user={auth?.user} />
+                <p className="text-muted-foreground mt-2">
+                {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+                </p>
               </div>
-            </div> */}
+              
+              {/* Wallet Balance Display */}
+              {isOrgUser && (isWalletConnected || walletBalance !== null) && (
+                <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-lg px-4 py-3">
+                  <DollarSign className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Wallet Balance</p>
+                    <p className="text-xl font-bold text-primary">
+                      ${(walletBalance ?? auth.user?.balance ?? 0).toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      })}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -1799,6 +1954,18 @@ export default function Dashboard({
           </div>
         )}
       </div>
+      
+      {/* Wallet Connect Popup - SHOW FOR ALL ORG USERS WHO DON'T HAVE WALLET CONNECTED */}
+      {isOrgUser && !isCheckingWallet && showWalletPopup && (
+        <WalletConnectPopup
+          isOpen={showWalletPopup}
+          onClose={handleCloseWalletPopup}
+          onConnect={handleWalletConnect}
+          isConnected={walletConnected}
+          walletAppName="Believe Wallet"
+          walletAppLogo="/logo.png" // You can change this to your wallet app logo path
+        />
+      )}
     </AppLayout>
   )
 }

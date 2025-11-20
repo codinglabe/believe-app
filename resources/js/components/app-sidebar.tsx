@@ -62,6 +62,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
     {
         title: 'Board of Directors',
+        icon: Users,
         items: [
             {
                 title: 'Index',
@@ -76,36 +77,37 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
     {
         title: 'Content Management',
+        icon: FileText,
         items: [
             {
                 title: 'Content Items',
                 href: '/content',
                 icon: FileText, // or BookOpen for content
-                role: "organization"
+                permission: "content.read"
             },
             {
                 title: 'Create Content',
                 href: '/content/create',
                 icon: PlusCircle, // or FilePlus for create
-                role: "organization"
+                permission: "content.create"
             },
             {
                 title: 'Campaigns',
                 href: '/campaigns',
                 icon: Calendar, // or Send for campaigns
-                role: "organization"
+                permission: "campaign.read"
             },
             {
                 title: 'Create Campaign',
                 href: '/campaigns/create',
                 icon: CalendarPlus, // or Send for create campaign
-                role: "organization"
+                permission: "campaign.create"
             },
             {
                 title: 'AI Campaign Generator',
                 href: '/campaigns/ai/create',
                 icon: Star, // or Send for create campaign
-                role: "organization"
+                permission: "campaign.ai.create"
             },
         ],
         role: "organization"
@@ -114,6 +116,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Data Management Section
     {
         title: 'Data Management',
+        icon: Database,
         items: [
             {
                 title: 'Upload Data',
@@ -134,6 +137,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // E-commerce Section
     {
         title: 'E-commerce',
+        icon: ShoppingCart,
         items: [
             {
                 title: 'Products',
@@ -166,6 +170,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Job Management Section
     {
         title: 'Job Management',
+        icon: Briefcase,
         items: [
             {
                 title: 'Position Categories',
@@ -198,6 +203,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Node Management Section
     {
         title: 'Node Management',
+        icon: Network,
         items: [
             {
                 title: 'Node Boss',
@@ -224,6 +230,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Virtual (Course,Event) Management Section
     {
         title: 'Virtual (Course,Event)',
+        icon: GraduationCap,
         items: [
             {
                 title: 'Courses & Events',
@@ -244,6 +251,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Event Management Section
     {
         title: 'Event Management',
+        icon: Calendar,
         items: [
             {
                 title: 'Events',
@@ -264,6 +272,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Code Management Section
     {
         title: 'Code Management',
+        icon: FileCode,
         role: "admin",
         items: [
             {
@@ -298,6 +307,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Communication Section
     {
         title: 'Communication',
+        icon: MessageSquare,
         items: [
             {
                 title: 'Group Chat',
@@ -324,6 +334,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Application Management Section
     {
         title: 'Application Management',
+        icon: FileCheck,
         permission: "form1023.application.read",
         items: [
             {
@@ -351,6 +362,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // Fractional Ownership Section (Admin Only)
     {
         title: 'Fractional Ownership',
+        icon: Coins,
         role: "admin",
         items: [
             {
@@ -372,12 +384,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
         ],
-        role: "admin"
     },
 
     // User Management Section
     {
         title: 'User Management',
+        icon: Users,
         permission: "role.management.read",
         items: [
             {
@@ -392,6 +404,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
     // System Management Section
     {
         title: 'System Management',
+        icon: Settings,
         items: [
             {
                 title: 'Role & Permissions',
@@ -412,8 +425,8 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
 export function AppSidebar() {
     return (
-        <Sidebar collapsible="icon" variant="inset" className='z-30 border-r border-border/50'>
-            <SidebarHeader className="border-b border-border/50">
+        <Sidebar collapsible="icon" variant="inset" className='z-30 border-r border-border/50 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&_[data-sidebar=sidebar]]:!bg-background'>
+            <SidebarHeader className="border-b border-border/50 !bg-background">
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild className="hover:bg-accent/50 transition-colors">
@@ -426,7 +439,7 @@ export function AppSidebar() {
                 </SidebarMenu>
             </SidebarHeader>
 
-            <SidebarContent className="px-2 py-4">
+            <SidebarContent className="px-2 py-4 !bg-background">
                 <div className="space-y-2">
                     <NavMain items={mainNavItems} />
                 </div>

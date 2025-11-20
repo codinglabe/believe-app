@@ -17,6 +17,7 @@ use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\PwaInstallController;
 use App\Http\Controllers\TestMeetingController;
+use App\Http\Controllers\WalletController;
 use App\Http\Controllers\UsersInterestedTopicsController;
 use App\Http\Controllers\ComplianceApplicationController;
 use App\Http\Controllers\Form1023ApplicationController;
@@ -165,6 +166,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
+    Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
@@ -204,6 +206,22 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
+    
+    // Wallet Routes
+    Route::prefix('wallet')->name('wallet.')->group(function () {
+        Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
+        Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+        Route::get('/status', [WalletController::class, 'status'])->name('status');
+        Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
+        
+        // User Rewards Routes
+        Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
+        Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
+        Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
+        
+        // Token Balance Route
+        Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
+    });
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 

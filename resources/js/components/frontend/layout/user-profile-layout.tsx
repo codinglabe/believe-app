@@ -159,6 +159,13 @@ const navigationItems = [
     color: "from-teal-500 to-cyan-600",
   },
   {
+    name: "Billings",
+    href: "/profile/billing",
+    icon: CreditCard,
+    description: "Billing & wallet",
+    color: "from-indigo-500 to-purple-600",
+  },
+  {
     name: "Security",
     href: "/profile/change-password",
     icon: Shield,

@@ -23,8 +23,31 @@ class UserProfileController extends Controller
         // Get recent donations (you'll need to adjust based on your donation model)
         $recentDonations = collect([]); // Replace with actual donation query
 
+        // Get wallet status
+        $walletConnected = !empty($user->wallet_access_token);
+        $walletExpired = $walletConnected && $user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast();
+        
+        // Fetch actual wallet balance from WalletController
+        $walletBalance = 0;
+        if ($walletConnected && !$walletExpired) {
+            $walletController = new \App\Http\Controllers\WalletController();
+            $balanceResponse = $walletController->getBalance($request);
+            $balanceData = $balanceResponse->getData(true); // Get array from JSON response
+            if ($balanceData['success']) {
+                $walletBalance = $balanceData['balance'];
+            }
+        }
+
         return Inertia::render('frontend/user-profile/index', [
             'recentDonations' => $recentDonations,
+            'wallet' => [
+                'connected' => $walletConnected && !$walletExpired,
+                'expired' => $walletExpired,
+                'connected_at' => $user->wallet_connected_at?->toIso8601String(),
+                'expires_at' => $user->wallet_token_expires_at?->toIso8601String(),
+                'wallet_user_id' => $user->wallet_user_id,
+                'balance' => $walletBalance,
+            ],
         ]);
     }
 
@@ -152,6 +175,45 @@ class UserProfileController extends Controller
 
         return Inertia::render('frontend/user-profile/raffle-tickets', [
             'raffleTickets' => $raffleTickets,
+        ]);
+    }
+
+    public function billing(Request $request)
+    {
+        $user = $request->user();
+        
+        // Get wallet status
+        $walletConnected = !empty($user->wallet_access_token);
+        $walletExpired = $walletConnected && $user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast();
+        
+        // Fetch actual wallet balance from WalletController
+        $walletBalance = 0;
+        if ($walletConnected && !$walletExpired) {
+            $walletController = new \App\Http\Controllers\WalletController();
+            $balanceResponse = $walletController->getBalance($request);
+            $balanceData = $balanceResponse->getData(true); // Get array from JSON response
+            if ($balanceData['success']) {
+                $walletBalance = $balanceData['balance'];
+            }
+        }
+
+        // Get paginated transactions
+        $perPage = $request->get('per_page', 10);
+        $transactions = $user->transactions()
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage)
+            ->withQueryString();
+        
+        return Inertia::render('frontend/user-profile/billing', [
+            'wallet' => [
+                'connected' => $walletConnected && !$walletExpired,
+                'expired' => $walletExpired,
+                'connected_at' => $user->wallet_connected_at?->toIso8601String(),
+                'expires_at' => $user->wallet_token_expires_at?->toIso8601String(),
+                'wallet_user_id' => $user->wallet_user_id,
+                'balance' => $walletBalance,
+            ],
+            'transactions' => $transactions,
         ]);
     }
 }

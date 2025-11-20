@@ -3,7 +3,7 @@ import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { type User } from '@/types';
 import { Link, router } from '@inertiajs/react';
-import { LinkIcon, LogOut, Settings } from 'lucide-react';
+import { LinkIcon, LogOut, Settings, CreditCard } from 'lucide-react';
 
 interface UserMenuContentProps {
     user: User;
@@ -20,7 +20,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
     return (
         <>
             <DropdownMenuLabel className="p-0 font-normal">
-                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm min-w-0">
                     <UserInfo user={user} showEmail={true} />
                 </div>
             </DropdownMenuLabel>
@@ -30,6 +30,12 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                     <Link className="block w-full" href={route('home')} as="button" prefetch>
                         <LinkIcon className="mr-2" />
                         Website
+                    </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                    <Link className="block w-full" href={route('billing.index')} as="button" prefetch onClick={cleanup}>
+                        <CreditCard className="mr-2" />
+                        Billings
                     </Link>
                 </DropdownMenuItem>
                 <DropdownMenuItem asChild>

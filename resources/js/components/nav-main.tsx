@@ -3,6 +3,7 @@ import { type NavItem, type NavGroup } from '@/types';
 import { Link, usePage } from '@inertiajs/react';
 import { ChevronRight } from 'lucide-react';
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 
 interface NavMainProps {
     items?: (NavItem | NavGroup)[];
@@ -28,20 +29,85 @@ export function NavMain({ items = [] }: NavMainProps) {
     const userRoles = page.props.auth.roles ?? [];
 
     const hasDirectAccess = (entry: NavEntry): boolean => {
-        const permissionAllowed = !entry.permission || userPermissions.includes(entry.permission);
-        const roleAllowed = !entry.role || (Array.isArray(entry.role)
-            ? entry.role.some((r) => userRoles.includes(r))
-            : userRoles.includes(entry.role)
-        );
+        // Check permissions: if entry has permission requirement, user must have it
+        let permissionAllowed = true;
+        if (entry.permission) {
+            if (Array.isArray(entry.permission)) {
+                // If permission is an array, user must have at least one
+                permissionAllowed = entry.permission.some((p) => userPermissions.includes(p));
+            } else {
+                // If permission is a string, user must have it
+                permissionAllowed = userPermissions.includes(entry.permission);
+            }
+        }
+
+        // Check roles: if entry has role requirement, user must have it
+        let roleAllowed = true;
+        if (entry.role) {
+            if (Array.isArray(entry.role)) {
+                // If role is an array, user must have at least one
+                roleAllowed = entry.role.some((r) => {
+                    // Case-insensitive comparison for roles
+                    const roleLower = r.toLowerCase();
+                    return userRoles.some(ur => ur.toLowerCase() === roleLower);
+                });
+            } else {
+                // If role is a string, user must have it (case-insensitive)
+                const roleLower = entry.role.toLowerCase();
+                roleAllowed = userRoles.some(ur => ur.toLowerCase() === roleLower);
+            }
+        }
+
+        // User must satisfy both permission AND role requirements (if any)
         return permissionAllowed && roleAllowed;
     };
 
+    const buildVisibleEntries = (entries: NavEntry[]): NavEntry[] =>
+        entries.reduce<NavEntry[]>((acc, entry) => {
+            if (isGroup(entry)) {
+                // Check if user has access to the group itself (role/permission check)
+                if (!hasDirectAccess(entry)) {
+                    return acc;
+                }
+
+                // Filter children based on their permissions/roles
+                const children = buildVisibleEntries(entry.items);
+
+                // If group has only role requirement (no permission), show it even if no children
+                // This allows showing the group structure for organization users
+                // They'll see the group but only accessible child items
+                const hasOnlyRoleRequirement = entry.role && !entry.permission;
+                
+                // Show group if:
+                // 1. It has children, OR
+                // 2. It has only role requirement (no permission requirement)
+                if (children.length === 0 && !hasOnlyRoleRequirement) {
+                    // If no children and group has permission requirement, hide the group
+                    return acc;
+                }
+
+                acc.push({ ...entry, items: children });
+                return acc;
+            }
+
+            if (hasDirectAccess(entry)) {
+                acc.push(entry);
+            }
+
+            return acc;
+        }, []);
+
     // Auto-expand groups that contain the current active page
+    // Only consider groups and items that the user has access to
     useEffect(() => {
         const activeGroups = new Set<string>();
-        items.forEach((item) => {
+        const accessibleItems = buildVisibleEntries(items);
+        
+        accessibleItems.forEach((item) => {
             if (isGroup(item)) {
+                // Check if any accessible child item matches the current URL
                 const hasActiveChild = item.items.some(subItem => {
+                    // Only check items that user has access to (already filtered by buildVisibleEntries)
                     const basePath = subItem.href;
                     const currentPath = page.url;
 
@@ -59,7 +125,7 @@ export function NavMain({ items = [] }: NavMainProps) {
             }
         });
         setExpandedGroups(activeGroups);
-    }, [page.url, items]);
+    }, [page.url, items, userPermissions, userRoles]);
 
     const toggleGroup = (groupTitle: string) => {
         setExpandedGroups(prev => {
@@ -72,30 +138,6 @@ export function NavMain({ items = [] }: NavMainProps) {
             return newSet;
         });
     };
-
-    const buildVisibleEntries = (entries: NavEntry[]): NavEntry[] =>
-        entries.reduce<NavEntry[]>((acc, entry) => {
-            if (isGroup(entry)) {
-                if (!hasDirectAccess(entry)) {
-                    return acc;
-                }
-
-                const children = buildVisibleEntries(entry.items);
-
-                if (children.length === 0) {
-                    return acc;
-                }
-
-                acc.push({ ...entry, items: children });
-                return acc;
-            }
-
-            if (hasDirectAccess(entry)) {
-                acc.push(entry);
-            }
-
-            return acc;
-        }, []);
 
     const visibleItems = buildVisibleEntries(items);
 
@@ -123,38 +165,68 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         }}
                                         isActive={hasActiveChild}
                                         tooltip={{ children: item.title }}
+                                        className="flex items-center gap-2 w-full"
                                     >
-                                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} />
-                                        <span>{item.title}</span>
+                                        {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
+                                        <span className="truncate flex-1">{item.title}</span>
+                                        <motion.div
+                                            animate={{ rotate: isExpanded ? 90 : 0 }}
+                                            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+                                        >
+                                            <ChevronRight className="h-4 w-4 shrink-0" />
+                                        </motion.div>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
                             </SidebarMenu>
 
-                            {isExpanded && (
-                                <div className="ml-4 space-y-1">
-                                    {item.items.map((subItem) => (
-                                        <SidebarMenu key={subItem.title}>
-                                            <SidebarMenuItem>
-                                                <SidebarMenuButton
-                                                    asChild
-                                                    isActive={
-                                                        subItem.href === page.url ||
-                                                        page.url.startsWith(subItem.href + '/create') ||
-                                                        !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                                        page.url.startsWith(subItem.href)
-                                                    }
-                                                    tooltip={{ children: subItem.title }}
-                                                >
-                                                    <Link href={subItem.href} prefetch>
-                                                        {subItem.icon && <subItem.icon />}
-                                                        <span>{subItem.title}</span>
-                                                    </Link>
-                                                </SidebarMenuButton>
-                                            </SidebarMenuItem>
-                                        </SidebarMenu>
-                                    ))}
-                                </div>
-                            )}
+                            <AnimatePresence initial={false}>
+                                {isExpanded && (
+                                    <motion.div
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: 'auto', opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ 
+                                            duration: 0.3, 
+                                            ease: [0.4, 0, 0.2, 1] 
+                                        }}
+                                        className="ml-4 space-y-1 overflow-hidden"
+                                    >
+                                        {item.items.map((subItem, index) => (
+                                            <motion.div
+                                                key={subItem.title}
+                                                initial={{ opacity: 0, x: -10 }}
+                                                animate={{ opacity: 1, x: 0 }}
+                                                transition={{ 
+                                                    duration: 0.2, 
+                                                    delay: index * 0.05,
+                                                    ease: [0.4, 0, 0.2, 1]
+                                                }}
+                                            >
+                                                <SidebarMenu>
+                                                    <SidebarMenuItem>
+                                                        <SidebarMenuButton
+                                                            asChild
+                                                            isActive={
+                                                                subItem.href === page.url ||
+                                                                page.url.startsWith(subItem.href + '/create') ||
+                                                                !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
+                                                                page.url.startsWith(subItem.href)
+                                                            }
+                                                            tooltip={{ children: subItem.title }}
+                                                            className="flex items-center gap-2 w-full"
+                                                        >
+                                                            <Link href={subItem.href} prefetch className="flex items-center gap-2 w-full">
+                                                                {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
+                                                                <span className="truncate flex-1">{subItem.title}</span>
+                                                            </Link>
+                                                        </SidebarMenuButton>
+                                                    </SidebarMenuItem>
+                                                </SidebarMenu>
+                                            </motion.div>
+                                        ))}
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </SidebarGroup>
                     );
                 }
@@ -167,10 +239,11 @@ export function NavMain({ items = [] }: NavMainProps) {
                                     asChild
                                     isActive={item.href === page.url}
                                     tooltip={{ children: item.title }}
+                                    className="flex items-center gap-2 w-full"
                                 >
-                                    <Link href={item.href} prefetch>
-                                        {item.icon && <item.icon />}
-                                        <span>{item.title}</span>
+                                    <Link href={item.href} prefetch className="flex items-center gap-2 w-full">
+                                        {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
+                                        <span className="truncate flex-1">{item.title}</span>
                                     </Link>
                                 </SidebarMenuButton>
                             </SidebarMenuItem>

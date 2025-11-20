@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/frontend/ui/button"
 import {
   DropdownMenu,
@@ -68,6 +68,8 @@ export default function Navbar() {
   const [showBalance, setShowBalance] = useState(false)
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [walletConnected, setWalletConnected] = useState(false)
 
   // Form state for withdrawal using Inertia's useForm
   const {
@@ -131,7 +133,80 @@ export default function Navbar() {
     })
   }
 
-  const userBalance = auth?.user?.balance
+  // Check wallet connection status and fetch balance
+  useEffect(() => {
+    const checkWalletStatus = async () => {
+      if (!isLoggedIn) {
+        setWalletConnected(false)
+        setWalletBalance(null)
+        return
+      }
+
+      try {
+        const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          cache: 'no-cache',
+        })
+
+        if (statusResponse.ok) {
+          const statusData = await statusResponse.json()
+          if (statusData.success && statusData.connected) {
+            setWalletConnected(true)
+            
+            // Fetch balance
+            try {
+              const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-cache',
+              })
+
+              if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json()
+                if (balanceData.success) {
+                  setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+                }
+              }
+            } catch (error) {
+              console.error('Failed to fetch wallet balance:', error)
+            }
+          } else {
+            setWalletConnected(false)
+            setWalletBalance(null)
+          }
+        }
+      } catch (error) {
+        console.error('Failed to check wallet status:', error)
+        setWalletConnected(false)
+        setWalletBalance(null)
+      }
+    }
+
+    checkWalletStatus()
+    
+    // Refresh balance every 30 seconds
+    const interval = setInterval(() => {
+      if (walletConnected) {
+        checkWalletStatus()
+      }
+    }, 30000)
+
+    return () => clearInterval(interval)
+  }, [isLoggedIn, walletConnected])
+
+  // Use connected wallet balance if available, otherwise fall back to user balance
+  const userBalance = walletConnected && walletBalance !== null ? walletBalance : (auth?.user?.balance ? parseFloat(auth.user.balance.toString()) : 0)
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -161,31 +236,35 @@ export default function Navbar() {
                               </Button> */}
                 <NotificationBell userId={auth.user.id} />
 
-                {/* Wallet Dropdown */}
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
-                    >
-                      <Wallet className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-sm">
-                        {showBalance ? `$${userBalance.toLocaleString()}` : "••••••"}
-                      </span>
+                {/* Wallet Dropdown - Only show if wallet is connected */}
+                {walletConnected && walletBalance !== null && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation() // Prevent dropdown from closing
-                          setShowBalance(!showBalance)
-                        }}
-                        className="p-0 h-auto"
+                        className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
                       >
-                        {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        <Wallet className="h-4 w-4 text-green-600" />
+                        <span className="font-medium text-sm">
+                          {showBalance ? `$${userBalance.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}` : "••••••"}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation() // Prevent dropdown from closing
+                            setShowBalance(!showBalance)
+                          }}
+                          className="p-0 h-auto"
+                        >
+                          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
                       </Button>
-                    </Button>
-                  </DropdownMenuTrigger>
+                    </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-64" align="end" forceMount>
                     <div className="p-2">
                       <div className="flex items-center justify-between">
@@ -197,114 +276,16 @@ export default function Navbar() {
                       <div className="flex items-center text-center gap-2">
                         <Wallet className="h-6 w-6 text-green-600" />
                         <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                          {showBalance ? `$${userBalance}` : "••••••"}
+                          {showBalance ? `$${userBalance.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}` : "••••••"}
                         </p>
                       </div>
                     </div>
-                    <DropdownMenuSeparator />
-                    {/* Deposit Funds Dialog Trigger */}
-                    {/* <DropdownMenuItem asChild>
-                      <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
-                        <DialogTrigger asChild>
-                          <Button variant="default" className="w-full text-center">
-                            <Plus className="h-4 w-4 mr-2" />
-                            <span>Deposit Funds</span>
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Deposit Funds</DialogTitle>
-                          </DialogHeader>
-                          <div className="space-y-4">
-                            <div>
-                              <label className="text-sm font-medium">Amount</label>
-                              <Input
-                                type="number"
-                                placeholder="Enter amount"
-                                value={addFundsAmount}
-                                onChange={(e) => setAddFundsAmount(e.target.value)}
-                              />
-                            </div>
-                            <div className="flex gap-2">
-                              <Button onClick={handleDeposit} className="flex-1">
-                                Deposit
-                              </Button>
-                              <Button variant="outline" onClick={() => setIsAddFundsOpen(false)}>
-                                Cancel
-                              </Button>
-                            </div>
-                          </div>
-                        </DialogContent>
-                      </Dialog>
-                    </DropdownMenuItem> */}
-
-                    {/* Withdraw Funds Dialog Trigger */}
-                    <DropdownMenuItem asChild>
-                      <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
-                        <DialogTrigger asChild>
-                          <Button variant="destructive" className="w-full text-white text-center">
-                            <Minus className="h-4 w-4 mr-2" />
-                            <span>Withdraw</span>
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent>
-                          <DialogHeader>
-                            <DialogTitle>Withdraw Funds (PayPal Only)</DialogTitle>
-                          </DialogHeader>
-                          <form onSubmit={handleWithdraw} className="space-y-4">
-                            <div>
-                              <label className="text-sm font-medium">Amount</label>
-                              <Input
-                                type="number"
-                                placeholder="Enter amount"
-                                value={withdrawFormData.amount}
-                                onChange={(e) => setWithdrawFormData("amount", e.target.value)}
-                                max={userBalance}
-                                step="0.01"
-                                min="1"
-                              />
-                              {withdrawErrors.amount && (
-                                <p className="text-red-500 text-xs mt-1">{withdrawErrors.amount}</p>
-                              )}
-                              <p className="text-xs text-gray-500 mt-1">
-                                Available balance: ${userBalance.toLocaleString()}
-                              </p>
-                            </div>
-                            <div>
-                              <label className="text-sm font-medium">PayPal Email</label>
-                              <Input
-                                type="email"
-                                placeholder="Enter PayPal email"
-                                value={withdrawFormData.paypal_email}
-                                onChange={(e) => setWithdrawFormData("paypal_email", e.target.value)}
-                              />
-                              {withdrawErrors.paypal_email && (
-                                <p className="text-red-500 text-xs mt-1">{withdrawErrors.paypal_email}</p>
-                              )}
-                            </div>
-                            <div className="flex gap-2">
-                              <Button
-                                type="submit"
-                                variant="destructive"
-                                className="flex-1 text-white"
-                                disabled={isWithdrawProcessing}
-                              >
-                                {isWithdrawProcessing ? "Submitting..." : "Withdraw"}
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() => setIsWithdrawOpen(false)}
-                                disabled={isWithdrawProcessing}
-                              >
-                                Cancel
-                              </Button>
-                            </div>
-                          </form>
-                        </DialogContent>
-                      </Dialog>
-                    </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
+                )}
 
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -430,25 +411,29 @@ export default function Navbar() {
                           <p className="text-xs text-muted-foreground">{auth?.user?.email ?? "john@example.com"}</p>
                         </div>
                       </div>
-                      {/* Wallet section for mobile */}
-                      <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Wallet className="h-4 w-4 text-green-600" />
-                            <span className="font-medium text-sm">Wallet Balance</span>
+                      {/* Wallet section for mobile - Only show if wallet is connected */}
+                      {walletConnected && walletBalance !== null && (
+                        <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4 text-green-600" />
+                              <span className="font-medium text-sm">Wallet Balance</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setShowBalance(!showBalance)}
+                              className="p-1"
+                            >
+                              {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowBalance(!showBalance)}
-                            className="p-1"
-                          >
-                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                        <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                          {showBalance ? `$${userBalance.toLocaleString()}` : "••••••"}
-                        </div>
+                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                            {showBalance ? `$${userBalance.toLocaleString('en-US', { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 2 
+                            })}` : "••••••"}
+                          </div>
                         <div className="flex gap-2 mt-2">
                           {/* Deposit Funds Dialog Trigger (Mobile) */}
                           <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
@@ -512,7 +497,10 @@ export default function Navbar() {
                                     <p className="text-red-500 text-xs mt-1">{withdrawErrors.amount}</p>
                                   )}
                                   <p className="text-xs text-gray-500 mt-1">
-                                    Available balance: ${userBalance.toLocaleString()}
+                                    Available balance: ${userBalance.toLocaleString('en-US', { 
+                                      minimumFractionDigits: 2, 
+                                      maximumFractionDigits: 2 
+                                    })}
                                   </p>
                                 </div>
                                 <div>
@@ -544,6 +532,7 @@ export default function Navbar() {
                           </Dialog>
                         </div>
                       </div>
+                      )}
                       <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <Button variant="ghost" className="w-full justify-start">
                           <User className="mr-2 h-4 w-4" />
