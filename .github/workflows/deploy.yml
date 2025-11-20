@@ -69,6 +69,7 @@ jobs:
               --exclude='node_modules' \
               --exclude='tests' \
               --exclude='.env' \
+              --exclude='.env.*' \
               --exclude='storage/' \
               . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
           else
@@ -80,6 +81,7 @@ jobs:
               --exclude='node_modules' \
               --exclude='tests' \
               --exclude='.env' \
+              --exclude='.env.*' \
               . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
           fi
 
