@@ -71,6 +71,7 @@ jobs:
               --exclude='.env' \
               --exclude='.env.*' \
               --exclude='storage/' \
+              --exclude='/.htaccess' \
               . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
           else
             echo "Storage folder does not exist on server, will upload it"
@@ -82,6 +83,7 @@ jobs:
               --exclude='tests' \
               --exclude='.env' \
               --exclude='.env.*' \
+              --exclude='/.htaccess' \
               . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
           fi
 
@@ -94,6 +96,11 @@ jobs:
             # Ensure storage directory structure exists but preserve existing files
             mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
             chmod -R 775 storage bootstrap/cache
+            # Ensure .htaccess files are preserved (restore from backup if accidentally deleted)
+            if [ ! -f .htaccess ] && [ -f .htaccess.backup ]; then
+              cp .htaccess.backup .htaccess
+              echo "Restored .htaccess from backup"
+            fi
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
