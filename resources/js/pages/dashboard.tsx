@@ -1097,15 +1097,15 @@ export default function Dashboard({
           <div className="flex-1 text-center md:text-left">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
               <div>
-                <h1 className="text-2xl md:text-3xl font-bold text-white">
-                  {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
-                </h1>
-                <VerificationBanner user={auth?.user} />
-                <p className="text-muted-foreground mt-2">
-                {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
-                </p>
+            <h1 className="text-2xl md:text-3xl font-bold text-white">
+              {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+            </h1>
+            <VerificationBanner user={auth?.user} />
+            <p className="text-muted-foreground mt-2">
+            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+            </p>
               </div>
-              
+
               {/* Wallet Balance Display */}
               {isOrgUser && (isWalletConnected || walletBalance !== null) && (
                 <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-lg px-4 py-3">
@@ -1118,7 +1118,7 @@ export default function Dashboard({
                         maximumFractionDigits: 2 
                       })}
                     </p>
-                  </div>
+              </div>
                 </div>
               )}
             </div>

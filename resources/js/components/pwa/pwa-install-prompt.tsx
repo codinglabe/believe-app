@@ -48,9 +48,9 @@ export function PwaInstallPrompt() {
 
         // Only process the URL parameter once
         if (!urlParamProcessedRef.current) {
-            const params = new URLSearchParams(window.location.search);
-            if (params.has(INSTALL_PARAM)) {
-                setInstallRequested(true);
+        const params = new URLSearchParams(window.location.search);
+        if (params.has(INSTALL_PARAM)) {
+            setInstallRequested(true);
                 urlParamProcessedRef.current = true;
                 
                 // Don't remove the parameter immediately to avoid navigation conflicts
@@ -59,12 +59,12 @@ export function PwaInstallPrompt() {
                 setTimeout(() => {
                     // Only clean up if we're still on the same page and install is still requested
                     if (window.location.search.includes(INSTALL_PARAM) && installRequested) {
-                        params.delete(INSTALL_PARAM);
-                        const newQuery = params.toString();
-                        const cleanedUrl = `${window.location.origin}${window.location.pathname}${newQuery ? `?${newQuery}` : ''}${
-                            window.location.hash ?? ''
-                        }`;
-                        
+            params.delete(INSTALL_PARAM);
+            const newQuery = params.toString();
+            const cleanedUrl = `${window.location.origin}${window.location.pathname}${newQuery ? `?${newQuery}` : ''}${
+                window.location.hash ?? ''
+            }`;
+
                         // Use replaceState carefully to avoid navigation issues
                         try {
                             window.history.replaceState(window.history.state, document.title, cleanedUrl);
@@ -403,7 +403,7 @@ export function PwaInstallPrompt() {
     // Clean up URL parameter helper function
     const cleanupUrlParameter = () => {
         if (typeof window === 'undefined') return;
-        
+
         const params = new URLSearchParams(window.location.search);
         if (params.has(INSTALL_PARAM)) {
             params.delete(INSTALL_PARAM);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Mail, Phone, MapPin, Wallet, DollarSign, CheckCircle2, XCircle, RefreshCw } from "lucide-react"
+import { Mail, Phone, MapPin, Wallet, DollarSign, CheckCircle2, XCircle, RefreshCw, Gift } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
@@ -44,10 +44,11 @@ interface PageProps {
   }
   recentDonations: Donation[]
   wallet: WalletData
+  reward_points: number
 }
 
 export default function ProfileIndex() {
-  const { auth, recentDonations, wallet: initialWallet } = usePage<PageProps>().props
+  const { auth, recentDonations, wallet: initialWallet, reward_points } = usePage<PageProps>().props
   const user = auth.user
   const [wallet, setWallet] = useState<WalletData>(initialWallet)
   const [showWalletPopup, setShowWalletPopup] = useState(false)

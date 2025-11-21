@@ -28,6 +28,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $fillable = [
         'name',
         'balance',
+        'reward_points',
         'user_id',
         'slug',
         'email',

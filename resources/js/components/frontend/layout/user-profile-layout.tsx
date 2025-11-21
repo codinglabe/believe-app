@@ -23,9 +23,12 @@ import {
   User,
   CreditCard,
   GraduationCap,
-  BookOpen,
-  Receipt,
-  Shield,
+  UserCheck, // Added MessageCircle icon
+  PieChart,
+  Clock,
+  Gift,
+  Menu,
+  Wallet,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -66,6 +69,7 @@ interface PageProps {
       impact_score?: number
       referral_link?: string
       wallet_balance?: number
+      reward_points?: number
     }
   }
   [key: string]: any
@@ -78,13 +82,6 @@ const navigationItems = [
     icon: User,
     description: "Profile overview",
     color: "from-blue-500 to-blue-600",
-  },
-  {
-    name: "Groups Chat",
-    href: "/profile/topics/select",
-    icon: Text,
-    description: "Groups Chat",
-    color: "from-green-400 to-blue-600",
   },
   {
     name: "Following",
@@ -135,6 +132,13 @@ const navigationItems = [
     description: "My raffle tickets",
     color: "from-yellow-500 to-orange-600",
   },
+  {
+    name: "Time Sheet",
+    href: "/profile/timesheet",
+    icon: Clock,
+    description: "Volunteer timesheet",
+    color: "from-teal-500 to-green-600",
+  },
   // {
   //   name: "Node Boss",
   //   href: "/nodeboss/shares",
@@ -180,8 +184,10 @@ export default function ProfileLayout({ children, title, description }: ProfileL
   const [withdrawAmount, setWithdrawAmount] = useState("")
   const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
   const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
-  const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
-  const [loading, setLoading] = useState(true)
+
+    const [isTopicsModalOpen, setIsTopicsModalOpen] = useState(false)
+    const [loading, setLoading] = useState(true);
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   // Fetch topics on component mount
   useEffect(() => {
@@ -333,16 +339,51 @@ export default function ProfileLayout({ children, title, description }: ProfileL
         </div>
 
         <div className="container mx-auto px-4 -mt-8 relative z-10">
+          {/* Mobile Menu Button */}
+          <div className="lg:hidden mb-4">
+            <Button
+              onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+              variant="outline"
+              className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600"
+            >
+              <Menu className="h-5 w-5 mr-2" />
+              Menu
+            </Button>
+          </div>
+
           <div className="flex flex-col lg:flex-row gap-6">
+            {/* Mobile Overlay */}
+            {isMobileMenuOpen && (
+              <div
+                className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+                onClick={() => setIsMobileMenuOpen(false)}
+              />
+            )}
+
             {/* Fixed Left Sidebar */}
             <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.6, delay: 0.2 }}
-              className="lg:w-64 lg:flex-shrink-0"
+              className={`lg:w-64 lg:flex-shrink-0 fixed lg:relative top-0 left-0 h-full lg:h-auto z-50 lg:z-auto w-64 ${
+                isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
+              } transition-transform duration-300 ease-in-out`}
             >
-              <Card className="bg-white dark:bg-gray-800 shadow-xl border-0 lg:sticky lg:top-6">
+              <Card className="bg-white dark:bg-gray-800 shadow-xl border-0 lg:sticky lg:top-6 h-full lg:h-auto overflow-y-auto">
                 <CardContent className="p-4">
+                  {/* Close button for mobile */}
+                  <div className="flex items-center justify-between mb-4 lg:hidden">
+                    <h2 className="text-lg font-bold text-gray-900 dark:text-white">Menu</h2>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setIsMobileMenuOpen(false)}
+                      className="h-8 w-8 p-0"
+                    >
+                      <X className="h-5 w-5" />
+                    </Button>
+                  </div>
+
                   <div className="space-y-1">
                     {navigationItems.map((item, index) => {
                       // For Overview, only match exactly /profile
@@ -357,6 +398,7 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                           href={item.href}
                           preserveScroll={true}
                           preserveState={true}
+                          onClick={() => setIsMobileMenuOpen(false)}
                         >
                           <motion.div
                             initial={{ opacity: 0, x: -10 }}
@@ -534,63 +576,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                         </CardContent>
                       </Card>
 
-                      {/* Topics Section */}
-                      <Card className="bg-gradient-to-r from-emerald-50 to-teal-50 dark:from-emerald-900/20 dark:to-teal-900/20 border-emerald-200 dark:border-emerald-700 shadow-xl">
-                        <CardContent className="p-6">
-                          <div className="flex flex-col gap-4">
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-xl font-bold text-gray-900 dark:text-white flex items-center">
-                                <Text className="w-5 h-5 mr-2 text-emerald-600" />
-                                Your Groups Chat
-                              </h3>
-                              <div className="flex items-center gap-2">
-                                <Badge className="bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
-                                  {topics.length} Active
-                                </Badge>
-                              </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-2 mb-4">
-                              {topics.slice(0, 4).map((topic) => (
-                                <div
-                                  key={topic.id}
-                                  className="group relative flex items-center gap-2 p-2 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-600 hover:shadow-md transition-all duration-200"
-                                >
-                                  <div className={`w-3 h-3 rounded-full ${topic.color}`}></div>
-                                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300 truncate flex-1">
-                                    {topic.name}
-                                  </span>
-                                  <div className="flex items-center gap-1">
-                                    <button
-                                      onClick={(e) => navigateToChat(topic.id, e)}
-                                      className="p-1 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded transition-all duration-200"
-                                      title="Go to chat"
-                                    >
-                                      <MessageCircle className="w-3 h-3 text-blue-500" />
-                                    </button>
-                                    <button
-                                      onClick={() => handleDeleteTopic(topic.id)}
-                                      className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-100 dark:hover:bg-red-900/20 rounded transition-all duration-200"
-                                    >
-                                      <X className="w-3 h-3 text-red-500" />
-                                    </button>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-
-                            {topics.length > 4 && (
-                              <Button
-                                onClick={() => setIsTopicsModalOpen(true)}
-                                variant="outline"
-                                className="w-full border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-600 dark:text-emerald-300 dark:hover:bg-emerald-900/20 transition-all duration-300"
-                              >
-                                View {topics.length - 4} more topics
-                              </Button>
-                            )}
-                          </div>
-                        </CardContent>
-                      </Card>
                     </div>
                   </motion.div>
                 </>
@@ -683,52 +668,6 @@ export default function ProfileLayout({ children, title, description }: ProfileL
           </DialogContent>
         </Dialog>
 
-        {/* Topics Modal */}
-        <Dialog open={isTopicsModalOpen} onOpenChange={setIsTopicsModalOpen}>
-          <DialogContent className="sm:max-w-2xl max-h-[80vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-xl">
-                <Tag className="w-5 h-5 text-emerald-600" />
-                Your Groups Chat ({topics.length})
-              </DialogTitle>
-            </DialogHeader>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
-              {topics.map((topic) => (
-                <motion.div
-                  key={topic.id}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.9 }}
-                  className="group relative flex items-center gap-3 p-4 bg-gradient-to-r from-gray-50 to-white dark:from-gray-800 dark:to-gray-700 rounded-xl border border-gray-200 dark:border-gray-600 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-                >
-                  <div className={`w-4 h-4 rounded-full ${topic.color} shadow-lg`}></div>
-                  <span className="font-medium text-gray-800 dark:text-gray-200 flex-1">{topic.name}</span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => navigateToChat(topic.id, e)}
-                      className="p-2 hover:bg-blue-100 dark:hover:bg-blue-900/20 rounded-lg transition-all duration-200 hover:scale-110"
-                      title="Go to chat"
-                    >
-                      <MessageCircle className="w-4 h-4 text-blue-500" />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTopic(topic.id)}
-                      className="opacity-0 group-hover:opacity-100 p-2 hover:bg-red-100 dark:hover:bg-red-900/20 rounded-lg transition-all duration-200 hover:scale-110"
-                    >
-                      <X className="w-4 h-4 text-red-500" />
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
-            </div>
-            {topics.length === 0 && (
-              <div className="text-center py-8">
-                <Tag className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                <p className="text-gray-500 dark:text-gray-400">No topics selected yet.</p>
-              </div>
-            )}
-          </DialogContent>
-        </Dialog>
       </div>
     </FrontendLayout>
   )

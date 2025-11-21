@@ -118,6 +118,13 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Compliance Review
             'compliance' => ['review', 'read', 'create', 'edit', 'update', 'delete', 'approve', 'decline', 'manage'],
+
+            // Volunteer Management
+            'volunteer' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+            'volunteer.timesheet' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Reward Point Management
+            'reward.point' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
         ];
 
         // Create all permissions
@@ -210,6 +217,10 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Campaign Management
             'campaign.read', 'campaign.create', 'campaign.edit', 'campaign.update', 'campaign.delete', 'campaign.manage',
+
+            // Volunteer Management - Full access
+            'volunteer.read', 'volunteer.create', 'volunteer.edit', 'volunteer.update', 'volunteer.delete', 'volunteer.manage',
+            'volunteer.timesheet.read', 'volunteer.timesheet.create', 'volunteer.timesheet.edit', 'volunteer.timesheet.update', 'volunteer.timesheet.delete', 'volunteer.timesheet.manage',
         ];
 
         $role->syncPermissions($permissions);

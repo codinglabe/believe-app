@@ -25,6 +25,7 @@ use App\Http\Controllers\Form1023ApplicationController;
 use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianceApplicationController;
 use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
 use App\Http\Controllers\Admin\FeesController;
+use App\Http\Controllers\Admin\RewardPointController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -55,6 +56,8 @@ use App\Http\Controllers\NteeCodeController;
 use App\Http\Controllers\CourseController;
 use App\Http\Controllers\EnrollmentController;
 use App\Http\Controllers\JobApplicationController;
+use App\Http\Controllers\VolunteerController;
+use App\Http\Controllers\VolunteerTimesheetController;
 use App\Http\Controllers\JobsController;
 use App\Http\Controllers\NodeSellController;
 use App\Http\Controllers\NodeShareController;
@@ -190,6 +193,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
+    Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
@@ -292,6 +296,14 @@ Route::prefix('admin/fees')
     ->group(function () {
         Route::get('/', [FeesController::class, 'index'])->name('index');
         Route::put('/', [FeesController::class, 'update'])->name('update');
+    });
+
+Route::prefix('admin/reward-points')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.reward-points.')
+    ->group(function () {
+        Route::get('/', [RewardPointController::class, 'index'])->name('index');
+        Route::put('/', [RewardPointController::class, 'update'])->name('update');
     });
 
 // Fractional Ownership (Admin-only - Full CRUD)
@@ -555,6 +567,41 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::put('job-applications/{jobApplication}/update-status', [JobApplicationController::class, 'updateStatus'])
         ->name('job-applications.update-status')
         ->middleware(['role:organization', 'permission:job.posts.read']);
+
+    // Volunteers Routes
+    Route::get('volunteers', [VolunteerController::class, 'index'])
+        ->name('volunteers.index')
+        ->middleware(['role:organization', 'permission:volunteer.read']);
+
+    // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
+    Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
+        ->name('volunteers.timesheet.index')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
+    Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
+        ->name('volunteers.timesheet.create')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
+        ->name('volunteers.timesheet.store')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    Route::get('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'show'])
+        ->name('volunteers.timesheet.show')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
+    Route::get('volunteers/timesheet/{timesheet}/edit', [VolunteerTimesheetController::class, 'edit'])
+        ->name('volunteers.timesheet.edit')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.edit']);
+    Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
+        ->name('volunteers.timesheet.update')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
+    Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
+        ->name('volunteers.timesheet.destroy')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.delete']);
+    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
+        ->name('volunteers.timesheet.fetch-volunteers')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+
+    Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
+        ->name('volunteers.show')
+        ->middleware(['role:organization', 'permission:volunteer.read']);
 
     // Events Routes
     Route::resource('events', EventController::class)->middleware([

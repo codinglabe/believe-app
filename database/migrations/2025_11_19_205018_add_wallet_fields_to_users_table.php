@@ -11,7 +11,7 @@ return new class extends Migration
         Schema::table('users', function (Blueprint $table) {
             if (!Schema::hasColumn('users', 'wallet_access_token')) {
                 $table->text('wallet_access_token')->nullable();
-            }
+    }
             if (!Schema::hasColumn('users', 'wallet_encrypted_token')) {
                 $table->text('wallet_encrypted_token')->nullable();
             }
