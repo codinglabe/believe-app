@@ -236,7 +236,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                             <table className="min-w-full rounded-md border border-muted w-full overflow-x-auto table-responsive text-sm text-left text-foreground">
                                 <thead className="bg-muted text-muted-foreground">
                                     <tr>
-                                        <th className="px-4 py-3 font-medium min-w-32">Image</th>
+                                        {/* <th className="px-4 py-3 font-medium min-w-32">Image</th> */}
                                         <th className="px-4 py-3 font-medium min-w-32">Sku</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Name</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity On Hand</th>
@@ -254,11 +254,11 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                 <tbody>
                                     {products.data.map((item) => (
                                         <tr key={item.id} className="border-t border-muted hover:bg-muted/50 transition">
-                                            <td className="px-4 py-3 min-w-32">
+                                            {/* <td className="px-4 py-3 min-w-32">
                                                 <div className="flex items-center gap-2">
                                                     <img src={item.image} alt={item.name} className="w-10 h-10 rounded-md" />
                                                 </div>
-                                            </td>
+                                            </td> */}
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.sku}>
                                                     {item.sku}

@@ -91,46 +91,14 @@ export default function Marketplace({
     const [currentProductPage, setCurrentProductPage] = useState(1)
     const [showCartModal, setShowCartModal] = useState(false)
     const [showFilters, setShowFilters] = useState(false)
-    const [cart, setCart] = useState<Cart | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [cartLoading, setCartLoading] = useState(false)
     const [cartModalLoading, setCartModalLoading] = useState(false)
     const productsPerPage = 6
 
-    // Get initial cart from server props
-    const pageProps = usePage().props as PageProps;
-    useEffect(() => {
-        if (pageProps.cart) {
-            setCart(pageProps.cart);
-        }
-    }, [pageProps.cart]);
 
-    // Fetch cart data when modal opens
-    const fetchCartData = async () => {
-        setCartModalLoading(true);
-        try {
-            const response = await axios.get(route('cart.data'));
-            // The cart data is in response.data.props.cart for Inertia responses
-            if (response.data.props) {
-                setCart(response.data.props.cart);
-            } else {
-                // If direct API response
-                setCart(response.data.cart || response.data);
-            }
-        } catch (error) {
-            console.error('Failed to fetch cart data:', error);
-            showErrorToast('Failed to load cart data');
-        } finally {
-            setCartModalLoading(false);
-        }
-    };
 
-    // When modal opens, fetch latest cart data
-    useEffect(() => {
-        // if (showCartModal) {
-            fetchCartData();
-        // }
-    }, [showCartModal]);
+
 
     // Calculate pagination for products
     const totalProducts = products?.length || 0
@@ -202,90 +170,6 @@ export default function Marketplace({
         debouncedFilter(query)
     }, [filters])
 
-    // Cart Functions - Updated to refresh cart data
-    const addToCart = async (product: Product) => {
-        if (isLoading) return;
-
-        setIsLoading(true);
-        try {
-            const response = await axios.post(route('cart.add'), {
-                product_id: product.id,
-                quantity: 1
-            });
-
-            // Update cart state with fresh data
-            setCart(response.data.cart);
-            showSuccessToast('Product added to cart!');
-        } catch (error: any) {
-            if (error.response?.data?.error) {
-                showErrorToast(error.response.data.error);
-            } else {
-                showErrorToast('Failed to add product to cart');
-            }
-        } finally {
-            setIsLoading(false);
-        }
-    }
-
-    const updateCartQuantity = async (cartItemId: number, quantity: number) => {
-        setCartLoading(true);
-        try {
-            const response = await axios.put(route('cart.update', cartItemId), {
-                quantity: quantity
-            });
-            setCart(response.data.cart);
-            showSuccessToast('Cart updated');
-        } catch (error: any) {
-            if (error.response?.data?.error) {
-                showErrorToast(error.response.data.error);
-            } else {
-                showErrorToast('Failed to update cart');
-            }
-        } finally {
-            setCartLoading(false);
-        }
-    }
-
-    const removeFromCart = async (cartItemId: number) => {
-        setCartLoading(true);
-        try {
-            const response = await axios.delete(route('cart.destroy', cartItemId));
-            setCart(response.data.cart);
-            showSuccessToast('Item removed from cart');
-        } catch (error) {
-            showErrorToast('Failed to remove item from cart');
-        } finally {
-            setCartLoading(false);
-        }
-    }
-
-    const clearCart = async () => {
-        if (confirm('Are you sure you want to clear your cart?')) {
-            setCartLoading(true);
-            try {
-                const response = await axios.post(route('cart.clear'));
-                setCart(response.data.cart);
-                showSuccessToast('Cart cleared');
-            } catch (error) {
-                showErrorToast('Failed to clear cart');
-            } finally {
-                setCartLoading(false);
-            }
-        }
-    }
-
-    const getCartTotal = (): number => {
-        if (!cart?.items) return 0;
-        return cart.items.reduce((total, item) => {
-            return total + (toNumber(item.unit_price) * item.quantity);
-        }, 0);
-    }
-
-    const getCartItemCount = (): number => {
-        if (!cart?.items) return 0;
-        return cart.items.reduce((total, item) => total + item.quantity, 0);
-    }
-
     const handleProductPageChange = (page: number) => {
         setCurrentProductPage(page);
     }
@@ -342,20 +226,6 @@ export default function Marketplace({
                                     <Badge variant="secondary" className="ml-1 bg-blue-500 text-white">
                                         {activeFilterCount}
                                     </Badge>
-                                )}
-                            </Button>
-
-                            {/* Cart Button */}
-                            <Button
-                                onClick={() => setShowCartModal(true)}
-                                variant="outline"
-                                size="lg"
-                                className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-700 relative"
-                            >
-                                <ShoppingCart className="mr-2 h-5 w-5" />
-                                Cart ({getCartItemCount()})
-                                {cartLoading && (
-                                    <Loader2 className="ml-2 h-4 w-4 animate-spin" />
                                 )}
                             </Button>
                         </div>
@@ -464,6 +334,7 @@ export default function Marketplace({
                                     <>
                                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
                                             {currentProducts.map((product: Product) => (
+                                                <Link href={route('product.show', product.id)} key={product.id}>
                                                 <Card
                                                     key={product.id}
                                                     className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all duration-300 group hover:border-blue-300 dark:hover:border-blue-600"
@@ -530,7 +401,7 @@ export default function Marketplace({
                                                         </div>
 
                                                         <div className="flex gap-2">
-                                                            <Button
+                                                            {/* <Button
                                                                 onClick={() => addToCart(product)}
                                                                 disabled={product.quantity_available <= 0 || isLoading}
                                                                 variant="outline"
@@ -542,13 +413,12 @@ export default function Marketplace({
                                                                     <Plus className="mr-2 h-4 w-4" />
                                                                 )}
                                                                 Add to Cart
-                                                            </Button>
+                                                            </Button> */}
                                                             <Link
-                                                                href={route('checkout.show')}
+                                                                href={route('product.show', product.id)}
                                                                 className="flex-1"
                                                             >
                                                                 <Button
-                                                                    onClick={() => addToCart(product)}
                                                                     disabled={product.quantity_available <= 0}
                                                                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed"
                                                                 >
@@ -558,7 +428,8 @@ export default function Marketplace({
                                                             </Link>
                                                         </div>
                                                     </CardContent>
-                                                </Card>
+                                                    </Card>
+                                                    </Link>
                                             ))}
                                         </div>
 
@@ -630,7 +501,7 @@ export default function Marketplace({
                 </div>
 
                 {/* Cart Modal */}
-                {showCartModal && (
+                {/* {showCartModal && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
                         <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl max-h-[95vh] overflow-y-auto">
                             <div className="p-6">
@@ -758,7 +629,7 @@ export default function Marketplace({
                             </div>
                         </div>
                     </div>
-                )}
+                )} */}
             </div>
         </FrontendLayout>
     )

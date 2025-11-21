@@ -141,7 +141,7 @@ export default function AdminCoursesShow({ course, enrollmentStats, status }: Ad
       <div className="space-y-6 m-10">
         {/* Header */}
         <div className="flex items-center gap-4">
-          
+
           <div className="ml-auto flex gap-2">
             <Link href={route("admin.courses.edit", course.slug)}>
               <Button>Edit Course</Button>

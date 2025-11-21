@@ -16,8 +16,12 @@ class OrderItem extends Model
         'subtotal',
         'printify_product_id',
         'printify_variant_id',
+        'printify_blueprint_id',
+        'printify_print_provider_id',
         'printify_line_item_id',
         'product_details',
+        'variant_data',
+        'printify_synced',
     ];
 
     protected $casts = [

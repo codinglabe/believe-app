@@ -2,13 +2,12 @@ import React, { useState, useEffect } from 'react';
 import type { SharedData } from "@/types"
 import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save } from 'lucide-react';
-import { showErrorToast } from '@/lib/toast';
+import { Save, ExternalLink, Package, Tag, BarChart3, Calculator, TrendingUp, TrendingDown, Check, X } from 'lucide-react';
+import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 
@@ -38,10 +37,48 @@ interface Product {
     owned_by: string;
     organization_id?: number;
     status: string;
+    publish_status: string;
     sku: string;
     type: string;
     tags: string;
     image?: string;
+    is_printify_product?: boolean;
+    printify_product_id?: string;
+    printify_blueprint_id?: number;
+    printify_provider_id?: number;
+    printify_data?: any;
+    quantity_available: number;
+    quantity_ordered: number;
+}
+
+interface PrintifyData {
+    id: string;
+    title: string;
+    description: string;
+    tags: string[];
+    images: Array<{
+        src: string;
+        variant_ids: number[];
+        position: string;
+        is_default: boolean;
+    }>;
+    variants: Array<{
+        id: number;
+        title: string;
+        enabled: boolean;
+        price: number;
+        is_available: boolean;
+        options: {
+            color?: string;
+            size?: string;
+        };
+    }>;
+    print_provider_id: number;
+    blueprint_id: number;
+    created_at: string;
+    updated_at: string;
+    visible: boolean;
+    is_locked: boolean;
 }
 
 interface Props {
@@ -49,96 +86,70 @@ interface Props {
     categories: Category[];
     selectedCategories: number[];
     organizations?: { id: number; name: string }[];
+    printify_data?: PrintifyData;
 }
 
-export default function Edit({ product, categories, selectedCategories, organizations = [] }: Props) {
+export default function Edit({ product, categories, selectedCategories, organizations = [], printify_data }: Props) {
     const { auth } = usePage<SharedData>().props
     const [formData, setFormData] = useState({
-        name: '',
-        description: '',
         quantity: '',
-        unit_price: '',
-        admin_owned: 'no',
-        owned_by: 'admin',
-        organization_id: '',
         status: 'active',
-        sku: '',
-        type: 'physical',
-        tags: '',
         categories: [] as number[],
-        image: null as File | null,
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [printifyDetails, setPrintifyDetails] = useState<PrintifyData | null>(null);
+    const [quantityChange, setQuantityChange] = useState<number>(0);
 
     useEffect(() => {
         setFormData({
-            name: product.name || '',
-            description: product.description || '',
             quantity: product.quantity?.toString() || '',
-            unit_price: product.unit_price?.toString() || '',
-            admin_owned: product.admin_owned ? 'yes' : 'no',
-            owned_by: product.owned_by || 'admin',
-            organization_id: product.organization_id ? String(product.organization_id) : '',
             status: product.status || 'active',
-            sku: product.sku || '',
-            type: product.type || 'physical',
-            tags: product.tags || '',
             categories: selectedCategories || [],
-            image: null as File | null,
         });
-    }, [product, selectedCategories]);
+
+        if (printify_data) {
+            setPrintifyDetails(printify_data);
+        }
+    }, [product, selectedCategories, printify_data]);
+
+    // Calculate quantity change whenever quantity input changes
+    useEffect(() => {
+        const newQuantity = parseInt(formData.quantity) || 0;
+        const change = newQuantity - product.quantity;
+        setQuantityChange(change);
+    }, [formData.quantity, product.quantity]);
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         setErrors({});
 
-
         const formDataToSubmit = new FormData();
 
-        for (const key in formData) {
-            const value = formData[key as keyof typeof formData];
+        formDataToSubmit.append('quantity', String(Number(formData.quantity) || 0));
+        formDataToSubmit.append('status', formData.status);
 
-            if (value !== undefined && value !== null) {
-                if (key === 'image' && value instanceof File) {
-                    formDataToSubmit.append('image', value);
-                } else if (Array.isArray(value)) {
-                    // Append each category item (e.g. categories[] = 1, 2, 3)
-                    value.forEach((v, i) => {
-                        formDataToSubmit.append(`${key}[${i}]`, String(v));
-                    });
-                } else {
-                    formDataToSubmit.append(key, String(value));
-                }
-            }
-        }
+        formData.categories.forEach((categoryId, index) => {
+            formDataToSubmit.append(`categories[${index}]`, String(categoryId));
+        });
 
-        // Overwrite or set values that require type conversion
-        formDataToSubmit.set('admin_owned', formData.admin_owned === 'yes' ? 'true' : 'false');
-        formDataToSubmit.set('quantity', String(Number(formData.quantity) || 0));
-        formDataToSubmit.set('unit_price', String(Number(formData.unit_price) || 0));
-
-        if (!formData.organization_id) {
-            formDataToSubmit.delete('organization_id');
-        }
-
-
-        formDataToSubmit.append("_method","PUT");
+        formDataToSubmit.append("_method", "PUT");
 
         router.post(route('products.update', product.id), formDataToSubmit, {
             onError: (errors) => {
                 setErrors(errors);
-                showErrorToast('Failed to update product');
+                showErrorToast(errors.status_error || errors.quantity_error || 'Failed to update product');
                 setIsSubmitting(false);
             },
             onSuccess: () => {
                 setIsSubmitting(false);
+                showSuccessToast('Product updated successfully');
             }
         });
     };
 
-    const handleChange = (field: string, value: string | number | boolean) => {
+    const handleChange = (field: string, value: string | number) => {
         setFormData(prev => ({
             ...prev,
             [field]: value
@@ -163,21 +174,14 @@ export default function Edit({ product, categories, selectedCategories, organiza
         });
     };
 
-    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0] || null;
-        setFormData(prev => ({
-            ...prev,
-            image: file
-        }));
+    const canEditStatus = product.status !== 'active';
 
-        // Clear error when user selects a file
-        if (errors.image) {
-            setErrors(prev => ({
-                ...prev,
-                image: ''
-            }));
-        }
-    };
+    // CORRECTED Calculations
+    const newQuantity = parseInt(formData.quantity) || 0;
+    const projectedQuantityAvailable = product.quantity_available + quantityChange;
+    const projectedTotalStock = projectedQuantityAvailable + product.quantity_ordered;
+    const isCurrentBalanced = product.quantity === (product.quantity_available + product.quantity_ordered);
+    const isProjectedBalanced = projectedTotalStock === newQuantity;
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -185,221 +189,307 @@ export default function Edit({ product, categories, selectedCategories, organiza
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
                 <Card className="px-0">
                     <CardHeader className="px-4 md:px-6">
-                        <div className="flex items-center gap-4">
+                        <div className="flex items-center justify-between">
                             <div>
                                 <h1 className="text-3xl font-bold tracking-tight">Edit Product</h1>
                                 <p className="text-muted-foreground">
-                                    Update product details
+                                    Update product inventory and categories
                                 </p>
                             </div>
                         </div>
                     </CardHeader>
                     <CardContent className="px-4 md:px-6">
                         <form onSubmit={handleSubmit} className="space-y-6">
-                            <div className="space-y-2">
-                                <Label htmlFor="name">Product Name</Label>
-                                <Input
-                                    id="name"
-                                    type="text"
-                                    value={formData.name}
-                                    onChange={(e) => handleChange('name', e.target.value)}
-                                    placeholder="Enter product name"
-                                    className={errors.name ? 'border-red-500' : ''}
-                                />
-                                {errors.name && <p className="text-sm text-red-500">{errors.name}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="description">Description</Label>
-                                <TextArea
-                                    id="description"
-                                    value={formData.description}
-                                    onChange={(e: React.ChangeEvent<HTMLTextAreaElement>) => handleChange('description', e.target.value)}
-                                    placeholder="Enter product description"
-                                    rows={4}
-                                    className={errors.description ? 'border-red-500' : ''}
-                                />
-                                {errors.description && <p className="text-sm text-red-500">{errors.description}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="image">Product Image</Label>
-                                {product.image && (
-                                    <div className="mb-2">
-                                        <p className="text-sm text-muted-foreground">Current image:</p>
-                                        <img
-                                            src={product.image}
-                                            alt="Current product image"
-                                            className="w-32 h-32 object-cover rounded border"
-                                        />
+                            {/* Product Overview */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <Package className="h-5 w-5" />
+                                        Product Overview
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium text-muted-foreground">Product Name</Label>
+                                        <p className="text-lg font-semibold">{product.name}</p>
                                     </div>
-                                )}
-                                <Input
-                                    id="image"
-                                    type="file"
-                                    accept="image/*"
-                                    onChange={handleFileChange}
-                                    className={errors.image ? 'border-red-500' : ''}
-                                />
-                                {errors.image && (
-                                    <p className="text-sm text-red-500">{errors.image}</p>
-                                )}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="quantity">Quantity</Label>
-                                <Input
-                                    id="quantity"
-                                    type="number"
-                                    min="0"
-                                    value={formData.quantity}
-                                    onChange={(e) => handleChange('quantity', e.target.value)}
-                                    placeholder="Enter quantity"
-                                    className={errors.quantity ? 'border-red-500' : ''}
-                                />
-                                {errors.quantity && <p className="text-sm text-red-500">{errors.quantity}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="unit_price">Unit Price</Label>
-                                <Input
-                                    id="unit_price"
-                                    type="number"
-                                    step="0.01"
-                                    min="0"
-                                    value={formData.unit_price}
-                                    onChange={(e) => handleChange('unit_price', e.target.value)}
-                                    placeholder="Enter unit price"
-                                    className={errors.unit_price ? 'border-red-500' : ''}
-                                />
-                                {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="sku">SKU</Label>
-                                <Input
-                                    id="sku"
-                                    type="text"
-                                    value={formData.sku}
-                                    onChange={(e) => handleChange('sku', e.target.value)}
-                                    placeholder="Enter SKU"
-                                    className={errors.sku ? 'border-red-500' : ''}
-                                />
-                                {errors.sku && <p className="text-sm text-red-500">{errors.sku}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="type">Type</Label>
-                                <Select value={formData.type} onValueChange={(value) => handleChange('type', value)}>
-                                    <SelectTrigger className={errors.type ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select type" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="physical">Physical</SelectItem>
-                                        <SelectItem value="digital">Digital</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.type && <p className="text-sm text-red-500">{errors.type}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="status">Status</Label>
-                                <Select value={formData.status} onValueChange={(value) => handleChange('status', value)}>
-                                    <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
-                                        <SelectValue placeholder="Select status" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="active">Active</SelectItem>
-                                        <SelectItem value="inactive">Inactive</SelectItem>
-                                        <SelectItem value="archived">Archived</SelectItem>
-                                    </SelectContent>
-                                </Select>
-                                {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
-                            </div>
-
-
-                            {auth.user.role === "admin" && (
-                                <>
-                                    {/* <div className="space-y-2">
-                                        <Label htmlFor="admin_owned">Admin Owned</Label>
-                                        <Select value={formData.admin_owned} onValueChange={(value) => handleChange('admin_owned', value)}>
-                                            <SelectTrigger className={errors.admin_owned ? 'border-red-500' : ''}>
-                                                <SelectValue placeholder="Select" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="yes">Yes</SelectItem>
-                                                <SelectItem value="no">No</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.admin_owned && <p className="text-sm text-red-500">{errors.admin_owned}</p>}
-                                    </div> */}
-                                    <div className="space-y-2">
-                                        <Label htmlFor="owned_by">Owned By</Label>
-                                        <Select value={formData.owned_by} onValueChange={(value) => handleChange('owned_by', value)}>
-                                            <SelectTrigger className={errors.owned_by ? 'border-red-500' : ''}>
-                                                <SelectValue placeholder="Select owner" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="admin">Admin</SelectItem>
-                                                <SelectItem value="organization">Organization</SelectItem>
-                                            </SelectContent>
-                                        </Select>
-                                        {errors.owned_by && <p className="text-sm text-red-500">{errors.owned_by}</p>}
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium text-muted-foreground">SKU</Label>
+                                        <p className="text-lg font-semibold">{product.sku}</p>
                                     </div>
-                                    {formData.owned_by === 'organization' && (
-                                        <div className="space-y-2">
-                                            <Label htmlFor="organization_id">Organization</Label>
-                                            {organizations.length > 0 ? (
-                                                <Select value={formData.organization_id} onValueChange={(value) => handleChange('organization_id', value)}>
-                                                    <SelectTrigger className={errors.organization_id ? 'border-red-500' : ''}>
-                                                        <SelectValue placeholder="Select organization" />
-                                                    </SelectTrigger>
-                                                    <SelectContent>
-                                                        {organizations.map(org => (
-                                                            <SelectItem key={org.id} value={String(org.id)}>{org.name}</SelectItem>
-                                                        ))}
-                                                    </SelectContent>
-                                                </Select>
-                                            ) : (
-                                                <Input
-                                                    id="organization_id"
-                                                    type="number"
-                                                    value={formData.organization_id}
-                                                    onChange={(e) => handleChange('organization_id', e.target.value)}
-                                                    placeholder="Enter organization ID"
-                                                    className={errors.organization_id ? 'border-red-500' : ''}
-                                                />
-                                            )}
-                                            {errors.organization_id && <p className="text-sm text-red-500">{errors.organization_id}</p>}
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium text-muted-foreground">Type</Label>
+                                        <p className="text-lg font-semibold capitalize">{product.type}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium text-muted-foreground">Unit Price</Label>
+                                        <p className="text-lg font-semibold">${product.unit_price}</p>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-sm font-medium text-muted-foreground">Current Status</Label>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                                                product.status === 'active'
+                                                    ? 'bg-green-100 text-green-800'
+                                                    : product.status === 'inactive'
+                                                    ? 'bg-yellow-100 text-yellow-800'
+                                                    : 'bg-gray-100 text-gray-800'
+                                            }`}>
+                                                {product.status}
+                                            </span>
+                                        </div>
+                                    </div>
+                                    {product.image && (
+                                        <div className="space-y-1">
+                                            <Label className="text-sm font-medium text-muted-foreground">Product Image</Label>
+                                            <img
+                                                src={product.image}
+                                                alt={product.name}
+                                                className="w-16 h-16 object-cover rounded border"
+                                            />
                                         </div>
                                     )}
-                                </>
+                                </CardContent>
+                            </Card>
+
+                            {/* Printify Product Details */}
+                            {product.is_printify_product && printifyDetails && (
+                                <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                                    <CardHeader>
+                                        <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+                                            <ExternalLink className="h-5 w-5" />
+                                            Printify Product Details
+                                        </CardTitle>
+                                        <CardDescription className="text-blue-700 dark:text-blue-300">
+                                            This product is managed through Printify. Most details are read-only.
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="space-y-6">
+                                        {/* ... (same printify details) */}
+                                    </CardContent>
+                                </Card>
                             )}
-                            <div className="space-y-2">
-                                <Label>Categories</Label>
-                                <div className="flex flex-wrap gap-2">
-                                    {categories.map(category => (
-                                        <label key={category.id} className="flex items-center gap-2">
-                                            <input
-                                                type="checkbox"
-                                                checked={formData.categories.includes(category.id)}
-                                                onChange={() => handleCategoryChange(category.id)}
-                                            />
-                                            {category.name}
-                                        </label>
-                                    ))}
-                                </div>
-                                {errors.categories && <p className="text-sm text-red-500">{errors.categories}</p>}
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="tags">Tags/Keywords</Label>
-                                <Input
-                                    id="tags"
-                                    type="text"
-                                    value={formData.tags}
-                                    onChange={(e) => handleChange('tags', e.target.value)}
-                                    placeholder="Comma separated tags"
-                                    className={errors.tags ? 'border-red-500' : ''}
-                                />
-                                {errors.tags && <p className="text-sm text-red-500">{errors.tags}</p>}
-                            </div>
+
+                            {/* Editable Fields */}
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle className="flex items-center gap-2">
+                                        <BarChart3 className="h-5 w-5" />
+                                        Inventory & Settings
+                                    </CardTitle>
+                                    <CardDescription>
+                                        Update product quantity, status, and categories
+                                    </CardDescription>
+                                </CardHeader>
+                                <CardContent className="space-y-6">
+                                    {/* Quantity Section */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="quantity">Total Quantity *</Label>
+                                                <Input
+                                                    id="quantity"
+                                                    type="number"
+                                                    min="0"
+                                                    value={formData.quantity}
+                                                    onChange={(e) => handleChange('quantity', e.target.value)}
+                                                    placeholder="Enter total quantity"
+                                                    className={errors.quantity ? 'border-red-500' : ''}
+                                                />
+                                                {errors.quantity && <p className="text-sm text-red-500">{errors.quantity}</p>}
+
+                                                {/* Quantity Change Indicator */}
+                                                {quantityChange !== 0 && (
+                                                    <div className={`flex items-center gap-1 text-sm ${
+                                                        quantityChange > 0
+                                                            ? 'text-green-600 dark:text-green-400'
+                                                            : 'text-red-600 dark:text-red-400'
+                                                    }`}>
+                                                        {quantityChange > 0 ? (
+                                                            <TrendingUp className="h-4 w-4" />
+                                                        ) : (
+                                                            <TrendingDown className="h-4 w-4" />
+                                                        )}
+                                                        <span>
+                                                            {quantityChange > 0 ? '+' : ''}{quantityChange} from current
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            {/* Current Inventory Summary */}
+                                            <div className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg space-y-3">
+                                                <Label className="text-sm font-medium flex items-center gap-2">
+                                                    <Calculator className="h-4 w-4" />
+                                                    Current Inventory
+                                                </Label>
+                                                <div className="space-y-2 text-sm">
+                                                    <div className="flex justify-between">
+                                                        <span>Total Quantity:</span>
+                                                        <span className="font-medium">{product.quantity}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Available Stock:</span>
+                                                        <span className="font-medium">{product.quantity_available}</span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span>Ordered Items:</span>
+                                                        <span className="font-medium">{product.quantity_ordered}</span>
+                                                    </div>
+                                                    <div className="flex justify-between border-t pt-2">
+                                                        <span>Stock Check:</span>
+                                                        <div className={`flex items-center gap-1 ${
+                                                            isCurrentBalanced
+                                                                ? 'text-green-600 dark:text-green-400'
+                                                                : 'text-red-600 dark:text-red-400'
+                                                        }`}>
+                                                            {isCurrentBalanced ? (
+                                                                <Check className="h-4 w-4" />
+                                                            ) : (
+                                                                <X className="h-4 w-4" />
+                                                            )}
+                                                            <span className="font-semibold">
+                                                                {isCurrentBalanced ? 'Balanced' : 'Imbalanced'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    {isCurrentBalanced && (
+                                                        <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded">
+                                                            ✓ Total ({product.quantity}) = Available ({product.quantity_available}) + Ordered ({product.quantity_ordered})
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Projected Inventory After Update */}
+                                        <div className="space-y-4">
+                                            <div className="space-y-2">
+                                                <Label htmlFor="status">Product Status *</Label>
+                                                <Select
+                                                    value={formData.status}
+                                                    onValueChange={(value) => handleChange('status', value)}
+                                                    disabled={!canEditStatus}
+                                                >
+                                                    <SelectTrigger className={errors.status ? 'border-red-500' : ''}>
+                                                        <SelectValue placeholder="Select status" />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="active">Active</SelectItem>
+                                                        <SelectItem value="inactive">Inactive</SelectItem>
+                                                        <SelectItem value="archived">Archived</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                                {errors.status && <p className="text-sm text-red-500">{errors.status}</p>}
+                                                {!canEditStatus && (
+                                                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                                                        Cannot change status from active. Please contact administrator.
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Projected Inventory Summary */}
+                                            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg space-y-3">
+                                                <Label className="text-sm font-medium text-blue-800 dark:text-blue-200 flex items-center gap-2">
+                                                    <Calculator className="h-4 w-4" />
+                                                    Projected Inventory After Update
+                                                </Label>
+                                                <div className="space-y-2 text-sm">
+                                                    <div className="flex justify-between">
+                                                        <span className="text-blue-700 dark:text-blue-300">New Total:</span>
+                                                        <span className="font-medium text-blue-900 dark:text-blue-100">
+                                                            {newQuantity}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-blue-700 dark:text-blue-300">New Available:</span>
+                                                        <span className={`font-medium ${
+                                                            projectedQuantityAvailable >= 0
+                                                                ? 'text-green-600 dark:text-green-400'
+                                                                : 'text-red-600 dark:text-red-400'
+                                                        }`}>
+                                                            {projectedQuantityAvailable}
+                                                            {projectedQuantityAvailable < 0 && ' (Invalid)'}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between">
+                                                        <span className="text-blue-700 dark:text-blue-300">Ordered (unchanged):</span>
+                                                        <span className="font-medium text-blue-900 dark:text-blue-100">
+                                                            {product.quantity_ordered}
+                                                        </span>
+                                                    </div>
+                                                    <div className="flex justify-between border-t border-blue-200 dark:border-blue-700 pt-2">
+                                                        <span className="text-blue-800 dark:text-blue-200">Projected Check:</span>
+                                                        <div className={`flex items-center gap-1 ${
+                                                            isProjectedBalanced
+                                                                ? 'text-green-600 dark:text-green-400'
+                                                                : 'text-red-600 dark:text-red-400'
+                                                        }`}>
+                                                            {isProjectedBalanced ? (
+                                                                <Check className="h-4 w-4" />
+                                                            ) : (
+                                                                <X className="h-4 w-4" />
+                                                            )}
+                                                            <span className="font-semibold">
+                                                                {isProjectedBalanced ? 'Balanced' : 'Imbalanced'}
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                    {isProjectedBalanced && (
+                                                        <div className="text-xs text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20 p-2 rounded">
+                                                            ✓ Total ({newQuantity}) = Available ({projectedQuantityAvailable}) + Ordered ({product.quantity_ordered})
+                                                        </div>
+                                                    )}
+                                                    {!isProjectedBalanced && (
+                                                        <div className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 p-2 rounded">
+                                                            ✗ Total ({newQuantity}) ≠ Available ({projectedQuantityAvailable}) + Ordered ({product.quantity_ordered})
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
+
+                                            <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+                                                <Label className="text-sm font-medium text-blue-800 dark:text-blue-200">Printify Status</Label>
+                                                <p className="text-sm text-blue-700 dark:text-blue-300 mt-1">
+                                                    {product.publish_status}
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* Categories Section */}
+                                    <div className="space-y-4">
+                                        <Label className="flex items-center gap-2">
+                                            <Tag className="h-4 w-4" />
+                                            Product Categories
+                                        </Label>
+                                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                                            {categories.map(category => (
+                                                <label key={category.id} className="flex items-center gap-2 p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 cursor-pointer">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={formData.categories.includes(category.id)}
+                                                        onChange={() => handleCategoryChange(category.id)}
+                                                        className="w-4 h-4 text-blue-600 bg-gray-100 border-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                                                    />
+                                                    <span className="text-sm">{category.name}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+                                        {errors.categories && <p className="text-sm text-red-500">{errors.categories}</p>}
+                                    </div>
+                                </CardContent>
+                            </Card>
+
+                            {/* Submit Button */}
                             <div className="flex gap-4">
-                                <Button type="submit" disabled={isSubmitting}>
+                                <Button
+                                    type="submit"
+                                    disabled={isSubmitting || projectedQuantityAvailable < 0}
+                                    className="bg-blue-600 hover:bg-blue-700"
+                                >
                                     <Save className="mr-2 h-4 w-4" />
-                                    {isSubmitting ? 'Updating...' : 'Update Product'}
+                                    {isSubmitting ? 'Updating Product...' : 'Update Product'}
                                 </Button>
                                 <Link href={route('products.index')}>
                                     <Button type="button" variant="outline">
@@ -407,6 +497,16 @@ export default function Edit({ product, categories, selectedCategories, organiza
                                     </Button>
                                 </Link>
                             </div>
+
+                            {/* Validation Warning */}
+                            {projectedQuantityAvailable < 0 && (
+                                <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 rounded-lg">
+                                    <p className="text-red-800 dark:text-red-200 text-sm">
+                                        <strong>Warning:</strong> The new quantity would make available stock negative.
+                                        You cannot reduce quantity below the number of ordered items.
+                                    </p>
+                                </div>
+                            )}
                         </form>
                     </CardContent>
                 </Card>

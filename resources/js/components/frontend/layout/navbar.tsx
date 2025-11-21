@@ -555,13 +555,22 @@ export default function Navbar() {
                             </DialogContent>
                           </Dialog>
                         </div>
-                      </div>
+                                          </div>
+                                          {/* cart mobile button */}
+                                          <Link href={route("cart.index")}>
+                                              <Button variant="ghost" className="w-full justify-start">
+
+                                        <ShoppingBag className="mr-2 h-4 w-4" />
+                                        <span>Cart</span>
+                                              </Button>
+                                    </Link>
                       <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <Button variant="ghost" className="w-full justify-start">
                           <User className="mr-2 h-4 w-4" />
                           Profile
                         </Button>
                                           </Link>
+
                       {auth?.user?.role === "user" && (
                         <Link href={route("chat.index")}>
                           <Button variant="ghost" className="w-full justify-start">

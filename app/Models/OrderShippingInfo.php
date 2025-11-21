@@ -14,8 +14,11 @@ class OrderShippingInfo extends Model
         'first_name',
         'last_name',
         'email',
+        'phone',
         'shipping_address',
         'city',
+        'country',
+        'state',
         'zip',
         'phone',
     ];

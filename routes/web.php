@@ -68,6 +68,9 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
+use App\Http\Controllers\PrintifyProductController;
+use App\Http\Controllers\PrintifyWebhookController;
+use App\Http\Controllers\WebhookManagementController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
 
@@ -120,6 +123,7 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
+Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
 
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
@@ -130,16 +134,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.destroy');
     Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
 
-    // Checkout routes
     Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
+    Route::post('/checkout/shipping-calculation', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
     Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
     Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
-
-    // Order routes
-    Route::get('/orders', [OrderController::class, 'index'])->name('order.index');
-    Route::get('/orders/{order}', [OrderController::class, 'show'])->name('order.show');
-    Route::get('/orders/{order}/confirmation', [OrderController::class, 'confirmation'])->name('order.confirmation');
-    Route::get('/orders/{order}/tracking', [OrderController::class, 'tracking'])->name('order.tracking');
+    Route::post('/checkout/{order}/submit-printify', [CheckoutController::class, 'submitToPrintify'])->name('checkout.submit-printify');
 });
 
 /* events */
@@ -168,6 +167,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
+    Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
@@ -374,6 +374,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
         'destroy' => 'permission:product.delete'
     ]);
 
+    // Printify Integration Routes
+    Route::middleware(['auth', 'topics.selected', 'role:admin|organization'])->group(function () {
+        Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
+        Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
+        Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
+        Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
+    });
+
     /* Category Routes */
     Route::resource('categories', CategoryController::class)->except(['show'])->middleware([
         'index' => 'permission:category.read',
@@ -504,6 +512,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
         'update' => 'permission:ecommerce.update',
         'destroy' => 'permission:ecommerce.delete'
     ]);
+    Route::post('/orders/{order}/cancel', [OrderController::class, 'cancelOrder'])
+        ->name('orders.cancel')
+        ->middleware('permission:ecommerce.update');
+
+
     // Purchase Order Routes
     Route::get('/purchase-orders', [PurchaseController::class, 'index'])->name('purchase-orders.index')->middleware('permission:ecommerce.read');
     Route::get('/purchase-orders/create', [PurchaseController::class, 'create'])->name('purchase-orders.create')->middleware('permission:ecommerce.create');
@@ -675,7 +688,17 @@ Route::post('/api/plaid/webhook', function () {
 });
 
 // printify webhook
-// Route::post('/webhook/printify', [WebhookController::class, 'printify']);
+Route::prefix('webhooks')->group(function () {
+    Route::post('/printify/orders', [PrintifyWebhookController::class, 'handleOrderWebhook']);
+});
+
+Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|organization'])->group(function () {
+    Route::get('/webhooks', [WebhookManagementController::class, 'index'])->name('admin.webhooks.index');
+    Route::post('/webhooks/setup-printify', [WebhookManagementController::class, 'setupWebhooks'])->name('admin.webhooks.setup');
+    Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
+    Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
+});
+
 
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {

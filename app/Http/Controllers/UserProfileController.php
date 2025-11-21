@@ -3,9 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExcelData;
+use App\Models\Order;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
+use App\Services\PrintifyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -13,6 +15,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Inertia\Response;
 
 class UserProfileController extends Controller
 {
@@ -148,13 +151,104 @@ class UserProfileController extends Controller
         ]);
     }
 
-    public function orders()
+    public function orders(): Response
     {
-        // Get user's order history
-        $orders = collect([]); // Replace with actual query
+        $orders = Order::where('user_id', auth()->id())
+            ->with(['items.product', 'shippingInfo'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($order) {
+                return [
+                    'id' => $order->id,
+                    'order_number' => 'ORD-' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
+                    'date' => $order->created_at->format('M d, Y'),
+                    'datetime' => $order->created_at->toISOString(),
+                    'status' => $order->status,
+                    'payment_status' => $order->payment_status,
+                    'total_amount' => $order->total_amount,
+                    'item_count' => $order->items->count(),
+                    'printify_order_id' => $order->printify_order_id,
+                    'printify_status' => $order->printify_status,
+                    'items' => $order->items->take(2)->map(function ($item) {
+                        return [
+                            'id' => $item->id,
+                            'name' => $item->product->name,
+                            'image' => $item->product->image,
+                            'quantity' => $item->quantity,
+                            'unit_price' => $item->unit_price,
+                            'subtotal' => $item->subtotal,
+                        ];
+                    }),
+                ];
+            });
 
         return Inertia::render('frontend/user-profile/orders', [
             'orders' => $orders,
+        ]);
+    }
+    /**
+     * Single order details
+     */
+    public function orderDetails($id): Response
+    {
+        $order = Order::where('user_id', auth()->id())
+            ->with(['items.product', 'shippingInfo'])
+            ->findOrFail($id);
+
+        $orderData = [
+            'id' => $order->id,
+            'order_number' => 'ORD-' . str_pad($order->id, 6, '0', STR_PAD_LEFT),
+            'date' => $order->created_at->format('M d, Y'),
+            'datetime' => $order->created_at->toISOString(),
+            'status' => $order->status,
+            'payment_status' => $order->payment_status,
+            'subtotal' => $order->total_amount - ($order->tax_amount + $order->shipping_cost),
+            'shipping_cost' => $order->shipping_cost,
+            'tax_amount' => $order->tax_amount,
+            'total_amount' => $order->total_amount,
+            'printify_status' => $order->printify_status,
+            'paid_at' => $order->paid_at?->format('M d, Y h:i A'),
+            'shipping_method' => $order->shipping_method,
+            'shipping_info' => $order->shippingInfo ? [
+                'first_name' => $order->shippingInfo->first_name,
+                'last_name' => $order->shippingInfo->last_name,
+                'email' => $order->shippingInfo->email,
+                'phone' => $order->shippingInfo->phone,
+                'address' => $order->shippingInfo->shipping_address,
+                'city' => $order->shippingInfo->city,
+                'state' => $order->shippingInfo->state,
+                'zip' => $order->shippingInfo->zip,
+                'country' => $order->shippingInfo->country,
+            ] : null,
+            'items' => $order->items->map(function ($item) {
+                return [
+                    'id' => $item->id,
+                    'product_id' => $item->product_id,
+                    'name' => $item->product->name,
+                    'description' => $item->product->description,
+                    'image' => $item->product->image,
+                    'quantity' => $item->quantity,
+                    'unit_price' => $item->unit_price,
+                    'subtotal' => $item->subtotal,
+                    'printify_variant_id' => $item->printify_variant_id,
+                    'variant_data' => json_decode($item->variant_data)->size,
+                ];
+            }),
+        ];
+
+        // Get Printify order details if available
+        if ($order->printify_order_id) {
+            try {
+                $printifyOrder = (new PrintifyService)->getOrder($order->printify_order_id);
+                $orderData['printify_details'] = $printifyOrder;
+            } catch (\Exception $e) {
+                \Log::error('Error fetching Printify order: ' . $e->getMessage());
+                $orderData['printify_details'] = null;
+            }
+        }
+
+        return Inertia::render('frontend/user-profile/order-details', [
+            'order' => $orderData,
         ]);
     }
 

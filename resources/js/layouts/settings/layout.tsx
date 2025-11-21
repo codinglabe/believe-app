@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Badge } from "@/components/frontend/ui/badge"
-import { Calendar, Camera, Edit3, MapPin, User, Lock, Bell, Shield, CreditCard, Image } from "lucide-react"
+import { Calendar, Camera, Edit3, MapPin, User, Lock, Bell, Shield, CreditCard, Image, Globe } from "lucide-react"
 import type { PropsWithChildren } from "react"
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -149,6 +149,15 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                               Payment methods
                             </Link>
                                                   </TabsTrigger>
+                                                  )}
+                                                  {auth.user.role === "admin" && (
+                          <TabsTrigger value="webhook-manage" asChild>
+                            <Link href={route("admin.webhooks.index")}
+                              className="flex items-center gap-2 px-3 py-2 text-sm">
+                              <Globe className="h-4 w-4" />
+                                Webhook Management
+                            </Link>
+                                                  </TabsTrigger>
                             )}
                           <TabsTrigger value="referral" asChild>
                             <Link href={route("referral.edit")}
@@ -201,6 +210,19 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                                                   >
                                                       <CreditCard className="h-4 w-4" />
                                                       Payment methods
+                                                  </Link>
+                                              )}
+
+                                              {auth.user.role === "organization" && (
+                                                  <Link
+                                                      href={route("admin.webhooks.index")}
+                                                      className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "webhook-manage"
+                                                          ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                                                          : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                                                          }`}
+                                                  >
+                                                      <Globe className="h-4 w-4" />
+                                                      Webhook Management
                                                   </Link>
                                               )}
                         <Link

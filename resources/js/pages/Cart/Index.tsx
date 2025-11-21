@@ -285,8 +285,8 @@ export default function CartIndex({ cart: initialCart, total: initialTotal, item
 
                     <div className="flex justify-between items-center">
                       <span className="text-gray-600 dark:text-gray-400">Shipping</span>
-                      <span className="font-semibold text-green-600 dark:text-green-400">
-                        Free
+                      <span className="text-sm text-gray-500 dark:text-gray-400">
+                        Calculated at checkout
                       </span>
                     </div>
 

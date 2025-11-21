@@ -1,8 +1,10 @@
 import { Head, Link, useForm } from '@inertiajs/react';
 import { useEffect, useState } from 'react';
-import { loadStripe, Stripe } from '@stripe/stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
+import axios from 'axios';
+import { showSuccessToast, showErrorToast } from '@/lib/toast';
 
 interface CartItem {
   id: number;
@@ -12,75 +14,174 @@ interface CartItem {
     name: string;
     image_url: string;
   };
+  variant_data: {
+    printify_variant_id: string;
+    printify_blueprint_id: number;
+    printify_print_provider_id: number;
+    variant_options: Record<string, any>;
+  };
+}
+
+interface ShippingMethod {
+  id: string;
+  name: string;
+  cost: number;
+  estimated_days: string;
 }
 
 interface CheckoutProps {
   items: CartItem[];
-  total: number;
+  subtotal: number;
+  shipping_cost: number;
+  tax_amount: number;
+  total_amount: number;
+  shipping_methods: ShippingMethod[];
   stripePublishableKey: string;
 }
 
-// Helper function to safely convert to number
-const toNumber = (value: number | string): number => {
-  if (typeof value === 'number') return value;
-  return parseFloat(value) || 0;
-};
-
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY || '');
 
-function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
+function CheckoutForm({
+  items,
+  subtotal,
+  shipping_cost: initialShippingCost,
+  tax_amount: initialTaxAmount,
+  total_amount: initialTotalAmount,
+  shipping_methods: initialShippingMethods
+}: Omit<CheckoutProps, 'stripePublishableKey'>) {
   const stripe = useStripe();
   const elements = useElements();
+
   const { post, setData, data, processing, errors } = useForm({
     name: '',
     email: '',
+    phone: '',
     address: '',
     city: '',
     state: '',
     zip: '',
-    country: 'United States',
+    country: 'US',
+    shipping_method: 'standard',
   });
 
   const [clientSecret, setClientSecret] = useState('');
   const [orderId, setOrderId] = useState('');
   const [paymentError, setPaymentError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [isCalculatingShipping, setIsCalculatingShipping] = useState(false);
 
-  // Create payment intent
+  const [shippingCost, setShippingCost] = useState(initialShippingCost);
+  const [taxAmount, setTaxAmount] = useState(initialTaxAmount);
+  const [totalAmount, setTotalAmount] = useState(initialTotalAmount);
+  const [shippingMethods, setShippingMethods] = useState<ShippingMethod[]>(initialShippingMethods);
+
+  // Calculate shipping when address changes
   useEffect(() => {
+    const calculateShipping = async () => {
+      if (data.country && data.state && data.city && data.zip) {
+        setIsCalculatingShipping(true);
+        try {
+          const response = await axios.post(route('checkout.shipping'), {
+            country: data.country,
+            state: data.state,
+            city: data.city,
+            zip: data.zip,
+          });
+
+          if (response.data.success) {
+            setShippingCost(response.data.shipping_cost);
+            setShippingMethods(response.data.shipping_methods);
+            // Recalculate total
+            const newTotal = subtotal + response.data.shipping_cost + taxAmount;
+            setTotalAmount(newTotal);
+          }
+        } catch (error: any) {
+          console.error('Shipping calculation failed:', error);
+          // Use fallback shipping cost
+          const fallbackCost = error.response?.data?.fallback_cost || 9.99;
+          setShippingCost(fallbackCost);
+          const newTotal = subtotal + fallbackCost + taxAmount;
+          setTotalAmount(newTotal);
+        } finally {
+          setIsCalculatingShipping(false);
+        }
+      }
+    };
+
+    const timeoutId = setTimeout(calculateShipping, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [data.country, data.state, data.city, data.zip, subtotal, taxAmount]);
+
+  // Update total when shipping cost changes
+  useEffect(() => {
+    const newTotal = subtotal + shippingCost + taxAmount;
+    setTotalAmount(newTotal);
+  }, [subtotal, shippingCost, taxAmount]);
+
+  const createPaymentIntent = async () => {
     setIsLoading(true);
-    post(route('checkout.payment-intent'), {
-      onSuccess: (response: any) => {
-        setClientSecret(response.props.clientSecret);
-        setOrderId(response.props.orderId);
-        setIsLoading(false);
-      },
-      onError: () => {
-        setPaymentError('Failed to create payment intent');
-        setIsLoading(false);
-      },
-    });
-  }, []);
+    try {
+      const response = await axios.post(route('checkout.payment-intent'), data);
+
+      if (response.data.clientSecret) {
+        setClientSecret(response.data.clientSecret);
+        setOrderId(response.data.orderId);
+      } else {
+        throw new Error('Failed to create payment intent');
+      }
+    } catch (error: any) {
+      const errorMessage = error.response?.data?.error || 'Failed to create payment intent';
+      setPaymentError(errorMessage);
+      showErrorToast(errorMessage);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsLoading(true);
+    setPaymentError('');
 
-    if (!stripe || !elements || !clientSecret) {
+    if (!stripe || !elements) {
       setPaymentError('Payment system not ready');
-      setIsLoading(false);
       return;
     }
+
+    // Create payment intent first
+    // if (!clientSecret) {
+    //   await createPaymentIntent();
+    //   return;
+    // }
 
     const cardElement = elements.getElement(CardElement);
     if (!cardElement) {
       setPaymentError('Card element not found');
-      setIsLoading(false);
       return;
     }
 
-    try {
-      const { error, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+    setIsLoading(true);
+
+      try {
+
+           let currentClientSecret = clientSecret;
+            let currentOrderId = orderId;
+
+            // Step 1: Create payment intent if not exists
+            if (!currentClientSecret) {
+            const intentResponse = await axios.post(route('checkout.payment-intent'), data);
+
+            if (!intentResponse.data.clientSecret) {
+                throw new Error('Failed to create payment intent');
+            }
+
+            currentClientSecret = intentResponse.data.clientSecret;
+            currentOrderId = intentResponse.data.orderId;
+
+            setClientSecret(currentClientSecret);
+            setOrderId(currentOrderId);
+            }
+
+      const { error, paymentIntent } = await stripe.confirmCardPayment(currentClientSecret, {
         payment_method: {
           card: cardElement,
           billing_details: {
@@ -99,51 +200,52 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
 
       if (error) {
         setPaymentError(error.message || 'Payment failed');
+        showErrorToast(error.message || 'Payment failed');
         setIsLoading(false);
       } else if (paymentIntent?.status === 'succeeded') {
         // Confirm payment on backend
-        post(route('checkout.confirm'), {
-          data: {
-            order_id: orderId,
-            payment_intent_id: paymentIntent.id,
-          },
-          onSuccess: (response: any) => {
-            window.location.href = response.props.redirect;
-          },
-          onError: () => {
-            setPaymentError('Failed to confirm payment');
-            setIsLoading(false);
-          },
+        const confirmResponse = await axios.post(route('checkout.confirm'), {
+          order_id: currentOrderId,
+          payment_intent_id: paymentIntent.id,
         });
+
+        if (confirmResponse.data.success) {
+          showSuccessToast('Payment successful! Order has been placed.');
+          window.location.href = confirmResponse.data.redirect;
+        } else {
+          throw new Error(confirmResponse.data.error || 'Failed to confirm payment');
+        }
       }
     } catch (err: any) {
-      setPaymentError(err.message || 'Payment error occurred');
+      const errorMessage = err.response?.data?.error || err.message || 'Payment error occurred';
+      setPaymentError(errorMessage);
+      showErrorToast(errorMessage);
       setIsLoading(false);
     }
+  };
+
+  const toNumber = (value: number | string): number => {
+    if (typeof value === 'number') return value;
+    return parseFloat(value) || 0;
   };
 
   const calculateItemTotal = (item: CartItem): number => {
     return toNumber(item.unit_price) * item.quantity;
   };
 
-  const calculateCartTotal = (): number => {
-    return items.reduce((total, item) => total + calculateItemTotal(item), 0);
-  };
-
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900 transition-colors duration-200">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
-              <div className="mb-8 text-center">
-                  <div className='flex text-center align-center justify-center'>
-
-                  <Link href={route("cart.index")} className="text-3xl font-bold text-gray-600 dark:text-gray-400 mb-2 hover:underline">
-                    Cart &nbsp;
-                  </Link>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
-            / Checkout
-          </h1>
-                  </div>
+        <div className="mb-8 text-center">
+          <div className='flex text-center align-center justify-center'>
+            <Link href={route("cart.index")} className="text-3xl font-bold text-gray-600 dark:text-gray-400 mb-2 hover:underline">
+              Cart &nbsp;
+            </Link>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+              / Checkout
+            </h1>
+          </div>
           <p className="text-gray-600 dark:text-gray-400">
             Complete your purchase securely
           </p>
@@ -197,7 +299,23 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                     {errors.email && (
                       <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.email}</p>
                     )}
-                  </div>
+                                  </div>
+
+<div className="md:col-span-2">
+  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+    Phone Number*
+  </label>
+  <input
+    type="tel"
+    value={data.phone}
+    onChange={(e) => setData('phone', e.target.value)}
+    className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 transition-colors duration-200"
+    placeholder="+1 (555) 123-4567"
+  />
+  {errors.phone && (
+    <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.phone}</p>
+  )}
+</div>
 
                   <div className="md:col-span-2">
                     <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
@@ -277,16 +395,63 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                       className="w-full px-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white dark:bg-gray-700 text-gray-900 dark:text-white transition-colors duration-200"
                       required
                     >
-                      <option value="United States">United States</option>
-                      <option value="Canada">Canada</option>
-                      <option value="United Kingdom">United Kingdom</option>
-                      <option value="Australia">Australia</option>
+                      <option value="US">United States</option>
+                      <option value="CA">Canada</option>
+                      <option value="GB">United Kingdom</option>
+                      <option value="AU">Australia</option>
                     </select>
                     {errors.country && (
                       <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.country}</p>
                     )}
                   </div>
                 </div>
+
+                {/* Shipping Method Selection */}
+                {shippingMethods?.length > 0 && (
+                  <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
+                      Shipping Method *
+                    </label>
+                    <div className="space-y-3">
+                      {shippingMethods.map((method) => (
+                        <label key={method.id} className="flex items-center space-x-3 cursor-pointer">
+                          <input
+                            type="radio"
+                            name="shipping_method"
+                            value={method.id}
+                            checked={data.shipping_method === method.id}
+                            onChange={(e) => setData('shipping_method', e.target.value)}
+                            className="text-blue-600 focus:ring-blue-500"
+                          />
+                          <div className="flex-1">
+                            <span className="block text-sm font-medium text-gray-900 dark:text-white">
+                              {method.name}
+                            </span>
+                            <span className="block text-sm text-gray-500 dark:text-gray-400">
+                              {method.estimated_days}
+                            </span>
+                          </div>
+                          <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                            ${method.cost.toFixed(2)}
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                    {errors.shipping_method && (
+                      <p className="text-red-600 dark:text-red-400 text-sm mt-1">{errors.shipping_method}</p>
+                    )}
+                  </div>
+                )}
+
+                {isCalculatingShipping && (
+                  <div className="mt-4 flex items-center text-sm text-blue-600 dark:text-blue-400">
+                    <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-blue-600" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Calculating shipping costs...
+                  </div>
+                )}
               </div>
 
               {/* Payment Information */}
@@ -304,7 +469,7 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
                     Card Details *
                   </label>
-                  <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 transition-colors duration-200">
+                  <div className="p-4 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-white transition-colors duration-200">
                     <CardElement
                       options={{
                         style: {
@@ -369,20 +534,28 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
               </div>
 
               {/* Order Items */}
-              <div className="space-y-4 mb-6">
+              <div className="space-y-4 mb-6 max-h-64 overflow-y-auto">
                 {items.map((item) => (
                   <div key={item.id} className="flex items-center space-x-3">
-                    <div className="flex-shrink-0 w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center">
-                      <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                        {item.quantity}x
-                      </span>
+                    <div className="flex-shrink-0 w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
+                      {item.product.image_url ? (
+                        <img
+                          src={item.product.image_url}
+                          alt={item.product.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                          {item.quantity}x
+                        </span>
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <h4 className="text-sm font-medium text-gray-900 dark:text-white truncate">
                         {item.product.name}
                       </h4>
                       <p className="text-sm text-gray-500 dark:text-gray-400">
-                        ${toNumber(item.unit_price).toFixed(2)} each
+                        ${toNumber(item.unit_price).toFixed(2)} × {item.quantity}
                       </p>
                     </div>
                     <div className="text-right">
@@ -399,21 +572,21 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    ${calculateCartTotal().toFixed(2)}
+                    ${subtotal}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Shipping</span>
-                  <span className="font-medium text-green-600 dark:text-green-400">
-                    Free
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    ${shippingCost}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Tax</span>
-                  <span className="text-sm text-gray-500 dark:text-gray-400">
-                    Calculated at checkout
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    ${taxAmount}
                   </span>
                 </div>
 
@@ -422,7 +595,7 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
                     <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                      ${calculateCartTotal().toFixed(2)}
+                      ${totalAmount}
                     </span>
                   </div>
                 </div>
@@ -432,7 +605,7 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
               <button
                 type="submit"
                 onClick={handleSubmit}
-                disabled={!stripe || processing || isLoading}
+                disabled={!stripe || processing || isLoading || isCalculatingShipping}
                 className="w-full mt-6 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white py-4 px-6 rounded-lg font-semibold focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-gray-900 transition-all duration-200 disabled:cursor-not-allowed flex items-center justify-center"
               >
                 {isLoading ? (
@@ -444,7 +617,7 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                     Processing...
                   </>
                 ) : (
-                  `Complete Purchase - $${calculateCartTotal().toFixed(2)}`
+                  `Complete Purchase - $${totalAmount}`
                 )}
               </button>
 
@@ -454,27 +627,6 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
                   🔒 Your payment is secure and encrypted
                 </p>
               </div>
-
-              {/* Trust Badges */}
-              <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-                <div className="flex justify-center space-x-4">
-                  <div className="text-center">
-                    <div className="w-10 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center mx-auto mb-1">
-                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">VISA</span>
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center mx-auto mb-1">
-                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">MC</span>
-                    </div>
-                  </div>
-                  <div className="text-center">
-                    <div className="w-10 h-6 bg-gray-100 dark:bg-gray-700 rounded flex items-center justify-center mx-auto mb-1">
-                      <span className="text-[10px] font-bold text-gray-600 dark:text-gray-400">AMEX</span>
-                    </div>
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
@@ -483,13 +635,28 @@ function CheckoutForm({ items, total }: { items: CartItem[]; total: number }) {
   );
 }
 
-export default function CheckoutIndex({ items, total, stripePublishableKey }: CheckoutProps) {
+export default function CheckoutIndex({
+  items,
+  subtotal,
+  shipping_cost,
+  tax_amount,
+  total_amount,
+  shipping_methods,
+  stripePublishableKey
+}: CheckoutProps) {
   return (
     <FrontendLayout>
       <Head title="Checkout" />
 
       <Elements stripe={stripePromise}>
-        <CheckoutForm items={items} total={total} />
+        <CheckoutForm
+          items={items}
+          subtotal={subtotal}
+          shipping_cost={shipping_cost}
+          tax_amount={tax_amount}
+          total_amount={total_amount}
+          shipping_methods={shipping_methods}
+        />
       </Elements>
     </FrontendLayout>
   );

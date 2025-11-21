@@ -19,12 +19,17 @@ class Product extends Model
         'owned_by',
         'organization_id',
         'status',
+        'publish_status',
         'sku',
         'type',
         'tags',
         'image',
         'quantity_ordered',
         'quantity_available',
+
+        'printify_product_id',
+        'printify_blueprint_id',
+        'printify_provider_id',
     ];
 
     /**
@@ -109,6 +114,16 @@ class Product extends Model
     public function orderItems(): HasMany
     {
         return $this->hasMany(OrderItem::class);
+    }
+
+    public function variants(): HasMany
+    {
+        return $this->hasMany(ProductVariant::class);
+    }
+
+    public function getFirstVariant(): ?ProductVariant
+    {
+        return $this->variants()->where('is_available', true)->first();
     }
 }
 
