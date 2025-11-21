@@ -127,6 +127,9 @@ jobs:
                 echo "APP_URL=https://501c3ers.com" >> .env
               fi
             fi
+            # Run database migrations
+            echo "Running database migrations..."
+            php artisan migrate --force
             # Rebuild caches with correct APP_URL
             php artisan config:cache
             php artisan route:cache
