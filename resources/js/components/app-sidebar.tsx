@@ -37,7 +37,10 @@ import {
     FileCheck,
     DollarSign,
     Coins,
-    PieChart
+    PieChart,
+    Clock,
+    UserCheck,
+    Info
 } from 'lucide-react';
 import SiteTitle from './site-title';
 
@@ -72,6 +75,28 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         // permission: "data.management.read"
+        role: "organization"
+    },
+
+    {
+        title: 'Volunteer Management',
+        icon: UserCheck,
+        items: [
+            {
+                title: 'Volunteers',
+                href: '/volunteers',
+                icon: UserCheck,
+                permission: "volunteer.read",
+                role: "organization"
+            },
+            {
+                title: 'Time Sheet',
+                href: '/volunteers/timesheet',
+                icon: Clock,
+                permission: "volunteer.timesheet.read",
+                role: "organization"
+            },
+        ],
         role: "organization"
     },
 
@@ -417,6 +442,18 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/settings/profile',
                 icon: Settings,
                 permission: "profile.read"
+            },
+            {
+                title: 'Reward Points',
+                href: '/admin/reward-points',
+                icon: Gift,
+                permission: "reward.point.manage"
+            },
+            {
+                title: 'About Page',
+                href: '/admin/about',
+                icon: Info,
+                role: "admin"
             },
         ]
         // Removed group permission - nav-main will show group if any child is visible

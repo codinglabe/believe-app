@@ -38,7 +38,16 @@ jobs:
         if: hashFiles('package.json') != ''
         run: |
           npm ci --legacy-peer-deps
+          # Set APP_URL for production build
+          export APP_URL=https://501c3ers.com
           npm run build
+          # Verify build output exists
+          if [ ! -d "public/build" ]; then
+            echo "ERROR: public/build directory not found after build!"
+            exit 1
+          fi
+          echo "Build completed. Build files:"
+          ls -la public/build/ | head -20
 
       - name: Setup SSH Key
         run: |
@@ -86,6 +95,9 @@ jobs:
               --exclude='/.htaccess' \
               . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
           fi
+          # Verify build directory and manifest were uploaded
+          echo "Verifying build files on server..."
+          ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "cd ${{ env.DEPLOY_PATH }} && if [ -d 'public/build' ]; then echo '✓ public/build directory exists'; ls -la public/build/ | head -5; else echo '✗ ERROR: public/build directory not found!'; fi"
 
       - name: Post-Deploy
         run: |
@@ -101,12 +113,26 @@ jobs:
               cp .htaccess.backup .htaccess
               echo "Restored .htaccess from backup"
             fi
+            # Clear all caches first
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
+            php artisan cache:clear
+            # Ensure APP_URL is set correctly in .env before caching
+            if [ -f .env ]; then
+              # Update APP_URL if it exists, or add it if it doesn't
+              if grep -q "^APP_URL=" .env; then
+                sed -i 's|^APP_URL=.*|APP_URL=https://501c3ers.com|' .env
+              else
+                echo "APP_URL=https://501c3ers.com" >> .env
+              fi
+            fi
+            # Rebuild caches with correct APP_URL
             php artisan config:cache
             php artisan route:cache
             php artisan view:cache
+            # Ensure public/build directory has correct permissions
+            chmod -R 755 public/build 2>/dev/null || true
             [ ! -f .env ] && cp .env.example .env && php artisan key:generate --force
             echo "Deployed to 501c3ers.com!"
           EOF

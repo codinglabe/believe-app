@@ -27,6 +27,7 @@ import {
   Eye,
   EyeOff,
   Text,
+  Gift,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -54,6 +55,7 @@ interface SharedData {
       impact_score?: number
       referral_link?: string
       balance?: string // Added wallet_balance
+      reward_points?: number // Added reward_points
       role?: string // Ensure role is also present
     }
   }
@@ -238,50 +240,71 @@ export default function Navbar() {
 
                 {/* Wallet Dropdown - Only show if wallet is connected */}
                 {walletConnected && walletBalance !== null && (
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+                    >
+                      <Wallet className="h-4 w-4 text-green-600" />
+                      <span className="font-medium text-sm">
+                          {showBalance ? `$${userBalance.toLocaleString('en-US', { 
+                            minimumFractionDigits: 2, 
+                            maximumFractionDigits: 2 
+                          })}` : "••••••"}
+                      </span>
                       <Button
                         variant="ghost"
                         size="sm"
-                        className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+                        onClick={(e) => {
+                          e.stopPropagation() // Prevent dropdown from closing
+                          setShowBalance(!showBalance)
+                        }}
+                        className="p-0 h-auto"
                       >
-                        <Wallet className="h-4 w-4 text-green-600" />
-                        <span className="font-medium text-sm">
-                          {showBalance ? `$${userBalance.toLocaleString('en-US', { 
-                            minimumFractionDigits: 2, 
-                            maximumFractionDigits: 2 
-                          })}` : "••••••"}
-                        </span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation() // Prevent dropdown from closing
-                            setShowBalance(!showBalance)
-                          }}
-                          className="p-0 h-auto"
-                        >
-                          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
+                        {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
-                    </DropdownMenuTrigger>
+                    </Button>
+                  </DropdownMenuTrigger>
                   <DropdownMenuContent className="w-64" align="end" forceMount>
-                    <div className="p-2">
-                      <div className="flex items-center justify-between">
-                        <p className="font-medium">Wallet Balance</p>
-                        <Button variant="ghost" size="sm" onClick={() => setShowBalance(!showBalance)} className="p-1">
-                          {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
+                    <div className="p-2 space-y-3">
+                      {/* Wallet Balance */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="font-medium">Wallet Balance</p>
+                          <Button variant="ghost" size="sm" onClick={() => setShowBalance(!showBalance)} className="p-1">
+                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <div className="flex items-center text-center gap-2">
+                          <Wallet className="h-6 w-6 text-green-600" />
+                          <p className="text-xl font-bold text-green-600 dark:text-green-400">
+                            {showBalance ? `$${userBalance.toLocaleString('en-US', { 
+                              minimumFractionDigits: 2, 
+                              maximumFractionDigits: 2 
+                            })}` : "••••••"}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center text-center gap-2">
-                        <Wallet className="h-6 w-6 text-green-600" />
-                        <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                          {showBalance ? `$${userBalance.toLocaleString('en-US', { 
-                            minimumFractionDigits: 2, 
-                            maximumFractionDigits: 2 
-                          })}` : "••••••"}
-                        </p>
-                      </div>
+
+                      {/* Reward Points */}
+                      {auth?.user?.reward_points !== undefined && (
+                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="font-medium">Reward Points</p>
+                          </div>
+                          <div className="flex items-center text-center gap-2">
+                            <Gift className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+                            <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                              {(auth.user.reward_points || 0).toLocaleString('en-US', { 
+                                minimumFractionDigits: 0, 
+                                maximumFractionDigits: 2 
+                              })}
+                            </p>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -413,28 +436,48 @@ export default function Navbar() {
                       </div>
                       {/* Wallet section for mobile - Only show if wallet is connected */}
                       {walletConnected && walletBalance !== null && (
-                        <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <Wallet className="h-4 w-4 text-green-600" />
-                              <span className="font-medium text-sm">Wallet Balance</span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setShowBalance(!showBalance)}
-                              className="p-1"
-                            >
-                              {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                            </Button>
+                      <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Wallet className="h-4 w-4 text-green-600" />
+                            <span className="font-medium text-sm">Wallet Balance</span>
                           </div>
-                          <div className="text-xl font-bold text-green-600 dark:text-green-400">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowBalance(!showBalance)}
+                            className="p-1"
+                          >
+                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                        <div className="text-xl font-bold text-green-600 dark:text-green-400">
                             {showBalance ? `$${userBalance.toLocaleString('en-US', { 
                               minimumFractionDigits: 2, 
                               maximumFractionDigits: 2 
                             })}` : "••••••"}
-                          </div>
-                        <div className="flex gap-2 mt-2">
+                        </div>
+                      </div>
+                      )}
+
+                      {/* Reward Points section for mobile */}
+                      {auth?.user?.reward_points !== undefined && (
+                      <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
+                        <div className="flex items-center gap-2">
+                          <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                          <span className="font-medium text-sm">Reward Points</span>
+                        </div>
+                        <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                          {(auth.user.reward_points || 0).toLocaleString('en-US', { 
+                            minimumFractionDigits: 0, 
+                            maximumFractionDigits: 2 
+                          })}
+                        </div>
+                      </div>
+                      )}
+
+                      {walletConnected && walletBalance !== null && (
+                        <div className="flex gap-2 px-3">
                           {/* Deposit Funds Dialog Trigger (Mobile) */}
                           <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
                             <DialogTrigger asChild>
@@ -531,7 +574,6 @@ export default function Navbar() {
                             </DialogContent>
                           </Dialog>
                         </div>
-                      </div>
                       )}
                       <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
                         <Button variant="ghost" className="w-full justify-start">

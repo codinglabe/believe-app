@@ -64,4 +64,9 @@ class JobApplication extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    public function timesheets()
+    {
+        return $this->hasMany(VolunteerTimesheet::class, 'job_application_id');
+    }
 }

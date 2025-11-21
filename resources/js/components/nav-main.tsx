@@ -146,12 +146,21 @@ export function NavMain({ items = [] }: NavMainProps) {
             {visibleItems.map((item) => {
                 if (isGroup(item)) {
                     const isExpanded = expandedGroups.has(item.title);
-                    const hasActiveChild = item.items.some(subItem =>
-                        subItem.href === page.url ||
-                        page.url.startsWith(subItem.href + '/create') ||
-                        !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                        page.url.startsWith(subItem.href)
-                    );
+                    const hasActiveChild = item.items.some(subItem => {
+                        const isExactMatch = subItem.href === page.url;
+                        const isCreatePage = page.url.startsWith(subItem.href + '/create');
+                        const isEditPage = !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`));
+                        // Special handling for volunteers/timesheet - only match timesheet routes
+                        if (subItem.href === '/volunteers/timesheet') {
+                            return page.url.startsWith('/volunteers/timesheet');
+                        }
+                        // Special handling for volunteers - match volunteers routes but NOT timesheet routes
+                        if (subItem.href === '/volunteers') {
+                            return page.url.startsWith('/volunteers') && !page.url.startsWith('/volunteers/timesheet');
+                        }
+                        // Default behavior for other routes
+                        return isExactMatch || isCreatePage || isEditPage || page.url.startsWith(subItem.href);
+                    });
 
                     return (
                         <SidebarGroup key={item.title} className="px-2 py-0">
@@ -172,7 +181,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         <motion.div
                                             animate={{ rotate: isExpanded ? 90 : 0 }}
                                             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
-                                        >
+                                    >
                                             <ChevronRight className="h-4 w-4 shrink-0" />
                                         </motion.div>
                                     </SidebarMenuButton>
@@ -180,7 +189,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                             </SidebarMenu>
 
                             <AnimatePresence initial={false}>
-                                {isExpanded && (
+                            {isExpanded && (
                                     <motion.div
                                         initial={{ height: 0, opacity: 0 }}
                                         animate={{ height: 'auto', opacity: 1 }}
@@ -203,29 +212,40 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                 }}
                                             >
                                                 <SidebarMenu>
-                                                    <SidebarMenuItem>
-                                                        <SidebarMenuButton
-                                                            asChild
-                                                            isActive={
-                                                                subItem.href === page.url ||
+                                            <SidebarMenuItem>
+                                                <SidebarMenuButton
+                                                    asChild
+                                                    isActive={
+                                                        (() => {
+                                                            // Special handling for timesheet - only match timesheet routes
+                                                            if (subItem.href === '/volunteers/timesheet') {
+                                                                return page.url.startsWith('/volunteers/timesheet');
+                                                            }
+                                                            // Special handling for volunteers - match volunteers routes but NOT timesheet routes
+                                                            if (subItem.href === '/volunteers') {
+                                                                return page.url.startsWith('/volunteers') && !page.url.startsWith('/volunteers/timesheet');
+                                                            }
+                                                            // Default behavior for other routes
+                                                            return subItem.href === page.url ||
                                                                 page.url.startsWith(subItem.href + '/create') ||
                                                                 !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
-                                                                page.url.startsWith(subItem.href)
-                                                            }
-                                                            tooltip={{ children: subItem.title }}
+                                                                page.url.startsWith(subItem.href);
+                                                        })()
+                                                    }
+                                                    tooltip={{ children: subItem.title }}
                                                             className="flex items-center gap-2 w-full"
-                                                        >
+                                                >
                                                             <Link href={subItem.href} prefetch className="flex items-center gap-2 w-full">
                                                                 {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
                                                                 <span className="truncate flex-1">{subItem.title}</span>
-                                                            </Link>
-                                                        </SidebarMenuButton>
-                                                    </SidebarMenuItem>
-                                                </SidebarMenu>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        </SidebarMenu>
                                             </motion.div>
-                                        ))}
+                                    ))}
                                     </motion.div>
-                                )}
+                            )}
                             </AnimatePresence>
                         </SidebarGroup>
                     );

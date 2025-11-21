@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
+use App\Models\VolunteerTimesheet;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -48,6 +49,7 @@ class UserProfileController extends Controller
                 'wallet_user_id' => $user->wallet_user_id,
                 'balance' => $walletBalance,
             ],
+            'reward_points' => (float) ($user->reward_points ?? 0),
         ]);
     }
 
@@ -214,6 +216,64 @@ class UserProfileController extends Controller
                 'balance' => $walletBalance,
             ],
             'transactions' => $transactions,
+        ]);
+    }
+
+    /**
+     * Display user's volunteer timesheet entries.
+     */
+    public function timesheet(Request $request)
+    {
+        $user = $request->user();
+        
+        $perPage = (int) $request->get('per_page', 10);
+        $page = (int) $request->get('page', 1);
+        $search = $request->get('search', '');
+        $workDate = $request->get('work_date', '');
+
+        $query = VolunteerTimesheet::with(['jobApplication.jobPost', 'organization', 'createdBy'])
+            ->whereHas('jobApplication', function ($q) use ($user) {
+                $q->where('user_id', $user->id);
+            });
+
+        if (!empty($search)) {
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('jobApplication.jobPost', function ($q) use ($search) {
+                    $q->where('title', 'LIKE', '%' . $search . '%');
+                })
+                    ->orWhere('description', 'LIKE', '%' . $search . '%');
+            });
+        }
+
+        if (!empty($workDate)) {
+            $query->where('work_date', $workDate);
+        }
+
+        $timesheets = $query->orderByDesc('work_date')
+            ->orderByDesc('created_at')
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString();
+
+        // Calculate total hours and reward points
+        $totalHours = VolunteerTimesheet::whereHas('jobApplication', function ($q) use ($user) {
+            $q->where('user_id', $user->id);
+        })->sum('hours');
+
+        $hourlyRate = (float) \App\Models\AdminSetting::get('volunteer_hourly_reward_points', 10.00);
+        $totalRewardPoints = $totalHours * $hourlyRate;
+
+        return Inertia::render('frontend/user-profile/timesheet', [
+            'timesheets' => $timesheets,
+            'reward_points' => (float) ($user->reward_points ?? 0),
+            'total_hours' => (float) $totalHours,
+            'total_reward_points' => $totalRewardPoints,
+            'hourly_rate' => $hourlyRate,
+            'filters' => [
+                'per_page' => $perPage,
+                'page' => $page,
+                'search' => $search,
+                'work_date' => $workDate,
+            ],
         ]);
     }
 }
