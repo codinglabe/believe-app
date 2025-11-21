@@ -1,86 +1,98 @@
-import { Shield, Users } from "lucide-react"
+import { Shield, Users, ArrowRight } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
+import { Card, CardContent } from "@/components/ui/card"
+
+interface PageProps {
+    statistics: {
+        totalRoles: number
+        activeUsers: number
+        totalPermissions: number
+        categories: number
+    }
+}
 
 export default function DashboardHome() {
+    const { statistics } = usePage<PageProps>().props
     return (
         <AppLayout>
-            <div className="container mx-auto p-4 md:p-6 lg:p-8">
-                <div className="mb-12 text-center animate-in fade-in-0 slide-in-from-top-4 duration-500">
-                    <h1 className="text-4xl md:text-6xl font-bold text-slate-900 dark:text-slate-100 mb-4">
-                        Permission Management
-                    </h1>
-                    <p className="text-slate-600 dark:text-slate-400 text-lg md:text-xl max-w-2xl mx-auto">
+            <div className="w-full p-4 md:p-6 lg:p-8">
+                {/* Header */}
+                <div className="mb-8">
+                    <h1 className="text-3xl font-bold mb-2">Permission Management</h1>
+                    <p className="text-muted-foreground">
                         Manage roles, users, and permissions with granular control across your organization
                     </p>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                {/* Main Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                     {/* Roles Card */}
                     <Link href={route('roles.list')}>
-                        <div
-                            className="group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-8 shadow-lg transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 cursor-pointer animate-in fade-in-0 slide-in-from-left-4 duration-500 delay-200"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-purple-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                            <div className="relative z-10">
-                                <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                                    <Shield className="w-8 h-8 text-white" />
+                        <Card className="group relative overflow-hidden h-full transition-all duration-200 hover:shadow-lg hover:border-primary/50 cursor-pointer">
+                            <CardContent className="p-6">
+                                <div className="flex items-start gap-4">
+                                    <div className="w-14 h-14 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
+                                        <Shield className="w-7 h-7 text-white" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">Role Management</h3>
+                                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                                            Create and manage user roles with specific permissions. Define what each role can access and modify.
+                                        </p>
+                                        <div className="flex items-center text-primary font-medium text-sm group-hover:gap-2 transition-all">
+                                            Manage Roles
+                                            <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                                        </div>
+                                    </div>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-3">Role Management</h3>
-                                <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                    Create and manage user roles with specific permissions. Define what each role can access and modify.
-                                </p>
-                                <div className="flex items-center text-blue-600 dark:text-blue-400 font-medium group-hover:translate-x-2 transition-transform duration-300">
-                                    Manage Roles
-                                    <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
+                            </CardContent>
+                        </Card>
                     </Link>
 
                     {/* Users Card */}
                     <Link href={route('users.list')}>
-                        <div
-                            className="group relative overflow-hidden rounded-2xl bg-white dark:bg-slate-800 p-8 shadow-lg transition-all duration-300 hover:shadow-2xl hover:-translate-y-2 cursor-pointer animate-in fade-in-0 slide-in-from-right-4 duration-500 delay-300"
-                        >
-                            <div className="absolute inset-0 bg-gradient-to-br from-green-500/10 to-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                            <div className="relative z-10">
-                                <div className="w-16 h-16 bg-green-500 rounded-2xl flex items-center justify-center mb-6 group-hover:scale-110 transition-transform duration-300">
-                                    <Users className="w-8 h-8 text-white" />
+                        <Card className="group relative overflow-hidden h-full transition-all duration-200 hover:shadow-lg hover:border-primary/50 cursor-pointer">
+                            <CardContent className="p-6">
+                                <div className="flex items-start gap-4">
+                                    <div className="w-14 h-14 bg-gradient-to-br from-emerald-500 to-teal-600 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
+                                        <Users className="w-7 h-7 text-white" />
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="text-xl font-semibold mb-2 group-hover:text-primary transition-colors">User Management</h3>
+                                        <p className="text-sm text-muted-foreground mb-4 line-clamp-2">
+                                            Manage individual users, assign roles, and set custom permissions beyond their assigned roles.
+                                        </p>
+                                        <div className="flex items-center text-primary font-medium text-sm group-hover:gap-2 transition-all">
+                                            Manage Users
+                                            <ArrowRight className="w-4 h-4 ml-1 group-hover:translate-x-1 transition-transform" />
+                                        </div>
+                                    </div>
                                 </div>
-                                <h3 className="text-2xl font-bold text-slate-900 dark:text-slate-100 mb-3">User Management</h3>
-                                <p className="text-slate-600 dark:text-slate-400 mb-6">
-                                    Manage individual users, assign roles, and set custom permissions beyond their assigned roles.
-                                </p>
-                                <div className="flex items-center text-green-600 dark:text-green-400 font-medium group-hover:translate-x-2 transition-transform duration-300">
-                                    Manage Users
-                                    <svg className="w-5 h-5 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                    </svg>
-                                </div>
-                            </div>
-                        </div>
+                            </CardContent>
+                        </Card>
                     </Link>
                 </div>
 
                 {/* Stats Section */}
-                <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-4 max-w-4xl mx-auto animate-in fade-in-0 slide-in-from-bottom-4 duration-500 delay-500">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                     {[
-                        { label: "Total Roles", value: "8", color: "text-blue-600" },
-                        { label: "Active Users", value: "124", color: "text-green-600" },
-                        { label: "Permissions", value: "32", color: "text-purple-600" },
-                        { label: "Categories", value: "5", color: "text-orange-600" },
+                        { label: "Total Roles", value: statistics?.totalRoles || 0, iconBg: "bg-blue-500/10", iconColor: "text-blue-600" },
+                        { label: "Active Users", value: statistics?.activeUsers || 0, iconBg: "bg-emerald-500/10", iconColor: "text-emerald-600" },
+                        { label: "Permissions", value: statistics?.totalPermissions || 0, iconBg: "bg-purple-500/10", iconColor: "text-purple-600" },
+                        { label: "Categories", value: statistics?.categories || 0, iconBg: "bg-amber-500/10", iconColor: "text-amber-600" },
                     ].map((stat, index) => (
-                        <div
-                            key={stat.label}
-                            className="text-center p-6 rounded-xl bg-white dark:bg-slate-800 shadow-md hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-                            style={{ animationDelay: `${index * 100 + 600}ms` }}
-                        >
-                            <div className={`text-3xl font-bold ${stat.color} mb-2`}>{stat.value}</div>
-                            <div className="text-sm text-slate-600 dark:text-slate-400">{stat.label}</div>
-                        </div>
+                        <Card key={stat.label} className="hover:shadow-md transition-shadow">
+                            <CardContent className="p-5">
+                                <div className="flex items-center gap-3 mb-3">
+                                    <div className={`w-10 h-10 ${stat.iconBg} rounded-lg flex items-center justify-center`}>
+                                        <div className={`w-2 h-2 rounded-full ${stat.iconColor.replace("text-", "bg-")}`} />
+                                    </div>
+                                </div>
+                                <div className={`text-2xl font-bold ${stat.iconColor} mb-1`}>{stat.value}</div>
+                                <div className="text-xs text-muted-foreground">{stat.label}</div>
+                            </CardContent>
+                        </Card>
                     ))}
                 </div>
             </div>

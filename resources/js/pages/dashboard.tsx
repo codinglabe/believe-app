@@ -1,8 +1,9 @@
 "use client"
 
 import React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import AppLayout from "@/layouts/app-layout"
+import { WalletConnectPopup } from "@/components/wallet-connect-popup"
 import type { BreadcrumbItem } from "@/types"
 import {
   Activity,
@@ -19,13 +20,27 @@ import {
   Phone,
   User,
   UserCheck,
+  AlertTriangle,
+  Users,
+  FileCheck,
+  ClipboardList,
+  Shield,
+  TrendingUp,
+  Eye,
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  XCircle,
 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import TopicsCard from "@/components/admin/topics-card"
-import { router, usePage } from "@inertiajs/react"
+import { router, usePage, Link } from "@inertiajs/react"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/frontend/ui/chart"
+import { Area, AreaChart, XAxis } from "recharts"
 
 const showSuccessToast = (message: string) => {
   console.log("Success:", message)
@@ -44,12 +59,9 @@ const VerificationBanner = ({ user }: { user: any }) => {
   )
 }
 
-const route = (name: string, params?: any) => {
-  const routes: Record<string, string> = {
-    "products.index": "/products",
-    "events.index": "/events",
-  }
-  return routes[name] || "#"
+// Global route helper (provided by Laravel/Inertia)
+declare global {
+  function route(name: string, params?: any): string
 }
 
 const Head = ({ title }: { title: string }) => {
@@ -59,13 +71,6 @@ const Head = ({ title }: { title: string }) => {
   return null
 }
 
-const Link = ({ href, children, className }: { href: string; children: React.ReactNode; className?: string }) => {
-  return (
-    <a href={href} className={className}>
-      {children}
-    </a>
-  )
-}
 
 const breadcrumbs: BreadcrumbItem[] = [
   {
@@ -136,15 +141,685 @@ const RecentActivityItem = ({ activity }: { activity: ActivityItem }) => {
   )
 }
 
+// Admin Dashboard Component
+const AdminDashboard = ({ 
+  stats, 
+  recentForm1023Applications, 
+  recentOrganizations, 
+  paymentStats,
+  recentTransactions = [],
+  monthlyRevenue = []
+}: AdminDashboardProps) => {
+  const [isDark, setIsDark] = React.useState(false)
+
+  React.useEffect(() => {
+    const checkTheme = () => {
+      setIsDark(document.documentElement.classList.contains('dark'))
+    }
+    
+    checkTheme()
+    const observer = new MutationObserver(checkTheme)
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['class']
+    })
+    
+    return () => observer.disconnect()
+  }, [])
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount)
+  }
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return 'N/A'
+    return new Date(dateString).toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    })
+  }
+
+  // Theme-aware colors
+  const chartColor = isDark ? 'hsl(264, 70%, 58%)' : 'hsl(25, 95%, 53%)'
+  const tickColor = isDark ? 'hsl(0, 0%, 70.8%)' : 'hsl(0, 0%, 55.6%)' // muted-foreground colors
+
+  const getStatusBadge = (status: string) => {
+    const statusConfig: Record<string, { label: string; className: string }> = {
+      draft: { label: 'Draft', className: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300' },
+      pending_payment: { label: 'Payment Pending', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
+      awaiting_review: { label: 'Awaiting Review', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+      needs_more_info: { label: 'Needs Info', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
+      approved: { label: 'Approved', className: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300' },
+      declined: { label: 'Declined', className: 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300' },
+      pending: { label: 'Pending', className: 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300' },
+      under_review: { label: 'Under Review', className: 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' },
+    }
+    const config = statusConfig[status] || { label: status, className: 'bg-gray-100 text-gray-700' }
+    return <Badge className={config.className}>{config.label}</Badge>
+  }
+
+  const getPaymentStatusBadge = (status: string) => {
+    if (status === 'paid') {
+      return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">Paid</Badge>
+    }
+    return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">Pending</Badge>
+  }
+
+  const getRegistrationStatusBadge = (status: string) => {
+    if (status === 'approved') {
+      return <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">Approved</Badge>
+    }
+    return <Badge className="bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300">Pending</Badge>
+  }
+
+  return (
+    <AppLayout breadcrumbs={breadcrumbs}>
+      <Head title="Admin Dashboard" />
+      <div className="m-3 md:m-6 space-y-6">
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
+          <p className="text-muted-foreground">Overview of system statistics and recent activity</p>
+        </div>
+
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card className="border-l-4 border-l-blue-500">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Organizations</p>
+                  <p className="text-3xl font-bold mt-2">{stats?.totalOrganizations || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stats?.approvedOrganizations || 0} approved
+                  </p>
+                </div>
+                <div className="bg-blue-500/10 rounded-lg p-3">
+                  <Building className="h-6 w-6 text-blue-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-emerald-500">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Users</p>
+                  <p className="text-3xl font-bold mt-2">{stats?.totalUsers || 0}</p>
+                </div>
+                <div className="bg-emerald-500/10 rounded-lg p-3">
+                  <Users className="h-6 w-6 text-emerald-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-purple-500">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Form 1023 Applications</p>
+                  <p className="text-3xl font-bold mt-2">{stats?.totalForm1023Applications || 0}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {stats?.pendingForm1023Applications || 0} pending
+                  </p>
+                </div>
+                <div className="bg-purple-500/10 rounded-lg p-3">
+                  <FileCheck className="h-6 w-6 text-purple-500" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-amber-500">
+            <CardContent className="p-3">
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <p className="text-sm font-medium text-muted-foreground">Total Revenue</p>
+                  <p className="text-3xl font-bold mt-2">{formatCurrency(paymentStats?.totalRevenue || 0)}</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {paymentStats?.paidApplications || 0} paid
+                  </p>
+                </div>
+                <div className="bg-amber-500/10 rounded-lg p-3">
+                  <DollarSign className="h-6 w-6 text-amber-500" />
+                </div>
+              </div>
+              {monthlyRevenue && monthlyRevenue.length > 0 && (
+                <div className="h-12 -mx-3 -mb-2">
+                  <ChartContainer
+                    config={{
+                      revenue: {
+                        label: "Revenue",
+                        theme: {
+                          light: "hsl(25, 95%, 53%)",
+                          dark: "hsl(264, 70%, 58%)",
+                        },
+                      },
+                    }}
+                    className="h-full w-full [&>div]:!aspect-auto"
+                  >
+                    <AreaChart data={monthlyRevenue} margin={{ left: 2, right: 2, top: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id={`fillRevenue-${isDark ? 'dark' : 'light'}`} x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={chartColor} stopOpacity={0.3} />
+                          <stop offset="95%" stopColor={chartColor} stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis
+                        dataKey="monthShort"
+                        tickLine={false}
+                        axisLine={false}
+                        tickMargin={2}
+                        interval={0}
+                        angle={0}
+                        tick={{ 
+                          fontSize: 9, 
+                          fill: tickColor
+                        }}
+                      />
+                      <ChartTooltip
+                        content={
+                          <ChartTooltipContent
+                            formatter={(value) => formatCurrency(Number(value))}
+                          />
+                        }
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="revenue"
+                        stroke={chartColor}
+                        strokeWidth={1.5}
+                        fill={`url(#fillRevenue-${isDark ? 'dark' : 'light'})`}
+                      />
+                    </AreaChart>
+                  </ChartContainer>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Secondary Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Organizations</p>
+                  <p className="text-2xl font-bold">{stats?.pendingOrganizations || 0}</p>
+                </div>
+                <Clock className="h-5 w-5 text-amber-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Approved Applications</p>
+                  <p className="text-2xl font-bold">{stats?.approvedForm1023Applications || 0}</p>
+                </div>
+                <CheckCircle className="h-5 w-5 text-emerald-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Compliance Applications</p>
+                  <p className="text-2xl font-bold">{stats?.totalComplianceApplications || 0}</p>
+                </div>
+                <ClipboardList className="h-5 w-5 text-blue-500" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Pending Payments</p>
+                  <p className="text-2xl font-bold">{formatCurrency(paymentStats?.pendingPayments || 0)}</p>
+                </div>
+                <Clock className="h-5 w-5 text-amber-500" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Recent Transactions Table */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Recent Transactions</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {recentTransactions.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-8">No transactions yet</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="border-b">
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Date</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Type</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Description</th>
+                      <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">User</th>
+                      <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Amount</th>
+                      <th className="text-center py-3 px-4 text-sm font-medium text-muted-foreground">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recentTransactions.map((transaction) => (
+                      <tr key={transaction.id} className="border-b hover:bg-muted/50 transition-colors">
+                        <td className="py-3 px-4 text-sm">
+                          {formatDate(transaction.date)}
+                        </td>
+                        <td className="py-3 px-4">
+                          <Badge className={
+                            transaction.type === 'Fractional Ownership' 
+                              ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
+                              : transaction.type === 'Form 1023'
+                              ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
+                              : 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          }>
+                            {transaction.type}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-sm font-medium">{transaction.description}</td>
+                        <td className="py-3 px-4 text-sm text-muted-foreground">{transaction.user_name}</td>
+                        <td className="py-3 px-4 text-sm font-bold text-right">
+                          {new Intl.NumberFormat('en-US', { 
+                            style: 'currency', 
+                            currency: transaction.currency || 'USD' 
+                          }).format(transaction.amount)}
+                        </td>
+                        <td className="py-3 px-4 text-center">
+                          <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300">
+                            {transaction.status === 'completed' ? 'Completed' : transaction.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Activity */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Recent Form 1023 Applications */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Recent Form 1023 Applications</CardTitle>
+              <Link href={route('admin.form1023.index')}>
+                <Button variant="ghost" size="sm">
+                  View All <ArrowRight className="h-4 w-4 ml-2" />
+                </Button>
+              </Link>
+            </CardHeader>
+            <CardContent>
+              {recentForm1023Applications.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No applications yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentForm1023Applications.map((app) => (
+                    <div key={app.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-medium text-sm truncate">{app.application_number}</p>
+                          {getStatusBadge(app.status)}
+                          {getPaymentStatusBadge(app.payment_status)}
+                        </div>
+                        <p className="text-xs text-muted-foreground truncate">{app.organization_name}</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDate(app.submitted_at)} • {formatCurrency(app.amount)}
+                        </p>
+                      </div>
+                      <Link href={route('admin.form1023.show', app.id)}>
+                        <Button variant="ghost" size="sm">
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                      </Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Recent Organizations */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <CardTitle>Recent Organizations</CardTitle>
+              <Button variant="ghost" size="sm">
+                View All <ArrowRight className="h-4 w-4 ml-2" />
+              </Button>
+            </CardHeader>
+            <CardContent>
+              {recentOrganizations.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">No organizations yet</p>
+              ) : (
+                <div className="space-y-4">
+                  {recentOrganizations.map((org) => (
+                    <div key={org.id} className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="font-medium text-sm truncate">{org.name}</p>
+                          {getRegistrationStatusBadge(org.registration_status)}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Created {formatDate(org.created_at)}
+                        </p>
+                      </div>
+                      <Button variant="ghost" size="sm">
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </AppLayout>
+  )
+}
+
+interface AdminDashboardProps {
+  isAdmin?: boolean
+  stats?: {
+    totalOrganizations: number
+    approvedOrganizations: number
+    pendingOrganizations: number
+    totalUsers: number
+    totalForm1023Applications: number
+    pendingForm1023Applications: number
+    approvedForm1023Applications: number
+    totalComplianceApplications: number
+    pendingComplianceApplications: number
+    totalRoles: number
+    totalPermissions: number
+  }
+  recentForm1023Applications?: Array<{
+    id: number
+    application_number: string
+    status: string
+    payment_status: string
+    organization_name: string
+    submitted_at: string | null
+    amount: number
+  }>
+  recentOrganizations?: Array<{
+    id: number
+    name: string
+    registration_status: string
+    created_at: string
+  }>
+  paymentStats?: {
+    totalRevenue: number
+    pendingPayments: number
+    paidApplications: number
+  }
+  recentTransactions?: Array<{
+    id: string
+    type: string
+    description: string
+    amount: number
+    status: string
+    user_name: string
+    date: string | null
+    currency: string
+  }>
+  monthlyRevenue?: Array<{
+    month: string
+    monthShort: string
+    revenue: number
+  }>
+}
+
 export default function Dashboard({
   totalOrg = 5,
   orgInfo,
   totalFav = 12,
-   topics = []
-}: { totalOrg?: number; orgInfo?: any; totalFav?: number;  topics?: { id: number; name: string }[] }) {
+  topics = [],
+  form1023Application = null,
+  form990Filings = null,
+  overdueForm990Filings = [],
+  isAdmin = false,
+  stats,
+  recentForm1023Applications = [],
+  recentOrganizations = [],
+  paymentStats,
+  recentTransactions = [],
+  monthlyRevenue = [],
+}: { 
+  totalOrg?: number
+  orgInfo?: any
+  totalFav?: number
+  topics?: { id: number; name: string }[]
+  form1023Application?: any
+  form990Filings?: any
+  overdueForm990Filings?: any[]
+} & AdminDashboardProps) {
   const auth = usePage().props.auth
   const organization = orgInfo
-    const userRole = auth.user?.role // 'admin' or 'organization'
+  const userRole = auth?.user?.role // 'admin' or 'organization'
+  const isOrgUser = userRole === "organization" || userRole === "organization_pending"
+  const userId = auth?.user?.id // Get user ID to detect user changes
+  
+  // Wallet Connect Popup State
+  const [showWalletPopup, setShowWalletPopup] = useState(false)
+  const [walletConnected, setWalletConnected] = useState(false)
+  const [walletBalance, setWalletBalance] = useState<number | null>(null)
+  const [isCheckingWallet, setIsCheckingWallet] = useState(true)
+  const [userDismissedPopup, setUserDismissedPopup] = useState(false)
+  
+  // Check wallet connection status - FORCE CHECK FOR EACH ORGANIZATION USER
+  // Re-check when user ID changes (different organization account)
+  useEffect(() => {
+    const checkWalletStatus = async () => {
+      if (!isOrgUser) {
+        setIsCheckingWallet(false)
+        setShowWalletPopup(false)
+        setWalletConnected(false)
+        return
+      }
+      
+      // Reset state when checking (but preserve user dismissal if switching users)
+      setIsCheckingWallet(true)
+      setWalletConnected(false)
+      // Reset dismissal flag when user changes (different organization account)
+      if (userId) {
+        setUserDismissedPopup(false)
+      }
+      setShowWalletPopup(false)
+      
+      try {
+        // Add cache-busting parameter to ensure fresh check
+        const response = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          cache: 'no-cache',
+        })
+        
+        if (response.ok) {
+          const data = await response.json()
+          if (data.success && data.connected) {
+            // Wallet IS connected
+            setWalletConnected(true)
+            setShowWalletPopup(false)
+            
+            // Fetch balance
+            try {
+              const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                  'Accept': 'application/json',
+                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                  'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-cache',
+              })
+              
+              if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json()
+                if (balanceData.success) {
+                  setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+                }
+              }
+            } catch (balanceError) {
+              // Balance fetch failed, but wallet is connected
+            }
+          } else {
+            // Wallet NOT connected - SHOW POPUP (unless user dismissed it)
+            setWalletConnected(false)
+            if (!userDismissedPopup) {
+              setShowWalletPopup(true)
+            }
+          }
+        } else {
+          // Error checking status - show popup (assume not connected)
+          setWalletConnected(false)
+          if (!userDismissedPopup) {
+            setShowWalletPopup(true)
+          }
+        }
+      } catch (error) {
+        // Error - show popup (assume not connected)
+        setWalletConnected(false)
+        if (!userDismissedPopup) {
+          setShowWalletPopup(true)
+        }
+      } finally {
+        setIsCheckingWallet(false)
+      }
+    }
+    
+    // Always check wallet status for organization users
+    // Check immediately when component mounts or user changes
+    checkWalletStatus()
+  }, [isOrgUser, userId]) // Add userId to dependencies to re-check when user changes
+  
+  // Check if wallet is connected
+  const isWalletConnected = walletConnected || (auth.user?.balance !== undefined && auth.user?.balance !== null)
+  
+  const handleWalletConnect = async () => {
+    // Wallet is connected via the popup form
+    // Hide the popup and refresh wallet data
+    setShowWalletPopup(false)
+    setWalletConnected(true)
+    
+    try {
+      // Fetch wallet balance with cache-busting
+      const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        cache: 'no-cache',
+      })
+      
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json()
+        if (balanceData.success) {
+          setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+        }
+      }
+      
+      // Refresh user data to get updated wallet status
+      router.reload({ only: ['auth'] })
+    } catch (error) {
+      console.error('Failed to fetch wallet balance:', error)
+    }
+  }
+  
+  const handleCloseWalletPopup = () => {
+    // Allow closing the popup and remember user dismissed it
+    setShowWalletPopup(false)
+    setUserDismissedPopup(true)
+  }
+
+  // Admin Dashboard
+  if (isAdmin && stats) {
+    return <AdminDashboard 
+      stats={stats}
+      recentForm1023Applications={recentForm1023Applications}
+      recentOrganizations={recentOrganizations}
+      paymentStats={paymentStats}
+      recentTransactions={recentTransactions}
+      monthlyRevenue={monthlyRevenue}
+    />
+  }
+
+  // Organization Dashboard (existing code continues below)
+
+  const complianceStatus = organization?.tax_compliance_status ?? "unknown"
+  const complianceMeta = (organization?.tax_compliance_meta as Record<string, any> | undefined) ?? {}
+  const isComplianceLocked = Boolean(organization?.is_compliance_locked)
+  const lastFiledPeriod = complianceMeta?.parsed_tax_period_date ?? null
+  const monthsSinceTaxPeriod = complianceMeta?.months_since_tax_period ?? null
+  const formattedLastFiledPeriod = lastFiledPeriod ? new Date(lastFiledPeriod).toLocaleDateString(undefined, { month: "long", year: "numeric" }) : null
+  const complianceStatusLabel = complianceStatus.replace(/_/g, " ")
+  const complianceMessage = (() => {
+    if (!organization) return ""
+
+    switch (complianceStatus) {
+      case "missing":
+        return "We could not locate a recent tax period for your organization."
+      case "invalid":
+        return "The tax period on file appears to be invalid."
+      case "expired":
+        return "The tax period on file has expired."
+      default:
+        return ""
+    }
+  })()
+
+  const isRegistrationPending = organization?.registration_status === "pending"
+  
+  // Check if Form 1023 application has been submitted (not draft)
+  const hasSubmittedForm1023 = form1023Application && form1023Application.status !== 'draft'
+  
+  // If user has "organization" role (not "organization_pending"), they've submitted the application
+  // Show full dashboard with application submitted card
+  const hasOrganizationRole = userRole === "organization"
+  
+  // Don't restrict dashboard if:
+  // 1. User has "organization" role (they've submitted Form 1023)
+  // 2. Form 1023 has been submitted (status is not 'draft')
+  const shouldRestrictDashboard = Boolean(
+    organization && 
+    (isComplianceLocked || isRegistrationPending) && 
+    !hasSubmittedForm1023 &&
+    !hasOrganizationRole
+  )
+
+  const limitedTitle = isComplianceLocked ? "Organization access limited" : "Application under review"
+  const limitedDescription = isComplianceLocked
+    ? complianceMessage || "Access is limited until your 501(c)(3) status is verified."
+    : "Thanks for submitting your organization details. Our onboarding team is reviewing your documentation. We'll unlock the full experience once approval is complete."
+
+  const limitedCtaCopy = isComplianceLocked
+    ? "Start 501(c)(3) assistance application"
+    : "Submit compliance application"
 
   // Transform the topics from backend to include colors
   const [userTopics, setUserTopics] = useState(
@@ -200,11 +875,12 @@ export default function Dashboard({
     totalFav: totalFav,
   }
 
-  const stats = userRole === "admin" ? adminStats : organizationStats
+  const localStats = userRole === "admin" ? adminStats : organizationStats
 
   const welcomeMessages = {
     admin: `Welcome back, Administrator ${auth.user?.name}!`,
     organization: `Welcome, ${organization?.name}!`,
+    organization_pending: `Welcome, ${organization?.name}!`,
   }
 
   const quickActions = {
@@ -220,6 +896,7 @@ export default function Dashboard({
       { label: "Add Volunteer", color: "accent" },
       { label: "Generate Report", color: "muted" },
     ],
+    organization_pending: [],
   }
 
   const recentActivities: ActivityItem[] = [
@@ -291,6 +968,103 @@ export default function Dashboard({
     }
   }
 
+  if (shouldRestrictDashboard) {
+    return (
+      <AppLayout breadcrumbs={breadcrumbs}>
+        <Head title="Dashboard" />
+        <div className="m-3 space-y-6 md:m-6">
+          <Card className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-amber-100 p-2 text-amber-600 dark:bg-amber-800">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div className="space-y-2">
+                  <CardTitle className="text-xl font-semibold md:text-2xl">{limitedTitle}</CardTitle>
+                  <p className="text-sm md:text-base">{limitedDescription}</p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {isComplianceLocked && (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-300">Compliance status</p>
+                    <p className="text-lg font-semibold capitalize">{complianceStatusLabel}</p>
+                  </div>
+                  {formattedLastFiledPeriod && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-300">Last tax period on file</p>
+                      <p className="text-lg font-semibold">{formattedLastFiledPeriod}</p>
+                    </div>
+                  )}
+                  {typeof monthsSinceTaxPeriod === "number" && (
+                    <div>
+                      <p className="text-xs uppercase tracking-wide text-amber-600 dark:text-amber-300">Months since filing</p>
+                      <p className="text-lg font-semibold">{monthsSinceTaxPeriod}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+              <div className="space-y-4">
+                {isComplianceLocked ? (
+                  <p className="text-sm text-muted-foreground">
+                    {organization?.has_edited_irs_data ? (
+                      <>Since your EIN wasn't found in the IRS database, you can apply for 501(c)(3) tax exemption by completing Form 1023. Our team will review your application after payment is received.</>
+                    ) : (
+                      <>Submit your 501(c)(3) assistance application to regain full access to Believe. Our team will review your documentation after payment is received.</>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    We'll send you an email as soon as the review finishes. In the meantime you can reach us anytime if you need to share additional paperwork.
+                  </p>
+                )}
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  {organization?.has_edited_irs_data ? (
+                    <>
+                      {form1023Application ? (
+                        <div className="flex flex-col gap-3 sm:flex-row">
+                          <Button size="lg" onClick={() => router.visit(`/dashboard/form1023/apply/${form1023Application.id}/view`)}>
+                            View Form 1023 Application
+                          </Button>
+                          {(form1023Application.status === 'draft' || form1023Application.status === 'needs_more_info') && (
+                            <Button 
+                              size="lg" 
+                              variant="outline"
+                              onClick={() => router.visit("/dashboard/form1023/apply")}
+                              className="bg-green-600 hover:bg-green-700 text-white border-green-600"
+                            >
+                              Edit Application
+                            </Button>
+                          )}
+                        </div>
+                      ) : (
+                        <Button size="lg" onClick={() => router.visit("/dashboard/form1023/apply")}>
+                          Start Form 1023 Application
+                        </Button>
+                      )}
+                    </>
+                  ) : (
+                    <Button size="lg" onClick={() => router.visit("/dashboard/compliance/apply")}>{limitedCtaCopy}</Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">
+                    Need help? <a className="underline" href="mailto:support@believe.org">Contact support</a>
+                  </p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </AppLayout>
+    )
+  }
+
+  // Show application submitted card if:
+  // 1. User has "organization" role (they've submitted Form 1023), OR
+  // 2. Form 1023 has been submitted (status is not 'draft')
+  const showApplicationSubmittedCard = (hasOrganizationRole || hasSubmittedForm1023) && organization?.has_edited_irs_data && form1023Application
+
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
@@ -307,7 +1081,7 @@ export default function Dashboard({
 
                <div className="bg-card border-border border rounded-lg p-6 shadow-sm mb-6 flex flex-col md:flex-row items-center md:items-start gap-6">
                   {/* User Image */}
-                  {userRole === "organization" && (
+                  {isOrgUser && (
           <div className="flex-shrink-0">
             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full overflow-hidden border-4 border-white shadow-lg">
               <img
@@ -321,35 +1095,303 @@ export default function Dashboard({
 
           {/* Welcome Content */}
           <div className="flex-1 text-center md:text-left">
-            <h1 className="text-2xl md:text-3xl font-bold text-white">
-              {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
-            </h1>
-            <VerificationBanner user={auth?.user} />
-            <p className="text-muted-foreground mt-2">
-            {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
-            </p>
-
-            {/* User Stats */}
-            {/* <div className="mt-4 flex flex-wrap gap-4 justify-center md:justify-start">
-              <div className="bg-blue-50 px-4 py-2 rounded-lg">
-                <p className="text-sm text-blue-600">Balance</p>
-                <p className="font-semibold text-blue-800">${auth.user?.balance?.toLocaleString() || '0'}</p>
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+              <div>
+                <h1 className="text-2xl md:text-3xl font-bold text-white">
+                  {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}
+                </h1>
+                <VerificationBanner user={auth?.user} />
+                <p className="text-muted-foreground mt-2">
+                {userRole === "admin" ? "System overview and management tools" : "EIN: " + organization?.ein}
+                </p>
               </div>
-            </div> */}
+              
+              {/* Wallet Balance Display */}
+              {isOrgUser && (isWalletConnected || walletBalance !== null) && (
+                <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-lg px-4 py-3">
+                  <DollarSign className="w-5 h-5 text-primary" />
+                  <div>
+                    <p className="text-xs text-muted-foreground">Wallet Balance</p>
+                    <p className="text-xl font-bold text-primary">
+                      ${(walletBalance ?? auth.user?.balance ?? 0).toLocaleString('en-US', { 
+                        minimumFractionDigits: 2, 
+                        maximumFractionDigits: 2 
+                      })}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
+
+        {/* Form 990 Filing Alert */}
+        {(overdueForm990Filings && overdueForm990Filings.length > 0) && (
+          <Card className="border-red-200 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/20 dark:text-red-100">
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-red-100 p-2 text-red-600 dark:bg-red-800">
+                  <AlertTriangle className="h-6 w-6" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <CardTitle className="text-xl font-semibold">Form 990 Filing Required</CardTitle>
+                  <p className="text-sm">
+                    Your organization has {overdueForm990Filings.length} overdue Form 990 filing{overdueForm990Filings.length > 1 ? 's' : ''}. 
+                    Please file immediately to avoid penalties.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="space-y-3">
+                {overdueForm990Filings.map((filing: any) => (
+                  <div key={filing.id} className="bg-white dark:bg-gray-800 rounded-lg p-4 border border-red-200 dark:border-red-800">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-semibold">Form {filing.form_type || '990'} - Tax Year {filing.tax_year}</p>
+                        {filing.due_date && (
+                          <p className="text-sm text-muted-foreground mt-1">
+                            Due Date: {new Date(filing.due_date).toLocaleDateString()}
+                            {filing.days_until_due !== null && filing.days_until_due < 0 && (
+                              <span className="ml-2 font-semibold text-red-600">
+                                ({Math.abs(filing.days_until_due)} days overdue)
+                              </span>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => window.open('https://www.irs.gov/charities-non-profits/form-990-series-due-dates', '_blank')}
+                        className="border-red-300 text-red-700 hover:bg-red-100 dark:border-red-700 dark:text-red-300 dark:hover:bg-red-900/30"
+                      >
+                        File Now
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <AlertCircle className="h-4 w-4" />
+                <span>We check IRS records monthly. If you've already filed, it may take time to appear in our system.</span>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Form 990 Filing Status (if not overdue but due soon) */}
+        {form990Filings && !form990Filings.is_filed && !form990Filings.is_overdue && form990Filings.days_until_due !== null && form990Filings.days_until_due > 0 && form990Filings.days_until_due <= 30 && (
+          <Card className="border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-700 dark:bg-amber-900/20 dark:text-amber-100">
+            <CardHeader>
+              <div className="flex items-start gap-3">
+                <div className="rounded-full bg-amber-100 p-2 text-amber-600 dark:bg-amber-800">
+                  <Clock className="h-6 w-6" />
+                </div>
+                <div className="space-y-2 flex-1">
+                  <CardTitle className="text-xl font-semibold">Form 990 Filing Due Soon</CardTitle>
+                  <p className="text-sm">
+                    Your Form {form990Filings.form_type || '990'} for tax year {form990Filings.tax_year} is due in {form990Filings.days_until_due} days.
+                  </p>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {form990Filings.due_date && (
+                <p className="text-sm text-muted-foreground mb-4">
+                  Due Date: {new Date(form990Filings.due_date).toLocaleDateString()}
+                </p>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open('https://www.irs.gov/charities-non-profits/form-990-series-due-dates', '_blank')}
+                className="border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/30"
+              >
+                Learn More
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Application Submitted Card - shown after Welcome card */}
+        {showApplicationSubmittedCard && form1023Application && (() => {
+          // Determine card colors based on status
+          const getCardColors = (status: string) => {
+            switch (status) {
+              case 'pending_payment':
+                return {
+                  border: 'border-blue-200 dark:border-blue-700',
+                  bg: 'bg-blue-50 dark:bg-blue-900/20',
+                  text: 'text-blue-900 dark:text-blue-100',
+                  iconBg: 'bg-blue-100 dark:bg-blue-800',
+                  iconText: 'text-blue-600',
+                  labelText: 'text-blue-600 dark:text-blue-300',
+                  button: 'bg-blue-600 hover:bg-blue-700'
+                }
+              case 'awaiting_review':
+                return {
+                  border: 'border-yellow-200 dark:border-yellow-700',
+                  bg: 'bg-yellow-50 dark:bg-yellow-900/20',
+                  text: 'text-yellow-900 dark:text-yellow-100',
+                  iconBg: 'bg-yellow-100 dark:bg-yellow-800',
+                  iconText: 'text-yellow-600',
+                  labelText: 'text-yellow-600 dark:text-yellow-300',
+                  button: 'bg-yellow-600 hover:bg-yellow-700'
+                }
+              case 'needs_more_info':
+                return {
+                  border: 'border-orange-200 dark:border-orange-700',
+                  bg: 'bg-orange-50 dark:bg-orange-900/20',
+                  text: 'text-orange-900 dark:text-orange-100',
+                  iconBg: 'bg-orange-100 dark:bg-orange-800',
+                  iconText: 'text-orange-600',
+                  labelText: 'text-orange-600 dark:text-orange-300',
+                  button: 'bg-orange-600 hover:bg-orange-700'
+                }
+              case 'approved':
+                return {
+                  border: 'border-green-200 dark:border-green-700',
+                  bg: 'bg-green-50 dark:bg-green-900/20',
+                  text: 'text-green-900 dark:text-green-100',
+                  iconBg: 'bg-green-100 dark:bg-green-800',
+                  iconText: 'text-green-600',
+                  labelText: 'text-green-600 dark:text-green-300',
+                  button: 'bg-green-600 hover:bg-green-700'
+                }
+              case 'draft':
+                return {
+                  border: 'border-gray-200 dark:border-gray-700',
+                  bg: 'bg-gray-50 dark:bg-gray-900/20',
+                  text: 'text-gray-900 dark:text-gray-100',
+                  iconBg: 'bg-gray-100 dark:bg-gray-800',
+                  iconText: 'text-gray-600',
+                  labelText: 'text-gray-600 dark:text-gray-300',
+                  button: 'bg-gray-600 hover:bg-gray-700'
+                }
+              default:
+                return {
+                  border: 'border-blue-200 dark:border-blue-700',
+                  bg: 'bg-blue-50 dark:bg-blue-900/20',
+                  text: 'text-blue-900 dark:text-blue-100',
+                  iconBg: 'bg-blue-100 dark:bg-blue-800',
+                  iconText: 'text-blue-600',
+                  labelText: 'text-blue-600 dark:text-blue-300',
+                  button: 'bg-blue-600 hover:bg-blue-700'
+                }
+            }
+          }
+          
+          const colors = getCardColors(form1023Application.status)
+          const statusMessages: Record<string, string> = {
+            'pending_payment': 'Your Form 1023 application is ready. Please complete the payment to proceed.',
+            'awaiting_review': 'Your Form 1023 application has been submitted successfully. Our team is reviewing your application and will notify you once the review is complete.',
+            'needs_more_info': 'Your Form 1023 application needs additional information. Please review and provide the requested details.',
+            'approved': 'Congratulations! Your Form 1023 application has been approved.',
+            'draft': 'Your Form 1023 application is saved as a draft. Complete and submit when ready.',
+          }
+          
+          return (
+            <Card className={`${colors.border} ${colors.bg} ${colors.text}`}>
+              <CardHeader>
+                <div className="flex items-start gap-3">
+                  <div className={`rounded-full ${colors.iconBg} p-2 ${colors.iconText}`}>
+                    <Check className="h-6 w-6" />
+                  </div>
+                  <div className="flex-1">
+                    <CardTitle className="text-xl font-semibold md:text-2xl">Form 1023 Application</CardTitle>
+                    <p className="text-sm md:text-base mt-2">
+                      {statusMessages[form1023Application.status] || 'Your Form 1023 application status has been updated.'}
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <p className={`text-xs uppercase tracking-wide ${colors.labelText}`}>Application Number</p>
+                    <p className="text-lg font-semibold">#{form1023Application.application_number}</p>
+                  </div>
+                  <div>
+                    <p className={`text-xs uppercase tracking-wide ${colors.labelText}`}>Status</p>
+                    <Badge
+                      className={
+                        form1023Application.status === 'awaiting_review'
+                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                          : form1023Application.status === 'pending_payment'
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                          : form1023Application.status === 'needs_more_info'
+                          ? "bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200"
+                          : form1023Application.status === 'approved'
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                      }
+                    >
+                      {form1023Application.status === 'awaiting_review' ? 'Pending Review' :
+                       form1023Application.status === 'pending_payment' ? 'Pending Payment' :
+                       form1023Application.status === 'needs_more_info' ? 'Needs More Info' :
+                       form1023Application.status === 'approved' ? 'Approved' :
+                       form1023Application.status === 'draft' ? 'Draft' :
+                       form1023Application.status}
+                    </Badge>
+                  </div>
+                  {form1023Application.submitted_at ? (
+                    <div>
+                      <p className={`text-xs uppercase tracking-wide ${colors.labelText}`}>Submitted</p>
+                      <p className="text-lg font-semibold">
+                        {new Date(form1023Application.submitted_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  ) : form1023Application.amount && form1023Application.payment_status === 'paid' ? (
+                    <div>
+                      <p className={`text-xs uppercase tracking-wide ${colors.labelText}`}>Amount Paid</p>
+                      <p className="text-lg font-semibold">${Number(form1023Application.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
+                    </div>
+                  ) : null}
+                </div>
+                {form1023Application.amount && form1023Application.payment_status === 'paid' && (
+                  <div className="pt-2 border-t">
+                    <div className="flex items-center justify-between">
+                      <p className={`text-sm ${colors.labelText}`}>Payment Status</p>
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+                        Paid - ${Number(form1023Application.amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </Badge>
+                    </div>
+                  </div>
+                )}
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <Button
+                    onClick={() => router.visit(`/dashboard/form1023/apply/${form1023Application.id}/view`)}
+                    className={colors.button}
+                  >
+                    View Application
+                  </Button>
+                  {(form1023Application.status === 'draft' || form1023Application.status === 'needs_more_info') && (
+                    <Button
+                      variant="outline"
+                      onClick={() => router.visit("/dashboard/form1023/apply")}
+                      className="bg-white hover:bg-gray-50 border-gray-300"
+                    >
+                      Edit Application
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )
+        })()}
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
           <StatCard
             title="Total Donations"
-            value={`$${stats.totalDonations.toLocaleString()}`}
-            change={stats.donationChange}
+            value={`$${localStats.totalDonations.toLocaleString()}`}
+            change={localStats.donationChange}
             icon={<DollarSign className="h-6 w-6" />}
           />
           <StatCard
             title="Total Events"
-            value={stats.totalEvents}
-            change={stats.eventsChange}
+            value={localStats.totalEvents}
+            change={localStats.eventsChange}
             icon={<Calendar className="h-6 w-6" />}
           />
 
@@ -357,29 +1399,31 @@ export default function Dashboard({
             <>
               <StatCard
                 title="Active Volunteers"
-                value={stats.totalVolunteers}
-                change={stats.volunteersChange}
+                value={localStats.totalVolunteers}
+                change={localStats.volunteersChange}
                 icon={<User className="h-6 w-6" />}
               />
-              <StatCard title="Organizations" value={stats.organizationsManaged} icon={<User className="h-6 w-6" />} />
+              <StatCard title="Organizations" value={localStats.organizationsManaged} icon={<User className="h-6 w-6" />} />
             </>
           )}
 
-          {userRole === "organization" && (
+          {isOrgUser && (
             <>
-              <StatCard title="My Volunteers" value={stats.myVolunteers} icon={<User className="h-6 w-6" />} />
-              <StatCard title="Total Followers" value={stats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
+              <StatCard title="My Volunteers" value={localStats.myVolunteers} icon={<User className="h-6 w-6" />} />
+              <StatCard title="Total Followers" value={localStats.totalFav} icon={<UserCheck className="h-6 w-6" />} />
             </>
           )}
         </div>
 
-              {userRole == "organization" && (
+              {isOrgUser && (
         <div className="grid gap-6 md:grid-cols-3 lg:grid-cols-3">
           <div className="col-span-3 xl:col-span-2 2xl:col-span-1">
             <TopicsCard topics={userTopics} onDeleteTopic={handleDeleteTopic} />
           </div>
                   </div>
         )}
+
+        {/* Blue Form 1023 card removed - using green "Application Submitted" card instead */}
 
         {userRole === "organization" && (
           <div className="mx-auto w-full px-0 py-8">
@@ -564,6 +1608,33 @@ export default function Dashboard({
                               </Badge>
                             </div>
                           </div>
+
+                          {form1023Application && (
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <span className="text-sm text-gray-600 dark:text-gray-300">Form 1023 Application</span>
+                                <br />
+                                <Badge
+                                  variant="secondary"
+                                  className={
+                                    form1023Application.status === 'awaiting_review'
+                                      ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200"
+                                      : form1023Application.status === 'draft'
+                                      ? "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200"
+                                      : form1023Application.status === 'approved'
+                                      ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                                      : "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                  }
+                                >
+                                  {form1023Application.status === 'awaiting_review' ? 'Pending Review' :
+                                   form1023Application.status === 'draft' ? 'Draft' :
+                                   form1023Application.status === 'approved' ? 'Approved' :
+                                   form1023Application.status === 'pending_payment' ? 'Pending Payment' :
+                                   form1023Application.status}
+                                </Badge>
+                              </div>
+                            </div>
+                          )}
 
                           <div className="grid grid-cols-2 gap-4">
                             <div>
@@ -883,6 +1954,18 @@ export default function Dashboard({
           </div>
         )}
       </div>
+      
+      {/* Wallet Connect Popup - SHOW FOR ALL ORG USERS WHO DON'T HAVE WALLET CONNECTED */}
+      {isOrgUser && !isCheckingWallet && showWalletPopup && (
+        <WalletConnectPopup
+          isOpen={showWalletPopup}
+          onClose={handleCloseWalletPopup}
+          onConnect={handleWalletConnect}
+          isConnected={walletConnected}
+          walletAppName="Believe Wallet"
+          walletAppLogo="/logo.png" // You can change this to your wallet app logo path
+        />
+      )}
     </AppLayout>
   )
 }

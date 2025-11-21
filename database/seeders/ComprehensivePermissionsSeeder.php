@@ -83,7 +83,7 @@ class ComprehensivePermissionsSeeder extends Seeder
             'newsletter.recipient' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
 
             // Role Management
-            'role.management' => ['read', 'create', 'edit', 'update', 'delete'],
+            'role.management' => ['read', 'create', 'edit', 'update', 'delete', 'impersonate', 'resetPassword', 'loginDisable', 'verifyEmail'],
 
             // Dashboard and reports
             'dashboard' => ['read', 'admin', 'organization', 'user'],
@@ -97,6 +97,27 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Raffle Management
             'raffle' => ['read', 'create', 'edit', 'update', 'delete', 'purchase', 'draw'],
+
+            // AI Chat
+            'ai.chat' => ['use'],
+
+            // Board of Directors
+            'board.directors' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Content Management
+            'content' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Campaign Management
+            'campaign' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Form 1023 Application Management
+            'form1023.application' => ['read', 'create', 'edit', 'update', 'delete', 'review', 'approve', 'decline', 'manage'],
+
+            // Application Fees Management
+            'application.fees' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Compliance Review
+            'compliance' => ['review', 'read', 'create', 'edit', 'update', 'delete', 'approve', 'decline', 'manage'],
         ];
 
         // Create all permissions
@@ -177,6 +198,18 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Dashboard and Profile
             'dashboard.read', 'dashboard.organization',
             'profile.read', 'profile.edit', 'profile.update',
+
+            // AI Chat
+            'ai.chat.use',
+
+            // Board of Directors
+            'board.directors.read', 'board.directors.create', 'board.directors.edit', 'board.directors.update', 'board.directors.delete', 'board.directors.manage',
+
+            // Content Management
+            'content.read', 'content.create', 'content.edit', 'content.update', 'content.delete', 'content.manage',
+
+            // Campaign Management
+            'campaign.read', 'campaign.create', 'campaign.edit', 'campaign.update', 'campaign.delete', 'campaign.manage',
         ];
 
         $role->syncPermissions($permissions);

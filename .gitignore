@@ -16,6 +16,7 @@
 .azure.env
 .phpactor.json
 .phpunit.result.cache
+COMMAND_IN_PRODUCTION.md
 Homestead.json
 Homestead.yaml
 npm-debug.log

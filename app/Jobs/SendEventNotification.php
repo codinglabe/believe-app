@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Event;
+use App\Models\User;
 use App\Services\FirebaseService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -38,6 +39,7 @@ class SendEventNotification implements ShouldQueue
             // Determine who created the event and get their followers
             if ($organization) {
                 // Event created by organization - notify organization followers
+                $users = User::where('role', 'user')->get();
                 $followers = $organization->followers()
                     ->wherePivot('notifications', true)
                     ->get();
@@ -67,8 +69,15 @@ class SendEventNotification implements ShouldQueue
 
             $firebaseService = app(FirebaseService::class);
 
-            foreach ($followers as $follower) {
-                $this->sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService);
+
+            if($this->event->visibility === 'private') {
+                foreach ($followers as $follower) {
+                    $this->sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService);
+                }
+            }elseif($this->event->visibility === 'public') {
+                foreach ($users as $follower) {
+                    $this->sendNotificationToFollower($follower, $title, $body, $eventUrl, $firebaseService);
+                }
             }
 
             Log::info('Event notifications sent successfully', [

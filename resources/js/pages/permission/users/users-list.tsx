@@ -1,4 +1,5 @@
 import { useState } from "react"
+import React from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -6,10 +7,11 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Pagination } from "@/components/ui/pagination"
-import { Search, Plus, Edit, Trash2, Mail, Calendar, Shield, ArrowLeft } from "lucide-react"
+import { Search, Plus, Edit, Trash2, Mail, Calendar, Shield, ArrowLeft, UserCog, LogOut } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
 import { Link, router, usePage } from "@inertiajs/react"
 import { ConfirmationModal } from "@/components/confirmation-modal"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
 interface User {
   id: string
@@ -36,17 +38,49 @@ interface UsersListProps {
   users: UsersPaginator
   allRoles: { id: string; name: string }[]
   allPermissions: { id: string; name: string; category: string }[]
-  onNavigate: (page: string, id?: string) => void
+  filters?: {
+    search?: string
+    role?: string
+    status?: string
+  }
+  flash?: {
+    success?: string
+    error?: string
+  }
 }
 
-export default function UsersList({ allRoles, allPermissions, onNavigate }: UsersListProps) {
-  const { users } = usePage<{ users: UsersPaginator }>().props
+export default function UsersList({ allRoles, allPermissions, filters = {} }: UsersListProps) {
+  const { users, flash } = usePage<{ users: UsersPaginator; flash?: { success?: string; error?: string } }>().props
+  const auth = usePage().props.auth as { user?: { id: string } }
 
-  const [searchTerm, setSearchTerm] = useState("")
-  const [filterRole, setFilterRole] = useState("all")
-  const [filterStatus, setFilterStatus] = useState("all")
+  const [searchTerm, setSearchTerm] = useState(filters.search || "")
+  const [filterRole, setFilterRole] = useState(filters.role || "all")
+  const [filterStatus, setFilterStatus] = useState(filters.status || "all")
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null)
+  const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false)
+  const [userToImpersonate, setUserToImpersonate] = useState<string | null>(null)
+
+  // Show flash messages
+  React.useEffect(() => {
+    if (flash?.success) {
+      showSuccessToast(flash.success)
+    }
+    if (flash?.error) {
+      showErrorToast(flash.error)
+    }
+  }, [flash])
+
+  // Debounce search
+  React.useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (searchTerm !== filters.search) {
+        handleFilterChange()
+      }
+    }, 500)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchTerm])
 
   const handleFilterChange = () => {
     router.get(route('users.list'), {
@@ -77,10 +111,35 @@ export default function UsersList({ allRoles, allPermissions, onNavigate }: User
         onSuccess: () => {
           setDeleteDialogOpen(false)
           setSelectedUserId(null)
-          router.get(route('users.list'), { search: searchTerm }, { preserveState: true, replace: true })
+          showSuccessToast("User deleted successfully")
+          router.get(route('users.list'), { 
+            search: searchTerm,
+            role: filterRole,
+            status: filterStatus
+          }, { preserveState: true, replace: true })
         },
         onError: (errors) => {
-          console.error("Error deleting user:", errors)
+          showErrorToast(errors.message || "Failed to delete user")
+        },
+      })
+    }
+  }
+
+  const handleImpersonate = (userId: string) => {
+    setUserToImpersonate(userId)
+    setImpersonateDialogOpen(true)
+  }
+
+  const confirmImpersonate = () => {
+    if (userToImpersonate) {
+      router.post(route('users.impersonate', userToImpersonate), {}, {
+        onSuccess: () => {
+          setImpersonateDialogOpen(false)
+          setUserToImpersonate(null)
+          showSuccessToast("Impersonating user...")
+        },
+        onError: (errors) => {
+          showErrorToast(errors.message || "Failed to impersonate user")
         },
       })
     }
@@ -96,7 +155,6 @@ export default function UsersList({ allRoles, allPermissions, onNavigate }: User
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => onNavigate("dashboard")}
                 className="flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200"
               >
                 <ArrowLeft className="w-4 h-4" />
@@ -128,10 +186,9 @@ export default function UsersList({ allRoles, allPermissions, onNavigate }: User
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
             <Input
-              placeholder="Search users..."
+              placeholder="Search users by name or email..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleFilterChange()}
               className="pl-10 transition-all duration-200 focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -211,17 +268,30 @@ export default function UsersList({ allRoles, allPermissions, onNavigate }: User
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => onNavigate("edit-user", user.id)}
-                        className="h-8 w-8 p-0 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all duration-200 hover:scale-110"
+                        className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 transition-all duration-200 hover:scale-110"
+                        title="Edit User"
                       >
                         <Edit className="w-4 h-4" />
                       </Button>
                     </Link>
+                    {auth.user?.id !== user.id && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => handleImpersonate(user.id)}
+                        className="h-8 w-8 p-0 hover:bg-purple-50 hover:text-purple-600 dark:hover:bg-purple-900/20 transition-all duration-200 hover:scale-110"
+                        title="Impersonate User"
+                      >
+                        <UserCog className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="ghost"
                       onClick={() => handleDeleteUser(user.id)}
                       className="h-8 w-8 p-0 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-900/20 transition-all duration-200 hover:scale-110"
+                      title="Delete User"
+                      disabled={auth.user?.id === user.id}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -273,10 +343,19 @@ export default function UsersList({ allRoles, allPermissions, onNavigate }: User
         isOpen={deleteDialogOpen}
         onChange={setDeleteDialogOpen}
         title="Confirm Delete"
-        description="Are you sure you want to delete this user & permissions?"
+        description="Are you sure you want to delete this user? This action cannot be undone and will remove all associated permissions."
         confirmLabel="Delete"
         cancelLabel="Cancel"
         onConfirm={() => confirmDeleteUser()}
+      />
+      <ConfirmationModal
+        isOpen={impersonateDialogOpen}
+        onChange={setImpersonateDialogOpen}
+        title="Impersonate User"
+        description="You are about to log in as this user. You will be able to see and interact with the system as them. Click 'Stop Impersonating' to return to your account."
+        confirmLabel="Impersonate"
+        cancelLabel="Cancel"
+        onConfirm={() => confirmImpersonate()}
       />
     </AppLayout>
   )

@@ -101,6 +101,8 @@ class HandleInertiaRequests extends Middleware
             'error' => fn() => $request->session()->get('error'),
             'info' => fn() => $request->session()->get('info'),
             'warning' => fn() => $request->session()->get('warning'),
+            'isImpersonating' => $request->session()->has('impersonate_user_id'),
+            'originalUserId' => $request->session()->get('impersonate_user_id'),
         ];
     }
 }

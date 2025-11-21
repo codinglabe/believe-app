@@ -8,15 +8,15 @@ interface SiteTitleProps {
 
 export default function SiteTitle({ className, href }: SiteTitleProps) {
     return (
-        <Link href={href || route("home")} className={`flex items-center space-x-2 ${className || ''}`}>
-            <div className="bg-gradient-to-r from-purple-600 to-purple-800 p-2 rounded-xl shadow-lg">
+        <Link href={href || route("home")} className={`flex items-center space-x-2 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:justify-center [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:space-x-0 ${className || ''}`}>
+            <div className="bg-gradient-to-r from-purple-600 to-purple-800 p-2 rounded-xl shadow-lg shrink-0 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:p-1.5 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:h-8 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:w-8 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:flex [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:items-center [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:justify-center">
                 <img
                     src="/favicon-96x96.png"
                     alt="501c3ers Logo"
-                    className="h-6 w-6 object-contain filter brightness-0 invert sepia hue-rotate-60"
+                    className="h-6 w-6 object-contain filter brightness-0 invert sepia hue-rotate-60 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:h-5 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:w-5"
                 />
             </div>
-            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+            <span className="text-xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:hidden">
                 501c3ers
             </span>
         </Link>

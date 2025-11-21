@@ -15,12 +15,9 @@ export function NavUser() {
     return (
         <SidebarMenu className="flex justify-content-between flex-row items-center gap-2">
             <SidebarMenuItem>
-                <NotificationBell userId={auth.user.id} />
-            </SidebarMenuItem>
-            <SidebarMenuItem>
                 <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                        <SidebarMenuButton size="lg" className="cursor-pointer text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent group">
+                        <SidebarMenuButton size="lg" className="cursor-pointer text-sidebar-accent-foreground data-[state=open]:bg-sidebar-accent group max-w-full min-w-0">
                             <UserInfo user={auth.user} />
                             {/* <ChevronsUpDown className="ml-auto size-4" /> */}
                         </SidebarMenuButton>

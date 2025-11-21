@@ -51,6 +51,11 @@ class User extends Authenticatable implements MustVerifyEmail
         'plaid_access_token',
         'verification_metadata',
         'timezone',
+        'wallet_access_token',
+        'wallet_encrypted_token',
+        'wallet_user_id',
+        'wallet_token_expires_at',
+        'wallet_connected_at',
     ];
 
     /**
@@ -75,6 +80,8 @@ class User extends Authenticatable implements MustVerifyEmail
             'ownership_verified_at' => 'datetime',
             'verification_metadata' => 'array',
             'password' => 'hashed',
+            'wallet_token_expires_at' => 'datetime',
+            'wallet_connected_at' => 'datetime',
         ];
     }
 

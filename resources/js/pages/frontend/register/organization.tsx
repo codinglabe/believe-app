@@ -1,7 +1,7 @@
 "use client"
 import type React from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { useEffect, useState, useRef } from "react"
+import { useEffect, useState, useRef, useMemo } from "react"
 import { motion } from "framer-motion"
 import {
   Building2,
@@ -52,6 +52,8 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
   const [step, setStep] = useState(1)
   const [isLoading, setIsLoading] = useState(false)
   const [einError, setEinError] = useState("")
+  const [lookupStatus, setLookupStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle')
+  const [isManualEntry, setIsManualEntry] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [registrationSuccess, setRegistrationSuccess] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
@@ -105,6 +107,46 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     has_edited_irs_data: false,
     referralCode: referralCode,
   })
+
+  const passwordRequirements = useMemo(() => {
+    const password = formData.password || ""
+    return [
+      {
+        id: "length",
+        label: "At least 8 characters",
+        met: password.length >= 8,
+      },
+      {
+        id: "lowercase",
+        label: "At least one lowercase letter",
+        met: /[a-z]/.test(password),
+      },
+      {
+        id: "uppercase",
+        label: "At least one uppercase letter",
+        met: /[A-Z]/.test(password),
+      },
+      {
+        id: "number",
+        label: "At least one number",
+        met: /[0-9]/.test(password),
+      },
+      {
+        id: "symbol",
+        label: "At least one symbol",
+        met: /[^A-Za-z0-9]/.test(password),
+      },
+    ]
+  }, [formData.password])
+
+  const allPasswordRequirementsMet = useMemo(() => passwordRequirements.every((requirement) => requirement.met), [passwordRequirements])
+
+  const passwordsMatch = useMemo(() => {
+    if (!formData.password && !formData.password_confirmation) {
+      return false
+    }
+    return formData.password === formData.password_confirmation
+  }, [formData.password, formData.password_confirmation])
 
   // Multiple methods to get CSRF token
   const getCsrfToken = () => {
@@ -239,13 +281,37 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
     console.log("Starting EIN lookup for:", einData.ein)
     setIsLoading(true)
     setEinError("")
+    setLookupStatus('loading')
 
     const token = getCsrfToken()
     if (!token) {
       setEinError("Security token not available. Please refresh the page.")
       setIsLoading(false)
+      setLookupStatus('error')
       return
     }
+
+    // Reset editable fields before lookup
+    setFormData((prev) => ({
+      ...prev,
+      ein: einData.ein,
+      name: "",
+      ico: "",
+      street: "",
+      city: "",
+      state: "",
+      zip: "",
+      classification: "",
+      ruling: "",
+      deductibility: "",
+      organization: "",
+      status: "",
+      tax_period: "",
+      filing_req: "",
+      ntee_code: "",
+      has_edited_irs_data: false,
+    }))
+    setIsManualEntry(false)
 
     try {
       const response = await fetch(route("register.organization.lookup-ein"), {
@@ -283,25 +349,42 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
           tax_period: irsData.tax_period || "",
           filing_req: irsData.filing_req || "",
           ntee_code: irsData.ntee_code || "",
+          has_edited_irs_data: false,
         }))
 
-        // Move to next step
-        console.log("Moving to step 2")
+        setLookupStatus('success')
+        setIsManualEntry(false)
         setStep(2)
       } else {
-        // Handle errors
-        if (data.errors) {
-          const firstError = Object.values(data.errors)[0]
-          setEinError(Array.isArray(firstError) ? firstError[0] : firstError)
-        } else if (data.message) {
-          setEinError(data.message)
-        } else {
-          setEinError("EIN not found in IRS database. Please verify the number and try again.")
-        }
+        const cleanEin = einData.ein
+        setFormData((prev) => ({
+          ...prev,
+          ein: cleanEin,
+          name: "",
+          ico: "",
+          street: "",
+          city: "",
+          state: "",
+          zip: "",
+          classification: "",
+          ruling: "",
+          deductibility: "",
+          organization: "",
+          status: "",
+          tax_period: "",
+          filing_req: "",
+          ntee_code: "",
+          has_edited_irs_data: true,
+        }))
+        setLookupStatus('success')
+        setIsManualEntry(true)
+        setStep(2)
       }
     } catch (error) {
       console.error("EIN lookup error:", error)
       setEinError("Error looking up EIN. Please try again.")
+      setLookupStatus('error')
+      setIsManualEntry(true)
     } finally {
       setIsLoading(false)
     }
@@ -375,7 +458,9 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
       case 1:
         return einData.ein.length === 9
       case 2:
-        return !!(formData.name && formData.street && formData.city && formData.zip)
+        return isManualEntry
+          ? !!(formData.name && formData.street && formData.city && formData.state && formData.zip)
+          : lookupStatus === 'success'
       case 3:
         return !!(
           formData.image &&
@@ -590,11 +675,13 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                           placeholder="XX-XXXXXXX"
                           value={formatEIN(einData.ein)}
                           onChange={handleEINChange}
-                          className="h-12 sm:h-14 text-base sm:text-lg text-center font-mono tracking-wider"
+                          className={`h-12 sm:h-14 text-base sm:text-lg text-center font-mono tracking-wider ${errors.ein ? "border-red-500" : ""}`}
                           maxLength={10}
                         />
                         <Search className="absolute right-3 sm:right-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4 sm:h-5 sm:w-5" />
                       </div>
+
+                      {errors.ein && <p className="mt-2 text-sm text-red-600">{errors.ein}</p>}
 
                       {einError && (
                         <Alert className="mt-4 border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -643,74 +730,220 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                     transition={{ duration: 0.5 }}
                     className="space-y-6"
                   >
-                    <div className="text-center">
-                      <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
-                        <CheckCircle className="h-4 w-4 text-green-600" />
-                        <AlertDescription className="text-green-700 dark:text-green-400">
-                          Organization verified! Please review the information below.
-                        </AlertDescription>
-                      </Alert>
+                    <div className="space-y-4">
+                      {isManualEntry ? (
+                        <Alert className="border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950">
+                          <AlertCircle className="h-4 w-4 text-amber-600" />
+                          <AlertDescription className="text-amber-700 dark:text-amber-400">
+                            This EIN isn’t in the IRS file we have on record. Please enter your organization details so we can continue the tax exemption review.
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        <Alert className="border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950">
+                          <CheckCircle className="h-4 w-4 text-green-600" />
+                          <AlertDescription className="text-green-700 dark:text-green-400">
+                            Organization verified! Please review the information below.
+                          </AlertDescription>
+                        </Alert>
+                      )}
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Legal Name *</Label>
-                        <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <p className="font-medium">{formData.name || "No data available"}</p>
+                    {isManualEntry ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                          <Label htmlFor="org-name">Legal Name *</Label>
+                          <Input
+                            id="org-name"
+                            value={formData.name}
+                            onChange={(e) => handleInputChange("name", e.target.value)}
+                            placeholder="Organization legal name"
+                          />
+                          {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
                         </div>
-                      </div>
 
-                      <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">In Care Of</Label>
-                        <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <p>{formData.ico || "N/A"}</p>
+                        <div>
+                          <Label htmlFor="org-ico">In Care Of</Label>
+                          <Input
+                            id="org-ico"
+                            value={formData.ico ?? ""}
+                            onChange={(e) => handleInputChange("ico", e.target.value)}
+                            placeholder="c/o person or department"
+                          />
                         </div>
-                      </div>
 
-                      <div className="md:col-span-2">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Address *</Label>
-                        <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                          <p>{formData.street || "No street address"}</p>
-                          <p>
-                            {formData.city || "No city"}, {formData.state || "No state"} {formData.zip || "No ZIP"}
-                          </p>
+                        <div>
+                          <Label htmlFor="org-street">Street *</Label>
+                          <Input
+                            id="org-street"
+                            value={formData.street}
+                            onChange={(e) => handleInputChange("street", e.target.value)}
+                            placeholder="Street address"
+                          />
+                          {errors.street && <p className="text-red-600 text-sm mt-1">{errors.street}</p>}
                         </div>
-                      </div>
 
-                      {[
-                        { key: "classification", label: "Classification" },
-                        { key: "deductibility", label: "Tax Deductible" },
-                        { key: "ruling", label: "Ruling Year" },
-                        { key: "organization", label: "Organization Type" },
-                        { key: "status", label: "Status" },
-                        { key: "ntee_code", label: "NTEE Code" },
-                      ].map(({ key, label }) => (
-                        <div key={key}>
-                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</Label>
-                          <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
-                            <p className={key === "status" ? "text-green-600 font-medium" : ""}>
-                              {(formData[key as keyof typeof formData] as string) || "N/A"}
-                            </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div>
+                            <Label htmlFor="org-city">City *</Label>
+                            <Input
+                              id="org-city"
+                              value={formData.city}
+                              onChange={(e) => handleInputChange("city", e.target.value)}
+                              placeholder="City"
+                            />
+                            {errors.city && <p className="text-red-600 text-sm mt-1">{errors.city}</p>}
+                          </div>
+                          <div>
+                            <Label htmlFor="org-state">State *</Label>
+                            <Input
+                              id="org-state"
+                              value={formData.state}
+                              onChange={(e) => handleInputChange("state", e.target.value)}
+                              placeholder="State"
+                            />
+                            {errors.state && <p className="text-red-600 text-sm mt-1">{errors.state}</p>}
+                          </div>
+                          <div>
+                            <Label htmlFor="org-zip">ZIP *</Label>
+                            <Input
+                              id="org-zip"
+                              value={formData.zip}
+                              onChange={(e) => handleInputChange("zip", e.target.value)}
+                              placeholder="ZIP"
+                            />
+                            {errors.zip && <p className="text-red-600 text-sm mt-1">{errors.zip}</p>}
                           </div>
                         </div>
-                      ))}
-                    </div>
+
+                        <div>
+                          <Label htmlFor="org-classification">Classification</Label>
+                          <Input
+                            id="org-classification"
+                            value={formData.classification ?? ""}
+                            onChange={(e) => handleInputChange("classification", e.target.value)}
+                            placeholder="Classification"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="org-deductibility">Deductibility</Label>
+                          <Input
+                            id="org-deductibility"
+                            value={formData.deductibility ?? ""}
+                            onChange={(e) => handleInputChange("deductibility", e.target.value)}
+                            placeholder="Deductibility"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="org-ruling">Ruling Year</Label>
+                          <Input
+                            id="org-ruling"
+                            value={formData.ruling ?? ""}
+                            onChange={(e) => handleInputChange("ruling", e.target.value)}
+                            placeholder="YYYY"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="org-type">Organization Type</Label>
+                          <Input
+                            id="org-type"
+                            value={formData.organization ?? ""}
+                            onChange={(e) => handleInputChange("organization", e.target.value)}
+                            placeholder="Type"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="org-status">Status</Label>
+                          <Input
+                            id="org-status"
+                            value={formData.status ?? ""}
+                            onChange={(e) => handleInputChange("status", e.target.value)}
+                            placeholder="Status"
+                          />
+                        </div>
+
+                        <div>
+                          <Label htmlFor="org-ntee">NTEE Code</Label>
+                          <Input
+                            id="org-ntee"
+                            value={formData.ntee_code ?? ""}
+                            onChange={(e) => handleInputChange("ntee_code", e.target.value)}
+                            placeholder="NTEE"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Legal Name *</Label>
+                            <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <p className="font-medium">{formData.name || "No data available"}</p>
+                            </div>
+                          </div>
+
+                          <div>
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">In Care Of</Label>
+                            <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <p>{formData.ico || "N/A"}</p>
+                            </div>
+                          </div>
+
+                          <div className="md:col-span-2">
+                            <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">Address *</Label>
+                            <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                              <p>{formData.street || "No street address"}</p>
+                              <p>
+                                {formData.city || "No city"}, {formData.state || "No state"} {formData.zip || "No ZIP"}
+                              </p>
+                            </div>
+                          </div>
+
+                          {[
+                            { key: "classification", label: "Classification" },
+                            { key: "deductibility", label: "Tax Deductible" },
+                            { key: "ruling", label: "Ruling Year" },
+                            { key: "organization", label: "Organization Type" },
+                            { key: "status", label: "Status" },
+                            { key: "ntee_code", label: "NTEE Code" },
+                          ].map(({ key, label }) => (
+                            <div key={key}>
+                              <Label className="text-sm font-medium text-gray-700 dark:text-gray-300">{label}</Label>
+                              <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-700 rounded-lg">
+                                <p className={key === "status" ? "text-green-600 font-medium" : ""}>
+                                  {(formData[key as keyof typeof formData] as string) || "N/A"}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Button
-                        onClick={() => setStep(1)}
+                        onClick={() => {
+                          setStep(1)
+                          setIsManualEntry(false)
+                          setLookupStatus('idle')
+                        }}
                         variant="outline"
                         className="w-full sm:flex-1 order-2 sm:order-1"
                       >
                         Back to EIN
                       </Button>
-                      <Button
-                        onClick={() => setStep(3)}
-                        disabled={!validateStep(2)}
-                        className="w-full sm:flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 order-1 sm:order-2 disabled:opacity-50"
-                      >
-                        Continue
-                      </Button>
+                      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:flex-1 order-1 sm:order-2">
+                        <Button
+                          onClick={() => setStep(3)}
+                          disabled={!validateStep(2)}
+                          className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50"
+                        >
+                          Continue
+                        </Button>
+                      </div>
                     </div>
                   </motion.div>
                 )}
@@ -841,7 +1074,7 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                         {errors.contact_title && <p className="text-red-600 text-sm mt-1">{errors.contact_title}</p>}
                       </div>
 
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="password">Password *</Label>
                         <div className="relative">
                           <Input
@@ -850,21 +1083,46 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                             placeholder="Create a strong password"
                             value={formData.password}
                             onChange={(e) => handleInputChange("password", e.target.value)}
-                            className="h-12 pr-10"
-                            required
+                            className={errors.password ? "border-red-500" : ""}
                           />
                           <button
                             type="button"
                             onClick={() => setShowPassword(!showPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground"
                           >
-                            {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
-                        {errors.password && <p className="text-red-600 text-sm mt-1">{errors.password}</p>}
+                        {errors.password && <p className="text-red-600 text-sm">{errors.password}</p>}
+                        {formData.password && !allPasswordRequirementsMet && (
+                          <div className="rounded-md border border-dashed border-primary/30 bg-primary/5 p-3 text-xs">
+                            <p className="mb-2 font-medium text-primary">Your password must include:</p>
+                            <div className="space-y-1">
+                              {passwordRequirements.map((requirement) => (
+                                <div
+                                  key={requirement.id}
+                                  className={`flex items-center gap-2 ${requirement.met ? "text-emerald-600" : "text-muted-foreground"}`}
+                                >
+                                  {requirement.met ? (
+                                    <CheckCircle className="h-4 w-4" />
+                                  ) : (
+                                    <AlertCircle className="h-4 w-4" />
+                                  )}
+                                  <span>{requirement.label}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {formData.password && allPasswordRequirementsMet && (
+                          <div className="flex items-center gap-2 text-xs font-medium text-emerald-600">
+                            <CheckCircle className="h-4 w-4" />
+                            <span>Password meets all requirements</span>
+                          </div>
+                        )}
                       </div>
 
-                      <div>
+                      <div className="space-y-2">
                         <Label htmlFor="password_confirmation">Confirm Password *</Label>
                         <div className="relative">
                           <Input
@@ -873,19 +1131,28 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
                             placeholder="Confirm your password"
                             value={formData.password_confirmation}
                             onChange={(e) => handleInputChange("password_confirmation", e.target.value)}
-                            className="h-12 pr-10"
-                            required
+                            className={errors.password_confirmation ? "border-red-500" : ""}
                           />
                           <button
                             type="button"
                             onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                            className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                            className="absolute inset-y-0 right-0 flex items-center pr-3 text-muted-foreground"
                           >
-                            {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                            {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                           </button>
                         </div>
                         {errors.password_confirmation && (
-                          <p className="text-red-600 text-sm mt-1">{errors.password_confirmation}</p>
+                          <p className="text-red-600 text-sm">{errors.password_confirmation}</p>
+                        )}
+                        {formData.password_confirmation && (
+                          <div
+                            className={`flex items-center gap-2 text-xs ${
+                              passwordsMatch ? "text-emerald-600" : "text-red-500"
+                            }`}
+                          >
+                            {passwordsMatch ? <CheckCircle className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+                            <span>{passwordsMatch ? "Passwords match" : "Passwords do not match"}</span>
+                          </div>
                         )}
                       </div>
                     </div>

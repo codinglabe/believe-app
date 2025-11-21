@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   LayoutGrid,
   Upload,
@@ -48,6 +50,12 @@ interface PermissionSelectorProps {
   selectedPermissions: string[]
   onChange: (permissions: string[]) => void
   title?: string
+  userInfo?: {
+    name?: string
+    email?: string
+    role?: string
+    roles?: { id: string; name: string }[]
+  }
 }
 
 const categoryIcons = {
@@ -125,6 +133,7 @@ export default function PermissionSelector({
   selectedPermissions,
   onChange,
   title = "Permissions",
+  userInfo,
 }: PermissionSelectorProps) {
   const [localSelected, setLocalSelected] = useState<string[]>(selectedPermissions)
   const [activeCategory, setActiveCategory] = useState<string>("all")
@@ -188,25 +197,65 @@ export default function PermissionSelector({
   const isNoneSelected = localSelected.length === 0
 
   return (
-    <div className="flex h-[800px] bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+    <div className="flex flex-1 overflow-hidden border rounded-lg bg-card">
       {/* Sidebar */}
-      <div className="w-80 bg-white/80 dark:bg-slate-900/80 backdrop-blur-xl border-r border-slate-200/50 dark:border-slate-700/50 flex flex-col">
+      <div className="w-80 border-r flex flex-col">
         {/* Header */}
-        <div className="p-6 border-b border-slate-200/50 dark:border-slate-700/50">
-          <h3 className="text-xl font-bold text-slate-900 dark:text-slate-100 mb-2">{title}</h3>
-          <p className="text-sm text-slate-600 dark:text-slate-400">Configure access permissions for this role</p>
-          <div className="mt-4 flex items-center gap-2">
-            <Badge variant="secondary" className="text-sm font-medium">
+        <div className="p-4 border-b">
+          {/* User Info - Display Only in Single Card */}
+          {userInfo ? (
+            <Card className="p-4 mb-3">
+              <div className="space-y-3">
+                {userInfo.name !== undefined && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-muted-foreground min-w-[80px]">Name:</span>
+                    <span className="text-sm font-semibold flex-1">{userInfo.name || "-"}</span>
+                  </div>
+                )}
+                {userInfo.email !== undefined && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-muted-foreground min-w-[80px]">Email:</span>
+                    <span className="text-sm font-semibold flex-1">{userInfo.email || "-"}</span>
+                  </div>
+                )}
+                {userInfo.role !== undefined && userInfo.roles && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-medium text-muted-foreground min-w-[80px]">Primary Role:</span>
+                    <span className="text-sm font-semibold flex-1">
+                      {userInfo.roles.find(r => r.id === userInfo.role)?.name || "-"}
+                    </span>
+                  </div>
+                )}
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium text-muted-foreground min-w-[80px]">Custom Permissions:</span>
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 bg-primary/10 rounded-lg flex items-center justify-center">
+                      <span className="text-primary text-xs font-bold">{localSelected.length}</span>
+                    </div>
+                    <span className="text-xs text-muted-foreground">selected</span>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          ) : (
+            <div className="mb-3">
+              <h3 className="text-lg font-bold mb-1">{title}</h3>
+              <p className="text-sm text-muted-foreground mb-3">Configure access permissions</p>
+            </div>
+          )}
+          
+          <div className="flex items-center gap-2">
+            <Badge variant="secondary" className="text-xs">
               {localSelected.length} selected
             </Badge>
-            <Badge variant="outline" className="text-sm">
+            <Badge variant="outline" className="text-xs">
               {permissions.length} total
             </Badge>
           </div>
         </div>
 
         {/* Quick Actions */}
-        <div className="p-4 border-b border-slate-200/50 dark:border-slate-700/50">
+        <div className="p-3 border-b">
           <div className="flex gap-2">
             <Button
               type="button"
@@ -214,7 +263,7 @@ export default function PermissionSelector({
               size="sm"
               onClick={handleSelectAll}
               disabled={isAllSelected}
-              className="flex-1 flex items-center gap-2 transition-all duration-200 hover:scale-105 bg-white/50 dark:bg-slate-800/50"
+              className="flex-1 flex items-center gap-2"
             >
               <CheckSquare className="w-4 h-4" />
               All
@@ -225,7 +274,7 @@ export default function PermissionSelector({
               size="sm"
               onClick={handleDeselectAll}
               disabled={isNoneSelected}
-              className="flex-1 flex items-center gap-2 transition-all duration-200 hover:scale-105 bg-white/50 dark:bg-slate-800/50"
+              className="flex-1 flex items-center gap-2"
             >
               <Square className="w-4 h-4" />
               None
@@ -234,55 +283,49 @@ export default function PermissionSelector({
         </div>
 
         {/* Categories */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
           <Button
             variant={activeCategory === "all" ? "default" : "ghost"}
             onClick={() => setActiveCategory("all")}
-            className="w-full justify-start text-left transition-all duration-200 hover:scale-105"
+            className="w-full justify-start text-left text-sm"
           >
-            <Zap className="w-4 h-4 mr-3" />
+            <Zap className="w-4 h-4 mr-2" />
             <span className="flex-1">All Permissions</span>
-            <Badge variant="secondary" className="ml-2">
+            <Badge variant="secondary" className="ml-2 text-xs">
               {permissions.length}
             </Badge>
           </Button>
 
-          {categories.map((category, index) => {
+          {categories.map((category) => {
             const Icon = categoryIcons[category as keyof typeof categoryIcons] || Shield
             const stats = getCategoryStats(category)
             const isActive = activeCategory === category
             const isFullySelected = stats.selected === stats.total
             return (
-              <div
-                key={category}
-                className="animate-in fade-in-0 slide-in-from-left-4"
-                style={{ animationDelay: `${index * 100}ms` }}
-              >
+              <div key={category}>
                 <Button
                   variant={isActive ? "default" : "ghost"}
                   onClick={() => setActiveCategory(category)}
-                  className="w-full justify-start text-left transition-all duration-200 hover:scale-105 group"
+                  className="w-full justify-start text-left text-sm"
                 >
                   <div
-                    className={`w-3 h-3 rounded-full ${categoryColors[category as keyof typeof categoryColors] || "bg-gray-500"} mr-3`}
+                    className={`w-2 h-2 rounded-full ${categoryColors[category as keyof typeof categoryColors] || "bg-gray-500"} mr-2`}
                   />
-                  <Icon className="w-4 h-4 mr-2" />
-                  <span className="flex-1">{category}</span>
-                  <div className="flex items-center gap-1">
-                    <Badge variant={isFullySelected ? "default" : "secondary"} className="text-xs">
-                      {stats.selected}/{stats.total}
-                    </Badge>
-                  </div>
+                  <Icon className="w-3.5 h-3.5 mr-2" />
+                  <span className="flex-1 text-xs">{category}</span>
+                  <Badge variant={isFullySelected ? "default" : "secondary"} className="text-xs">
+                    {stats.selected}/{stats.total}
+                  </Badge>
                 </Button>
 
                 {isActive && (
-                  <div className="mt-2 ml-4 animate-in fade-in-0 slide-in-from-left-2">
+                  <div className="mt-1 ml-6">
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       onClick={() => handleCategorySelectAll(category)}
-                      className="w-full text-xs transition-all duration-200 hover:scale-105 bg-white/50 dark:bg-slate-800/50"
+                      className="w-full text-xs h-7"
                     >
                       Select All {category}
                     </Button>
@@ -297,29 +340,29 @@ export default function PermissionSelector({
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Search Header */}
-        <div className="p-6 bg-white/50 dark:bg-slate-900/50 backdrop-blur-xl border-b border-slate-200/50 dark:border-slate-700/50">
-          <div className="flex items-center gap-4">
+        <div className="p-4 border-b">
+          <div className="flex items-center gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
               <Input
                 placeholder="Search permissions..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10 bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm border-slate-200/50 dark:border-slate-700/50 transition-all duration-200 focus:ring-2 focus:ring-blue-500"
+                className="pl-10"
               />
             </div>
-            <Button variant="outline" size="sm" className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm">
+            <Button variant="outline" size="sm">
               <Filter className="w-4 h-4 mr-2" />
               Filter
             </Button>
           </div>
 
           {activeCategory !== "all" && (
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-3 flex items-center gap-2">
               <div
-                className={`w-3 h-3 rounded-full ${categoryColors[activeCategory as keyof typeof categoryColors] || "bg-gray-500"}`}
+                className={`w-2 h-2 rounded-full ${categoryColors[activeCategory as keyof typeof categoryColors] || "bg-gray-500"}`}
               />
-              <span className="text-sm font-medium text-slate-700 dark:text-slate-300">
+              <span className="text-sm font-medium">
                 {activeCategory} Permissions
               </span>
               <Badge variant="outline" className="text-xs">
@@ -330,92 +373,94 @@ export default function PermissionSelector({
         </div>
 
         {/* Permissions Grid */}
-        <div className="flex-1 overflow-y-auto p-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-4">
-            {filteredPermissions.map((permission, index) => {
-              const isSelected = localSelected.includes(permission.id)
-              const Icon = categoryIcons[permission.category as keyof typeof categoryIcons] || Shield
-              return (
-                <Card
-                  key={permission.id}
-                  className={`group relative overflow-hidden transition-all duration-300 hover:shadow-lg hover:-translate-y-1 cursor-pointer animate-in fade-in-0 slide-in-from-bottom-4 ${isSelected
-                    ? "bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20 border-blue-200 dark:border-blue-700"
-                    : "bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm hover:bg-white dark:hover:bg-slate-800"
+        <div className="flex-1 overflow-y-auto p-4 min-h-0">
+          {filteredPermissions.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-2 gap-3">
+              {filteredPermissions.map((permission) => {
+                const isSelected = localSelected.includes(permission.id)
+                const Icon = categoryIcons[permission.category as keyof typeof categoryIcons] || Shield
+                const categoryColor = categoryColors[permission.category as keyof typeof categoryColors] || "bg-gray-500"
+                return (
+                  <Card
+                    key={permission.id}
+                    className={`group relative overflow-hidden transition-all duration-200 cursor-pointer border-2 ${
+                      isSelected
+                        ? "border-primary bg-primary/5 shadow-sm"
+                        : "border-border hover:border-primary/50 hover:bg-muted/50"
                     }`}
-                  style={{ animationDelay: `${index * 50}ms` }}
-                  onClick={() => handlePermissionChange(permission.id, !isSelected)}
-                >
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-3">
-                        <div className="">
+                    onClick={() => handlePermissionChange(permission.id, !isSelected)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 flex-1 min-w-0">
                           <div
-                            className={`w-10 h-10 rounded-xl ${categoryColors[permission.category as keyof typeof categoryColors] || "bg-gray-500"} bg-opacity-10 flex items-center justify-center`}
+                            className={`w-10 h-10 rounded-xl ${categoryColor} bg-opacity-15 flex items-center justify-center flex-shrink-0 ${
+                              isSelected ? "ring-2 ring-primary/20" : ""
+                            }`}
                           >
-                            <Icon
-                              className={`w-5 h-5`}
+                            <Icon className="w-5 h-5 text-foreground/70" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className={`font-semibold text-sm mb-1 ${
+                              isSelected ? "text-primary" : "text-foreground"
+                            }`}>
+                              {permission.name}
+                            </h4>
+                            <div className="flex items-center gap-2">
+                              <Badge 
+                                variant="outline" 
+                                className="text-xs px-2 py-0.5 border-muted-foreground/30"
+                              >
+                                {permission.category}
+                              </Badge>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-2 flex-shrink-0">
+                          {isSelected ? (
+                            <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center">
+                              <CheckCircle2 className="w-4 h-4 text-primary-foreground" />
+                            </div>
+                          ) : (
+                            <div className="w-6 h-6 rounded-full border-2 border-muted-foreground/30 flex items-center justify-center">
+                              <XCircle className="w-4 h-4 text-muted-foreground" />
+                            </div>
+                          )}
+                          <div className="scale-90">
+                            <AnimatedToggle
+                              id={permission.id}
+                              checked={isSelected}
+                              onChange={(checked) => handlePermissionChange(permission.id, checked)}
+                              label=""
+                              size="sm"
                             />
                           </div>
                         </div>
-                        <div>
-                          <h4 className="font-semibold text-slate-900 dark:text-slate-100 text-sm">
-                            {permission.name}
-                          </h4>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">{permission.category}</p>
-                        </div>
                       </div>
-
-                      <div className="flex items-center gap-2">
-                        {isSelected ? (
-                          <CheckCircle2 className="w-5 h-5 text-green-500" />
-                        ) : (
-                          <XCircle className="w-5 h-5 text-slate-300 dark:text-slate-600" />
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <Badge variant={isSelected ? "default" : "outline"} className="text-xs">
-                        {isSelected ? "Granted" : "Denied"}
-                      </Badge>
-
-                      <div className="scale-75">
-                        <AnimatedToggle
-                          id={permission.id}
-                          checked={isSelected}
-                          onChange={(checked) => handlePermissionChange(permission.id, checked)}
-                          label=""
-                          size="sm"
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-
-                  {/* Hover Effect */}
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/5 to-purple-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                </Card>
+                    </CardContent>
+                  </Card>
               )
             })}
-          </div>
-
-          {filteredPermissions.length === 0 && (
+            </div>
+          ) : (
             <div className="flex flex-col items-center justify-center h-64 text-center">
-              <Search className="w-12 h-12 text-slate-300 dark:text-slate-600 mb-4" />
-              <h3 className="text-lg font-semibold text-slate-600 dark:text-slate-400 mb-2">No permissions found</h3>
-              <p className="text-sm text-slate-500 dark:text-slate-500">Try adjusting your search or category filter</p>
+              <Search className="w-12 h-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No permissions found</h3>
+              <p className="text-sm text-muted-foreground">Try adjusting your search or category filter</p>
             </div>
           )}
         </div>
 
         {/* Summary Footer */}
         {localSelected.length > 0 && (
-          <div className="p-6 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border-t border-slate-200/50 dark:border-slate-700/50 animate-in fade-in-0 slide-in-from-bottom-2">
+          <div className="p-4 bg-muted border-t">
             <div className="flex items-center justify-between">
               <div>
-                <h4 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">
+                <h4 className="font-semibold mb-1">
                   {localSelected.length} Permission{localSelected.length !== 1 ? "s" : ""} Selected
                 </h4>
-                <p className="text-sm text-slate-600 dark:text-slate-400">
+                <p className="text-sm text-muted-foreground">
                   These permissions will be granted to the user/role
                 </p>
               </div>
@@ -429,10 +474,10 @@ export default function PermissionSelector({
                     return (
                       <div
                         key={category}
-                        className={`w-8 h-8 rounded-full ${categoryColors[category as keyof typeof categoryColors] || "bg-gray-500"} bg-opacity-20 border-2 border-white dark:border-slate-800 flex items-center justify-center`}
+                        className={`w-7 h-7 rounded-full ${categoryColors[category as keyof typeof categoryColors] || "bg-gray-500"} bg-opacity-20 border-2 border-background flex items-center justify-center`}
                         title={`${category}: ${stats.selected}/${stats.total}`}
                       >
-                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">{stats.selected}</span>
+                        <span className="text-xs font-bold">{stats.selected}</span>
                       </div>
                     )
                   })}

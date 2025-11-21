@@ -27,29 +27,34 @@ interface SettingsLayoutProps extends PropsWithChildren {
 export default function SettingsLayout({ children, activeTab = "profile" }: SettingsLayoutProps) {
   const { auth } = usePage<SharedData>().props
 
-  // Mock profile data - replace with real data from auth.user
+  // Get profile data from auth.user
   const profileData = {
     firstName: auth.user.name?.split(" ")[0] || "John",
     lastName: auth.user.name?.split(" ")[1] || "Doe",
     email: auth.user.email,
-    avatar: auth.user.image,
+    avatar: auth.user.image || undefined,
     phone: auth.user.contact_number || "",
     email_verified_at: auth.user.email_verified_at || "",
     location: auth.user.organization?.address || "",
     joinDate: auth.user.joined || "",
   }
+  
+  // Ensure avatar path is correct (backend already includes /storage/ prefix)
+  const avatarSrc = profileData.avatar && profileData.avatar.trim() !== '' 
+    ? profileData.avatar 
+    : undefined
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Profile Settings" />
 
       <div className="min-h-screen bg-gray-50 dark:bg-black">
-        <div className="container mx-auto px-4 py-6 lg:py-8">
+        <div className="w-full px-4 py-6 lg:py-8">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="max-w-7xl mx-auto"
+            className="w-full"
           >
             {/* Profile Header Card */}
             <Card className="mb-6 lg:mb-8 bg-white dark:bg-transparent border-gray-200 dark:border-gray-700 shadow-sm">
@@ -58,9 +63,15 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                   {/* Avatar Section */}
                   <div className="relative flex-shrink-0">
                     <Avatar className="w-24 h-24 lg:w-32 lg:h-32 border-4 border-white dark:border-gray-700 shadow-lg">
-                      <AvatarImage src={profileData.avatar || "/placeholder.svg"} alt="Profile" />
+                      {avatarSrc && (
+                        <AvatarImage 
+                          src={avatarSrc} 
+                          alt="Profile"
+                          className="object-cover"
+                        />
+                      )}
                       <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-2xl lg:text-3xl font-semibold">
-                        {auth.user.role === "organization" ? auth.user.organization?.name?.split(" ")[0] + auth.user.organization?.name?.split(" ")[1] : profileData.firstName[0] + profileData.lastName[0]}
+                        {auth.user.role === "organization" ? (auth.user.organization?.name?.split(" ")[0]?.[0] || "") + (auth.user.organization?.name?.split(" ")[1]?.[0] || "") : (profileData.firstName[0] || "") + (profileData.lastName[0] || "")}
                       </AvatarFallback>
                     </Avatar>
                     {/* <Button
@@ -159,6 +170,13 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                             </Link>
                                                   </TabsTrigger>
                             )}
+                          <TabsTrigger value="billing" asChild>
+                            <Link href={route("billing.index")}
+                              className="flex items-center gap-2 px-3 py-2 text-sm">
+                              <CreditCard className="h-4 w-4" />
+                              Billing
+                            </Link>
+                          </TabsTrigger>
                           <TabsTrigger value="referral" asChild>
                             <Link href={route("referral.edit")}
                               className="flex items-center gap-2 px-3 py-2 text-sm">
@@ -225,6 +243,16 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                                                       Webhook Management
                                                   </Link>
                                               )}
+                        <Link
+                          href={route("billing.index")}
+                          className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "billing"
+                            ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            : "text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                            }`}
+                        >
+                          <CreditCard className="h-4 w-4" />
+                          Billing & Wallet
+                        </Link>
                         <Link
                           href={route("referral.edit")}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "referral"

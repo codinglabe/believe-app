@@ -11,12 +11,19 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Only run if events table exists
+        if (!Schema::hasTable('events')) {
+            return;
+        }
+
         Schema::table('events', function (Blueprint $table) {
             // Make organization_id nullable to allow user-created events
             $table->foreignId('organization_id')->nullable()->change();
             
             // Add user_id for user-created events
-            $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('cascade');
+            if (!Schema::hasColumn('events', 'user_id')) {
+                $table->foreignId('user_id')->nullable()->constrained('users')->onDelete('cascade');
+            }
             
             // Add event_type_id if it doesn't exist
             if (!Schema::hasColumn('events', 'event_type_id')) {

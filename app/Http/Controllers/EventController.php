@@ -104,7 +104,7 @@ class EventController extends BaseController
 
         $event = Event::create($data);
 
-        if($request->visibility === 'public' && $request->status !== 'cancelled') {
+        if (in_array($request->visibility, ['public', 'private']) && $request->status !== 'cancelled') {
             SendEventNotification::dispatch($event);
         }
 

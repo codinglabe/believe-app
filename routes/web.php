@@ -2,6 +2,8 @@
 
 use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
+use App\Http\Controllers\AboutPageController;
+use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
@@ -16,7 +18,13 @@ use App\Http\Controllers\PositionCategoryController;
 use App\Http\Controllers\PurchaseController;
 use App\Http\Controllers\PwaInstallController;
 use App\Http\Controllers\TestMeetingController;
+use App\Http\Controllers\WalletController;
 use App\Http\Controllers\UsersInterestedTopicsController;
+use App\Http\Controllers\ComplianceApplicationController;
+use App\Http\Controllers\Form1023ApplicationController;
+use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianceApplicationController;
+use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
+use App\Http\Controllers\Admin\FeesController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -89,9 +97,7 @@ Route::get("pwa-setup", function () {
 })->name('pwa.install');
 Route::get('/pwa/install-qr', [PwaInstallController::class, 'installQr'])->name('pwa.install-qr');
 
-Route::get('/about', function () {
-    return Inertia::render('frontend/about');
-})->name('about');
+Route::get('/about', \App\Http\Controllers\AboutPageController::class)->name('about');
 
 Route::get('/privacy-policy', function () {
     return Inertia::render('frontend/PrivacyPolicy');
@@ -104,6 +110,11 @@ Route::get('/terms-of-service', function () {
 Route::get('/contact', function () {
     return Inertia::render('frontend/contact');
 })->name('contact');
+
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(function () {
+    Route::get('/admin/about', [AdminAboutPageController::class, 'edit'])->name('admin.about.edit');
+    Route::put('/admin/about', [AdminAboutPageController::class, 'update'])->name('admin.about.update');
+});
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
     ->name('nonprofit.news');
@@ -141,6 +152,15 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/checkout/{order}/submit-printify', [CheckoutController::class, 'submitToPrintify'])->name('checkout.submit-printify');
 });
 
+/* fractional ownership */
+Route::get('/fractional', [\App\Http\Controllers\FractionalOwnershipController::class, 'index'])->name('fractional.index');
+Route::get('/fractional/{offering}', [\App\Http\Controllers\FractionalOwnershipController::class, 'show'])->name('fractional.show');
+Route::post('/fractional/{offering}/purchase', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchase'])->middleware('auth')->name('fractional.purchase');
+Route::get('/fractional/purchase/success', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchaseSuccess'])->middleware('auth')->name('fractional.purchase.success');
+Route::get('/fractional/purchase/cancel', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchaseCancel'])->middleware('auth')->name('fractional.purchase.cancel');
+Route::get('/fractional/certificate/{order}', [\App\Http\Controllers\FractionalCertificateController::class, 'show'])->middleware('auth')->name('fractional.certificate.show');
+Route::get('/fractional/certificate/{order}/download', [\App\Http\Controllers\FractionalCertificateController::class, 'download'])->middleware('auth')->name('fractional.certificate.download');
+
 /* events */
 Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
@@ -169,6 +189,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
+    Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
+    Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
@@ -207,32 +229,97 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
+    
+    // Wallet Routes
+    Route::prefix('wallet')->name('wallet.')->group(function () {
+        Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
+        Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+        Route::get('/status', [WalletController::class, 'status'])->name('status');
+        Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
+        
+        // User Rewards Routes
+        Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
+        Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
+        Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
+        
+        // Token Balance Route
+        Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
+    });
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
+// Stop impersonation route (must be accessible to any authenticated user, including impersonated users)
+Route::post('/users/stop-impersonate', [RolePermissionController::class, 'stopImpersonate'])->middleware(['auth'])->name('users.stop-impersonate');
+
 Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/raffles/success', [App\Http\Controllers\RaffleController::class, 'success'])->name('raffles.success');
     Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
 Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])->group(function () {
-    Route::get('/export', function () {
-        return view('excel-export');
+    Route::get('/', [ExcelDataController::class, 'index'])->name('index');
+    Route::get('/import', [ExcelDataController::class, 'import'])->name('import');
+    Route::post('/import', [ExcelDataController::class, 'importStore'])->name('import.store');
+    Route::post('/upload', [ExcelDataController::class, 'upload'])->name('upload');
+});
+
+Route::prefix('admin/compliance')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:compliance.review'])
+    ->name('admin.compliance.')
+    ->group(function () {
+        Route::get('/', [AdminComplianceApplicationController::class, 'index'])->name('index');
+        Route::get('/{application}', [AdminComplianceApplicationController::class, 'show'])->name('show');
+        Route::patch('/{application}', [AdminComplianceApplicationController::class, 'update'])->name('update');
+        Route::delete('/{application}', [AdminComplianceApplicationController::class, 'destroy'])->name('destroy');
     });
 
-    // Start export
-    Route::post('/export', [ExcelDataExportController::class, 'export'])->name('export');
+Route::prefix('admin/form1023')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.form1023.')
+    ->group(function () {
+        Route::get('/', [AdminForm1023ApplicationController::class, 'index'])->name('index');
+        Route::get('/{application}', [AdminForm1023ApplicationController::class, 'show'])->name('show');
+        Route::patch('/{application}', [AdminForm1023ApplicationController::class, 'update'])->name('update');
+        Route::patch('/{application}/amount', [AdminForm1023ApplicationController::class, 'updateAmount'])->name('update-amount');
+        Route::post('/{application}/reject-document', [AdminForm1023ApplicationController::class, 'rejectDocument'])->name('reject-document');
+        Route::delete('/{application}', [AdminForm1023ApplicationController::class, 'destroy'])->name('destroy');
+    });
 
-    // Check export status
-    Route::get('/status/{filename}', [ExcelDataExportController::class, 'status'])->name('status');
+Route::prefix('admin/fees')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.fees.')
+    ->group(function () {
+        Route::get('/', [FeesController::class, 'index'])->name('index');
+        Route::put('/', [FeesController::class, 'update'])->name('update');
+    });
 
-    // Download exported file
-    Route::get('/download/{filename}', [ExcelDataExportController::class, 'download'])->name('download');
+// Fractional Ownership (Admin-only - Full CRUD)
+Route::prefix('admin/fractional')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.fractional.')
+    ->group(function () {
+        // Assets routes
+        Route::get('/assets', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'index'])->name('assets.index');
+        Route::get('/assets/create', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'create'])->name('assets.create');
+        Route::post('/assets', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'store'])->name('assets.store');
+        Route::get('/assets/{asset}/edit', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'edit'])->name('assets.edit');
+        Route::put('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'update'])->name('assets.update');
+        Route::delete('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'destroy'])->name('assets.destroy');
+        
+            // Offerings routes
+            Route::get('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'index'])->name('offerings.index');
+            Route::get('/offerings/create', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'create'])->name('offerings.create');
+            Route::post('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'store'])->name('offerings.store');
+            Route::get('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'show'])->name('offerings.show');
+            Route::get('/offerings/{offering}/edit', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'edit'])->name('offerings.edit');
+            Route::put('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'update'])->name('offerings.update');
+            Route::delete('/offerings/{offering}', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'destroy'])->name('offerings.destroy');
 
-    // Get available states for filtering
-    Route::get('/states', [ExcelDataExportController::class, 'getStates'])->name('states');
-});
+            // Orders routes
+            Route::get('/orders', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'index'])->name('orders.index');
+            Route::get('/orders/{order}', [\App\Http\Controllers\Admin\FractionalOrderController::class, 'show'])->name('orders.show');
+        });
 
 Route::middleware(["auth", 'EnsureEmailIsVerified'])->group(function (){
     Route::get('/notifications', [NotificationController::class, 'index']);
@@ -283,8 +370,27 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 });
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', 'topics.selected'])->group(function () {
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+
+    Route::middleware('permission:dashboard.read')->group(function () {
+        Route::get('/dashboard/compliance/apply', [ComplianceApplicationController::class, 'show'])->name('compliance.apply.show');
+        Route::post('/dashboard/compliance/apply', [ComplianceApplicationController::class, 'store'])->name('compliance.apply.store');
+        Route::get('/dashboard/compliance/apply/{application}/success', [ComplianceApplicationController::class, 'success'])->name('compliance.apply.success');
+        Route::get('/dashboard/compliance/apply/{application}/cancel', [ComplianceApplicationController::class, 'cancel'])->name('compliance.apply.cancel');
+    });
+    
+    // Form 1023 Application Routes - Only for organization users (not admins)
+    Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'topics.selected'])->group(function () {
+        Route::get('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'show'])->name('form1023.apply.show');
+        Route::post('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'store'])->name('form1023.apply.store');
+        Route::put('/dashboard/form1023/apply/{application}', [Form1023ApplicationController::class, 'update'])->name('form1023.apply.update');
+        Route::post('/dashboard/form1023/apply/draft', [Form1023ApplicationController::class, 'saveAsDraft'])->name('form1023.apply.draft');
+        Route::get('/dashboard/form1023/apply/{application}/view', [Form1023ApplicationController::class, 'view'])->name('form1023.apply.view');
+        Route::post('/dashboard/form1023/apply/{application}/pay', [Form1023ApplicationController::class, 'initiatePayment'])->name('form1023.apply.pay');
+        Route::get('/dashboard/form1023/apply/{application}/success', [Form1023ApplicationController::class, 'success'])->name('form1023.apply.success');
+        Route::get('/dashboard/form1023/apply/{application}/cancel', [Form1023ApplicationController::class, 'cancel'])->name('form1023.apply.cancel');
+    });
 
     Route::middleware("role:organization")->group(function () {
         Route::resource('board-members', BoardMemberController::class)
@@ -482,14 +588,20 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin', '
         Route::get('/roles/{role}/edit', [RolePermissionController::class, 'editRole'])->name('roles.edit');
         Route::put('/roles/{role}', [RolePermissionController::class, 'updateRole'])->name('roles.update');
         Route::delete('/roles/{role}', [RolePermissionController::class, 'destroyRole'])->name('roles.destroy');
+    });
 
-        // User Management
-        Route::get('/users', [RolePermissionController::class, 'userPermission'])->name('users.list');
-        Route::get('/users/create', [RolePermissionController::class, 'createUser'])->name('users.create');
-        Route::post('/users', [RolePermissionController::class, 'storeUser'])->name('users.store');
-        Route::get('/users/{user}/edit', [RolePermissionController::class, 'editUser'])->name('users.edit');
-        Route::put('/users/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
-        Route::delete('/users/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
+    // User Management (separate from permissions)
+    Route::prefix('users')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
+        Route::get('/', [RolePermissionController::class, 'userPermission'])->name('users.list');
+        Route::get('/create', [RolePermissionController::class, 'createUser'])->name('users.create');
+        Route::post('/', [RolePermissionController::class, 'storeUser'])->name('users.store');
+        Route::get('/{user}/edit', [RolePermissionController::class, 'editUser'])->name('users.edit');
+        Route::put('/{user}', [RolePermissionController::class, 'updateUser'])->name('users.update');
+        Route::delete('/{user}', [RolePermissionController::class, 'destroyUser'])->name('users.destroy');
+        Route::post('/{user}/impersonate', [RolePermissionController::class, 'impersonate'])->name('users.impersonate');
+        Route::post('/{user}/reset-password', [RolePermissionController::class, 'resetPassword'])->name('users.reset-password');
+        Route::post('/{user}/toggle-login-disable', [RolePermissionController::class, 'toggleLoginDisable'])->name('users.toggle-login-disable');
+        Route::post('/{user}/verify-email', [RolePermissionController::class, 'verifyEmail'])->name('users.verify-email');
     });
     Route::resource('deductibility-codes', DeductibilityCodeController::class)->except(['show'])->middleware([
         'index' => 'permission:deductibility.code.read',

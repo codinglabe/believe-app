@@ -51,20 +51,41 @@ jobs:
         run: |
           ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "echo 'SSH OK'"
 
-      - name: Deploy (Safe Storage)
+      - name: Check Storage Folder Exists
+        id: check_storage
         run: |
-          rsync -avz --delete \
-            -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
-            --exclude='.git*' \
-            --exclude='.github' \
-            --exclude='node_modules' \
-            --exclude='tests' \
-            --exclude='.env' \
-            --exclude='storage/app/' \
-            --exclude='storage/logs/' \
-            --exclude='storage/framework/sessions/' \
-            --exclude='storage/framework/cache/data/' \
-            . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+          STORAGE_EXISTS=$(ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }} "test -d ${{ env.DEPLOY_PATH }}/storage && echo 'yes' || echo 'no'")
+          echo "storage_exists=$STORAGE_EXISTS" >> $GITHUB_OUTPUT
+          echo "Storage folder exists: $STORAGE_EXISTS"
+
+      - name: Deploy (Conditional Storage)
+        run: |
+          if [ "${{ steps.check_storage.outputs.storage_exists }}" == "yes" ]; then
+            echo "Storage folder exists on server, excluding from upload"
+            rsync -avz --delete \
+              -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
+              --exclude='.git*' \
+              --exclude='.github' \
+              --exclude='node_modules' \
+              --exclude='tests' \
+              --exclude='.env' \
+              --exclude='.env.*' \
+              --exclude='storage/' \
+              --exclude='/.htaccess' \
+              . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+          else
+            echo "Storage folder does not exist on server, will upload it"
+            rsync -avz --delete \
+              -e "ssh -p ${{ env.SSH_PORT }} -o StrictHostKeyChecking=no" \
+              --exclude='.git*' \
+              --exclude='.github' \
+              --exclude='node_modules' \
+              --exclude='tests' \
+              --exclude='.env' \
+              --exclude='.env.*' \
+              --exclude='/.htaccess' \
+              . ${{ env.DEPLOY_USER }}@${{ env.DEPLOY_HOST }}:${{ env.DEPLOY_PATH }}/
+          fi
 
       - name: Post-Deploy
         run: |
@@ -72,7 +93,14 @@ jobs:
             cd ${{ env.DEPLOY_PATH }}
             find . -type f -exec chmod 644 {} \;
             find . -type d -exec chmod 755 {} \;
+            # Ensure storage directory structure exists but preserve existing files
+            mkdir -p storage/app/public storage/framework/{sessions,views,cache/data} storage/logs
             chmod -R 775 storage bootstrap/cache
+            # Ensure .htaccess files are preserved (restore from backup if accidentally deleted)
+            if [ ! -f .htaccess ] && [ -f .htaccess.backup ]; then
+              cp .htaccess.backup .htaccess
+              echo "Restored .htaccess from backup"
+            fi
             php artisan config:clear
             php artisan route:clear
             php artisan view:clear
