@@ -583,4 +583,9 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasOne(Cart::class);
     }
+
+    public function followerPositions()
+    {
+        return $this->hasMany(FollowingUserPosition::class);
+    }
 }

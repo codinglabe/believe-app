@@ -33,12 +33,12 @@ export function useNotifications(userId: number) {
       setUnreadCount((prev) => prev + 1)
 
       // Show browser notification if permitted
-      if ("Notification" in window && Notification.permission === "granted") {
-        new Notification(notification.data.title, {
-          body: notification.data.body,
-          icon: "/favicon-96x96.png",
-        })
-      }
+    //   if ("Notification" in window && Notification.permission === "granted") {
+    //     new Notification(notification.data.title, {
+    //       body: notification.data.body,
+    //       icon: "/favicon-96x96.png",
+    //     })
+    //   }
     })
 
     return () => {

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ExcelData;
+use App\Models\FollowerPosition;
+use App\Models\FollowingUserPosition;
 use App\Models\NteeCode;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
@@ -448,6 +450,102 @@ class OrganizationController extends BaseController
         ]);
     }
 
+    // public function toggleFavorite(Request $request, int $id)
+    // {
+    //     $user = Auth::user();
+
+    //     // Get the ExcelData organization
+    //     $excelDataOrg = ExcelData::findOrFail($id);
+
+    //     // Find the registered organization by EIN
+    //     $org = Organization::where('ein', $excelDataOrg->ein)
+    //         ->where('registration_status', 'approved')
+    //         ->first();
+
+    //     if (!$org) {
+    //         return redirect()->route('organizations.show', $id)
+    //             ->with('error', 'You can only follow registered organizations.');
+    //     }
+
+    //     $fav = UserFavoriteOrganization::where('user_id', $user->id)
+    //         ->where('organization_id', $org->id)
+    //         ->first();
+
+    //     if ($fav) {
+    //         $fav->delete();
+    //         return redirect()->route('organizations.show', $id)
+    //             ->with('success', 'Unfollowed organization');
+    //     } else {
+    //         UserFavoriteOrganization::create([
+    //             'user_id' => $user->id,
+    //             'organization_id' => $org->id,
+    //             'notifications' => true
+    //         ]);
+
+    //         return redirect()->route('organizations.show', $id)
+    //             ->with('success', 'Following organization with notifications');
+    //     }
+    // }
+
+
+    // public function toggleFavorite(Request $request, int $id)
+    // {
+    //     $user = Auth::user();
+
+    //     // Get the ExcelData organization
+    //     $excelDataOrg = ExcelData::findOrFail($id);
+
+    //     // Find the registered organization by EIN
+    //     $org = Organization::where('ein', $excelDataOrg->ein)
+    //         ->where('registration_status', 'approved')
+    //         ->first();
+
+    //     if (!$org) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'You can only follow registered organizations.'
+    //         ], 404);
+    //     }
+
+    //     $fav = UserFavoriteOrganization::where('user_id', $user->id)
+    //         ->where('organization_id', $org->id)
+    //         ->first();
+
+    //     if ($fav) {
+    //         $fav->delete();
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Unfollowed organization',
+    //             'is_following' => false
+    //         ]);
+    //     } else {
+    //         // Check if user has any follower positions
+    //         $hasPositions = FollowingUserPosition::where('user_id', $user->id)->exists();
+
+    //         if (!$hasPositions) {
+    //             // Always return JSON for API requests
+    //             return response()->json([
+    //                 'requires_positions' => true,
+    //                 'organization_id' => $id,
+    //                 'organization_name' => $excelDataOrg->name_virtual ?? 'Organization'
+    //             ]);
+    //         }
+
+    //         // User has positions, create the favorite
+    //         UserFavoriteOrganization::create([
+    //             'user_id' => $user->id,
+    //             'organization_id' => $org->id,
+    //             'notifications' => true
+    //         ]);
+
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Following organization with notifications',
+    //             'is_following' => true
+    //         ]);
+    //     }
+    // }
+
     public function toggleFavorite(Request $request, int $id)
     {
         $user = Auth::user();
@@ -461,8 +559,13 @@ class OrganizationController extends BaseController
             ->first();
 
         if (!$org) {
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'You can only follow registered organizations.');
+            if ($request->header('X-Inertia')) {
+                return redirect()->back()->with('error', 'You can only follow registered organizations.');
+            }
+            return response()->json([
+                'success' => false,
+                'message' => 'You can only follow registered organizations.'
+            ], 404);
         }
 
         $fav = UserFavoriteOrganization::where('user_id', $user->id)
@@ -471,18 +574,132 @@ class OrganizationController extends BaseController
 
         if ($fav) {
             $fav->delete();
-            return redirect()->route('organizations.show', $id)
-                ->with('success', 'Unfollowed organization');
+
+            if ($request->header('X-Inertia')) {
+                return redirect()->back()->with('success', 'Unfollowed organization');
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Unfollowed organization',
+                'is_following' => false
+            ]);
         } else {
+            // Check if user has any follower positions
+            $hasPositions = FollowingUserPosition::where('user_id', $user->id)->exists();
+
+            if (!$hasPositions) {
+                if ($request->header('X-Inertia')) {
+                    // For Inertia requests, we'll handle this differently
+                    return response()->json([
+                        'requires_positions' => true,
+                        'organization_id' => $id,
+                        'organization_name' => $excelDataOrg->name_virtual ?? 'Organization'
+                    ]);
+                }
+
+                return response()->json([
+                    'requires_positions' => true,
+                    'organization_id' => $id,
+                    'organization_name' => $excelDataOrg->name_virtual ?? 'Organization'
+                ]);
+            }
+
+            // User has positions, create the favorite
             UserFavoriteOrganization::create([
                 'user_id' => $user->id,
                 'organization_id' => $org->id,
                 'notifications' => true
             ]);
 
-            return redirect()->route('organizations.show', $id)
-                ->with('success', 'Following organization with notifications');
+            if ($request->header('X-Inertia')) {
+                return redirect()->back()->with('success', 'Following organization with notifications');
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Following organization with notifications',
+                'is_following' => true
+            ]);
         }
+    }
+
+    public function savePositionsAndFollow(Request $request, int $orgId)
+    {
+        $user = Auth::user();
+
+        // Validate the request
+        $request->validate([
+            'positions' => 'required|array|min:1',
+            'positions.*.follower_position_id' => 'required|exists:follower_positions,id',
+            'positions.*.experience_level' => 'required|in:beginner,intermediate,expert',
+            'positions.*.years_of_experience' => 'required|integer|min:0',
+            'positions.*.skills' => 'nullable|string',
+            'positions.*.portfolio_url' => 'nullable|url',
+        ]);
+
+        // Delete existing positions for this user
+        FollowingUserPosition::where('user_id', $user->id)->delete();
+
+        // Save new positions
+        foreach ($request->positions as $positionData) {
+            FollowingUserPosition::create([
+                'user_id' => $user->id,
+                'follower_position_id' => $positionData['follower_position_id'],
+                'experience_level' => $positionData['experience_level'],
+                'years_of_experience' => $positionData['years_of_experience'],
+                'skills' => $positionData['skills'] ?? null,
+                'portfolio_url' => $positionData['portfolio_url'] ?? null,
+                'is_primary' => $positionData['is_primary'] ?? false,
+            ]);
+        }
+
+        // Get the ExcelData organization
+        $excelDataOrg = ExcelData::findOrFail($orgId);
+
+        // Find the registered organization by EIN
+        $org = Organization::where('ein', $excelDataOrg->ein)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$org) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Organization not found'
+            ], 404);
+        }
+
+        // Create the favorite
+        UserFavoriteOrganization::create([
+            'user_id' => $user->id,
+            'organization_id' => $org->id,
+            'notifications' => true
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Following organization with notifications',
+            'redirect_url' => route('organizations.show', $orgId)
+        ]);
+    }
+
+    public function getPositionsForSelection()
+    {
+        $positions = FollowerPosition::where('is_active', true)
+            ->orderBy('sort_order')
+            ->orderBy('name')
+            ->get()
+            ->groupBy('category');
+
+        $userPositions = FollowingUserPosition::where('user_id', Auth::id())
+            ->with('followerPosition')
+            ->get();
+
+
+        return response()->json([
+            'all_positions' => $positions,
+            'user_positions' => $userPositions
+        ]);
     }
 
     public function toggleNotifications(Request $request, int $id)

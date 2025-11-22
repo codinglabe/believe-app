@@ -200,6 +200,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
+     Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
+        ->name('organizations.save-positions-and-follow');
+
+    Route::get('/user/positions/for-selection', [OrganizationController::class, 'getPositionsForSelection'])
+        ->name('positions.get-for-selection');
+
     Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
         ->name('topics.select');
 });
@@ -233,19 +239,19 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
-    
+
     // Wallet Routes
     Route::prefix('wallet')->name('wallet.')->group(function () {
         Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
         Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
         Route::get('/status', [WalletController::class, 'status'])->name('status');
         Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
-        
+
         // User Rewards Routes
         Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
         Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
         Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
-        
+
         // Token Balance Route
         Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
     });
@@ -318,7 +324,7 @@ Route::prefix('admin/fractional')
         Route::get('/assets/{asset}/edit', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'edit'])->name('assets.edit');
         Route::put('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'update'])->name('assets.update');
         Route::delete('/assets/{asset}', [\App\Http\Controllers\Admin\FractionalAssetController::class, 'destroy'])->name('assets.destroy');
-        
+
             // Offerings routes
             Route::get('/offerings', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'index'])->name('offerings.index');
             Route::get('/offerings/create', [\App\Http\Controllers\Admin\FractionalOfferingController::class, 'create'])->name('offerings.create');
@@ -391,7 +397,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/dashboard/compliance/apply/{application}/success', [ComplianceApplicationController::class, 'success'])->name('compliance.apply.success');
         Route::get('/dashboard/compliance/apply/{application}/cancel', [ComplianceApplicationController::class, 'cancel'])->name('compliance.apply.cancel');
     });
-    
+
     // Form 1023 Application Routes - Only for organization users (not admins)
     Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending', 'topics.selected'])->group(function () {
         Route::get('/dashboard/form1023/apply', [Form1023ApplicationController::class, 'show'])->name('form1023.apply.show');
