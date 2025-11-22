@@ -163,7 +163,6 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
             read: false,
           }
 
-            console.log("New notification object:", newNotification)
 
           setNotifications((prev) => [newNotification, ...prev])
           setUnreadCount((prev) => prev + 1)

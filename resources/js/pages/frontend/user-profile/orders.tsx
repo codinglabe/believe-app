@@ -209,7 +209,7 @@ export default function ProfileOrders() {
               <Button asChild className="bg-blue-600 hover:bg-blue-700">
                 <Link href={route('marketplace.index')}>
                   <Package className="h-4 w-4 mr-2" />
-                  Start Shopping
+                  Browse Orders
                 </Link>
               </Button>
             </CardContent>
