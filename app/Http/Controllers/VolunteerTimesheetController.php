@@ -5,12 +5,19 @@ namespace App\Http\Controllers;
 use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
 use App\Models\AdminSetting;
+use App\Services\ImpactScoreService;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 
 class VolunteerTimesheetController extends BaseController
 {
+    protected $impactScoreService;
+
+    public function __construct(ImpactScoreService $impactScoreService)
+    {
+        $this->impactScoreService = $impactScoreService;
+    }
     /**
      * Display a listing of time sheets.
      */
@@ -191,6 +198,12 @@ class VolunteerTimesheetController extends BaseController
             
             // Calculate and award reward points
             $this->awardRewardPoints($jobApplication->user, $validated['hours']);
+            
+            // Award impact points
+            $this->impactScoreService->awardVolunteerPoints($timesheet);
+            
+            // Check for consistency bonus
+            $this->impactScoreService->checkAndAwardConsistencyBonus($jobApplication->user);
         });
 
         return redirect()->route('volunteers.timesheet.index')
@@ -317,6 +330,9 @@ class VolunteerTimesheetController extends BaseController
         $newHours = $validated['hours'];
 
         DB::transaction(function () use ($timesheet, $validated, $volunteerUser, $oldHours, $newHours) {
+            // Remove old impact points
+            $this->impactScoreService->removeVolunteerPoints($timesheet);
+            
             $timesheet->update($validated);
             
             // Recalculate reward points: subtract old points, add new points
@@ -328,6 +344,11 @@ class VolunteerTimesheetController extends BaseController
             if ($pointsDifference != 0) {
                 $volunteerUser->increment('reward_points', $pointsDifference);
             }
+            
+            // Reload timesheet with relationships and award new impact points
+            $timesheet->refresh();
+            $timesheet->load(['jobApplication', 'jobApplication.user', 'jobApplication.jobPost']);
+            $this->impactScoreService->awardVolunteerPoints($timesheet);
         });
 
         return redirect()->route('volunteers.timesheet.index')
@@ -410,6 +431,9 @@ class VolunteerTimesheetController extends BaseController
         $hours = $timesheet->hours;
 
         DB::transaction(function () use ($timesheet, $volunteerUser, $hours) {
+            // Remove impact points
+            $this->impactScoreService->removeVolunteerPoints($timesheet);
+            
             $timesheet->delete();
             
             // Subtract reward points when timesheet is deleted

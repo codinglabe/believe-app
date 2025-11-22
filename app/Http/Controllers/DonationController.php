@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Donation;
 use App\Models\Organization;
+use App\Services\ImpactScoreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -14,6 +15,12 @@ use Stripe\Exception\ApiErrorException;
 
 class DonationController extends Controller
 {
+    protected $impactScoreService;
+
+    public function __construct(ImpactScoreService $impactScoreService)
+    {
+        $this->impactScoreService = $impactScoreService;
+    }
     /**
      * Display a listing of the donations.
      */
@@ -162,6 +169,9 @@ class DonationController extends Controller
                     'status' => 'completed',
                     'donation_date' => now(),
                 ]);
+                
+                // Award impact points for completed donation
+                $this->impactScoreService->awardDonationPoints($donation);
             } elseif ($session->subscription) {
                 // Recurring payment
                 $donation->update([
@@ -170,6 +180,9 @@ class DonationController extends Controller
                     'status' => 'active',
                     'donation_date' => now(),
                 ]);
+                
+                // Award impact points for active recurring donation
+                $this->impactScoreService->awardDonationPoints($donation);
             }
 
             return Inertia::render('frontend/organization/donation/success', [

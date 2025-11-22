@@ -6,6 +6,7 @@ use App\Models\ExcelData;
 use App\Models\NteeCode;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
+use App\Services\ImpactScoreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
@@ -14,6 +15,12 @@ use App\Services\ExcelDataTransformer;
 
 class OrganizationController extends BaseController
 {
+    protected $impactScoreService;
+
+    public function __construct(ImpactScoreService $impactScoreService)
+    {
+        $this->impactScoreService = $impactScoreService;
+    }
     public function index(Request $request)
     {
         // $this->authorizePermission($request, 'organization.read');
@@ -470,15 +477,20 @@ class OrganizationController extends BaseController
             ->first();
 
         if ($fav) {
+            // Remove impact points when unfollowing
+            $this->impactScoreService->removeFollowPoints($fav);
             $fav->delete();
             return redirect()->route('organizations.show', $id)
                 ->with('success', 'Unfollowed organization');
         } else {
-            UserFavoriteOrganization::create([
+            $favorite = UserFavoriteOrganization::create([
                 'user_id' => $user->id,
                 'organization_id' => $org->id,
                 'notifications' => true
             ]);
+
+            // Award impact points for following
+            $this->impactScoreService->awardFollowPoints($favorite);
 
             return redirect()->route('organizations.show', $id)
                 ->with('success', 'Following organization with notifications');
