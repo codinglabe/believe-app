@@ -175,7 +175,7 @@ const navigationItems = [
 ]
 
 export default function ProfileLayout({ children, title, description }: ProfileLayoutProps) {
-  const { auth, isImpersonating } = usePage<PageProps & { isImpersonating?: boolean }>().props
+  const { auth, isImpersonating, impact_score, impact_breakdown } = usePage<PageProps & { isImpersonating?: boolean; impact_score?: any; impact_breakdown?: any }>().props
   const user = auth.user
   const [copied, setCopied] = useState(false)
     const [showBalance, setShowBalance] = useState(false)
@@ -488,11 +488,37 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Impact Score</p>
-                            <p className="text-3xl font-bold text-gray-900 dark:text-white">{user.impact_score || 8.5}/10</p>
-                            <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 flex items-center">
-                              <Award className="w-3 h-3 mr-1" />
-                              Excellent
-                            </p>
+                            {impact_score ? (
+                              <>
+                                <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                                  {impact_score.impact_score.toLocaleString('en-US', {
+                                    minimumFractionDigits: 1,
+                                    maximumFractionDigits: 1,
+                                  })}
+                                </p>
+                                <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 flex items-center">
+                                  <Award className="w-3 h-3 mr-1" />
+                                  {impact_score.badge?.name || 'Supporter'}
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  {impact_score.total_points.toLocaleString('en-US', {
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0,
+                                  })} points this month
+                                </p>
+                              </>
+                            ) : (
+                              <>
+                                <p className="text-3xl font-bold text-gray-900 dark:text-white">0.0</p>
+                                <p className="text-xs text-purple-600 dark:text-purple-400 mt-1 flex items-center">
+                                  <Award className="w-3 h-3 mr-1" />
+                                  Get Started
+                                </p>
+                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                                  Start volunteering or donating to earn points
+                                </p>
+                              </>
+                            )}
                           </div>
                           <div className="bg-gradient-to-br from-purple-500 to-violet-600 p-4 rounded-2xl shadow-lg">
                             <Target className="w-6 h-6 text-white" />

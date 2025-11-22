@@ -194,6 +194,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
+    Route::get('/profile/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'show'])->name('profile.impact-score');
+    Route::get('/api/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'index'])->name('api.impact-score');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status

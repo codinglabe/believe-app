@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Mail, Phone, MapPin, Wallet, DollarSign, CheckCircle2, XCircle, RefreshCw, Gift } from "lucide-react"
+import { Mail, Phone, MapPin, Wallet, DollarSign, CheckCircle2, XCircle, RefreshCw, Gift, Target, TrendingUp, Award, Clock, Heart, UserPlus } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
@@ -38,6 +38,29 @@ interface WalletData {
   balance: number
 }
 
+interface ImpactScore {
+  total_points: number
+  impact_score: number
+  volunteer_points: number
+  donation_points: number
+  follow_points: number
+  bonus_points: number
+  badge: {
+    name: string
+    level: number
+    emoji: string
+    color: string
+  }
+  period: string
+}
+
+interface ImpactBreakdown {
+  volunteer: { points: number; count: number }
+  donation: { points: number; count: number }
+  follow: { points: number; count: number }
+  bonus: { points: number; count: number }
+}
+
 interface PageProps {
   auth: {
     user: User
@@ -45,10 +68,12 @@ interface PageProps {
   recentDonations: Donation[]
   wallet: WalletData
   reward_points: number
+  impact_score?: ImpactScore
+  impact_breakdown?: ImpactBreakdown
 }
 
 export default function ProfileIndex() {
-  const { auth, recentDonations, wallet: initialWallet, reward_points } = usePage<PageProps>().props
+  const { auth, recentDonations, wallet: initialWallet, reward_points, impact_score, impact_breakdown } = usePage<PageProps>().props
   const user = auth.user
   const [wallet, setWallet] = useState<WalletData>(initialWallet)
   const [showWalletPopup, setShowWalletPopup] = useState(false)

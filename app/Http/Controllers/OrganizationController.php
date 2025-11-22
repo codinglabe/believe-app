@@ -6,6 +6,7 @@ use App\Models\ExcelData;
 use App\Models\FollowerPosition;
 use App\Models\FollowingUserPosition;
 use App\Models\NteeCode;
+use App\Services\ImpactScoreService;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use Illuminate\Http\Request;
@@ -16,6 +17,14 @@ use App\Services\ExcelDataTransformer;
 
 class OrganizationController extends BaseController
 {
+
+    protected $impactScoreService;
+
+    public function __construct(ImpactScoreService $impactScoreService)
+    {
+        $this->impactScoreService = $impactScoreService;
+    }
+
     public function index(Request $request)
     {
         // $this->authorizePermission($request, 'organization.read');
@@ -31,7 +40,7 @@ class OrganizationController extends BaseController
 
         // Build the query using virtual columns for better performance
         $query = ExcelData::where('status', 'complete')
-            ->whereNotIn('id', function($subQuery) {
+            ->whereNotIn('id', function ($subQuery) {
                 $subQuery->select(DB::raw('MIN(id)'))
                     ->from('excel_data')
                     ->where('status', 'complete')
@@ -309,7 +318,7 @@ class OrganizationController extends BaseController
 
         $cities = cache()->remember($cacheKey, 3600, function () use ($state) {
             return ExcelData::where('status', 'complete')
-                ->whereNotIn('id', function($subQuery) {
+                ->whereNotIn('id', function ($subQuery) {
                     $subQuery->select(DB::raw('MIN(id)'))
                         ->from('excel_data')
                         ->where('status', 'complete')
@@ -334,7 +343,7 @@ class OrganizationController extends BaseController
         // $this->authorizePermission($request, 'organization.read');
         $organization = ExcelData::where('id', $id)
             ->where('status', 'complete')
-            ->whereNotIn('id', function($subQuery) {
+            ->whereNotIn('id', function ($subQuery) {
                 $subQuery->select(DB::raw('MIN(id)'))
                     ->from('excel_data')
                     ->where('status', 'complete')
@@ -606,11 +615,14 @@ class OrganizationController extends BaseController
             }
 
             // User has positions, create the favorite
-            UserFavoriteOrganization::create([
+            $favorite = UserFavoriteOrganization::create([
                 'user_id' => $user->id,
                 'organization_id' => $org->id,
                 'notifications' => true
             ]);
+
+            // Award impact points for following
+            $this->impactScoreService->awardFollowPoints($favorite);
 
             if ($request->header('X-Inertia')) {
                 return redirect()->back()->with('success', 'Following organization with notifications');

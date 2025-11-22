@@ -8,6 +8,7 @@ use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
 use App\Models\VolunteerTimesheet;
+use App\Services\ImpactScoreService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -19,6 +20,13 @@ use Inertia\Response;
 
 class UserProfileController extends Controller
 {
+    protected $impactScoreService;
+
+    public function __construct(ImpactScoreService $impactScoreService)
+    {
+        $this->impactScoreService = $impactScoreService;
+    }
+
     public function index(Request $request)
     {
         // Load the user and their interested topics
@@ -42,6 +50,10 @@ class UserProfileController extends Controller
             }
         }
 
+        // Get impact score
+        $impactScore = $this->impactScoreService->calculateImpactScore($user, 'monthly');
+        $impactBreakdown = $this->impactScoreService->getPointsBreakdown($user, 'monthly');
+
         return Inertia::render('frontend/user-profile/index', [
             'recentDonations' => $recentDonations,
             'wallet' => [
@@ -53,6 +65,8 @@ class UserProfileController extends Controller
                 'balance' => $walletBalance,
             ],
             'reward_points' => (float) ($user->reward_points ?? 0),
+            'impact_score' => $impactScore,
+            'impact_breakdown' => $impactBreakdown,
         ]);
     }
 
