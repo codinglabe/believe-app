@@ -9,6 +9,7 @@ use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
 use App\Models\VolunteerTimesheet;
 use App\Services\ImpactScoreService;
+use App\Services\PrintifyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;

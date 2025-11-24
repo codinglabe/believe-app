@@ -110,6 +110,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Campaign Management
             'campaign' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
 
+            // campaign ai
+            'campaign.ai' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
             // Form 1023 Application Management
             'form1023.application' => ['read', 'create', 'edit', 'update', 'delete', 'review', 'approve', 'decline', 'manage'],
 
@@ -217,6 +220,9 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Campaign Management
             'campaign.read', 'campaign.create', 'campaign.edit', 'campaign.update', 'campaign.delete', 'campaign.manage',
+
+            // campaign ai
+            'campaign.ai.read', 'campaign.ai.create', 'campaign.ai.edit', 'campaign.ai.update', 'campaign.ai.delete', 'campaign.ai.manage',
 
             // Volunteer Management - Full access
             'volunteer.read', 'volunteer.create', 'volunteer.edit', 'volunteer.update', 'volunteer.delete', 'volunteer.manage',

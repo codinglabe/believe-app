@@ -572,21 +572,21 @@ function CheckoutForm({
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    ${subtotal}
+                    ${subtotal.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Shipping</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    ${shippingCost}
+                    ${shippingCost.toFixed(2)}
                   </span>
                 </div>
 
                 <div className="flex justify-between items-center">
                   <span className="text-gray-600 dark:text-gray-400">Tax</span>
                   <span className="font-medium text-gray-900 dark:text-white">
-                    ${taxAmount}
+                    ${taxAmount.toFixed(2)}
                   </span>
                 </div>
 
@@ -595,7 +595,7 @@ function CheckoutForm({
                   <div className="flex justify-between items-center">
                     <span className="text-lg font-bold text-gray-900 dark:text-white">Total</span>
                     <span className="text-xl font-bold text-blue-600 dark:text-blue-400">
-                      ${totalAmount}
+                      ${totalAmount.toFixed(2)}
                     </span>
                   </div>
                 </div>

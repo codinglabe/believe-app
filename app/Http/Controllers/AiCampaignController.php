@@ -25,14 +25,15 @@ class AiCampaignController extends Controller
     {
         $organizationId = auth()->user()->organization->id;
 
-        $users = User::where('login_status', true)
-            ->select('id', 'name', 'email', 'contact_number', 'whatsapp_opt_in', 'push_token')
-            ->orderBy('name')
+        $followers = auth()->user()->organization->followers()
+            ->where('login_status', true)
+            ->select('users.id', 'users.name', 'users.email', 'users.contact_number', 'users.whatsapp_opt_in', 'users.push_token')
+            ->orderBy('users.name')
             ->get();
 
         return Inertia::render('Campaigns/AiCreate', [
             'defaultChannels' => ['web'],
-            'users' => $users,
+            'users' => $followers,
         ]);
     }
 

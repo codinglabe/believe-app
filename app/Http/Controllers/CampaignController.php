@@ -42,15 +42,21 @@ class CampaignController extends Controller
             // ->prayers()
             ->get();
 
-        $users = User::where('login_status', true)
-            ->select('id', 'name', 'email', 'contact_number', 'whatsapp_opt_in', 'push_token')
-            ->orderBy('name')
+        // $users = User::where('login_status', true)
+        //     ->select('id', 'name', 'email', 'contact_number', 'whatsapp_opt_in', 'push_token')
+        //     ->orderBy('name')
+        //     ->get();
+
+        $followers = auth()->user()->organization->followers()
+            ->where('login_status', true)
+            ->select('users.id', 'users.name', 'users.email', 'users.contact_number', 'users.whatsapp_opt_in', 'users.push_token')
+            ->orderBy('users.name')
             ->get();
 
         return Inertia::render('Campaigns/Create', [
             'contentItems' => $contentItems,
             'defaultChannels' => ['web'],
-            'users' => $users,
+            'users' => $followers,
         ]);
     }
 
