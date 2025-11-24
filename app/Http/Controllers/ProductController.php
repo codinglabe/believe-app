@@ -219,6 +219,7 @@ class ProductController extends BaseController
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
             'unit_price' => 'required|numeric|min:0',
+            'profit_margin_percentage' => 'required|numeric|min:0',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
@@ -258,6 +259,7 @@ class ProductController extends BaseController
             $productData = [
                 'user_id' => Auth::id(),
                 'image' => $imagePath,
+                'unit_price' => $this->calculateSellingPrice($validated['unit_price'], $validated['profit_margin_percentage']),
                 'quantity_available' => $validated['quantity'],
                 'printify_product_id' => $printifyProductId,
                 'printify_blueprint_id' => $request->printify_blueprint_id,
@@ -308,13 +310,16 @@ class ProductController extends BaseController
      */
     private function createPrintifyProduct(Request $request, array $validated): ?string
     {
+        $profitMarginPercentage = $validated['profit_margin_percentage'];
+        $unitSellingPrice = $this->calculateSellingPrice($request->unit_price, $profitMarginPercentage);
+
         // Use the shop ID from config instead of organization
         $printifyData = [
             'title' => $validated['name'],
             'description' => $validated['description'],
             'blueprint_id' => (int) $request->printify_blueprint_id,
             'print_provider_id' => (int) $request->printify_provider_id,
-            'variants' => $this->preparePrintifyVariants($request->printify_variants ?? [], $request->unit_price),
+            'variants' => $this->preparePrintifyVariants($request->printify_variants ?? [], $unitSellingPrice),
             'print_areas' => [
                 [
                     'variant_ids' => array_column($request->printify_variants ?? [], 'id'),
@@ -331,6 +336,12 @@ class ProductController extends BaseController
         $printifyProduct = $this->printifyService->createProduct($printifyData);
 
         return $printifyProduct['id'] ?? null;
+    }
+
+
+    private function calculateSellingPrice(int $cost, int $profitPercentage)
+    {
+        return $cost + ($cost * $profitPercentage / 100);
     }
 
     /**
@@ -405,13 +416,23 @@ class ProductController extends BaseController
         $organizations = Organization::all(['id', 'name']);
         $selectedCategories = $product->categories()->pluck('categories.id')->toArray();
 
-        // Get Printify data if it's a Printify product
         $printifyData = [];
+        $printifyProvider = [];
         if ($product->printify_product_id) {
             try {
                 $printifyResponse = $this->printifyService->getProduct($product->printify_product_id);
-                if ($printifyResponse['success']) {
-                    $printifyData = $printifyResponse['data'];
+
+
+                if ($printifyResponse && isset($printifyResponse['id'])) { // Check if response has product data
+                    $printifyData = $printifyResponse;
+
+                    // Get provider information - CORRECT THE KEY
+                    if (isset($printifyData['print_provider_id'])) {
+                        $providerResponse = $this->printifyService->getProvider($printifyData['print_provider_id']);
+                        if ($providerResponse) {
+                            $printifyProvider = $providerResponse;
+                        }
+                    }
                 }
             } catch (\Exception $e) {
                 \Log::error('Failed to fetch Printify product data: ' . $e->getMessage());
@@ -424,6 +445,7 @@ class ProductController extends BaseController
             'selectedCategories' => $selectedCategories,
             'organizations' => $organizations,
             'printify_data' => $printifyData,
+            'printify_provider' => $printifyProvider,
         ]);
     }
 
@@ -618,59 +640,59 @@ class ProductController extends BaseController
     /**
      * Sync products from Printify - FIXED VERSION
      */
-    public function syncFromPrintify(Request $request)
-    {
-        $this->authorizePermission($request, 'product.create');
+    // public function syncFromPrintify(Request $request)
+    // {
+    //     $this->authorizePermission($request, 'product.create');
 
-        try {
-            // Use the shop ID from config
-            $printifyProducts = $this->printifyService->getProducts();
-            $syncedCount = 0;
+    //     try {
+    //         // Use the shop ID from config
+    //         $printifyProducts = $this->printifyService->getProducts();
+    //         $syncedCount = 0;
 
-            foreach ($printifyProducts['data'] as $printifyProduct) {
-                $existingProduct = Product::where('printify_product_id', $printifyProduct['id'])->first();
+    //         foreach ($printifyProducts['data'] as $printifyProduct) {
+    //             $existingProduct = Product::where('printify_product_id', $printifyProduct['id'])->first();
 
-                if (!$existingProduct) {
-                    $organization = Organization::where('user_id', Auth::id())->first();
+    //             if (!$existingProduct) {
+    //                 $organization = Organization::where('user_id', Auth::id())->first();
 
-                    Product::create([
-                        'user_id' => Auth::id(),
-                        'organization_id' => $organization->id ?? null,
-                        'name' => $printifyProduct['title'],
-                        'description' => $printifyProduct['description'],
-                        'quantity' => 100,
-                        'quantity_available' => 100,
-                        'unit_price' => $this->calculateSellingPrice($printifyProduct['variants']),
-                        'owned_by' => 'organization',
-                        'status' => 'active',
-                        'sku' => 'PRINTIFY-' . $printifyProduct['id'],
-                        'type' => 'physical',
-                        'printify_product_id' => $printifyProduct['id'],
-                        'printify_blueprint_id' => $printifyProduct['blueprint_id'],
-                        'printify_provider_id' => $printifyProduct['print_provider_id'],
-                    ]);
-                    $syncedCount++;
-                }
-            }
+    //                 Product::create([
+    //                     'user_id' => Auth::id(),
+    //                     'organization_id' => $organization->id ?? null,
+    //                     'name' => $printifyProduct['title'],
+    //                     'description' => $printifyProduct['description'],
+    //                     'quantity' => 100,
+    //                     'quantity_available' => 100,
+    //                     'unit_price' => $this->calculateSellingPrice($printifyProduct['variants']),
+    //                     'owned_by' => 'organization',
+    //                     'status' => 'active',
+    //                     'sku' => 'PRINTIFY-' . $printifyProduct['id'],
+    //                     'type' => 'physical',
+    //                     'printify_product_id' => $printifyProduct['id'],
+    //                     'printify_blueprint_id' => $printifyProduct['blueprint_id'],
+    //                     'printify_provider_id' => $printifyProduct['print_provider_id'],
+    //                 ]);
+    //                 $syncedCount++;
+    //             }
+    //         }
 
-            return redirect()->route('products.index')
-                ->with('success', "Successfully synced {$syncedCount} products from Printify");
+    //         return redirect()->route('products.index')
+    //             ->with('success', "Successfully synced {$syncedCount} products from Printify");
 
-        } catch (\Exception $e) {
-            return back()->withErrors(['printify_error' => 'Failed to sync products: ' . $e->getMessage()]);
-        }
-    }
+    //     } catch (\Exception $e) {
+    //         return back()->withErrors(['printify_error' => 'Failed to sync products: ' . $e->getMessage()]);
+    //     }
+    // }
 
-    private function calculateSellingPrice($variants)
-    {
-        if (empty($variants)) {
-            return 29.99; // Default price
-        }
+    // private function calculateSellingPrice($variants)
+    // {
+    //     if (empty($variants)) {
+    //         return 29.99; // Default price
+    //     }
 
-        $prices = array_column($variants, 'price');
-        $maxPrice = max($prices) / 100; // Convert from cents to dollars
-        return $maxPrice * 1.5; // 50% markup
-    }
+    //     $prices = array_column($variants, 'price');
+    //     $maxPrice = max($prices) / 100; // Convert from cents to dollars
+    //     return $maxPrice * 1.5; // 50% markup
+    // }
 
     /**
      * Remove the specified resource from storage.

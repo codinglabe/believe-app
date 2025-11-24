@@ -99,6 +99,8 @@ class OrderController extends Controller
             'id' => $order->id,
             'reference_number' => $order->reference_number,
             'total_amount' => $order->total_amount,
+            'shipping_cost' => $order->shipping_cost,
+            'tax_amount' => $order->tax_amount,
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'printify_order_id' => $order->printify_order_id,

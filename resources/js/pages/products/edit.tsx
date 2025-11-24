@@ -33,6 +33,7 @@ interface Product {
     description: string;
     quantity: number;
     unit_price: number;
+    profit_margin_percentage: number;
     admin_owned: boolean;
     owned_by: string;
     organization_id?: number;
@@ -81,15 +82,36 @@ interface PrintifyData {
     is_locked: boolean;
 }
 
+interface PrintifyProvider {
+    id: number;
+    title: string;
+    location: {
+        address1: string;
+        address2: string | null;
+        city: string;
+        country: string;
+        region: string;
+        zip: string;
+    };
+    blueprints: Array<{
+        id: number;
+        title: string;
+        brand: string;
+        model: string;
+        images: string[];
+    }>;
+}
+
 interface Props {
     product: Product;
     categories: Category[];
     selectedCategories: number[];
     organizations?: { id: number; name: string }[];
     printify_data?: PrintifyData;
+     printify_provider?: PrintifyProvider;
 }
 
-export default function Edit({ product, categories, selectedCategories, organizations = [], printify_data }: Props) {
+export default function Edit({ product, categories, selectedCategories, organizations = [], printify_data , printify_provider}: Props) {
     const { auth } = usePage<SharedData>().props
     const [formData, setFormData] = useState({
         quantity: '',
@@ -223,7 +245,7 @@ export default function Edit({ product, categories, selectedCategories, organiza
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-sm font-medium text-muted-foreground">Unit Price</Label>
-                                        <p className="text-lg font-semibold">${product.unit_price}</p>
+                                        <p className="text-lg font-semibold">${product.unit_price} with ({product.profit_margin_percentage} % profit)</p>
                                     </div>
                                     <div className="space-y-1">
                                         <Label className="text-sm font-medium text-muted-foreground">Current Status</Label>
@@ -252,20 +274,143 @@ export default function Edit({ product, categories, selectedCategories, organiza
                                 </CardContent>
                             </Card>
 
-                            {/* Printify Product Details */}
-                            {product.is_printify_product && printifyDetails && (
-                                <Card className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                            {product.printify_product_id && printify_provider && (
+                                <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
                                     <CardHeader>
-                                        <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
-                                            <ExternalLink className="h-5 w-5" />
-                                            Printify Product Details
+                                        <CardTitle className="flex items-center gap-2 text-green-900 dark:text-green-100">
+                                            <Package className="h-5 w-5" />
+                                            Printify Provider Information
                                         </CardTitle>
-                                        <CardDescription className="text-blue-700 dark:text-blue-300">
-                                            This product is managed through Printify. Most details are read-only.
+                                        <CardDescription className="text-green-700 dark:text-green-300">
+                                            Details about the print provider for this product
                                         </CardDescription>
                                     </CardHeader>
-                                    <CardContent className="space-y-6">
-                                        {/* ... (same printify details) */}
+                                    <CardContent className="space-y-4">
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            {/* Provider Basic Info */}
+                                            <div className="space-y-4">
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                        Provider Name
+                                                    </Label>
+                                                    <p className="text-lg font-semibold text-green-900 dark:text-green-100">
+                                                        {printify_provider.title}
+                                                    </p>
+                                                </div>
+
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                        Provider ID
+                                                    </Label>
+                                                    <p className="text-sm text-green-700 dark:text-green-300">
+                                                        #{printify_provider.id}
+                                                    </p>
+                                                </div>
+
+                                                {/* Service Status */}
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                        Service Status
+                                                    </Label>
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                                                        <span className="text-sm text-green-700 dark:text-green-300">
+                                                            Active
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                {/* Available Blueprints */}
+                                                {/* {printify_provider.blueprints && printify_provider.blueprints.length > 0 && (
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                            Available Products
+                                                        </Label>
+                                                        <div className="space-y-2">
+                                                            {printify_provider.blueprints.slice(0, 3).map((blueprint) => (
+                                                                <div key={blueprint.id} className="flex items-center gap-2 p-2 bg-green-100 dark:bg-green-800/30 rounded">
+                                                                    {blueprint.images && blueprint.images.length > 0 && (
+                                                                        <img
+                                                                            src={blueprint.images[0]}
+                                                                            alt={blueprint.title}
+                                                                            className="w-8 h-8 object-cover rounded"
+                                                                        />
+                                                                    )}
+                                                                    <div>
+                                                                        <p className="text-sm font-medium text-green-900 dark:text-green-100">
+                                                                            {blueprint.title}
+                                                                        </p>
+                                                                        <p className="text-xs text-green-700 dark:text-green-300">
+                                                                            {blueprint.brand} • {blueprint.model}
+                                                                        </p>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                            {printify_provider.blueprints.length > 3 && (
+                                                                <p className="text-xs text-green-600 dark:text-green-400 text-center">
+                                                                    +{printify_provider.blueprints.length - 3} more products available
+                                                                </p>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                )} */}
+                                            </div>
+
+                                            {/* Location Information */}
+                                            <div className="space-y-4">
+                                                <div className="space-y-2">
+                                                    <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                        Location
+                                                    </Label>
+                                                    <div className="text-sm text-green-700 dark:text-green-300 space-y-1">
+                                                        <p>{printify_provider.location.address1}</p>
+                                                        {printify_provider.location.address2 && (
+                                                            <p>{printify_provider.location.address2}</p>
+                                                        )}
+                                                        <p>
+                                                            {printify_provider.location.city}, {printify_provider.location.region}
+                                                        </p>
+                                                        <p>
+                                                            {printify_provider.location.country} {printify_provider.location.zip}
+                                                        </p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Supported Products Count */}
+                                                {printify_provider.blueprints && (
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium text-green-800 dark:text-green-200">
+                                                            Total Products Supported
+                                                        </Label>
+                                                        <p className="text-sm text-green-700 dark:text-green-300">
+                                                            {printify_provider.blueprints.length} products
+                                                        </p>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Quick Actions */}
+                                        {/* <div className="flex gap-3 pt-4 border-t border-green-200 dark:border-green-700">
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-green-700 border-green-300 hover:bg-green-100 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-800/30"
+                                            >
+                                                <ExternalLink className="h-4 w-4 mr-2" />
+                                                View All Products
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="text-green-700 border-green-300 hover:bg-green-100 dark:text-green-300 dark:border-green-600 dark:hover:bg-green-800/30"
+                                            >
+                                                <Package className="h-4 w-4 mr-2" />
+                                                Provider Details
+                                            </Button>
+                                        </div> */}
                                     </CardContent>
                                 </Card>
                             )}

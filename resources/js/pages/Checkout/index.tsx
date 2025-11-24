@@ -617,7 +617,7 @@ function CheckoutForm({
                     Processing...
                   </>
                 ) : (
-                  `Complete Purchase - $${totalAmount}`
+                  `Complete Purchase - $${totalAmount.toFixed(2)}`
                 )}
               </button>
 

@@ -15,6 +15,7 @@ class Product extends Model
         'description',
         'quantity',
         'unit_price',
+        'profit_margin_percentage',
         'admin_owned',
         'owned_by',
         'organization_id',

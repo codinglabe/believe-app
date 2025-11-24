@@ -76,6 +76,7 @@ export default function Create({ categories, organizations = [], blueprints, pri
         description: '',
         quantity: '',
         unit_price: '',
+        profit_margin_percentage: '',
         owned_by: 'admin',
         organization_id: '',
         status: 'active',
@@ -760,6 +761,21 @@ const handleCategoryChange = (categoryId: number) => {
                                             className={errors.unit_price ? 'border-red-500' : ''}
                                         />
                                         {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
+                                    </div>
+
+                                    <div className="space-y-2">
+                                        <Label htmlFor="profit_margin_percentage">Profit Margin (%) *</Label>
+                                        <Input
+                                            id="profit_margin_percentage"
+                                            type="number"
+                                            step="0.01"
+                                            min="0"
+                                            value={data.profit_margin_percentage}
+                                            onChange={(e) => handleChange('profit_margin_percentage', e.target.value)}
+                                            placeholder="Enter profit margin"
+                                            className={errors.profit_margin_percentage ? 'border-red-500' : ''}
+                                        />
+                                        {errors.profit_margin_percentage && <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>}
                                     </div>
 
                                     <div className="space-y-2">

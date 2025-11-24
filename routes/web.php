@@ -505,7 +505,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/printify/providers', [PrintifyProductController::class, 'getProviders'])->name('printify.providers');
         Route::get('/printify/variants', [PrintifyProductController::class, 'getVariants'])->name('printify.variants');
         Route::get('/printify/shipping', [PrintifyProductController::class, 'getShipping'])->name('printify.shipping');
-        Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
+        // Route::post('/printify/products/sync', [ProductController::class, 'syncFromPrintify'])->name('printify.products.sync');
     });
 
     /* Category Routes */

@@ -1,11 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import AppLayout from '@/layouts/app-layout';
 import type { PageProps } from '@/types';
-import { ArrowLeft, Package, Truck, User, MapPin, Phone, Mail, Calendar, DollarSign, AlertTriangle, RefreshCw, XCircle } from 'lucide-react';
+import {
+    ArrowLeft,
+    Package,
+    Truck,
+    User,
+    MapPin,
+    Phone,
+    Mail,
+    DollarSign,
+    AlertTriangle,
+    RefreshCw,
+    XCircle,
+    Calculator,
+    TrendingUp,
+    CreditCard
+} from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 
@@ -95,6 +110,10 @@ interface Order {
     items: OrderItem[];
     printify_details?: PrintifyDetails | null;
     printify_error?: string;
+    // Database amounts
+    shipping_cost: number;
+    tax_amount: number;
+    fee: number;
 }
 
 interface Props extends PageProps {
@@ -102,13 +121,94 @@ interface Props extends PageProps {
     userRole: string;
 }
 
+interface ProfitCalculation {
+    customerPaid: {
+        subtotal: number;
+        shipping: number;
+        tax: number;
+        total: number;
+    };
+    printifyCosts: {
+        products: number;
+        shipping: number;
+        tax: number;
+        total: number;
+    };
+    profit: {
+        amount: number;
+        margin: number;
+    };
+    fees: {
+        platform: number;
+        stripe: number;
+    };
+}
+
 export default function Show({ order, userRole }: Props) {
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [profitCalculation, setProfitCalculation] = useState<ProfitCalculation | null>(null);
+
+    useEffect(() => {
+        calculateProfit();
+    }, [order]);
+
+    const calculateProfit = () => {
+        if (!order.printify_details) return;
+
+        // Customer Paid Amounts (from your database)
+        const customerSubtotal = order.items.reduce((sum, item) => sum + item.total_price, 0);
+        const customerShipping = order.shipping_cost || 0;
+        const customerTax = order.tax_amount || 0;
+        const customerTotal = parseFloat(order.total_amount);
+
+        // Printify Costs
+        const printifyProducts = order.printify_details.total_price || 0;
+        const printifyShipping = order.printify_details.total_shipping || 0;
+        const printifyTax = order.printify_details.total_tax || 0;
+        const printifyTotal = printifyProducts + printifyShipping + printifyTax;
+
+        // Fees (without commission)
+        const platformFee = order.fee || 0;
+        const stripeFee = calculateStripeFee(customerTotal);
+
+        // Profit Calculation (without commission)
+        const totalFees = platformFee + stripeFee;
+        const profitAmount = customerTotal - printifyTotal - totalFees;
+
+        const calculation: ProfitCalculation = {
+            customerPaid: {
+                subtotal: customerSubtotal,
+                shipping: customerShipping,
+                tax: customerTax,
+                total: customerTotal
+            },
+            printifyCosts: {
+                products: printifyProducts,
+                shipping: printifyShipping,
+                tax: printifyTax,
+                total: printifyTotal
+            },
+            profit: {
+                amount: profitAmount,
+                margin: customerTotal > 0 ? (profitAmount / customerTotal) * 100 : 0
+            },
+            fees: {
+                platform: platformFee,
+                stripe: stripeFee
+            }
+        };
+
+        setProfitCalculation(calculation);
+    };
+
+    const calculateStripeFee = (amount: number): number => {
+        // Stripe fee calculation (2.9% + $0.30)
+        // return (amount * 0.029) + 0.30;
+        return 0;
+    };
 
     const canCancelOrder = () => {
-
-            //  &&  userRole !== 'organization' // if needs Only admin can cancel
         return order.printify_details &&
                ['on-hold', 'payment-not-received'].includes(order.printify_details.status);
     }
@@ -167,6 +267,12 @@ export default function Show({ order, userRole }: Props) {
         }).format(amount);
     }
 
+    const getProfitColor = (profit: number) => {
+        if (profit > 0) return 'text-green-600 dark:text-green-400';
+        if (profit < 0) return 'text-red-600 dark:text-red-400';
+        return 'text-gray-600 dark:text-gray-400';
+    }
+
     return (
         <AppLayout>
             <Head title={`Order #${order.reference_number}`} />
@@ -182,7 +288,7 @@ export default function Show({ order, userRole }: Props) {
                         Back to Orders
                     </Link>
 
-                    {/* Cancel Order Button - Only for admin and when order can be cancelled */}
+                    {/* Cancel Order Button */}
                     {canCancelOrder() && (
                         <Button
                             variant="destructive"
@@ -194,6 +300,86 @@ export default function Show({ order, userRole }: Props) {
                         </Button>
                     )}
                 </div>
+
+                {/* Profit Calculation Summary */}
+                {profitCalculation && (
+                    <Card className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 border-blue-200 dark:border-blue-800">
+                        <CardHeader>
+                            <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
+                                <Calculator className="w-5 h-5" />
+                                Profit Analysis
+                            </CardTitle>
+                            <CardDescription>
+                                Detailed breakdown of revenue, costs, and profit
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                {/* Customer Revenue */}
+                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
+                                    <div className="text-lg font-bold text-blue-600">
+                                        {formatCurrency(profitCalculation.customerPaid.total)}
+                                    </div>
+                                    <div className="text-sm text-gray-300">Customer Paid</div>
+                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
+                                        <div>Sub: {formatCurrency(profitCalculation.customerPaid.subtotal)}</div>
+                                        <div>Ship: {formatCurrency(profitCalculation.customerPaid.shipping)}</div>
+                                        <div>Tax: {formatCurrency(profitCalculation.customerPaid.tax)}</div>
+                                    </div>
+                                </div>
+
+                                {/* Printify Costs */}
+                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
+                                    <div className="text-lg font-bold text-orange-600">
+                                        {formatCurrency(profitCalculation.printifyCosts.total)}
+                                    </div>
+                                    <div className="text-sm text-gray-300">Printify Costs</div>
+                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
+                                        <div>Products: {formatCurrency(profitCalculation.printifyCosts.products)}</div>
+                                        <div>Shipping: {formatCurrency(profitCalculation.printifyCosts.shipping)}</div>
+                                        <div>Tax: {formatCurrency(profitCalculation.printifyCosts.tax)}</div>
+                                    </div>
+                                </div>
+
+                                {/* Total Fees */}
+                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
+                                    <div className="text-lg font-bold text-purple-600">
+                                        {formatCurrency(profitCalculation.fees.platform + profitCalculation.fees.stripe)}
+                                    </div>
+                                    <div className="text-sm text-gray-300">Total Fees</div>
+                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
+                                        <div>Platform: {formatCurrency(profitCalculation.fees.platform)}</div>
+                                        <div>Stripe: {formatCurrency(profitCalculation.fees.stripe)}</div>
+                                    </div>
+                                </div>
+
+                                {/* Net Profit */}
+                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
+                                    <div className={`text-2xl font-bold ${getProfitColor(profitCalculation.profit.amount)}`}>
+                                        {formatCurrency(profitCalculation.profit.amount)}
+                                    </div>
+                                    <div className="text-sm text-gray-300">Net Profit</div>
+                                    <div className="text-xs text-gray-400 mt-1">
+                                        Margin: {profitCalculation.profit.margin.toFixed(1)}%
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Profit Formula */}
+                            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                                <div className="text-sm text-blue-800 dark:text-blue-200 text-center">
+                                    <strong>Profit Formula:</strong><br />
+                                    Customer Paid ({formatCurrency(profitCalculation.customerPaid.total)}) -
+                                    Printify Costs ({formatCurrency(profitCalculation.printifyCosts.total)}) -
+                                    Fees ({formatCurrency(profitCalculation.fees.platform + profitCalculation.fees.stripe)}) =
+                                    <span className={`font-bold ml-1 ${getProfitColor(profitCalculation.profit.amount)}`}>
+                                        {formatCurrency(profitCalculation.profit.amount)}
+                                    </span>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Order Summary */}
                 <Card>
@@ -294,7 +480,7 @@ export default function Show({ order, userRole }: Props) {
                                 Printify Production Details
                             </CardTitle>
                             <CardDescription>
-                                Real-time production status from Printify
+                                Real-time production costs from Printify
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
@@ -372,11 +558,6 @@ export default function Show({ order, userRole }: Props) {
                         <div className="space-y-4">
                             {order.items.map((item) => (
                                 <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg">
-                                    {/* <img
-                                        src={item.image || '/placeholder.svg'}
-                                        alt={item.name}
-                                        className="w-16 h-16 rounded-lg object-cover border"
-                                    /> */}
                                     <div className="flex-1">
                                         <h5 className="font-medium">{item.name}</h5>
                                         <p className="text-sm text-gray-600 line-clamp-2">

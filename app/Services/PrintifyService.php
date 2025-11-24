@@ -61,6 +61,20 @@ class PrintifyService
     }
 
     /**
+     * Get print providers for a specific blueprint
+     */
+    public function getProvider(int $printProviderId): array
+    {
+        try {
+            $response = $this->client->get("v1/catalog/print_providers/{$printProviderId}.json");
+            return json_decode($response->getBody(), true) ?: [];
+        } catch (RequestException $e) {
+            $this->handleException($e, 'Provider id', ['printProviderId' => $printProviderId]);
+            return [];
+        }
+    }
+
+    /**
      * Get variants for a blueprint and print provider
      */
     public function getVariants(int $blueprintId, int $printProviderId): array
