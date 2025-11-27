@@ -19,7 +19,9 @@ import {
     XCircle,
     Calculator,
     TrendingUp,
-    CreditCard
+    CreditCard,
+    Box,
+    ShoppingCart
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
@@ -94,7 +96,10 @@ interface PrintifyDetails {
 interface Order {
     id: number;
     reference_number: string;
-    total_amount: string;
+    subtotal_amount: any;
+    total_amount: any;
+    shipping_cost: any;
+    tax_amount: any;
     status: string;
     payment_status: string;
     printify_order_id?: string;
@@ -110,10 +115,6 @@ interface Order {
     items: OrderItem[];
     printify_details?: PrintifyDetails | null;
     printify_error?: string;
-    // Database amounts
-    shipping_cost: number;
-    tax_amount: number;
-    fee: number;
 }
 
 interface Props extends PageProps {
@@ -122,25 +123,18 @@ interface Props extends PageProps {
 }
 
 interface ProfitCalculation {
-    customerPaid: {
-        subtotal: number;
-        shipping: number;
-        tax: number;
-        total: number;
+    revenue: {
+        total: number;          // Total amount customer paid
     };
-    printifyCosts: {
-        products: number;
-        shipping: number;
-        tax: number;
-        total: number;
+    costs: {
+        products: number;       // Printify product costs
+        shipping: number;       // Printify shipping costs
+        tax: number;           // Printify tax
+        total: number;         // Total Printify costs
     };
     profit: {
-        amount: number;
-        margin: number;
-    };
-    fees: {
-        platform: number;
-        stripe: number;
+        amount: number;        // Actual profit (Revenue - Total Costs)
+        margin: number;        // Profit margin percentage
     };
 }
 
@@ -156,56 +150,36 @@ export default function Show({ order, userRole }: Props) {
     const calculateProfit = () => {
         if (!order.printify_details) return;
 
-        // Customer Paid Amounts (from your database)
-        const customerSubtotal = order.items.reduce((sum, item) => sum + item.total_price, 0);
-        const customerShipping = order.shipping_cost || 0;
-        const customerTax = order.tax_amount || 0;
-        const customerTotal = parseFloat(order.total_amount);
+        // REVENUE - Total amount customer paid
+        const revenueTotal = order.subtotal_amount;
 
-        // Printify Costs
-        const printifyProducts = order.printify_details.total_price || 0;
-        const printifyShipping = order.printify_details.total_shipping || 0;
-        const printifyTax = order.printify_details.total_tax || 0;
-        const printifyTotal = printifyProducts + printifyShipping + printifyTax;
+        // COSTS - What Printify charges (products + shipping + tax)
+        const costProducts = order.printify_details.total_price || 0;
+        const costShipping = order.printify_details.total_shipping || 0;
+        const costTax = order.printify_details.total_tax || 0;
+        const costTotal = costProducts;
 
-        // Fees (without commission)
-        const platformFee = order.fee || 0;
-        const stripeFee = calculateStripeFee(customerTotal);
-
-        // Profit Calculation (without commission)
-        const totalFees = platformFee + stripeFee;
-        const profitAmount = customerTotal - printifyTotal - totalFees;
+        // PROFIT CALCULATION (Simple: Revenue - Costs)
+        const profitAmount = revenueTotal - costTotal;
+        const profitMargin = revenueTotal > 0 ? (profitAmount / revenueTotal) * 100 : 0;
 
         const calculation: ProfitCalculation = {
-            customerPaid: {
-                subtotal: customerSubtotal,
-                shipping: customerShipping,
-                tax: customerTax,
-                total: customerTotal
+            revenue: {
+                total: revenueTotal
             },
-            printifyCosts: {
-                products: printifyProducts,
-                shipping: printifyShipping,
-                tax: printifyTax,
-                total: printifyTotal
+            costs: {
+                products: costProducts,
+                shipping: costShipping,
+                tax: costTax,
+                total: costTotal
             },
             profit: {
                 amount: profitAmount,
-                margin: customerTotal > 0 ? (profitAmount / customerTotal) * 100 : 0
-            },
-            fees: {
-                platform: platformFee,
-                stripe: stripeFee
+                margin: profitMargin
             }
         };
 
         setProfitCalculation(calculation);
-    };
-
-    const calculateStripeFee = (amount: number): number => {
-        // Stripe fee calculation (2.9% + $0.30)
-        // return (amount * 0.029) + 0.30;
-        return 0;
     };
 
     const canCancelOrder = () => {
@@ -301,7 +275,7 @@ export default function Show({ order, userRole }: Props) {
                     )}
                 </div>
 
-                {/* Profit Calculation Summary */}
+                {/* Simple Profit Calculation */}
                 {profitCalculation && (
                     <Card className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 border-blue-200 dark:border-blue-800">
                         <CardHeader>
@@ -310,71 +284,72 @@ export default function Show({ order, userRole }: Props) {
                                 Profit Analysis
                             </CardTitle>
                             <CardDescription>
-                                Detailed breakdown of revenue, costs, and profit
+                                Simple profit calculation: Revenue minus Printify costs
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                                {/* Customer Revenue */}
-                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
-                                    <div className="text-lg font-bold text-blue-600">
-                                        {formatCurrency(profitCalculation.customerPaid.total)}
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
+                                {/* Revenue */}
+                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-green-500 shadow-lg">
+                                    <div className="flex items-center justify-center gap-2 mb-3">
+                                        <DollarSign className="w-6 h-6 text-green-600" />
+                                        <span className="text-lg font-semibold text-green-700">Revenue</span>
                                     </div>
-                                    <div className="text-sm text-gray-300">Customer Paid</div>
-                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
-                                        <div>Sub: {formatCurrency(profitCalculation.customerPaid.subtotal)}</div>
-                                        <div>Ship: {formatCurrency(profitCalculation.customerPaid.shipping)}</div>
-                                        <div>Tax: {formatCurrency(profitCalculation.customerPaid.tax)}</div>
+                                    <div className="text-3xl font-bold text-green-600">
+                                        {formatCurrency(profitCalculation.revenue.total)}
                                     </div>
+                                    <div className="text-sm text-gray-600 mt-2">Total from Customer</div>
                                 </div>
 
-                                {/* Printify Costs */}
-                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
-                                    <div className="text-lg font-bold text-orange-600">
-                                        {formatCurrency(profitCalculation.printifyCosts.total)}
+                                {/* Costs */}
+                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-orange-500 shadow-lg">
+                                    <div className="flex items-center justify-center gap-2 mb-3">
+                                        <Box className="w-6 h-6 text-orange-600" />
+                                        <span className="text-lg font-semibold text-orange-700">Costs</span>
                                     </div>
-                                    <div className="text-sm text-gray-300">Printify Costs</div>
-                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
-                                        <div>Products: {formatCurrency(profitCalculation.printifyCosts.products)}</div>
-                                        <div>Shipping: {formatCurrency(profitCalculation.printifyCosts.shipping)}</div>
-                                        <div>Tax: {formatCurrency(profitCalculation.printifyCosts.tax)}</div>
+                                    <div className="text-3xl font-bold text-orange-600">
+                                        {formatCurrency(profitCalculation.costs.total)}
                                     </div>
+                                    {/* <div className="text-sm text-gray-600 mt-2">
+                                        <div>Products: {formatCurrency(profitCalculation.costs.products)}</div>
+                                        <div>Shipping: {formatCurrency(profitCalculation.costs.shipping)}</div>
+                                        <div>Tax: {formatCurrency(profitCalculation.costs.tax)}</div>
+                                    </div> */}
+                                     <div className="text-sm text-gray-600 mt-2">Total Production Costs</div>
                                 </div>
 
-                                {/* Total Fees */}
-                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
-                                    <div className="text-lg font-bold text-purple-600">
-                                        {formatCurrency(profitCalculation.fees.platform + profitCalculation.fees.stripe)}
+                                {/* Profit */}
+                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-blue-500 shadow-lg">
+                                    <div className="flex items-center justify-center gap-2 mb-3">
+                                        <TrendingUp className={`w-6 h-6 ${getProfitColor(profitCalculation.profit.amount)}`} />
+                                <span className={`text-lg font-semibold ${getProfitColor(profitCalculation.profit.amount)}`}>Profit</span>
                                     </div>
-                                    <div className="text-sm text-gray-300">Total Fees</div>
-                                    <div className="text-xs text-gray-400 mt-1 space-y-1">
-                                        <div>Platform: {formatCurrency(profitCalculation.fees.platform)}</div>
-                                        <div>Stripe: {formatCurrency(profitCalculation.fees.stripe)}</div>
-                                    </div>
-                                </div>
-
-                                {/* Net Profit */}
-                                <div className="text-center p-4 bg-white dark:bg-gray-800 rounded-lg border">
-                                    <div className={`text-2xl font-bold ${getProfitColor(profitCalculation.profit.amount)}`}>
+                                    <div className={`text-4xl font-bold ${getProfitColor(profitCalculation.profit.amount)}`}>
                                         {formatCurrency(profitCalculation.profit.amount)}
                                     </div>
-                                    <div className="text-sm text-gray-300">Net Profit</div>
-                                    <div className="text-xs text-gray-400 mt-1">
-                                        Margin: {profitCalculation.profit.margin.toFixed(1)}%
-                                    </div>
+                                    {/* <div className="text-lg font-semibold mt-2">
+                                        <span className={getProfitColor(profitCalculation.profit.amount)}>
+                                            {profitCalculation.profit.margin.toFixed(1)}% Margin
+                                        </span>
+                                    </div> */}
                                 </div>
                             </div>
 
-                            {/* Profit Formula */}
-                            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                                <div className="text-sm text-blue-800 dark:text-blue-200 text-center">
-                                    <strong>Profit Formula:</strong><br />
-                                    Customer Paid ({formatCurrency(profitCalculation.customerPaid.total)}) -
-                                    Printify Costs ({formatCurrency(profitCalculation.printifyCosts.total)}) -
-                                    Fees ({formatCurrency(profitCalculation.fees.platform + profitCalculation.fees.stripe)}) =
-                                    <span className={`font-bold ml-1 ${getProfitColor(profitCalculation.profit.amount)}`}>
-                                        {formatCurrency(profitCalculation.profit.amount)}
-                                    </span>
+                            {/* Simple Profit Formula */}
+                            <div className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl p-4 border border-green-200">
+                                <div className="text-center">
+                                    <div className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">
+                                        Profit Formula
+                                    </div>
+                                    <div className="text-xl text-blue-800 dark:text-blue-200 font-semibold">
+                                        <span className="text-green-600">Revenue ({formatCurrency(profitCalculation.revenue.total)})</span>
+                                        <span className="mx-4">-</span>
+                                        <span className="text-orange-600">Costs ({formatCurrency(profitCalculation.costs.total)})</span>
+                                        <span className="mx-4">=</span>
+                                        <span className={`text-2xl ${getProfitColor(profitCalculation.profit.amount)}`}>
+                                            {formatCurrency(profitCalculation.profit.amount)}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </CardContent>

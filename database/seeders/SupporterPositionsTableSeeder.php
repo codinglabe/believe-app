@@ -817,7 +817,7 @@ class FollowerPositionsTableSeeder extends Seeder
         ];
 
         foreach ($positions as $position) {
-            DB::table('follower_positions')->insert([
+            DB::table('supporter_positions')->insert([
                 'name' => $position['name'],
                 'slug' => $position['slug'],
                 'description' => $position['description'],

@@ -8,7 +8,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { motion } from "framer-motion"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 
 interface Organization {
   id: number
@@ -45,6 +45,7 @@ export default function OrganizationCard({
   customButton,
   showFavorite = true,
 }: OrganizationCardProps) {
+    const {auth} = usePage<PageProps>().props
   const defaultLinkUrl = linkUrl || `/organizations/${organization.id}`
   const [isFavorited, setIsFavorited] = useState(organization.is_favorited || false)
   const [isLoading, setIsLoading] = useState(false)
@@ -208,13 +209,32 @@ export default function OrganizationCard({
           {/* Action Button */}
           {customButton ? (
             customButton
-          ) : (
-            <Link href={defaultLinkUrl}>
-              <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 group/btn">
-                <span>Learn More</span>
-                <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
-              </Button>
-            </Link>
+                  ) : (
+         <div className="flex gap-3">
+  {/* Learn More Button */}
+  <Link href={defaultLinkUrl} className="flex-1">
+    <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 group/btn">
+      <span>Learn More</span>
+      <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+    </Button>
+  </Link>
+
+  {/* Claim Ownership Button - শুধু যদি unregistered হয় */}
+  {!organization.is_registered && !auth.user && (
+    <Link
+      href={route('register.organization', { ein: organization.ein })}
+      className="flex-1"
+    >
+      <Button
+        variant="outline"
+        className="w-full border-2 border-amber-500 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 font-semibold py-3 text-base shadow-md hover:shadow-lg transition-all duration-300"
+      >
+        <Building2 className="mr-2 h-4 w-4" />
+        Claim Ownership
+      </Button>
+    </Link>
+  )}
+</div>
           )}
         </CardContent>
 

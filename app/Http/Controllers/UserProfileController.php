@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
+use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
 use App\Services\ImpactScoreService;
 use App\Services\PrintifyService;
@@ -72,57 +73,81 @@ class UserProfileController extends Controller
     }
 
 
+
     public function edit()
     {
-        return Inertia::render('frontend/user-profile/edit');
+        $user = auth()->user();
+
+        // সব active positions + ইউজারের বর্তমান positions
+        $positions = SupporterPosition::where('is_active', 1)
+            ->orderBy('sort_order')
+            ->get(['id', 'name']);
+
+        $userPositions = $user->supporterPositions->pluck('id')->toArray();
+
+        return Inertia::render('frontend/user-profile/edit', [
+            'user' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $user->contact_number,
+                'dob' => $user->dob?->format('Y-m-d'),
+                'image' => $user->image ? Storage::url($user->image) : null,
+                'positions' => $userPositions, // current selected
+            ],
+            'availablePositions' => $positions,
+        ]);
     }
 
 
     public function update(Request $request)
     {
+        $user = $request->user();
+
         $validated = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $request->user()->id],
+            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email,' . $user->id],
             'phone' => ['nullable', 'string', 'max:20'],
             'dob' => ['nullable', 'date'],
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
+            'positions' => ['sometimes', 'array'],
+            'positions.*' => ['exists:supporter_positions,id'],
         ]);
 
-        // If email is changed, reset email verification
-        if ($request->user()->email !== $validated['email']) {
+        // Email changed? Send verification
+        if ($user->email !== $validated['email']) {
             $validated['email_verified_at'] = null;
-
-            $request->user()->sendEmailVerificationNotification();
+            $user->sendEmailVerificationNotification();
         }
-
-
 
         // Handle image upload
         if ($request->hasFile('image')) {
-            // Delete old image
-            if ($request->user()->image) {
-                Storage::disk('public')->delete($request->user()->image);
+            if ($user->image) {
+                Storage::disk('public')->delete($user->image);
             }
 
-            $filename = 'profile-' . $request->user()->id . '-' . time() . '.' . $request->file('image')->getClientOriginalExtension();
+            $filename = 'profile-' . $user->id . '-' . time() . '.' . $request->file('image')->extension();
             $path = $request->file('image')->storeAs('profile-photos', $filename, 'public');
-
             $validated['image'] = $path;
-
-            $request->user()->update([
-                "image" => $validated['image'],
-            ]);
         }
 
-        $request->user()->update([
-            "name" => $validated['name'],
-            "email" => $validated['email'],
-            "dob" => $validated['dob'],
-            "contact_number" => $validated['phone'] ?? null,
+        // Update basic info
+        $user->update([
+            'name' => $validated['name'],
+            'email' => $validated['email'],
+            'contact_number' => $validated['phone'] ?? null,
+            'dob' => $validated['dob'] ?? null,
+            'image' => $validated['image'] ?? $user->image,
         ]);
 
+        // Sync supporter positions
+        if ($request->has('positions')) {
+            $user->supporterPositions()->sync($request->positions);
+        } else {
+            $user->supporterPositions()->detach(); // যদি কিছু না সিলেক্ট করে
+        }
 
-        return to_route('user.profile.edit');
+        return back()->with('success', 'Profile updated successfully!');
     }
 
 
@@ -212,7 +237,7 @@ class UserProfileController extends Controller
                         return [
                             'id' => $item->id,
                             'name' => $item->product->name,
-                            'image' => $item->product->image,
+                            'primary_image' => $item->primary_image,
                             'quantity' => $item->quantity,
                             'unit_price' => $item->unit_price,
                             'subtotal' => $item->subtotal,
@@ -265,7 +290,7 @@ class UserProfileController extends Controller
                     'product_id' => $item->product_id,
                     'name' => $item->product->name,
                     'description' => $item->product->description,
-                    'image' => $item->product->image,
+                    'primary_image' => $item->primary_image,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
                     'subtotal' => $item->subtotal,

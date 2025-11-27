@@ -20,6 +20,7 @@ class OrderItem extends Model
         'printify_print_provider_id',
         'printify_line_item_id',
         'product_details',
+        'primary_image',
         'variant_data',
         'printify_synced',
     ];

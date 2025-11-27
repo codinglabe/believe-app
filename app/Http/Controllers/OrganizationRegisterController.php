@@ -34,7 +34,7 @@ class OrganizationRegisterController extends Controller
 
     public function create(Request $request)
     {
-        if ($request->has('ref')) {
+        if ($request->has('ref') || $request->has('ein')) {
 
             $user = User::where('referral_code', $request->ref)->first();
 
@@ -43,10 +43,12 @@ class OrganizationRegisterController extends Controller
             }
 
             return Inertia::render('frontend/register/organization', [
+                'ein' => $request->query('ein'),
                 'referralCode' => $user->referral_code,
             ]);
         }
-        return Inertia::render('frontend/register/organization');
+        return Inertia::render('frontend/register/organization', [
+        ]);
     }
 
     public function lookupEIN(Request $request)

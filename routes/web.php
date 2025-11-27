@@ -142,7 +142,7 @@ Route::get('/product/{product}', [ProductController::class, 'show'])->name('prod
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
-    Route::get('/cart/data', [CartController::class, 'getCartData'])->name('cart.data');
+    Route::get('/cart/data', [CartController::class, 'getCartDataApi'])->name('cart.data');
     Route::post('/cart/add', [CartController::class, 'add'])->name('cart.add');
     Route::put('/cart/items/{cartItem}', [CartController::class, 'update'])->name('cart.update');
     Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.destroy');

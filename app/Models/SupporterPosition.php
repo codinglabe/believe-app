@@ -6,7 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class FollowerPosition extends Model
+class SupporterPosition extends Model
 {
     use HasFactory;
 
@@ -25,6 +25,11 @@ class FollowerPosition extends Model
 
     public function userPositions()
     {
-        return $this->hasMany(FollowingUserPosition::class);
+        return $this->hasMany(SupporterUserPosition::class);
+    }
+
+    public function users()
+    {
+        return $this->belongsToMany(User::class, 'supporter_user_positions', 'follower_position_id', 'user_id');
     }
 }

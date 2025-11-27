@@ -32,6 +32,7 @@ interface Product {
     name: string;
     description: string;
     price: number;
+    price_display: string;
     unit_price: number;
     image: string;
     image_url: string;
@@ -255,30 +256,6 @@ export default function Marketplace({
                                     )}
                                 </div>
 
-                                {/* Categories Filter */}
-                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                                    <CardHeader className="pb-3">
-                                        <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
-                                            Categories
-                                        </CardTitle>
-                                    </CardHeader>
-                                    <CardContent className="space-y-3 pt-0">
-                                        {categories.map((category: any) => (
-                                            <label key={category.id} className="flex items-center space-x-3 cursor-pointer group">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={filters.categories.includes(category.id)}
-                                                    onChange={() => toggleCategory(category.id)}
-                                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                                                />
-                                                <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
-                                                    {category.name}
-                                                </span>
-                                            </label>
-                                        ))}
-                                    </CardContent>
-                                </Card>
-
                                 {/* Organizations Filter */}
                                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                                     <CardHeader className="pb-3">
@@ -303,6 +280,32 @@ export default function Marketplace({
                                         ))}
                                     </CardContent>
                                 </Card>
+
+                                {/* Categories Filter */}
+                                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                                    <CardHeader className="pb-3">
+                                        <CardTitle className="text-base font-semibold text-gray-900 dark:text-white">
+                                            Categories
+                                        </CardTitle>
+                                    </CardHeader>
+                                    <CardContent className="space-y-3 pt-0">
+                                        {categories.map((category: any) => (
+                                            <label key={category.id} className="flex items-center space-x-3 cursor-pointer group">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={filters.categories.includes(category.id)}
+                                                    onChange={() => toggleCategory(category.id)}
+                                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                                />
+                                                <span className="text-sm text-gray-700 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors">
+                                                    {category.name}
+                                                </span>
+                                            </label>
+                                        ))}
+                                    </CardContent>
+                                </Card>
+
+
                             </motion.div>
                         </div>
 
@@ -370,8 +373,8 @@ export default function Marketplace({
                                                             <h4 className="text-lg font-semibold text-gray-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">
                                                                 {product.name}
                                                             </h4>
-                                                            <span className="text-xl font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap ml-2">
-                                                                ${product.price || product.unit_price}
+                                                            <span className="text-lg font-bold text-blue-600 dark:text-blue-400 whitespace-nowrap ml-2">
+                                                                {product.price_display}
                                                             </span>
                                                         </div>
 

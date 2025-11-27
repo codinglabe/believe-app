@@ -9,7 +9,7 @@ import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Link, router, Head, useForm } from "@inertiajs/react"
 import { useState } from "react"
-import { 
+import {
     ArrowLeft,
     Coins,
     PieChart,
@@ -73,18 +73,18 @@ export default function FractionalShow({ offering }: FractionalShowProps) {
     // Ensure it's always a number
     const tokenPrice = Number(offering.token_price || offering.price_per_share) || 0
     const costPerShare = Number(offering.price_per_share) || 0
-    
+
     // Use the exact ownership_percentage from the offering (per token percentage)
     const ownershipPerToken = offering.ownership_percentage ? Number(offering.ownership_percentage) : 0
-    
+
     const [amountToSpend, setAmountToSpend] = useState(tokenPrice > 0 ? tokenPrice.toFixed(2) : '0.00')
     const AssetIcon = assetTypeIcons[offering.asset.type] || Coins
     const assetColor = assetTypeColors[offering.asset.type] || 'bg-gray-100 text-gray-800'
-    
+
     const soldShares = offering.total_shares - offering.available_shares
     const soldPercentage = Math.round((soldShares / offering.total_shares) * 100)
     const totalValue = offering.total_shares * costPerShare
-    
+
     // Calculate tokens per share
     const tokensPerShare = tokenPrice > 0 && costPerShare > 0 ? Math.floor(costPerShare / tokenPrice) : 0
     const totalTokens = offering.total_shares * tokensPerShare
@@ -105,11 +105,11 @@ export default function FractionalShow({ offering }: FractionalShowProps) {
     const fullShares = costPerShare > 0 ? Math.floor(amountInvested / costPerShare) : 0
     const remainingAmount = costPerShare > 0 ? amountInvested % costPerShare : amountInvested
     const tokensFromRemaining = tokenPrice > 0 ? Math.floor(remainingAmount / tokenPrice) : 0
-    
+
     // Total tokens (from remaining amount after full shares)
     const validTokens = Math.min(tokensFromRemaining, availableTokens)
     const totalPrice = amountInvested
-    
+
     // Calculate ownership percentage: (Amount Invested / Cost per Share) × 100
     // This calculates ownership based on the investment amount relative to full share price
     // Example: $75 invested, $75 cost per share = 100% ownership (1 full share)
@@ -131,10 +131,10 @@ export default function FractionalShow({ offering }: FractionalShowProps) {
 
     const handlePurchase = (e: React.FormEvent) => {
         e.preventDefault()
-        if (validTokens <= 0) {
-            alert('Please enter a valid amount')
-            return
-        }
+        // if (validTokens < 0) {
+        //     alert('Please enter a valid amount')
+        //     return
+        // }
         // TODO: Implement purchase flow with Stripe
         post(route('fractional.purchase', offering.id), {
             preserveScroll: true,

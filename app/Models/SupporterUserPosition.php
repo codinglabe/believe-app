@@ -6,7 +6,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
-class FollowingUserPosition extends Model
+class SupporterUserPosition extends Model
 {
     use HasFactory;
 

@@ -12,6 +12,7 @@ import { Label } from "@/components/frontend/ui/label"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Link, useForm } from "@inertiajs/react"
 import InputError from "@/components/input-error";
+import { MultiSelect } from "@/components/ui/multi-select";
 
 type RegisterForm = {
     name: string;
@@ -20,9 +21,10 @@ type RegisterForm = {
     password_confirmation: string;
     agreeToTerms: boolean;
     referralCode: string;
+    positions: number[];
 };
 
-export default function UserRegisterPage({ referralCode }: { referralCode: string }) {
+export default function UserRegisterPage({ referralCode, positions }: { referralCode: string; positions: { id: number; name: string }[] }) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   //   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -34,7 +36,8 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
     password: '',
     password_confirmation: '',
     agreeToTerms: false,
-    referralCode: referralCode,
+      referralCode: referralCode,
+    positions: [] as number[],
   });
 
   const submit: FormEventHandler = (e) => {
@@ -249,7 +252,22 @@ export default function UserRegisterPage({ referralCode }: { referralCode: strin
                       </button>
                       <InputError message={errors.password_confirmation} />
                     </div>
-                  </div>
+                                  </div>
+
+
+                                  <div>
+        <Label className="text-gray-900 dark:text-white">
+          I am a <span className="text-red-500">*</span>
+        </Label>
+        <MultiSelect
+          options={positions.map(p => ({ label: p.name, value: p.id.toString() }))}
+          selected={data.positions.map(String)}
+          onChange={(selected) => setData('positions', selected.map(Number))}
+          placeholder="Select your position(s)"
+          className="mt-2"
+        />
+        <InputError message={errors.positions} className="mt-2" />
+      </div>
 
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2">

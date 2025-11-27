@@ -1,9 +1,9 @@
-import { Head, Link } from '@inertiajs/react';
+import { Head, Link, router } from '@inertiajs/react';
 import { useState, useEffect } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
-import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
 interface PrintifyVariant {
   id: number;
@@ -34,6 +34,8 @@ interface Product {
     name: string;
   };
   printify_product_id?: string;
+  printify_blueprint_id?: number;
+  printify_provider_id?: number;
 }
 
 interface PrintifyProduct {
@@ -66,6 +68,21 @@ interface ProductViewProps {
   relatedProducts: Product[];
 }
 
+interface CartItem {
+  id: number;
+  product_id: number;
+  quantity: number;
+  printify_variant_id: string;
+    variant_options: Record<string, string>;
+    variant_image?: string;
+}
+
+interface CartData {
+  items: CartItem[];
+  subtotal: number;
+  item_count: number;
+}
+
 export default function ProductView({
   product,
   printifyProduct,
@@ -80,11 +97,69 @@ export default function ProductView({
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [allProductImages, setAllProductImages] = useState<string[]>([]);
   const [quantityError, setQuantityError] = useState<string>('');
+  const [cartData, setCartData] = useState<CartData | null>(null);
+  const [isCartLoading, setIsCartLoading] = useState(false);
+
+  // Fetch cart data on component mount
+  useEffect(() => {
+    fetchCartData();
+  }, []);
+
+  const fetchCartData = async () => {
+    try {
+      setIsCartLoading(true);
+      const response = await axios.get(route('cart.data'));
+        if (response.data) {
+          console.log('Cart data fetched:', response.data.cartData);
+          setCartData(response.data.cartData);
+
+      }
+    } catch (error) {
+      console.error('Error fetching cart data:', error);
+    } finally {
+      setIsCartLoading(false);
+    }
+  };
+
+     const getVariantPrimaryImage = (variant: PrintifyVariant): string => {
+    if (variant.primary_image) {
+      return variant.primary_image;
+    }
+
+    if (variant.images && variant.images.length > 0) {
+      return variant.images[0].src;
+    }
+
+    // Fallback to product image
+    return product.image;
+  };
+
+  // Check if current product variant is in cart
+  const isProductInCart = (): boolean => {
+    if (!cartData || !selectedVariant) return false;
+
+    return cartData.items?.some(item =>
+      item.product_id === product.id &&
+      item.printify_variant_id === selectedVariant.id.toString()
+    );
+  };
+
+  // Get cart item for current product variant
+  const getCartItem = (): CartItem | undefined => {
+    if (!cartData || !selectedVariant) return undefined;
+
+    return cartData.items?.find(item =>
+      item.product_id === product.id &&
+      item.printify_variant_id === selectedVariant.id.toString()
+    );
+  };
 
   useEffect(() => {
     if (variants.length > 0 && !selectedVariant) {
       setSelectedVariant(variants[0]);
     }
+
+      console.log('Selected variant changed:', selectedVariant);
 
     // Collect all unique product images from variants
     const allImages = new Set<string>();
@@ -100,7 +175,7 @@ export default function ProductView({
     }
 
     setAllProductImages(Array.from(allImages));
-  }, [variants, product.image]);
+  }, [variants,selectedVariant, product.image]);
 
   // Validate quantity whenever it changes
   useEffect(() => {
@@ -126,7 +201,7 @@ export default function ProductView({
     : product.unit_price;
 
   // Get images for selected variant or all product images
-  const currentVariantImages = selectedVariant?.images.length > 0
+  const currentVariantImages = selectedVariant?.images && selectedVariant.images.length > 0
     ? selectedVariant.images.map(img => img.src)
     : allProductImages;
 
@@ -152,21 +227,29 @@ export default function ProductView({
     }
 
     setIsLoading(true);
-    try {
-      const cartData = {
+      try {
+        const variantImage = selectedVariant ? getVariantPrimaryImage(selectedVariant) : product.image;
+      const cartPayload = {
         product_id: product.id,
         quantity: quantity,
         printify_variant_id: selectedVariant?.id?.toString() || '',
         printify_blueprint_id: product.printify_blueprint_id || 0,
         printify_print_provider_id: product.printify_provider_id || 0,
         variant_options: selectedVariant?.attributes || {},
-        variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+          variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+        variant_image: variantImage,
       };
 
-      await axios.post(route('cart.add'), cartData);
+      const response = await axios.post(route('cart.add'), cartPayload);
 
-      showSuccessToast('Product added to cart!');
-      setQuantity(1);
+      if (response.data.success) {
+        // Refresh cart data after adding
+        await fetchCartData();
+        showSuccessToast('Product added to cart!');
+        setQuantity(1);
+      } else {
+        showErrorToast(response.data.message);
+      }
     } catch (error: any) {
       if (error.response?.data?.error) {
         showErrorToast(error.response.data.error);
@@ -178,6 +261,10 @@ export default function ProductView({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleViewCart = () => {
+    router.visit(route('cart.index'));
   };
 
   const handleBuyNow = async () => {
@@ -197,18 +284,20 @@ export default function ProductView({
     }
 
     setIsLoading(true);
-    try {
-      const cartData = {
+      try {
+        const variantImage = selectedVariant ? getVariantPrimaryImage(selectedVariant) : product.image;
+      const cartPayload = {
         product_id: product.id,
         quantity: quantity,
         printify_variant_id: selectedVariant?.id?.toString() || '',
         printify_blueprint_id: product.printify_blueprint_id || 0,
         printify_print_provider_id: product.printify_provider_id || 0,
         variant_options: selectedVariant?.attributes || {},
-        variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+          variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+        variant_image: variantImage,
       };
 
-      await axios.post(route('cart.add'), cartData);
+      await axios.post(route('cart.add'), cartPayload);
       window.location.href = route('checkout.show');
     } catch (error: any) {
       if (error.response?.data?.error) {
@@ -236,7 +325,7 @@ export default function ProductView({
 
   const getAttributeKeys = (): string[] => {
     if (variants.length === 0) return [];
-    return Object.keys(variants[0].attributes);
+    return Object.keys(variants[0].attributes || {});
   };
 
   // Navigate through images
@@ -259,6 +348,10 @@ export default function ProductView({
     quantity > product.quantity_available ||
     !!quantityError;
 
+  const cartItem = getCartItem();
+  const productInCart = isProductInCart();
+
+    console.log('product in cart:', productInCart);
   return (
     <FrontendLayout>
       <Head title={product.name} />
@@ -393,16 +486,6 @@ export default function ProductView({
                 <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3 text-balance">
                   {product.name}
                 </h1>
-
-                {/* Rating */}
-                {/* <div className="flex items-center gap-3 mb-4">
-                  <div className="flex items-center gap-1">
-                    {[...Array(5)].map((_, i) => (
-                      <Star key={i} size={18} className="fill-yellow-400 text-yellow-400" />
-                    ))}
-                  </div>
-                  <span className="text-sm text-gray-600 dark:text-gray-400">(128 reviews)</span>
-                </div> */}
               </div>
 
               {/* Price */}
@@ -425,10 +508,27 @@ export default function ProductView({
                 </div>
               </div>
 
-              {/* Selected Variant Info */}
-              {selectedVariant && (
+              {/* Cart Status Indicator */}
+              {productInCart && cartItem && (
                 <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg p-4">
-                  <p className="text-sm text-green-800 dark:text-green-400">
+                  <div className="flex items-center gap-3">
+                    <Check size={20} className="text-green-600 dark:text-green-400" />
+                    <div>
+                      <p className="text-green-800 dark:text-green-400 font-medium">
+                        This item is in your cart
+                      </p>
+                      <p className="text-sm text-green-700 dark:text-green-300">
+                        Quantity: {cartItem.quantity} • ${(cartItem.quantity * currentPrice).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Selected Variant Info */}
+              {selectedVariant && !productInCart && (
+                <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <p className="text-sm text-blue-800 dark:text-blue-400">
                     <strong>Selected:</strong> {selectedVariant.name}
                   </p>
                 </div>
@@ -514,31 +614,58 @@ export default function ProductView({
               </div>
 
               {/* CTA Buttons */}
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <button
-                  onClick={handleBuyNow}
-                  disabled={isActionDisabled}
-                  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? (
-                    <>
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                      Loading...
-                    </>
-                  ) : (
-                    <>
+               <div className="flex flex-col sm:flex-row gap-4 pt-4">
+                {productInCart ? (
+                  <>
+                    <button
+                      onClick={handleViewCart}
+                      className="flex-1 bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                    >
                       <ShoppingCart size={20} />
-                      Buy Now
-                    </>
-                  )}
-                </button>
-                <button
-                  onClick={handleAddToCart}
-                  disabled={isActionDisabled}
-                  className="flex-1 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold py-4 px-6 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Add to Cart
-                </button>
+                      View Cart ({cartItem?.quantity})
+                                      </button>
+                                      <Link href={route('checkout.show')}  className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed">
+                    <button
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Loading...
+                        </>
+                      ) : (
+                        'Buy Now'
+                      )}
+                    </button>
+                                      </Link>
+                  </>
+                ) : (
+                  <>
+                    <button
+                      onClick={handleBuyNow}
+                      disabled={isActionDisabled}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-semibold py-4 px-6 rounded-lg transition-all duration-200 flex items-center justify-center gap-2 disabled:cursor-not-allowed"
+                    >
+                      {isLoading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                          Loading...
+                        </>
+                      ) : (
+                        <>
+                          <ShoppingCart size={20} />
+                          Buy Now
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={handleAddToCart}
+                      disabled={isActionDisabled}
+                      className="flex-1 border-2 border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 font-semibold py-4 px-6 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      Add to Cart
+                    </button>
+                  </>
+                )}
               </div>
 
               {/* Product Tags */}
@@ -559,36 +686,6 @@ export default function ProductView({
               )}
             </div>
           </div>
-
-          {/* Related Products */}
-          {relatedProducts.length > 0 && (
-            <div className="mt-16">
-              <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-8">Related Products</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                {relatedProducts.map((relProduct) => (
-                  <Link
-                    key={relProduct.id}
-                    href={route('product.show', relProduct.id)}
-                    className="group bg-white dark:bg-gray-800 rounded-xl shadow-sm hover:shadow-lg transition-all duration-300 overflow-hidden border border-gray-200 dark:border-gray-700"
-                  >
-                    <img
-                      src={relProduct.image || "/placeholder.svg?height=300&width=300"}
-                      alt={relProduct.name}
-                      className="w-full h-40 object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="p-4">
-                      <h3 className="font-semibold text-gray-900 dark:text-white line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {relProduct.name}
-                      </h3>
-                      <p className="text-lg font-bold text-blue-600 dark:text-blue-400 mt-2">
-                        ${relProduct.unit_price}
-                      </p>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
         </div>
       </div>
     </FrontendLayout>

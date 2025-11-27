@@ -8,7 +8,7 @@ import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/frontend/ui/switch'; // Corrected import path
-import { Save, Plus, Minus, ExternalLink, Loader2 } from 'lucide-react';
+import { Save, Plus, Minus, ExternalLink, Loader2, Upload } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -71,12 +71,14 @@ interface Props {
 export default function Create({ categories, organizations = [], blueprints, printify_enabled }: Props) {
     const { auth } = usePage<SharedData>().props
 
-    const { data, setData, post, processing, errors } = useForm({
+
+
+    const { data, setData } = useForm({
         name: '',
         description: '',
         quantity: '',
-        unit_price: '',
-        profit_margin_percentage: '',
+        // unit_price: '',
+        profit_margin_percentage: 40,
         owned_by: 'admin',
         organization_id: '',
         status: 'active',
@@ -91,8 +93,11 @@ export default function Create({ categories, organizations = [], blueprints, pri
         printify_blueprint_id: '',
         printify_provider_id: '',
         printify_variants: [] as any[],
-        printify_images: [''] as string[],
+        printify_images: [] as { file: File; preview: string; name: string }[],
     });
+
+     const [processing, setProcessing] = useState(false);
+    const [errors, setErrors] = useState<any>({});
 
 
     const [providers, setProviders] = useState<PrintProvider[]>([]);
@@ -236,45 +241,120 @@ const handleCategoryChange = (categoryId: number) => {
     setData('printify_variants', updatedVariants);
 };
 
-    const addImageField = () => {
-        setData('printify_images', [...data.printify_images, '']);
-    };
+    // const handleSubmit = (e: React.FormEvent) => {
+    //     e.preventDefault();
 
-    const updateImage = (index: number, value: string) => {
-        const newImages = [...data.printify_images];
-        newImages[index] = value;
-        setData('printify_images', newImages);
-    };
+    //     // Validate Printify required fields
+    //     if (data.is_printify_product) {
+    //         if (!data.printify_blueprint_id) {
+    //             showErrorToast('Please select a product type');
+    //             return;
+    //         }
+    //         if (!data.printify_provider_id) {
+    //             showErrorToast('Please select a print provider');
+    //             return;
+    //         }
+    //         if (data.printify_variants.length === 0) {
+    //             showErrorToast('Please select at least one variant');
+    //             return;
+    //         }
+    //         if (data.printify_images.length === 0 || data.printify_images[0] === '') {
+    //             showErrorToast('Please add at least one design image URL');
+    //             return;
+    //         }
+    //     }
 
-    const removeImage = (index: number) => {
-        const newImages = data.printify_images.filter((_, i) => i !== index);
-        setData('printify_images', newImages);
-    };
+    //     post(route('products.store'));
+    // };
+
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
+        setErrors({});
+        setProcessing(true);
 
-        // Validate Printify required fields
-        if (data.is_printify_product) {
-            if (!data.printify_blueprint_id) {
-                showErrorToast('Please select a product type');
-                return;
-            }
-            if (!data.printify_provider_id) {
-                showErrorToast('Please select a print provider');
-                return;
-            }
-            if (data.printify_variants.length === 0) {
-                showErrorToast('Please select at least one variant');
-                return;
-            }
-            if (data.printify_images.length === 0 || data.printify_images[0] === '') {
-                showErrorToast('Please add at least one design image URL');
-                return;
-            }
-        }
+        const formData = new FormData();
 
-        post(route('products.store'));
+        // সাধারণ ফিল্ড
+        formData.append('name', data.name);
+        formData.append('description', data.description);
+        formData.append('quantity', data.quantity);
+        formData.append('profit_margin_percentage', data.profit_margin_percentage.toString());
+        formData.append('owned_by', data.owned_by);
+        formData.append('status', data.status);
+        formData.append('sku', data.sku);
+        formData.append('type', data.type);
+        if (data.tags) formData.append('tags', data.tags);
+        if (data.organization_id) formData.append('organization_id', data.organization_id);
+        formData.append('is_printify_product', '1');
+
+        // Printify fields
+        if (data.printify_blueprint_id) formData.append('printify_blueprint_id', data.printify_blueprint_id);
+        if (data.printify_provider_id) formData.append('printify_provider_id', data.printify_provider_id);
+
+        // Categories
+        data.categories.forEach(id => formData.append('categories[]', id.toString()));
+
+        // Main image
+        if (data.image) formData.append('image', data.image);
+
+        // Printify variants (শুধু ID দিন)
+        data.printify_variants.forEach((v, i) => {
+            formData.append(`printify_variants[${i}][id]`, v.id.toString());
+        });
+
+        // Printify images - এটাই মূল!
+        data.printify_images.forEach((img, i) => {
+            if (img.file) {
+                formData.append('printify_images[]', img.file); // [] দিয়ে array হিসেবে পাঠান
+            }
+        });
+
+        // Debug (চাইলে রাখুন)
+//         for (let [k, v] of formData.entries()) {
+//             console.log(k, v);
+//         }
+
+        router.post(route('products.store'), formData, {
+            forceFormData: true, // এটা ছাড়া কাজ করবে না
+            onSuccess: () => {
+                showSuccessToast('Product created successfully!');
+            },
+            onError: (err) => {
+                setErrors(err);
+                showErrorToast('Please fix the errors');
+                console.log('Errors:', err);
+            },
+            onFinish: () => setProcessing(false),
+        });
+    };
+
+    // File upload handler
+    const handleDesignUpload = (index: number, file: File | null) => {
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const newImages = [...data.printify_images];
+            newImages[index] = {
+                file,
+                preview: reader.result as string,
+                name: file.name
+            };
+            setData({ ...data, printify_images: newImages });
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const addDesignField = () => {
+        setData({ ...data, printify_images: [...data.printify_images, null as any] });
+    };
+
+    const removeDesignField = (index: number) => {
+        setData({
+            ...data,
+            printify_images: data.printify_images.filter((_, i) => i !== index)
+        });
     };
 
     const handleChange = (field: string, value: string | number | boolean | File | null) => {
@@ -288,22 +368,22 @@ const handleCategoryChange = (categoryId: number) => {
     };
 
     // Calculate profit margin for display
-    const calculateProfitInfo = () => {
-        if (!data.unit_price || data.printify_variants.length === 0) return null;
+    // const calculateProfitInfo = () => {
+    //     if (!data.unit_price || data.printify_variants.length === 0) return null;
 
-        const maxVariantCost = Math.max(...data.printify_variants.map((v: any) => v.price));
-        const sellingPrice = parseFloat(data.unit_price);
-        const profit = sellingPrice - maxVariantCost;
-        const margin = (profit / sellingPrice) * 100;
+    //     const maxVariantCost = Math.max(...data.printify_variants.map((v: any) => v.price));
+    //     const sellingPrice = parseFloat(data.unit_price);
+    //     const profit = sellingPrice - maxVariantCost;
+    //     const margin = (profit / sellingPrice) * 100;
 
-        return {
-            cost: maxVariantCost,
-            profit,
-            margin
-        };
-    };
+    //     return {
+    //         cost: maxVariantCost,
+    //         profit,
+    //         margin
+    //     };
+    // };
 
-    const profitInfo = calculateProfitInfo();
+    // const profitInfo = calculateProfitInfo();
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -629,7 +709,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                 )}
 
                                                 {/* Printify Images */}
-                                                <div className="space-y-3">
+                                                {/* <div className="space-y-3">
                                                     <Label className="text-base">Product Design Images *</Label>
                                                     <p className="text-sm text-muted-foreground">
                                                         Add URLs to your design images (PNG, JPG with transparent background recommended)
@@ -670,7 +750,55 @@ const handleCategoryChange = (categoryId: number) => {
                                                     {errors.printify_images && (
                                                         <p className="text-sm text-red-500">{errors.printify_images}</p>
                                                     )}
-                                                </div>
+                                                </div> */}
+
+
+                                                {/* Printify Design Images - File Upload Instead of URL */}
+<div className="space-y-3">
+  <Label className="text-base">Product Design Images *</Label>
+  <p className="text-sm text-muted-foreground">
+    Upload your design files (PNG recommended with transparent background)
+  </p>
+
+  <div className="space-y-4">
+    {data.printify_images.map((img, index) => (
+        <div key={index} className="flex gap-3 items-start">
+            <div className="flex-1">
+                <Input
+                    type="file"
+                    accept="image/png,image/jpeg"
+                    onChange={(e) => handleDesignUpload(index, e.target.files?.[0] || null)}
+                    className="hidden"
+                    id={`design-${index}`}
+                />
+                <label htmlFor={`design-${index}`} className="block cursor-pointer">
+                    {/* আপনার পুরানো ডিজাইন প্রিভিউ কোড */}
+                    {img?.preview ? (
+                        <img src={img.preview} alt="preview" className="w-full h-48 object-contain border rounded" />
+                    ) : (
+                        <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center">
+                            <Upload className="h-12 w-12 text-gray-400" />
+                        </div>
+                    )}
+                </label>
+            </div>
+            {data.printify_images.length > 1 && (
+                <Button onClick={() => removeDesignField(index)} variant="outline" size="icon">
+                    <Minus />
+                </Button>
+            )}
+        </div>
+    ))}
+  </div>
+
+  <Button type="button" onClick={addDesignField} variant="outline" size="sm">
+        <Plus className="h-4 w-4 mr-2" /> Add Design
+    </Button>
+
+  {errors.printify_images && (
+    <p className="text-sm text-red-500">{errors.printify_images}</p>
+  )}
+</div>
                                             </div>
                                         )}
                                     </CardContent>
@@ -748,7 +876,7 @@ const handleCategoryChange = (categoryId: number) => {
                                         {errors.quantity && <p className="text-sm text-red-500">{errors.quantity}</p>}
                                     </div>
 
-                                    <div className="space-y-2">
+                                    {/* <div className="space-y-2">
                                         <Label htmlFor="unit_price">Unit Price ($) *</Label>
                                         <Input
                                             id="unit_price"
@@ -761,7 +889,7 @@ const handleCategoryChange = (categoryId: number) => {
                                             className={errors.unit_price ? 'border-red-500' : ''}
                                         />
                                         {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
-                                    </div>
+                                    </div> */}
 
                                     <div className="space-y-2">
                                         <Label htmlFor="profit_margin_percentage">Profit Margin (%) *</Label>

@@ -25,7 +25,7 @@ interface OrderItem {
   id: number
   name: string
   description: string
-  image: string
+  primary_image: string
   quantity: number
   unit_price: number
   subtotal: number
@@ -313,7 +313,7 @@ export default function OrderDetails() {
                   {order.items.map((item) => (
                     <div key={item.id} className="flex items-start gap-4 p-4 border border-gray-200 dark:border-gray-600 rounded-lg">
                       <img
-                        src={item.image || "/placeholder.svg"}
+                        src={item.primary_image || "/placeholder.svg"}
                         alt={item.name}
                         className="w-16 h-16 rounded-lg object-cover border border-gray-200 dark:border-gray-600"
                       />
@@ -402,26 +402,26 @@ export default function OrderDetails() {
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      ${order.subtotal}
+                      ${order?.subtotal?.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Shipping</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      ${order.shipping_cost}
+                      ${order?.shipping_cost}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Tax</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      ${order.tax_amount|| 0}
+                      ${order?.tax_amount|| 0}
                     </span>
                   </div>
                   <div className="border-t border-gray-200 dark:border-gray-600 pt-3">
                     <div className="flex justify-between">
                       <span className="font-semibold text-gray-900 dark:text-white">Total</span>
                       <span className="font-bold text-lg text-blue-600 dark:text-blue-400">
-                        ${order.total_amount}
+                        ${order?.total_amount}
                       </span>
                     </div>
                   </div>

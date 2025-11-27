@@ -13,6 +13,7 @@ import { useForm, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
+import { MultiSelect } from "@/components/ui/multi-select"
 
 interface User {
   id: number
@@ -24,21 +25,29 @@ interface User {
 }
 
 interface PageProps {
-  auth: {
-    user: User
+  auth: { user: User }
+  availablePositions: { id: number; name: string }[]
+  user: {
+    id: number
+    name: string
+    email: string
+    phone?: string
+    dob?: string
+    image?: string
+    positions: number[]
   }
 }
 
 export default function ProfileEdit() {
-  const { auth } = usePage<PageProps>().props
-  const user = auth.user
+ const { user, availablePositions } = usePage<PageProps>().props
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
     name: user.name || "",
     email: user.email || "",
     phone: user.phone || "",
     dob: user.dob || "",
-    image: null as File | null,
+      image: null as File | null,
+    positions: user.positions || [],
   })
 
   const [previewUrl, setPreviewUrl] = useState( user.image)
@@ -197,7 +206,24 @@ export default function ProfileEdit() {
                                           />
                           </div>
                           {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
-                                      </div>
+                      </div>
+
+
+                      <MultiSelect
+            options={availablePositions.map(p => ({
+              label: p.name,
+              value: p.id.toString()
+            }))}
+            selected={data.positions.map(String)}
+            onChange={(selected) => setData('positions', selected.map(Number))}
+            placeholder="Select your supporter role(s)"
+          />
+          {errors.positions && (
+            <p className="text-red-600 text-sm mt-2">{errors.positions}</p>
+          )}
+          <p className="text-sm text-gray-500 mt-2">
+            You can select multiple roles (e.g., Doctor + Volunteer)
+          </p>
           </CardContent>
         </Card>
 

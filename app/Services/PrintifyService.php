@@ -170,6 +170,7 @@ class PrintifyService
             $response = $this->client->put("v1/shops/{$this->shopId}/products/{$productId}.json", [
                 'json' => $productData
             ]);
+
             return json_decode($response->getBody(), true);
         } catch (RequestException $e) {
             $this->handleException($e, 'Update Product', ['product_id' => $productId]);
@@ -502,6 +503,21 @@ class PrintifyService
 
         } catch (\Exception $e) {
             Log::error('Printify shipping calculation error', [
+                'error' => $e->getMessage()
+            ]);
+            return [];
+        }
+    }
+
+
+    public function getProductShippingCosts(int $blueprintId ,int $providerId)
+    {
+        try {
+            $response = $this->client->get("v1/catalog/blueprints/{$blueprintId}/print_providers/{$providerId}/shipping.json");
+            return json_decode($response->getBody(), true) ?? [];
+        } catch (RequestException $e) {
+            Log::error('Failed to fetch Printify order', [
+                'order_id' => $orderId,
                 'error' => $e->getMessage()
             ]);
             return [];

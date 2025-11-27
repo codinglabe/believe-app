@@ -142,12 +142,12 @@ class ProductController extends BaseController
             'printifyProduct' => $printifyProduct,
             'variants' => $variantsWithImages,
             'firstVariant' => $firstVariant,
-            'relatedProducts' => Product::query()
-                ->where('id', '!=', $product->id)
-                ->where('status', 'active')
-                ->where('quantity_available', '>', 0)
-                ->limit(4)
-                ->get(),
+            // 'relatedProducts' => Product::query()
+            //     ->where('id', '!=', $product->id)
+            //     ->where('status', 'active')
+            //     ->where('quantity_available', '>', 0)
+            //     ->limit(4)
+            //     ->get(),
         ]);
     }
 
@@ -208,8 +208,236 @@ class ProductController extends BaseController
     }
 
     /**
+ * Get shipping costs from Printify API
+ */
+    // private function getProductMakingCosts($blueprintId, $providerId): array
+    // {
+    //     try {
+    //         $response = $this->printifyService->getProductShippingCosts($blueprintId, $providerId);
+
+
+    //         $profiles = $response['profiles'] ?? [];
+
+    //         \Log::info('Printify shipping costs response', ['response profiles' => $profiles]);
+
+    //         if (empty($profiles)) {
+    //             return [
+    //                 'first_item_cost' => 0,
+    //                 'additional_item_cost' => 0
+    //             ];
+    //         }
+
+    //         // Find US shipping profile specifically
+    //         $usProfile = $this->findUsShippingProfile($profiles);
+
+    //         // If US profile not found, use the first available profile as fallback
+    //         $targetProfile = $usProfile ?? $profiles[0];
+
+    //         return [
+    //             'first_item_cost' => ($targetProfile['first_item']['cost'] ?? 0) / 100, // Convert cents to dollars
+    //             'additional_item_cost' => ($targetProfile['additional_items']['cost'] ?? 0) / 100 // Convert cents to dollars
+    //         ];
+
+    //     } catch (\Exception $e) {
+    //         return [
+    //             'first_item_cost' => 0,
+    //             'additional_item_cost' => 0
+    //         ];
+    //     }
+    // }
+
+    /**
+     * Find US shipping profile from the profiles array
+     */
+    private function findUsShippingProfile(array $profiles): ?array
+    {
+        foreach ($profiles as $profile) {
+            $countries = $profile['countries'] ?? [];
+
+            // Check if this profile includes US
+            if (in_array('US', $countries)) {
+                return $profile;
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * Store a newly created resource in storage.
      */
+    // public function store(Request $request)
+    // {
+    //     $this->authorizePermission($request, 'product.create');
+
+    //     $validated = $request->validate([
+    //         'name' => 'required|string|max:255',
+    //         'description' => 'required|string|max:1000',
+    //         'quantity' => 'required|integer|min:0',
+    //         // 'unit_price' => 'required|numeric|min:0',
+    //         'profit_margin_percentage' => 'required|numeric|min:0',
+    //         'owned_by' => 'required|in:admin,organization',
+    //         'organization_id' => 'nullable|integer|exists:organizations,id',
+    //         'status' => 'required|in:active,inactive,archived',
+    //         'sku' => 'required|string|max:255|unique:products,sku',
+    //         'type' => 'required|in:digital,physical',
+    //         'tags' => 'nullable|string',
+    //         'categories' => 'array',
+    //         'categories.*' => 'integer|exists:categories,id',
+    //         'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg',
+
+    //         // Printify specific fields
+    //         'is_printify_product' => 'nullable|boolean',
+    //         'printify_blueprint_id' => 'required|integer',
+    //         'printify_provider_id' => 'required|integer',
+    //         'printify_variants' => 'required|array',
+    //         'printify_images' => ['required', 'array', 'min:1'],
+    //         'printify_images.*' => ['required', 'string', 'url', 'regex:/\.(png|jpg|jpeg|svg)$/i'],
+    //     ], [
+    //         'printify_images.required' => 'At least one design image is required for Printify products.',
+    //         'printify_images.min' => 'At least one design image is required for Printify products.',
+    //         'printify_images.*.required' => 'Each image URL is required.',
+    //         'printify_images.*.url' => 'Please enter a valid URL for the image.',
+    //         'printify_images.*.regex' => 'Image URL must end with .png, .jpg, or .jpeg extension.',
+    //     ]);
+
+    //     try {
+    //         $imagePath = null;
+    //         if ($request->hasFile('image')) {
+    //             $image = $request->file('image');
+    //             $imageName = time() . '_' . $image->getClientOriginalName();
+    //             $imagePath = $image->storeAs('products', $imageName, 'public');
+    //         }
+
+    //         $categories = $validated['categories'] ?? [];
+    //         unset($validated['categories']);
+
+
+    //         // Handle Printify product creation
+    //         $printifyProductId = null;
+    //         if ($request->boolean('is_printify_product') && $request->printify_blueprint_id) {
+
+    //             // Step 1: Create product (আপনার createPrintifyProduct() ঠিক আছে)
+    //             $printifyProductId = $this->createPrintifyProduct($request, $validated, $dummyPrice = 1);
+
+    //             // Step 2: Get product details to read real cost
+    //             $productDetails = $this->printifyService->getProduct($printifyProductId);
+
+    //             if (!$productDetails || !isset($productDetails['variants'])) {
+    //                 throw new \Exception('Failed to fetch product details');
+    //             }
+
+    //             // এই লাইনটা সবচেয়ে গুরুত্বপূর্ণ — create করার সময় যে variant গুলো দিয়েছেন, ঠিক সেগুলোই নিন
+    //             $selectedVariantIds = $request->input('printify_variants', []); // এটা array of arrays
+    //             $selectedVariantIds = array_column($selectedVariantIds, 'id'); // [17390, 17391, ...]
+
+    //             // Profit margin
+    //             $profitMargin = $validated['profit_margin_percentage'] ?? 40;
+
+    //             // Build updated variants (only selected ones)
+    //             $updatedVariants = [];
+    //             foreach ($productDetails['variants'] as $variant) {
+    //                 if (!in_array($variant['id'], $selectedVariantIds)) {
+    //                     continue; // skip non-selected
+    //                 }
+
+    //                 $costInCents = $variant['cost'] ?? 0;
+    //                 $costInDollars = $costInCents / 100;
+    //                 $sellingPriceInDollars = $costInDollars + ($costInDollars * $profitMargin / 100);
+    //                 $sellingPriceInCents = (int) round($sellingPriceInDollars * 100);
+
+    //                 $updatedVariants[] = [
+    //                     'id' => $variant['id'],
+    //                     'price' => $sellingPriceInCents,
+    //                     'is_enabled' => true
+    //                 ];
+    //             }
+
+    //             // এই payload টা ১০০% কাজ করবে — কোনো কিছু destroy হবে না
+    //             $updatePayload = [
+    //                 'title' => $validated['name'],
+    //                 'description' => $validated['description'],
+    //                 'variants' => $updatedVariants,
+    //                 'print_areas' => [
+    //                     [
+    //                         // এই লাইনটা সবচেয়ে গুরুত্বপূর্ণ — create করার সময় যা দিয়েছেন, ঠিক তাই দিন
+    //                         'variant_ids' => $selectedVariantIds, // ← এই array টা create-এর সময় যা দিয়েছেন, ঠিক সেইটা
+    //                         'placeholders' => [
+    //                             [
+    //                                 'position' => 'front',
+    //                                 'images' => $this->preparePrintifyImages($request->printify_images ?? [])
+    //                             ]
+    //                         ]
+    //                     ]
+    //                 ]
+    //             ];
+
+    //             // Update করুন
+    //             $updateResponse = $this->printifyService->updateProduct($printifyProductId, $updatePayload);
+
+    //             if (isset($updateResponse['status']) && $updateResponse['status'] === 'error') {
+    //                 \Log::error('Printify update failed', [
+    //                     'payload' => $updatePayload,
+    //                     'response' => $updateResponse
+    //                 ]);
+    //                 throw new \Exception('Printify update failed: ' . $updateResponse['message']);
+    //             }
+
+    //             \Log::info('Printify product updated successfully with correct variant matching', [
+    //                 'product_id' => $printifyProductId,
+    //                 'variant_count' => count($updatedVariants),
+    //                 'variant_ids_in_print_areas' => $selectedVariantIds
+    //             ]);
+    //         }
+
+    //         $productData = [
+    //             'user_id' => Auth::id(),
+    //             'image' => $imagePath,
+    //             'quantity_available' => $validated['quantity'],
+    //             'printify_product_id' => $printifyProductId,
+    //             'printify_blueprint_id' => $request->printify_blueprint_id,
+    //             'printify_provider_id' => $request->printify_provider_id,
+    //         ];
+
+    //         // Merge with validated data
+    //         $productData = array_merge($validated, $productData);
+
+    //         $product = Product::create($productData);
+    //         $product->categories()->sync($categories);
+
+    //         if (Auth::user()->role == "organization") {
+    //             $organization = Organization::where('user_id', Auth::id())->first();
+    //             $product->update([
+    //                 'owned_by' => 'organization',
+    //                 'organization_id' => $organization->id,
+    //             ]);
+    //         }
+
+    //         if($request->boolean('is_printify_product') && $request->printify_variants){
+    //                 foreach ($request->printify_variants as $variant) {
+    //                     ProductVariant::create([
+    //                         'product_id' => $product->id,
+    //                         'printify_variant_id' => $variant['id'],
+    //                     ]);
+    //                 }
+    //             }
+
+    //         // Auto-publish if status is active and it's a Printify product
+    //         if ($product->printify_product_id && $validated['status'] === 'active') {
+    //             $this->autoPublishPrintifyProduct($product);
+    //             $product->update([
+    //                 'publish_status' => 'publishing',
+    //             ]);
+    //         }
+
+    //         return redirect()->route('products.index')
+    //             ->with('success', 'Product created successfully' . ($printifyProductId ? ' in Printify' : ''));
+
+    //     } catch (\Exception $e) {
+    //         return back()->withErrors(['printify_error' => 'Failed to create product: ' . $e->getMessage()]);
+    //     }
+    // }
+
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'product.create');
@@ -218,7 +446,6 @@ class ProductController extends BaseController
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
-            'unit_price' => 'required|numeric|min:0',
             'profit_margin_percentage' => 'required|numeric|min:0',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
@@ -232,10 +459,11 @@ class ProductController extends BaseController
 
             // Printify specific fields
             'is_printify_product' => 'nullable|boolean',
-            'printify_blueprint_id' => 'nullable|integer',
-            'printify_provider_id' => 'nullable|integer',
-            'printify_variants' => 'nullable|array',
-            'printify_images' => 'nullable|array',
+            'printify_blueprint_id' => 'required|integer',
+            'printify_provider_id' => 'required|integer',
+            'printify_variants' => 'required|array',
+            'printify_images' => 'required|array|min:1',
+            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:10240',
         ]);
 
         try {
@@ -249,17 +477,105 @@ class ProductController extends BaseController
             $categories = $validated['categories'] ?? [];
             unset($validated['categories']);
 
-
             // Handle Printify product creation
             $printifyProductId = null;
             if ($request->boolean('is_printify_product') && $request->printify_blueprint_id) {
-                $printifyProductId = $this->createPrintifyProduct($request, $validated);
+                // Get selected variant IDs from the request
+                $selectedVariantIds = array_column($request->input('printify_variants', []), 'id');
+
+                // Step 1: Create product with selected variants
+                $printifyProductId = $this->createPrintifyProduct($request, $validated, $selectedVariantIds);
+
+                if (!$printifyProductId) {
+                    throw new \Exception('Failed to create Printify product');
+                }
+
+                // Step 2: Get product details to read real cost
+                $productDetails = $this->printifyService->getProduct($printifyProductId);
+
+                if (!$productDetails || !isset($productDetails['variants'])) {
+                    throw new \Exception('Failed to fetch product details');
+                }
+
+                // Step 3: Update with correct pricing for ALL variants
+                $profitMargin = $request->profit_margin_percentage ?? 40;
+
+                // Build updated variants - update ALL variants in the product
+                $updatedVariants = [];
+                $allVariantIds = [];
+
+                foreach ($productDetails['variants'] as $variant) {
+                    $allVariantIds[] = $variant['id'];
+
+                    // Check if this variant is in our selected list
+                    $isSelected = in_array($variant['id'], $selectedVariantIds);
+
+                    $costInCents = $variant['cost'] ?? 0;
+                    $costInDollars = $costInCents / 100;
+
+                    if ($isSelected) {
+                        // Calculate selling price for selected variants
+                        $sellingPriceInDollars = $this->calculateSellingPrice($costInDollars, $profitMargin);
+                        $sellingPriceInCents = (int) round($sellingPriceInDollars * 100);
+                    } else {
+                        // For non-selected variants, use cost price (or disable them)
+                        $sellingPriceInCents = $costInCents;
+                    }
+
+                    $updatedVariants[] = [
+                        'id' => $variant['id'],
+                        'price' => $sellingPriceInCents,
+                        'is_enabled' => $isSelected // Only enable selected variants
+                    ];
+
+
+                    \Log::info('Prepared variant for update', [
+                        'variant_id' => $variant['id'],
+                        'is_selected' => $isSelected,
+                        'cost_in_cents' => $costInCents,
+                        'selling_price_in_cents' => $sellingPriceInCents,
+                    ]);
+                }
+
+                // CRITICAL FIX: Include ALL variant IDs in print_areas
+                $updatePayload = [
+                    'title' => $validated['name'],
+                    'description' => $validated['description'],
+                    'variants' => $updatedVariants,
+                    'print_areas' => [
+                        [
+                            'variant_ids' => $allVariantIds, // ALL variants that exist in the product
+                            'placeholders' => [
+                                [
+                                    'position' => 'front',
+                                    'images' => $this->preparePrintifyImages($request->file('printify_images') ?? [])
+                                ]
+                            ]
+                        ]
+                    ]
+                ];
+
+                // Update the product
+                $updateResponse = $this->printifyService->updateProduct($printifyProductId, $updatePayload);
+
+                if (isset($updateResponse['status']) && $updateResponse['status'] === 'error') {
+                    \Log::error('Printify update failed', [
+                        'payload' => $updatePayload,
+                        'response' => $updateResponse
+                    ]);
+                    throw new \Exception('Printify update failed: ' . $updateResponse['message']);
+                }
+
+                \Log::info('Printify product updated successfully', [
+                    'product_id' => $printifyProductId,
+                    'total_variants' => count($updatedVariants),
+                    'enabled_variants' => count($selectedVariantIds)
+                ]);
             }
 
             $productData = [
                 'user_id' => Auth::id(),
                 'image' => $imagePath,
-                'unit_price' => $this->calculateSellingPrice($validated['unit_price'], $validated['profit_margin_percentage']),
                 'quantity_available' => $validated['quantity'],
                 'printify_product_id' => $printifyProductId,
                 'printify_blueprint_id' => $request->printify_blueprint_id,
@@ -280,14 +596,14 @@ class ProductController extends BaseController
                 ]);
             }
 
-            if($request->boolean('is_printify_product') && $request->printify_variants){
-                    foreach ($request->printify_variants as $variant) {
-                        ProductVariant::create([
-                            'product_id' => $product->id,
-                            'printify_variant_id' => $variant['id'],
-                        ]);
-                    }
+            if ($request->boolean('is_printify_product') && $request->printify_variants) {
+                foreach ($request->printify_variants as $variant) {
+                    ProductVariant::create([
+                        'product_id' => $product->id,
+                        'printify_variant_id' => $variant['id'],
+                    ]);
                 }
+            }
 
             // Auto-publish if status is active and it's a Printify product
             if ($product->printify_product_id && $validated['status'] === 'active') {
@@ -306,23 +622,28 @@ class ProductController extends BaseController
     }
 
     /**
-     * Create product in Printify - FIXED VERSION
+     * Create product in Printify - UPDATED VERSION
      */
-    private function createPrintifyProduct(Request $request, array $validated): ?string
+    private function createPrintifyProduct(Request $request, array $validated, array $selectedVariantIds): ?string
     {
-        $profitMarginPercentage = $validated['profit_margin_percentage'];
-        $unitSellingPrice = $this->calculateSellingPrice($request->unit_price, $profitMarginPercentage);
+        // Use a temporary price for initial creation
+        $tempPrice = 1999; // $19.99 in cents
 
-        // Use the shop ID from config instead of organization
         $printifyData = [
             'title' => $validated['name'],
             'description' => $validated['description'],
             'blueprint_id' => (int) $request->printify_blueprint_id,
             'print_provider_id' => (int) $request->printify_provider_id,
-            'variants' => $this->preparePrintifyVariants($request->printify_variants ?? [], $unitSellingPrice),
+            'variants' => array_map(function ($variantId) use ($tempPrice) {
+                return [
+                    'id' => (int) $variantId,
+                    'price' => $tempPrice,
+                    'is_enabled' => true
+                ];
+            }, $selectedVariantIds),
             'print_areas' => [
                 [
-                    'variant_ids' => array_column($request->printify_variants ?? [], 'id'),
+                    'variant_ids' => $selectedVariantIds,
                     'placeholders' => [
                         [
                             'position' => 'front',
@@ -337,6 +658,36 @@ class ProductController extends BaseController
 
         return $printifyProduct['id'] ?? null;
     }
+
+    /**
+     * Create product in Printify - FIXED VERSION
+     */
+    // private function createPrintifyProduct(Request $request, array $validated, float $unitSellingPrice): ?string
+    // {
+    //     // Use the shop ID from config instead of organization
+    //     $printifyData = [
+    //         'title' => $validated['name'],
+    //         'description' => $validated['description'],
+    //         'blueprint_id' => (int) $request->printify_blueprint_id,
+    //         'print_provider_id' => (int) $request->printify_provider_id,
+    //         'variants' => $this->preparePrintifyVariants($validated['printify_variants'] ?? [], $unitSellingPrice),
+    //         'print_areas' => [
+    //             [
+    //                 'variant_ids' => array_column($request->printify_variants ?? [], 'id'),
+    //                 'placeholders' => [
+    //                     [
+    //                         'position' => 'front',
+    //                         'images' => $this->preparePrintifyImages($request->printify_images ?? [])
+    //                     ]
+    //                 ]
+    //             ]
+    //         ]
+    //     ];
+
+    //     $printifyProduct = $this->printifyService->createProduct($printifyData);
+
+    //     return $printifyProduct['id'] ?? null;
+    // }
 
 
     private function calculateSellingPrice(int $cost, int $profitPercentage)
@@ -370,9 +721,36 @@ class ProductController extends BaseController
                 continue;
             }
 
+            $filename = time() . '_' . uniqid() . '.' . $imageUrl->getClientOriginalExtension();
+            $path = $imageUrl->storeAs('designs', $filename, 'public');
+            $fullUrl = asset('storage/' . $path);
+
+
             try {
-                // First upload the image to Printify
-                $uploadResult = $this->printifyService->uploadImage($imageUrl);
+
+                if (env('APP_ENV') === 'local') {
+                    // ফাইলকে base64 করুন
+                    $base64 = base64_encode(file_get_contents($imageUrl->getRealPath()));
+                    $filename = pathinfo($imageUrl->getClientOriginalName(), PATHINFO_FILENAME);
+                    $extension = strtolower($imageUrl->getClientOriginalExtension());
+
+                    // গুরুত্বপূর্ণ: field name হবে "contents" (content না)
+                    $payload = [
+                        'file_name' => $filename . '.' . $extension,
+                        'contents' => $base64,  // এখানে contents হবে, content না
+                    ];
+
+                    $uploadResult = \Http::withToken(config('printify.api_key'))
+                        ->withHeaders([
+                            'Accept' => 'application/json',
+                        ])
+                        ->post('https://api.printify.com/v1/uploads/images.json', $payload)
+                        ->throw()
+                        ->json();
+                }else{
+                    // First upload the image to Printify
+                    $uploadResult = $this->printifyService->uploadImage($fullUrl);
+                }
 
                 if (!isset($uploadResult['id'])) {
                     throw new \Exception('Failed to get image ID from Printify upload');

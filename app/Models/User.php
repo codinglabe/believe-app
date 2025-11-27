@@ -584,8 +584,18 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasOne(Cart::class);
     }
 
-    public function followerPositions()
+    // public function SupporterPositions()
+    // {
+    //     return $this->hasMany(SupporterUserPosition::class);
+    // }
+
+    public function supporterPositions()
     {
-        return $this->hasMany(FollowingUserPosition::class);
+        return $this->belongsToMany(
+            SupporterPosition::class,
+            'supporter_user_positions',
+            'user_id',
+            'follower_position_id'
+        );
     }
 }

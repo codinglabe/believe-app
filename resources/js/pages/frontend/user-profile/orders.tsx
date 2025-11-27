@@ -10,7 +10,7 @@ import { Link, usePage } from "@inertiajs/react"
 interface OrderItem {
   id: number
   name: string
-  image: string
+  primary_image: string
   quantity: number
   unit_price: number
   total_price: number
@@ -155,7 +155,7 @@ export default function ProfileOrders() {
                       {order.items.map((item, index) => (
                         <div key={item.id} className="flex items-center gap-3">
                           <img
-                            src={item.image || "/placeholder.svg"}
+                            src={item.primary_image || "/placeholder.svg"}
                             alt={item.name}
                             className="w-12 h-12 rounded-lg object-cover border border-gray-200 dark:border-gray-600"
                           />

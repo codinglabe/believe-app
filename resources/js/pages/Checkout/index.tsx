@@ -9,10 +9,10 @@ import { showSuccessToast, showErrorToast } from '@/lib/toast';
 interface CartItem {
   id: number;
   quantity: number;
-  unit_price: number | string;
+    unit_price: number | string;
+    variant_image: string | null;
   product: {
     name: string;
-    image_url: string;
   };
   variant_data: {
     printify_variant_id: string;
@@ -538,9 +538,9 @@ function CheckoutForm({
                 {items.map((item) => (
                   <div key={item.id} className="flex items-center space-x-3">
                     <div className="flex-shrink-0 w-12 h-12 bg-gray-200 dark:bg-gray-700 rounded-lg flex items-center justify-center overflow-hidden">
-                      {item.product.image_url ? (
+                      {item.variant_image ? (
                         <img
-                          src={item.product.image_url}
+                          src={item.variant_image}
                           alt={item.product.name}
                           className="w-full h-full object-cover"
                         />

@@ -63,7 +63,7 @@ class FractionalOwnershipController extends Controller
     public function myPurchases(Request $request)
     {
         $user = Auth::user();
-        
+
         $query = FractionalOrder::with(['offering.asset'])
             ->where('user_id', $user->id)
             ->where('status', 'paid')
@@ -90,11 +90,11 @@ class FractionalOwnershipController extends Controller
         $totalInvested = FractionalOrder::where('user_id', $user->id)
             ->where('status', 'paid')
             ->sum('amount');
-        
+
         $totalOrders = FractionalOrder::where('user_id', $user->id)
             ->where('status', 'paid')
             ->count();
-        
+
         $totalShares = FractionalOrder::where('user_id', $user->id)
             ->where('status', 'paid')
             ->get()
@@ -102,7 +102,7 @@ class FractionalOwnershipController extends Controller
                 $meta = $order->meta ?? [];
                 return $meta['full_shares'] ?? $order->shares ?? 0;
             });
-        
+
         $totalTokens = FractionalOrder::where('user_id', $user->id)
             ->where('status', 'paid')
             ->sum('tokens');
@@ -124,7 +124,7 @@ class FractionalOwnershipController extends Controller
     public function show(FractionalOffering $offering)
     {
         $offering->load('asset');
-        
+
         // Only show live offerings to public
         if ($offering->status !== 'live') {
             abort(404);
@@ -148,12 +148,12 @@ class FractionalOwnershipController extends Controller
         $tokenPrice = $offering->token_price ?? $offering->price_per_share;
         $costPerShare = $offering->price_per_share;
         $amountInvested = $request->amount;
-        
+
         // Calculate full shares and tokens from amount invested
         $fullShares = $costPerShare > 0 ? floor($amountInvested / $costPerShare) : 0;
         $remainingAmount = $costPerShare > 0 ? $amountInvested % $costPerShare : $amountInvested;
         $tokens = $tokenPrice > 0 ? floor($remainingAmount / $tokenPrice) : 0;
-        
+
         if ($fullShares <= 0 && $tokens <= 0) {
             return back()->with('error', 'Amount is too low. Minimum purchase is ' . $offering->currency . ' ' . number_format($tokenPrice, 2));
         }
@@ -162,7 +162,7 @@ class FractionalOwnershipController extends Controller
         $tokensPerShare = $offering->tokens_per_share;
         $totalTokensNeeded = ($fullShares * $tokensPerShare) + $tokens;
         $availableTokens = $offering->available_shares * $tokensPerShare;
-        
+
         if ($totalTokensNeeded > $availableTokens) {
             return back()->with('error', 'Not enough available. Maximum available: ' . $offering->available_shares . ' shares');
         }
@@ -171,7 +171,7 @@ class FractionalOwnershipController extends Controller
         try {
             $user = Auth::user();
             $tagService = new FractionalTagService();
-            
+
             // Assign tag numbers for all tokens (from full shares + remaining tokens)
             $totalTokensNeeded = ($fullShares * $tokensPerShare) + $tokens;
             $assignedTags = $tagService->assignTagNumber($offering, $totalTokensNeeded);
@@ -181,7 +181,7 @@ class FractionalOwnershipController extends Controller
 
             // Generate unique order number
             $orderNumber = $this->generateOrderNumber();
-            
+
             // Create order(s) for each tag assignment
             // For now, we'll create one order with the total purchase
             // The tag service handles splitting across multiple shares if needed
@@ -202,7 +202,7 @@ class FractionalOwnershipController extends Controller
                     'all_tag_numbers' => array_column($assignedTags, 'tag_number'),
                 ],
             ]);
-            
+
             $orderIds[] = $order->id;
 
             // Calculate total amount in cents for Stripe
@@ -254,17 +254,17 @@ class FractionalOwnershipController extends Controller
     public function purchaseSuccess(Request $request)
     {
         $sessionId = $request->get('session_id');
-        
+
         if (!$sessionId) {
             return redirect()->route('fractional.index')->with('error', 'Invalid payment session.');
         }
 
         try {
             $user = Auth::user();
-            
+
             // Retrieve Stripe session
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
-            
+
             if ($session->payment_status !== 'paid') {
                 return redirect()->route('fractional.index')->with('error', 'Payment was not completed.');
             }
@@ -278,7 +278,7 @@ class FractionalOwnershipController extends Controller
             }
 
             DB::beginTransaction();
-            
+
             // Update all orders to paid status
             $orders = FractionalOrder::whereIn('id', $orderIds)
                 ->where('user_id', $user->id)
@@ -324,7 +324,7 @@ class FractionalOwnershipController extends Controller
                 $offering = $order->offering;
                 $tokensPerShare = $offering->tokens_per_share;
                 $sharesFromTokens = $order->tokens / $tokensPerShare;
-                
+
                 $totalShares = $holding->shares + $sharesFromTokens;
                 $totalCost = ($holding->shares * $holding->avg_cost_per_share) + $order->amount;
                 $newAvgCost = $totalShares > 0 ? $totalCost / $totalShares : 0;
@@ -344,7 +344,7 @@ class FractionalOwnershipController extends Controller
                     $meta = $order->meta ?? [];
                     return $meta['full_shares'] ?? $order->shares ?? 0;
                 });
-                
+
                 // Only decrease available_shares by actual full shares sold
                 $offering->available_shares = max(0, $offering->available_shares - $fullSharesSold);
                 if ($offering->available_shares == 0) {
@@ -364,7 +364,7 @@ class FractionalOwnershipController extends Controller
 
             return redirect()->route('fractional.show', $offeringId)
                 ->with('success', 'Payment successful! Your purchase has been confirmed.');
-                
+
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Fractional purchase success error: ' . $e->getMessage());
@@ -375,7 +375,7 @@ class FractionalOwnershipController extends Controller
     public function purchaseCancel(Request $request)
     {
         $offeringId = $request->get('offering_id');
-        
+
         // Clean up pending orders if needed
         if ($offeringId && Auth::check()) {
             FractionalOrder::where('user_id', Auth::id())
@@ -400,12 +400,12 @@ class FractionalOwnershipController extends Controller
     private function generateOrderNumber(): string
     {
         $prefix = 'FO-' . date('Ymd') . '-';
-        
+
         // Get the last order number for today
         $lastOrder = FractionalOrder::where('order_number', 'like', $prefix . '%')
             ->orderBy('order_number', 'desc')
             ->first();
-        
+
         if ($lastOrder) {
             // Extract the sequence number and increment
             $lastNumber = (int) substr($lastOrder->order_number, -6);
@@ -414,7 +414,7 @@ class FractionalOwnershipController extends Controller
             // First order of the day
             $nextNumber = 1;
         }
-        
+
         return $prefix . str_pad($nextNumber, 6, '0', STR_PAD_LEFT);
     }
 }

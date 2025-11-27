@@ -8,7 +8,8 @@ interface CartItem {
   id: number;
   product_id: number;
   quantity: number;
-  unit_price: number | string;
+    unit_price: number | string;
+    variant_image: string | null;
   product: {
     id: number;
     name: string;
@@ -174,7 +175,7 @@ export default function CartIndex({ cart: initialCart, total: initialTotal, item
                           {/* Product Image */}
                           <div className="flex-shrink-0">
                             <img
-                              src={item.product.image_url || "/placeholder.svg"}
+                              src={item.variant_image || "/placeholder.svg"}
                               alt={item.product.name}
                               className="w-20 h-20 sm:w-24 sm:h-24 object-cover rounded-lg border border-gray-200 dark:border-gray-600"
                             />

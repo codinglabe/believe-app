@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Models\SupporterPosition;
 use App\Models\User;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
@@ -33,38 +34,45 @@ class RegisteredUserController extends Controller
     {
         $request->validate([
             'name' => 'required|string|max:255',
-            'email' => 'required|string|lowercase|email|max:255|unique:'.User::class,
+            'email' => 'required|string|lowercase|email|max:255|unique:users',
             'password' => ['required', 'confirmed', Rules\Password::defaults()],
+            'agreeToTerms' => 'required|accepted',
+            'positions' => 'required|array|min:1',
+            'positions.*' => 'exists:supporter_positions,id',
         ]);
 
-
         $referredBy = null;
-        if ($request->has('referralCode')) {
-            $user = User::where('referral_code', $request->referralCode)->first();
-            if ($user) {
-                $referredBy = $user->id;
+        if ($request->filled('referralCode')) {
+            $refUser = User::where('referral_code', $request->referralCode)->first();
+            if ($refUser) {
+                $referredBy = $refUser->id;
             }
         }
 
         $slug = Str::slug($request->name);
-        if(User::where('slug', $slug)->exists()) {
-            $slug = $slug . '-' . Str::random(5);
+        if (User::where('slug', $slug)->exists()) {
+            $slug .= '-' . Str::random(5);
         }
+
         $user = User::create([
             'name' => $request->name,
-            'slug' => $request->slug,
+            'slug' => $slug,
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'role' => 'user',
             'referred_by' => $referredBy,
         ]);
 
-        event(new Registered($user));
+        // Positions সেভ করুন
+        if ($request->has('positions')) {
+            $user->supporterPositions()->sync($request->positions);
+        }
 
+        event(new Registered($user));
         $user->assignRole('user');
 
         Auth::login($user);
 
-        return to_route('dashboard');
+        return to_route('user.profile.index');
     }
 }

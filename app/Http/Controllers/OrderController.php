@@ -95,12 +95,19 @@ class OrderController extends Controller
             'items.product',
         ]);
 
+        // Calculate order subtotal (products only)
+        $orderSubtotal = $order->items->sum(function ($item) {
+            return $item->unit_price * $item->quantity;
+        });
+
         $orderData = [
             'id' => $order->id,
             'reference_number' => $order->reference_number,
             'total_amount' => $order->total_amount,
+            'subtotal_amount' => $orderSubtotal, // Add subtotal
             'shipping_cost' => $order->shipping_cost,
             'tax_amount' => $order->tax_amount,
+            'fee' => $order->fee ?? 0, // Make sure fee is included
             'status' => $order->status,
             'payment_status' => $order->payment_status,
             'printify_order_id' => $order->printify_order_id,

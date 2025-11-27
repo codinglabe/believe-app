@@ -68,9 +68,9 @@ class CheckoutController extends Controller
                     'id' => $item->id,
                     'quantity' => $item->quantity,
                     'unit_price' => $item->unit_price,
+                    'variant_image' => $item->variant_image,
                     'product' => [
                         'name' => $item->product->name,
-                        'image_url' => $item->product->image,
                     ],
                     'variant_data' => [
                         'printify_variant_id' => $item->printify_variant_id,
@@ -248,10 +248,10 @@ class CheckoutController extends Controller
             $order = Order::create([
                 'user_id' => $user->id,
                 'organization_id' => $cart->items->first()->product->organization_id,
-                'subtotal' => $subtotal,
-                'tax_amount' => $taxAmount,
-                'shipping_cost' => $shippingCost,
-                'total_amount' => $totalAmount,
+                'subtotal' => round($subtotal, 2),
+                'tax_amount' => round($taxAmount, 2),
+                'shipping_cost' => round($shippingCost, 2),
+                'total_amount' => round($totalAmount, 2),
                 'status' => 'pending',
                 'stripe_payment_intent_id' => $paymentIntent->id,
                 // 'shipping_info' => json_encode($validated),
@@ -291,6 +291,7 @@ class CheckoutController extends Controller
                     'unit_price' => $cartItem->unit_price,
                     'subtotal' => $cartItem->unit_price * $cartItem->quantity,
                     'variant_data' => $cartItem->variant_options,
+                    'primary_image' => $cartItem->variant_image,
                 ]);
 
                 // Update product inventory
@@ -337,7 +338,6 @@ class CheckoutController extends Controller
                     'payment_status' => 'paid',
                     'paid_at' => now(),
                 ]);
-
 
                 // Submit order to Printify
                 $printifyOrderId = $this->submitToPrintify($order);

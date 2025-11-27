@@ -29,6 +29,7 @@ import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
+import { c } from "node_modules/framer-motion/dist/types.d-Cjd591yU"
 
 // Types
 interface EINLookupResponse {
@@ -45,7 +46,7 @@ interface RegistrationResponse {
   errors?: Record<string, string[]>
 }
 
-export default function OrganizationRegisterPage({ referralCode }: { referralCode: string }) {
+export default function OrganizationRegisterPage({ referralCode, ein: prefilledEin }: { referralCode: string;  ein?: string}) {
   const { csrf_token } = usePage<PageProps>().props
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -59,7 +60,18 @@ export default function OrganizationRegisterPage({ referralCode }: { referralCod
   const [successMessage, setSuccessMessage] = useState("")
   const [csrfToken, setCsrfToken] = useState(csrf_token || "")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
+
+    useEffect(() => {
+    if (prefilledEin) {
+        setEinData({ ein: prefilledEin.replace(/\D/g, '').slice(0, 9) })
+        // formData.ein = prefilledEin.replace(/\D/g, '').slice(0, 9)
+      // Optional: Auto trigger lookup after 1 sec
+    //   const timer = setTimeout(() => {
+    //     handleEINLookup()
+    //   }, 1000)
+    }
+  }, [prefilledEin])
 
   useEffect(() => {
     if (referralCode) {

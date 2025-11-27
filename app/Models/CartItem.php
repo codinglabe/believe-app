@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CartItem extends Model
 {
-    protected $fillable = ['cart_id', 'product_id', 'quantity', 'unit_price', 'printify_variant_id','printify_blueprint_id', 'printify_print_provider_id', 'variant_options', 'variant_price_modifier'];
+    protected $fillable = ['cart_id', 'product_id', 'quantity', 'unit_price', 'printify_variant_id','printify_blueprint_id', 'printify_print_provider_id', 'variant_options', 'variant_price_modifier', 'variant_image'];
 
     public function cart(): BelongsTo
     {
@@ -22,5 +22,18 @@ class CartItem extends Model
     public function variant(): BelongsTo
     {
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
+    }
+
+    /**
+     * Get variant image URL
+     */
+    public function getVariantImageUrlAttribute()
+    {
+        if ($this->variant_image) {
+            return $this->variant_image;
+        }
+
+        // Fallback to product image
+        return $this->product->image ?? null;
     }
 }

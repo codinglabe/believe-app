@@ -22,19 +22,24 @@ Route::middleware('guest')->group(function () {
     })->name('register');
 
     Route::get('/register/user', function (Request $request) {
+        $positions = \App\Models\SupporterPosition::where('is_active', 1)
+            ->orderBy('sort_order')
+            ->get(['id', 'name']);
 
         if ($request->has('ref')) {
-
             $user = User::where('referral_code', $request->ref)->first();
-
             if (!$user) {
                 return redirect()->route('register')->with('error', 'Invalid referral code');
             }
             return Inertia::render('frontend/register/user', [
                 'referralCode' => $user->referral_code,
+                'positions' => $positions,
             ]);
         }
-        return Inertia::render('frontend/register/user');
+
+        return Inertia::render('frontend/register/user', [
+            'positions' => $positions
+        ]);
     })->name('register.user');
 
     Route::get('/register/organization', [OrganizationRegisterController::class, "create"])->name('register.organization');

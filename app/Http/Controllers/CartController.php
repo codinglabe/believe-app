@@ -28,7 +28,7 @@ class CartController extends Controller
 
             return Inertia::render('Cart/Index', [
                 'cart' => $cart,
-                'cartData' => $this->getCartData($cart)
+                'cartData' => $this->getCartData($request, $cart)
             ]);
 
         } catch (\Exception $e) {
@@ -38,9 +38,43 @@ class CartController extends Controller
     }
 
     /**
+     * API: Get cart data for React components
+     */
+    public function getCartDataApi(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $cart = $user->cart()->with('items.product')->first();
+
+            if (!$cart) {
+                return response()->json([
+                    'cartData' => [
+                        'items' => [],
+                        'subtotal' => 0,
+                        'item_count' => 0
+                    ]
+                ]);
+            }
+
+            return response()->json([
+                'cartData' => $this->getCartData($request, $cart)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Get cart data API error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'cartData' => [
+                    'items' => [],
+                    'subtotal' => 0,
+                    'item_count' => 0
+                ]
+            ]);
+        }
+    }
+
+    /**
      * Add item to cart with variant support
      */
-
     public function add(Request $request)
     {
         try {
@@ -57,9 +91,9 @@ class CartController extends Controller
                 'printify_print_provider_id' => 'required|integer',
                 'variant_options' => 'required|array',
                 'variant_price_modifier' => 'required|numeric',
+                'variant_image' => 'nullable|string',
             ]);
 
-            // Rest of your code remains the same...
             // Get product with available quantity
             $product = Product::findOrFail($validated['product_id']);
 
@@ -135,13 +169,14 @@ class CartController extends Controller
                     'printify_print_provider_id' => $validated['printify_print_provider_id'],
                     'variant_options' => $variantOptions,
                     'variant_price_modifier' => $validated['variant_price_modifier'],
+                    'variant_image' => $validated['variant_image'] ?? null,
                 ]);
             }
 
             return response()->json([
                 'success' => true,
                 'message' => 'Product added to cart',
-                'cart' => $this->getCartData($cart)
+                'cartData' => $this->getCartData($request, $cart)
             ]);
 
         } catch (\Exception $e) {
@@ -153,70 +188,10 @@ class CartController extends Controller
         }
     }
 
-
-    // public function add(Request $request)
-    // {
-    //     try {
-    //         $user = $request->user();
-    //         $cart = $user->cart()->first();
-
-    //         $validated = $request->validate([
-    //             'product_id' => 'required|exists:products,id',
-    //             'quantity' => 'required|integer|min:1',
-    //             'printify_variant_id' => 'required|string',
-    //             'printify_blueprint_id' => 'required|integer',
-    //             'printify_print_provider_id' => 'required|integer',
-    //             'variant_options' => 'required|array',
-    //             'variant_price_modifier' => 'required|numeric',
-    //         ]);
-
-    //         // Check if product with same variant already in cart
-    //         $existingItem = $cart->items()
-    //             ->where('product_id', $validated['product_id'])
-    //             ->where('printify_variant_id', $validated['printify_variant_id'])
-    //             ->first();
-
-    //         if ($existingItem) {
-    //             // Update quantity if same variant exists
-    //             $existingItem->update([
-    //                 'quantity' => $existingItem->quantity + $validated['quantity']
-    //             ]);
-    //         } else {
-    //             // Create new cart item with variant details
-    //             $product = Product::find($validated['product_id']);
-    //             $basePrice = $product->unit_price;
-    //             $totalPrice = $basePrice + $validated['variant_price_modifier'];
-
-    //             $variantOptions = json_encode($validated['variant_options']);
-
-    //             $cart->items()->create([
-    //                 'product_id' => $validated['product_id'],
-    //                 'quantity' => $validated['quantity'],
-    //                 'unit_price' => $totalPrice,
-    //                 'printify_variant_id' => $validated['printify_variant_id'],
-    //                 'printify_blueprint_id' => $validated['printify_blueprint_id'],
-    //                 'printify_print_provider_id' => $validated['printify_print_provider_id'],
-    //                 'variant_options' => $variantOptions,
-    //                 'variant_price_modifier' => $validated['variant_price_modifier'],
-    //             ]);
-    //         }
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Product added to cart',
-    //             'cart' => $this->getCartData($cart)
-    //         ]);
-
-    //     } catch (\Exception $e) {
-    //         Log::error('Add to cart error', ['error' => $e->getMessage()]);
-    //         return response()->json(['success' => false, 'message' => $e->getMessage()], 422);
-    //     }
-    // }
-
     /**
-     * <CHANGE> Get detailed cart data with variant info
+     * Get detailed cart data with variant info
      */
-    public function getCartData(Cart $cart = null)
+    public function getCartData(Request $request, Cart $cart = null)
     {
         if (!$cart) {
             $user = $request->user();
@@ -240,7 +215,7 @@ class CartController extends Controller
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,
                 'subtotal' => $item->unit_price * $item->quantity,
-                'variant_options' => $item->variant_options,
+                'variant_options' => $item->variant_options ? json_decode($item->variant_options, true) : [],
                 'printify_variant_id' => $item->printify_variant_id,
                 'variant_price_modifier' => $item->variant_price_modifier,
             ];
@@ -254,8 +229,6 @@ class CartController extends Controller
             'item_count' => $cart->items->sum('quantity')
         ];
     }
-
-
 
     /**
      * Update cart item quantity
