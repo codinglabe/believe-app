@@ -180,7 +180,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Orders',
                 href: '/orders',
                 icon: Package,
-                permission: "ecommerce.read"
+                permission: "ecommerce.read",
+                role: "admin"
+            },
+             {
+                title: 'Order Items',
+                href: '/order-items',
+                icon: Package,
+                permission: "ecommerce.read",
             },
             {
                 title: 'Raffle Draws',

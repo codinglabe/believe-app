@@ -79,6 +79,7 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
+use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
 use App\Http\Controllers\WebhookManagementController;
@@ -269,12 +270,12 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/raffles/cancel', [App\Http\Controllers\RaffleController::class, 'cancel'])->name('raffles.cancel');
 });
 
-Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])->group(function () {
-    Route::get('/', [ExcelDataController::class, 'index'])->name('index');
-    Route::get('/import', [ExcelDataController::class, 'import'])->name('import');
-    Route::post('/import', [ExcelDataController::class, 'importStore'])->name('import.store');
-    Route::post('/upload', [ExcelDataController::class, 'upload'])->name('upload');
-});
+// Route::prefix('excel-data')->name('excel-data.')->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])->group(function () {
+//     Route::get('/', [ExcelDataController::class, 'index'])->name('index');
+//     Route::get('/import', [ExcelDataController::class, 'import'])->name('import');
+//     Route::post('/import', [ExcelDataController::class, 'importStore'])->name('import.store');
+//     Route::post('/upload', [ExcelDataController::class, 'upload'])->name('upload');
+// });
 
 Route::prefix('admin/compliance')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:compliance.review'])
@@ -682,6 +683,17 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancelOrder'])
         ->name('orders.cancel')
         ->middleware('permission:ecommerce.update');
+
+        // Admin only route to view items by organization
+    Route::get('/orders/{order}/items-by-organization', [OrderController::class, 'itemsByOrganization'])
+        ->name('orders.items-by-organization')
+        ->middleware('permission:ecommerce.read');
+
+    /* Order Items Routes */
+    Route::resource('order-items', OrderItemController::class)->middleware([
+        'index' => 'permission:ecommerce.read',
+        'show' => 'permission:ecommerce.read',
+    ]);
 
 
     // Purchase Order Routes

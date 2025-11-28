@@ -63,6 +63,66 @@ class OrderController extends Controller
         ]);
     }
 
+
+    /**
+     * Display order items for admin (filtered by organization if specified)
+     */
+    public function itemsByOrganization(Request $request, Order $order)
+    {
+        // Authorization - admin only or organization owner
+        if (auth()->user()->role === 'organization' && $order->organization_id !== auth()->user()->organization->id) {
+            abort(403, 'Unauthorized action.');
+        }
+
+        $organizationFilter = $request->get('organization_id', '');
+
+        $query = $order->items();
+
+        // Filter by organization if specified and user is admin
+        if ($organizationFilter && auth()->user()->role === 'admin') {
+            $query->where('organization_id', $organizationFilter);
+        }
+
+        $items = $query->with([
+            'product',
+            'organization',
+        ])->get();
+
+        $itemsData = $items->map(function ($item) {
+            return [
+                'id' => $item->id,
+                'order_id' => $item->order_id,
+                'product_id' => $item->product_id,
+                'organization_id' => $item->organization_id,
+                'name' => $item->name,
+                'quantity' => $item->quantity,
+                'unit_price' => $item->unit_price,
+                'subtotal' => $item->subtotal,
+                'product' => $item->product ? [
+                    'id' => $item->product->id,
+                    'name' => $item->product->name,
+                    'image' => $item->product->image,
+                ] : null,
+                'organization' => $item->organization ? [
+                    'id' => $item->organization->id,
+                    'name' => $item->organization->name,
+                ] : null,
+            ];
+        });
+
+        return response()->json([
+            'items' => $itemsData,
+            'total' => $items->count(),
+            'order' => [
+                'id' => $order->id,
+                'reference_number' => $order->reference_number,
+                'total_amount' => $order->total_amount,
+                'shipping_cost' => $order->shipping_cost,
+                'tax_amount' => $order->tax_amount,
+            ]
+        ]);
+    }
+
     /**
      * Show the form for creating a new resource.
      */

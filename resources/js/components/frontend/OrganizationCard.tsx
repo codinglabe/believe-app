@@ -222,7 +222,7 @@ export default function OrganizationCard({
   {/* Claim Ownership Button - শুধু যদি unregistered হয় */}
   {!organization.is_registered && !auth.user && (
     <Link
-      href={route('register.organization', { ein: organization.ein })}
+      href={route('register.organization')}
       className="flex-1"
     >
       <Button

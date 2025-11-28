@@ -247,7 +247,7 @@ class CheckoutController extends Controller
             // Create order record
             $order = Order::create([
                 'user_id' => $user->id,
-                'organization_id' => $cart->items->first()->product->organization_id,
+                // 'organization_id' => $cart->items->first()->product->organization_id,
                 'subtotal' => round($subtotal, 2),
                 'tax_amount' => round($taxAmount, 2),
                 'shipping_cost' => round($shippingCost, 2),

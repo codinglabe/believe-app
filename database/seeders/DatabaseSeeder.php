@@ -22,7 +22,7 @@ class DatabaseSeeder extends Seeder
         // ]);
 
         // Run seeders sequentially (serialized) in the correct order
-        
+
         // Step 1: Seed code tables first (foundation data)
         $this->call(ActivityCodesTableSeeder::class);
         $this->call(AffiliationCodesTableSeeder::class);
@@ -49,7 +49,7 @@ class DatabaseSeeder extends Seeder
         $this->call(UsernameSeeder::class);
         $this->call(OrganizationPendingRoleSeeder::class);
         $this->call(testUserSeeder::class);
-        
+
         // Step 6: Seed fractional ownership test data
         $this->call(FractionalOwnershipSeeder::class);
 
