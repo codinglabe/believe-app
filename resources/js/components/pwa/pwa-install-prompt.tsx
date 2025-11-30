@@ -3,6 +3,7 @@ import { Copy, Download, DownloadCloud, Loader2, Share2, X, CheckCircle2 } from 
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { isLivestockDomain } from '@/lib/livestock-domain';
 
 const INSTALL_PARAM = 'install-pwa';
 
@@ -38,6 +39,11 @@ export function PwaInstallPrompt() {
 
     useEffect(() => {
         if (typeof window === 'undefined') {
+            return;
+        }
+
+        // Don't show PWA prompt on livestock domain
+        if (isLivestockDomain()) {
             return;
         }
 
@@ -533,6 +539,11 @@ export function PwaInstallPrompt() {
             !hasBeenDismissed,
         [alreadyInstalled, deferredPrompt, isStandalone, isVisible, hasBeenDismissed]
     );
+
+    // Don't show PWA prompt on livestock domain
+    if (isLivestockDomain()) {
+        return null;
+    }
 
     // Show panel if visible OR if install was requested (to show install button immediately)
     const shouldRenderPanel = (isVisible || installRequested) && !isStandalone && !alreadyInstalled;

@@ -33,12 +33,11 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        if($request->user()->role == "user")
-        {
-            return redirect()->intended(route('user.profile.index', absolute: false));
-        }
+        $route = is_livestock_domain()
+            ? (Route::has('seller.dashboard') ? 'seller.dashboard' : 'home')
+            : ($request->user()->role === 'user' ? 'user.profile.index' : 'dashboard');
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        return redirect()->intended(route($route));
     }
 
     /**
@@ -51,6 +50,8 @@ class AuthenticatedSessionController extends Controller
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
-        return redirect('/');
+        return is_livestock_domain()
+            ? redirect()->route('home')
+            : redirect('/');
     }
 }

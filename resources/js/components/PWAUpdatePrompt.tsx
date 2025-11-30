@@ -3,11 +3,17 @@
 import { useEffect, useState } from "react"
 import { RefreshCw, X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isLivestockDomain } from "@/lib/livestock-domain"
 
 export function PWAUpdatePrompt() {
   const [showUpdate, setShowUpdate] = useState(false)
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
+
+  // Don't show PWA update prompt on livestock domain
+  if (isLivestockDomain()) {
+    return null
+  }
 
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return

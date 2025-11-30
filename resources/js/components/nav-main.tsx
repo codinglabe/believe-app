@@ -227,8 +227,8 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                             }
                                                             // Default behavior for other routes
                                                             return subItem.href === page.url ||
-                                                                page.url.startsWith(subItem.href + '/create') ||
-                                                                !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
+                                                        page.url.startsWith(subItem.href + '/create') ||
+                                                        !!page.url.match(new RegExp(`^${subItem.href.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/\\d+/edit$`)) ||
                                                                 page.url.startsWith(subItem.href);
                                                         })()
                                                     }

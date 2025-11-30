@@ -21,10 +21,22 @@ class EnsureEmailIsVerified
             return $next($request);
         }
 
-        // If verification is required, check if user is verified
-        if (!$request->user()->hasVerifiedEmail()) {
-            $request->user()->sendEmailVerificationNotification();
+        // Determine which guard is being used
+        $user = $request->user('livestock') ?? $request->user();
+        $isLivestock = $request->user('livestock') !== null;
 
+        if (!$user) {
+            return $next($request);
+        }
+
+        // If verification is required, check if user is verified
+        if (!$user->hasVerifiedEmail()) {
+            $user->sendEmailVerificationNotification();
+
+            // Redirect to appropriate verification route based on guard
+            if ($isLivestock) {
+                return redirect()->route('verification.notice');
+            }
             return redirect()->route('verification.notice');
         }
 

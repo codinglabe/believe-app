@@ -38,26 +38,53 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
-        $user = $request->user()?->load("organization");
+        
+        // Check if we're on livestock domain and use appropriate guard
+        $isLivestockDomain = is_livestock_domain();
+        $user = $isLivestockDomain 
+            ? $request->user('livestock')
+            : $request->user()?->load("organization");
         $role = $user?->roles?->first();
 
-        // Get all permissions (both role-based and direct user permissions)
-        $permissions = $user ? $user->getAllPermissions()->pluck('name')->toArray() : [];
-
-        // Debug: Log permissions being shared
-        if ($user && count($permissions) > 0) {
-            // \Log::info('Sharing permissions with frontend for user: ' . $user->name, [
-            //     'user_id' => $user->id,
-            //     'permissions' => $permissions,
-            //     'role' => $role?->name
-            // ]);
+        // Get all permissions (both role-based and direct user permissions) - only for main app users
+        $permissions = [];
+        $roles = [];
+        
+        if ($user && !$isLivestockDomain) {
+            $permissions = $user->getAllPermissions()->pluck('name')->toArray();
+            $roles = $user->roles?->pluck('name')->toArray() ?? [];
         }
-        return [
-            ...parent::share($request),
-            'name' => config('app.name'),
-            'quote' => ['message' => trim($message), 'author' => trim($author)],
-            'auth' => [
-                'user' => $user ? [
+
+        // Build user data based on domain
+        $userData = null;
+        if ($user) {
+            if ($isLivestockDomain) {
+                // Livestock user data
+                $userData = [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'phone' => $user->phone,
+                    'profile_image' => $user->profile_image ? '/storage/' . $user->profile_image : null,
+                    'bio' => $user->bio,
+                    'status' => $user->status,
+                    'is_verified' => $user->is_verified,
+                    'email_verified_at' => $user->email_verified_at,
+                    'joined' => $user->created_at->format('F Y'),
+                    'seller_profile' => $user->sellerProfile ? [
+                        'farm_name' => $user->sellerProfile->farm_name,
+                        'verification_status' => $user->sellerProfile->verification_status,
+                        'rejection_reason' => $user->sellerProfile->rejection_reason,
+                    ] : null,
+                    'buyer_profile' => $user->buyerProfile ? [
+                        'farm_name' => $user->buyerProfile->farm_name,
+                        'verification_status' => $user->buyerProfile->verification_status,
+                        'rejection_reason' => $user->buyerProfile->rejection_reason,
+                    ] : null,
+                ];
+            } else {
+                // Main app user data
+                $userData = [
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
@@ -87,9 +114,18 @@ class HandleInertiaRequests extends Middleware
                         'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
                         'joined' => $user->created_at->format('F Y'),
                     ] : null,
-                ] : null,
+                ];
+            }
+        }
+        
+        return [
+            ...parent::share($request),
+            'name' => config('app.name'),
+            'quote' => ['message' => trim($message), 'author' => trim($author)],
+            'auth' => [
+                'user' => $userData,
                 'permissions' => $permissions,
-                'roles' => $user?->roles?->pluck('name')->toArray() ?? [],
+                'roles' => $roles,
             ],
             'ziggy' => fn(): array => [
                 ...(new Ziggy)->toArray(),
@@ -104,6 +140,7 @@ class HandleInertiaRequests extends Middleware
             'warning' => fn() => $request->session()->get('warning'),
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
+            'livestockDomain' => config('livestock.domain'),
         ];
     }
 }

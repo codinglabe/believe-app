@@ -187,40 +187,40 @@ export default function OfferingIndex() {
                             </div>
                         ) : (
                             <>
-                                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                                     {offerings.data.map((offering) => {
                                         const sold = soldShares(offering)
                                         const percentage = soldPercentage(offering)
 
                                         return (
-                                            <Card key={offering.id} className="hover:shadow-lg transition-all duration-200 border-border/50 p-0">
-                                                <CardHeader className="pb-2.5 border-b px-3 pt-3">
+                                            <Card key={offering.id} className="hover:shadow-lg transition-all duration-200 border-border/50 p-0 flex flex-col">
+                                                <CardHeader className="pb-2.5 border-b px-3 pt-3 flex-shrink-0">
                                                     <div className="flex items-start gap-2">
                                                         <div className="flex-1 min-w-0">
                                                             <div className="flex items-center gap-2 mb-1">
                                                                 <PieChart className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                <CardTitle className="text-base font-semibold truncate">
+                                                                <CardTitle className="text-sm sm:text-base font-semibold truncate">
                                                                     {offering.title}
                                                                 </CardTitle>
                                                             </div>
                                                             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                                <Building className="h-3 w-3" />
+                                                                <Building className="h-3 w-3 flex-shrink-0" />
                                                                 <span className="truncate">{offering.asset.name}</span>
                                                             </div>
                                                         </div>
                                                     </div>
                                                 </CardHeader>
-                                                <CardContent className="pt-3 space-y-3 px-3 pb-3">
+                                                <CardContent className="pt-3 space-y-3 px-3 pb-3 flex-1 flex flex-col">
                                                     {/* Status Badge */}
-                                                    <div className="flex items-center gap-2">
+                                                    <div className="flex items-center gap-2 flex-shrink-0">
                                                         {getStatusBadge(offering.status)}
                                                     </div>
 
                                                     {/* Shares Progress */}
-                                                    <div className="space-y-2">
+                                                    <div className="space-y-2 flex-shrink-0">
                                                         <div className="flex items-center justify-between text-xs">
                                                             <span className="text-muted-foreground">Shares Sold</span>
-                                                            <span className="font-semibold">{sold} / {offering.total_shares}</span>
+                                                            <span className="font-semibold whitespace-nowrap">{sold} / {offering.total_shares}</span>
                                                         </div>
                                                         <div className="w-full bg-muted rounded-full h-2">
                                                             <div
@@ -229,48 +229,52 @@ export default function OfferingIndex() {
                                                             />
                                                         </div>
                                                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                            <TrendingUp className="h-3 w-3" />
+                                                            <TrendingUp className="h-3 w-3 flex-shrink-0" />
                                                             <span>{percentage}% sold</span>
                                                         </div>
                                                     </div>
 
                                                     {/* Price */}
-                                                    <div className="flex items-center gap-2 pt-2 border-t bg-muted/30 -mx-3 px-3 py-2">
-                                                        <DollarSign className="h-4 w-4 text-muted-foreground" />
-                                                        <div className="flex-1">
-                                                            <span className="text-xs text-muted-foreground">Price per Share</span>
-                                                            <span className="text-sm font-semibold ml-2">
-                                                                {offering.currency} {offering.price_per_share.toLocaleString()}
-                                                            </span>
+                                                    <div className="flex items-center gap-2 pt-2 border-t bg-muted/30 -mx-3 px-3 py-2 flex-shrink-0">
+                                                        <DollarSign className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                                                <span className="text-xs text-muted-foreground whitespace-nowrap">Price per Share</span>
+                                                                <span className="text-sm font-semibold truncate">
+                                                                    {offering.currency} {offering.price_per_share.toLocaleString()}
+                                                                </span>
+                                                            </div>
                                                         </div>
                                                     </div>
 
                                                     {/* Created Date */}
-                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t">
-                                                        <Calendar className="h-3 w-3" />
-                                                        <span>Created {format(new Date(offering.created_at), "MMM d, yyyy")}</span>
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground pt-2 border-t flex-shrink-0">
+                                                        <Calendar className="h-3 w-3 flex-shrink-0" />
+                                                        <span className="truncate">Created {format(new Date(offering.created_at), "MMM d, yyyy")}</span>
                                                     </div>
 
                                                     {/* Action Buttons */}
-                                                    <div className="flex gap-2 pt-2 border-t">
-                                                        <Link href={route("admin.fractional.offerings.show", offering.id)} className="flex-1">
+                                                    <div className="flex gap-2 pt-2 border-t flex-shrink-0 mt-auto">
+                                                        <Link href={route("admin.fractional.offerings.show", offering.id)} className="flex-1 min-w-0">
                                                             <Button variant="outline" size="sm" className="w-full text-xs h-8">
-                                                                <Eye className="h-3.5 w-3.5 mr-1.5" />
-                                                                View
+                                                                <Eye className="h-3.5 w-3.5 mr-1.5 flex-shrink-0" />
+                                                                <span className="hidden sm:inline">View</span>
                                                             </Button>
                                                         </Link>
-                                                        <Link href={route("admin.fractional.offerings.edit", offering.id)}>
-                                                            <Button variant="outline" size="sm" className="text-xs h-8">
+                                                        <Link href={route("admin.fractional.offerings.edit", offering.id)} className="flex-shrink-0">
+                                                            <Button variant="outline" size="sm" className="text-xs h-8 w-8 sm:w-auto px-2">
                                                                 <Edit className="h-3.5 w-3.5" />
+                                                                <span className="hidden sm:inline ml-1.5">Edit</span>
                                                             </Button>
                                                         </Link>
                                                         <Button
                                                             variant="outline"
                                                             size="sm"
-                                                            className="text-xs h-8 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800"
+                                                            className="text-xs h-8 w-8 sm:w-auto px-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border-red-200 dark:border-red-800 flex-shrink-0"
                                                             onClick={() => openDeleteModal(offering)}
                                                         >
                                                             <Trash2 className="h-3.5 w-3.5" />
+                                                            <span className="hidden sm:inline ml-1.5">Delete</span>
                                                         </Button>
                                                     </div>
                                                 </CardContent>

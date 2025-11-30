@@ -45,6 +45,11 @@ return [
             'driver' => 'session',
             'provider' => 'organizations',
         ],
+
+        'livestock' => [
+            'driver' => 'session',
+            'provider' => 'livestock_users',
+        ],
     ],
 
     /*
@@ -73,6 +78,11 @@ return [
         'organizations' => [
             'driver' => 'eloquent',
             'model' => env('AUTH_MODEL', App\Models\User::class),
+        ],
+
+        'livestock_users' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\LivestockUser::class,
         ],
 
         // 'users' => [
@@ -104,6 +114,13 @@ return [
         'users' => [
             'provider' => 'users',
             'table' => env('AUTH_PASSWORD_RESET_TOKEN_TABLE', 'password_reset_tokens'),
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        'livestock_users' => [
+            'provider' => 'livestock_users',
+            'table' => 'password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,
         ],

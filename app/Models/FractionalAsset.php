@@ -28,6 +28,32 @@ class FractionalAsset extends Model
     {
         return $this->hasMany(FractionalOffering::class, 'asset_id');
     }
+
+    /**
+     * Check if this asset is a livestock/animal asset (requires tag number from fractional_listing)
+     */
+    public function isLivestockAsset(): bool
+    {
+        $assetType = strtolower($this->type ?? '');
+        return in_array($assetType, ['goat', 'livestock', 'livestock_goat']);
+    }
+
+    /**
+     * Alias for backward compatibility
+     */
+    public function isGoatAsset(): bool
+    {
+        return $this->isLivestockAsset();
+    }
+
+    /**
+     * Get the fractional listing for this livestock asset
+     */
+    public function fractionalListing()
+    {
+        return $this->hasOne(\App\Models\FractionalListing::class, 'fractional_asset_id')
+            ->where('status', 'active');
+    }
 }
 
 

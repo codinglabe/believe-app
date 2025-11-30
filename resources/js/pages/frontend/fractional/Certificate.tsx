@@ -8,6 +8,7 @@ import { Head, Link } from "@inertiajs/react"
 import { Download, CheckCircle, Award, Coins, Calendar, Hash, ArrowLeft, Sparkles, Star } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import html2canvas from "html2canvas"
+import jsPDF from "jspdf"
 import { showSuccessToast } from "@/lib/toast"
 
 interface FractionalAsset {
@@ -83,13 +84,35 @@ export default function FractionalCertificate({ order }: CertificateProps) {
     // Get shares and tokens from order meta or calculate
     const orderMeta = order.meta || {}
     const fullShares = orderMeta.full_shares ?? order.shares ?? 0
-    const tokensPerShare = tokenPrice > 0 && costPerShare > 0 ? Math.floor(costPerShare / tokenPrice) : 0
+    // Use tokens_per_share from meta if available, otherwise calculate it
+    const tokensPerShare = orderMeta.tokens_per_share ?? (tokenPrice > 0 && costPerShare > 0 ? Math.floor(costPerShare / tokenPrice) : 0)
     const tokensFromShares = fullShares * tokensPerShare
     const tokens = orderMeta.tokens ?? Math.max(0, order.tokens - tokensFromShares)
     const totalTokens = order.tokens
     
     // Get all tag numbers from meta
     const allTagNumbers = orderMeta.all_tag_numbers || (order.tag_number ? [order.tag_number] : [])
+    
+    // Get tag allocations from meta to identify which tags are for shares vs tokens
+    const tagAllocations = orderMeta.tag_allocations || {}
+    
+    // Separate tags into shares and tokens
+    const shareTags: Array<{ tag: string; tokens: number }> = []
+    const tokenTags: Array<{ tag: string; tokens: number }> = []
+    
+    allTagNumbers.forEach((tag: string) => {
+        const allocatedTokens = tagAllocations[tag] || 0
+        if (allocatedTokens === tokensPerShare && tokensPerShare > 0) {
+            // This tag has a full share
+            shareTags.push({ tag, tokens: allocatedTokens })
+        } else if (allocatedTokens > 0 && allocatedTokens < tokensPerShare) {
+            // This tag has partial tokens
+            tokenTags.push({ tag, tokens: allocatedTokens })
+        } else if (allocatedTokens > 0) {
+            // Fallback: if tokens_per_share is 0 or not calculated, treat as tokens
+            tokenTags.push({ tag, tokens: allocatedTokens })
+        }
+    })
 
     const handleDownload = async () => {
         if (!certificateRef.current) return
@@ -99,33 +122,308 @@ export default function FractionalCertificate({ order }: CertificateProps) {
             // Wait for animations to complete
             await new Promise(resolve => setTimeout(resolve, 500))
 
-            const canvas = await html2canvas(certificateRef.current, {
-                backgroundColor: '#ffffff',
-                scale: 2,
-                useCORS: true,
-                allowTaint: true,
-                logging: false,
+            // Create a completely isolated version in an iframe to avoid oklch CSS parsing
+            const originalElement = certificateRef.current
+            const iframe = document.createElement('iframe')
+            iframe.style.position = 'fixed'
+            iframe.style.left = '-9999px'  // Move completely off-screen
+            iframe.style.top = '-9999px'
+            iframe.style.width = originalElement.offsetWidth + 'px'
+            iframe.style.height = originalElement.offsetHeight + 'px'
+            iframe.style.border = 'none'
+            iframe.style.opacity = '0'
+            iframe.style.pointerEvents = 'none'
+            iframe.style.zIndex = '-9999'
+            iframe.style.visibility = 'hidden'
+            document.body.appendChild(iframe)
+
+            // Wait for iframe to load
+            await new Promise(resolve => {
+                iframe.onload = resolve
+                iframe.src = 'about:blank'
             })
 
-            // Convert to blob and download
-            canvas.toBlob((blob) => {
-                if (blob) {
-                    const url = URL.createObjectURL(blob)
-                    const link = document.createElement('a')
-                    link.href = url
-                    const tagNumbers = allTagNumbers.length > 0 ? allTagNumbers[0].replace('#', '') : 'certificate'
-                    link.download = `fractional-ownership-certificate-${tagNumbers}.png`
-                    document.body.appendChild(link)
-                    link.click()
+            const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document
+            if (!iframeDoc) {
+                throw new Error('Failed to access iframe document')
+            }
+
+            // Clone the certificate HTML
+            const clone = originalElement.cloneNode(true) as HTMLElement
+
+            // Function to apply ALL computed styles as inline styles and remove classes
+            const applyAllComputedStyles = (cloneEl: HTMLElement, originalEl: HTMLElement) => {
+                try {
+                    const computed = window.getComputedStyle(originalEl)
+                    
+                    // Remove all classes to prevent CSS from being parsed
+                    cloneEl.removeAttribute('class')
+                    
+                    // Get all CSS properties from computed style
+                    const allProps: string[] = []
+                    for (let i = 0; i < computed.length; i++) {
+                        allProps.push(computed[i])
+                    }
+                    
+                    // Apply every property as inline style (computed styles are always RGB)
+                    allProps.forEach(prop => {
+                        try {
+                            const value = computed.getPropertyValue(prop)
+                            if (value && value !== 'none' && value !== 'normal' && value !== 'auto' && value.trim() !== '') {
+                                // Computed styles are already RGB, so safe to apply
+                                cloneEl.style.setProperty(prop, value)
+                            }
+                        } catch (e) {
+                            // Skip properties that can't be set
+                        }
+                    })
+                } catch (e) {
+                    // Ignore errors for individual elements
+                }
+                
+                // Recursively process children
+                const cloneChildren = Array.from(cloneEl.children)
+                const originalChildren = Array.from(originalEl.children)
+                
+                cloneChildren.forEach((child, index) => {
+                    if (originalChildren[index]) {
+                        applyAllComputedStyles(child as HTMLElement, originalChildren[index] as HTMLElement)
+                    }
+                })
+            }
+
+            // Apply ALL computed styles to clone and remove all classes
+            applyAllComputedStyles(clone, originalElement)
+
+            // Write to iframe with NO external CSS - only inline styles (no oklch possible)
+            iframeDoc.open()
+            iframeDoc.write(`
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="utf-8">
+                    <style>
+                        /* Minimal reset - no color functions */
+                        * {
+                            margin: 0;
+                            padding: 0;
+                            box-sizing: border-box;
+                        }
+                        body {
+                            margin: 0;
+                            padding: 0;
+                            background-color: rgb(255, 255, 255);
+                            font-family: system-ui, -apple-system, sans-serif;
+                        }
+                    </style>
+                </head>
+                <body>
+                    ${clone.outerHTML}
+                </body>
+                </html>
+            `)
+            iframeDoc.close()
+            
+            // Remove any stylesheets that might have oklch
+            const stylesheets = Array.from(iframeDoc.styleSheets)
+            stylesheets.forEach((sheet, index) => {
+                try {
+                    if (sheet.href || sheet.ownerNode) {
+                        const node = sheet.ownerNode as HTMLElement
+                        if (node && node.parentNode) {
+                            node.parentNode.removeChild(node)
+                        }
+                    }
+                } catch (e) {
+                    // Cross-origin stylesheets can't be removed
+                }
+            })
+
+            // Wait for iframe content to render
+            await new Promise(resolve => setTimeout(resolve, 300))
+
+            // Get the certificate element from iframe
+            const iframeCert = iframeDoc.body.firstElementChild as HTMLElement
+            if (!iframeCert) {
+                throw new Error('Failed to find certificate in iframe')
+            }
+
+            // Capture from iframe using iframe's window context
+            let canvas
+            try {
+                const iframeWindow = iframe.contentWindow
+                if (!iframeWindow) {
+                    throw new Error('Failed to access iframe window')
+                }
+                
+                // Use html2canvas with iframe window to avoid parsing parent CSS
+                canvas = await html2canvas(iframeCert, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                    width: iframeCert.offsetWidth,
+                    height: iframeCert.offsetHeight,
+                    windowWidth: iframeCert.offsetWidth,
+                    windowHeight: iframeCert.offsetHeight,
+                    // @ts-ignore - html2canvas internal option
+                    window: iframeWindow,
+                })
+            } catch (error: any) {
+                // If iframe fails, try direct approach with all styles inline
+                console.warn('Iframe capture failed, trying direct approach:', error)
+                
+                // Remove iframe
+                document.body.removeChild(iframe)
+                
+                // Create clone with all styles inline
+                const directClone = originalElement.cloneNode(true) as HTMLElement
+                directClone.style.position = 'fixed'
+                directClone.style.left = '0'
+                directClone.style.top = '0'
+                directClone.style.width = originalElement.offsetWidth + 'px'
+                directClone.style.height = originalElement.offsetHeight + 'px'
+                directClone.style.backgroundColor = '#ffffff'
+                directClone.style.zIndex = '9999'
+                document.body.appendChild(directClone)
+                
+                // Apply all computed styles recursively and remove classes
+                const applyAllStyles = (cloneEl: HTMLElement, originalEl: HTMLElement) => {
+                    // Remove all classes to prevent CSS parsing
+                    cloneEl.removeAttribute('class')
+                    
+                    const computed = window.getComputedStyle(originalEl)
+                    const allProps = Array.from(computed) as string[]
+                    
+                    allProps.forEach(prop => {
+                        try {
+                            const value = computed.getPropertyValue(prop)
+                            if (value && value !== 'none' && value !== 'normal' && value !== 'auto' && value.trim() !== '') {
+                                // Computed styles are already RGB, safe to apply
+                                cloneEl.style.setProperty(prop, value)
+                            }
+                        } catch (e) {
+                            // Skip properties that can't be set
+                        }
+                    })
+                    
+                    // Process children
+                    const cloneChildren = Array.from(cloneEl.children)
+                    const originalChildren = Array.from(originalEl.children)
+                    cloneChildren.forEach((child, index) => {
+                        if (originalChildren[index]) {
+                            applyAllStyles(child as HTMLElement, originalChildren[index] as HTMLElement)
+                        }
+                    })
+                }
+                
+                applyAllStyles(directClone, originalElement)
+                await new Promise(resolve => setTimeout(resolve, 200))
+                
+                canvas = await html2canvas(directClone, {
+                    backgroundColor: '#ffffff',
+                    scale: 2,
+                    useCORS: true,
+                    allowTaint: false,
+                    logging: false,
+                })
+                
+                document.body.removeChild(directClone)
+            } finally {
+                // Remove iframe
+                if (document.body.contains(iframe)) {
+                    document.body.removeChild(iframe)
+                }
+            }
+
+            // Get canvas dimensions
+            const imgWidth = canvas.width
+            const imgHeight = canvas.height
+            
+            // A4 dimensions in mm (landscape for certificate)
+            const a4Width = 297  // A4 landscape width
+            const a4Height = 210 // A4 landscape height
+            
+            // Calculate dimensions to fit on one page maintaining aspect ratio
+            const imgAspectRatio = imgWidth / imgHeight
+            const pageAspectRatio = a4Width / a4Height
+            
+            let pdfWidth: number
+            let pdfHeight: number
+            
+            if (imgAspectRatio > pageAspectRatio) {
+                // Image is wider - fit to width
+                pdfWidth = a4Width
+                pdfHeight = a4Width / imgAspectRatio
+            } else {
+                // Image is taller - fit to height
+                pdfHeight = a4Height
+                pdfWidth = a4Height * imgAspectRatio
+            }
+            
+            // Create PDF in landscape orientation to fit full certificate on one page
+            const pdf = new jsPDF({
+                orientation: 'landscape',
+                unit: 'mm',
+                format: [a4Width, a4Height],
+            })
+
+            // Convert canvas to image data with high quality
+            const imgData = canvas.toDataURL('image/png', 1.0)
+            
+            // Center the image on the page
+            const xOffset = (a4Width - pdfWidth) / 2
+            const yOffset = (a4Height - pdfHeight) / 2
+            
+            // Add image to PDF, centered on the page
+            pdf.addImage(
+                imgData, 
+                'PNG', 
+                xOffset, 
+                yOffset, 
+                pdfWidth, 
+                pdfHeight, 
+                undefined, 
+                'FAST'
+            )
+
+            // Generate dynamic filename with order details
+            const tagNumbers = allTagNumbers.length > 0 
+                ? allTagNumbers.join('-').replace(/[#\s]/g, '') 
+                : 'certificate'
+            const orderNumber = (order.order_number || `ORDER-${order.id}`).replace(/[#\s]/g, '')
+            const date = new Date(order.paid_at).toISOString().split('T')[0]
+            const filename = `Fractional-Ownership-Certificate-${tagNumbers}-${orderNumber}-${date}.pdf`
+
+            // Download PDF using blob method to ensure download instead of display
+            try {
+                const pdfBlob = pdf.output('blob')
+                const url = URL.createObjectURL(pdfBlob)
+                const link = document.createElement('a')
+                link.href = url
+                link.download = filename
+                link.style.display = 'none'
+                document.body.appendChild(link)
+                link.click()
+                
+                // Clean up after a short delay
+                setTimeout(() => {
                     document.body.removeChild(link)
                     URL.revokeObjectURL(url)
-                    showSuccessToast('Certificate downloaded successfully!')
-                }
-            }, 'image/png')
-
-            setIsDownloading(false)
+                }, 100)
+                
+                showSuccessToast('Certificate downloaded as PDF successfully!')
+                setIsDownloading(false)
+            } catch (error) {
+                // Fallback to direct save
+                pdf.save(filename)
+                showSuccessToast('Certificate downloaded as PDF successfully!')
+                setIsDownloading(false)
+            }
         } catch (error) {
             console.error('Download error:', error)
+            showSuccessToast('Failed to download certificate. Please try again.', 'error')
             setIsDownloading(false)
         }
     }
@@ -470,18 +768,46 @@ export default function FractionalCertificate({ order }: CertificateProps) {
                                                     Tag Number{allTagNumbers.length > 1 ? 's' : ''}
                                                 </p>
                                                 {allTagNumbers.length > 0 ? (
-                                                    <div className="flex flex-wrap gap-2">
-                                                        {allTagNumbers.map((tag, index) => (
+                                                    <div className="flex flex-wrap gap-2 items-center">
+                                                        {shareTags.map((item, index) => (
                                                             <motion.span 
-                                                                key={index}
-                                                                className="inline-block px-4 py-2 bg-gradient-to-r from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 text-purple-700 dark:text-purple-300 rounded-lg font-bold text-sm border-2 border-purple-300 dark:border-purple-600 shadow-sm"
+                                                                key={`share-${index}`}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-blue-100 to-blue-200 dark:from-blue-900/40 dark:to-blue-800/40 text-blue-700 dark:text-blue-300 rounded-lg font-bold text-sm border-2 border-blue-300 dark:border-blue-600 shadow-sm"
                                                                 initial={{ scale: 0 }}
                                                                 animate={isVisible ? { scale: 1 } : {}}
                                                                 transition={{ delay: 1.8 + index * 0.1, type: "spring" }}
                                                             >
-                                                                {tag}
+                                                                <span className="text-xs opacity-75">Share:</span>
+                                                                {item.tag}
                                                             </motion.span>
                                                         ))}
+                                                        {tokenTags.map((item, index) => (
+                                                            <motion.span 
+                                                                key={`token-${index}`}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 text-purple-700 dark:text-purple-300 rounded-lg font-bold text-sm border-2 border-purple-300 dark:border-purple-600 shadow-sm"
+                                                                initial={{ scale: 0 }}
+                                                                animate={isVisible ? { scale: 1 } : {}}
+                                                                transition={{ delay: 1.9 + shareTags.length * 0.1 + index * 0.1, type: "spring" }}
+                                                            >
+                                                                <span className="text-xs opacity-75">Token:</span>
+                                                                {item.tag}
+                                                            </motion.span>
+                                                        ))}
+                                                        {shareTags.length === 0 && tokenTags.length === 0 && (
+                                                            <>
+                                                                {allTagNumbers.map((tag, index) => (
+                                                                    <motion.span 
+                                                                        key={index}
+                                                                        className="inline-block px-4 py-2 bg-gradient-to-r from-purple-100 to-purple-200 dark:from-purple-900/40 dark:to-purple-800/40 text-purple-700 dark:text-purple-300 rounded-lg font-bold text-sm border-2 border-purple-300 dark:border-purple-600 shadow-sm"
+                                                                        initial={{ scale: 0 }}
+                                                                        animate={isVisible ? { scale: 1 } : {}}
+                                                                        transition={{ delay: 1.8 + index * 0.1, type: "spring" }}
+                                                                    >
+                                                                        {tag}
+                                                                    </motion.span>
+                                                                ))}
+                                                            </>
+                                                        )}
                                                     </div>
                                                 ) : (
                                                     <p className="text-xl font-bold text-gray-900 dark:text-white">{order.tag_number || 'N/A'}</p>
@@ -589,19 +915,34 @@ export default function FractionalCertificate({ order }: CertificateProps) {
                                                     animate={isVisible ? { opacity: 1, y: 0 } : {}}
                                                     transition={{ delay: 2.3 }}
                                                 >
-                                                    <p className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-4 text-center">Tag Numbers</p>
+                                                    <p className="text-xs font-bold text-gray-600 dark:text-gray-300 uppercase tracking-wide mb-4 text-center">Tag Numbers Breakdown</p>
                                                     <div className="flex flex-wrap items-center justify-center gap-3">
-                                                        {allTagNumbers.map((tag, index) => (
+                                                        {shareTags.map((item, index) => (
                                                             <motion.span 
-                                                                key={index}
-                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-2 border-purple-400 dark:border-purple-500 rounded-xl font-bold text-sm text-purple-700 dark:text-purple-300 shadow-md"
+                                                                key={`share-breakdown-${index}`}
+                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-2 border-blue-400 dark:border-blue-500 rounded-xl font-bold text-sm text-blue-700 dark:text-blue-300 shadow-md"
                                                                 initial={{ opacity: 0, scale: 0 }}
                                                                 animate={isVisible ? { opacity: 1, scale: 1 } : {}}
                                                                 transition={{ delay: 2.4 + index * 0.1, type: "spring" }}
                                                                 whileHover={{ scale: 1.1 }}
                                                             >
                                                                 <Hash className="h-4 w-4" />
-                                                                {tag}
+                                                                <span className="text-xs opacity-75">Share:</span>
+                                                                {item.tag} <span className="text-xs opacity-75">({item.tokens} tokens)</span>
+                                                            </motion.span>
+                                                        ))}
+                                                        {tokenTags.map((item, index) => (
+                                                            <motion.span 
+                                                                key={`token-breakdown-${index}`}
+                                                                className="inline-flex items-center gap-2 px-4 py-2 bg-white dark:bg-gray-800 border-2 border-purple-400 dark:border-purple-500 rounded-xl font-bold text-sm text-purple-700 dark:text-purple-300 shadow-md"
+                                                                initial={{ opacity: 0, scale: 0 }}
+                                                                animate={isVisible ? { opacity: 1, scale: 1 } : {}}
+                                                                transition={{ delay: 2.4 + shareTags.length * 0.1 + index * 0.1, type: "spring" }}
+                                                                whileHover={{ scale: 1.1 }}
+                                                            >
+                                                                <Hash className="h-4 w-4" />
+                                                                <span className="text-xs opacity-75">Token:</span>
+                                                                {item.tag} <span className="text-xs opacity-75">({item.tokens} tokens)</span>
                                                             </motion.span>
                                                         ))}
                                                     </div>
@@ -725,12 +1066,12 @@ export default function FractionalCertificate({ order }: CertificateProps) {
                             </div>
                         </div>
 
-                        {/* Download Button */}
+                        {/* Download Button - Hidden */}
                         <motion.div
                             initial={{ opacity: 0, y: 30 }}
                             animate={isVisible ? { opacity: 1, y: 0 } : {}}
                             transition={{ delay: 3.3, duration: 0.6 }}
-                            className="mt-10 text-center"
+                            className="mt-10 text-center hidden"
                         >
                             <motion.div
                                 whileHover={{ scale: 1.05 }}
@@ -765,7 +1106,7 @@ export default function FractionalCertificate({ order }: CertificateProps) {
                                         ) : (
                                             <>
                                                 <Download className="h-6 w-6 mr-3" />
-                                                Download Certificate
+                                                Download Certificate (PDF)
                                             </>
                                         )}
                                     </span>

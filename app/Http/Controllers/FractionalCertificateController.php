@@ -35,4 +35,18 @@ class FractionalCertificateController extends Controller
             'order' => $order,
         ]);
     }
+
+    public function downloadPdf($orderId)
+    {
+        $order = FractionalOrder::with(['offering.asset', 'user'])
+            ->where('id', $orderId)
+            ->where('user_id', Auth::id())
+            ->where('status', 'paid')
+            ->firstOrFail();
+
+        // For now, redirect to the certificate page with print instructions
+        // In the future, this can be enhanced with server-side PDF generation
+        return redirect()->route('fractional.certificate.show', $order->id)
+            ->with('info', 'Please use your browser\'s print function (Ctrl+P or Cmd+P) and select "Save as PDF" to download the certificate.');
+    }
 }

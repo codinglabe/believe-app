@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\FractionalOffering;
 use App\Models\FractionalAsset;
+use App\Models\FractionalListing;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 
@@ -49,6 +50,26 @@ class FractionalOfferingController extends Controller
         // Calculate ownership percentage automatically if not provided
         if (empty($validated['ownership_percentage']) && $validated['price_per_share'] > 0) {
             $validated['ownership_percentage'] = ($validated['token_price'] / $validated['price_per_share']) * 100;
+        }
+
+        // Validate that livestock/animal assets have a fractional listing with tag number
+        $asset = FractionalAsset::find($validated['asset_id']);
+        if ($asset && $asset->isLivestockAsset()) {
+            $listing = FractionalListing::where('fractional_asset_id', $asset->id)
+                ->where('status', 'active')
+                ->first();
+            
+            if (!$listing) {
+                return back()->withErrors([
+                    'asset_id' => 'Livestock/animal assets (goat, livestock) require an active fractional listing with a tag number. The tag number from the listing will be sold when investors purchase shares. Please create a fractional listing first or link an existing one to this asset.'
+                ])->withInput();
+            }
+            
+            if (!$listing->tag_number) {
+                return back()->withErrors([
+                    'asset_id' => 'The fractional listing linked to this livestock asset must have a tag number. Tag numbers are required for selling livestock assets.'
+                ])->withInput();
+            }
         }
 
         FractionalOffering::create($validated);
@@ -122,6 +143,26 @@ class FractionalOfferingController extends Controller
         // Calculate ownership percentage automatically if not provided
         if (empty($validated['ownership_percentage']) && $validated['price_per_share'] > 0) {
             $validated['ownership_percentage'] = ($validated['token_price'] / $validated['price_per_share']) * 100;
+        }
+
+        // Validate that livestock/animal assets have a fractional listing with tag number
+        $asset = FractionalAsset::find($validated['asset_id']);
+        if ($asset && $asset->isLivestockAsset()) {
+            $listing = FractionalListing::where('fractional_asset_id', $asset->id)
+                ->where('status', 'active')
+                ->first();
+            
+            if (!$listing) {
+                return back()->withErrors([
+                    'asset_id' => 'Livestock/animal assets (goat, livestock) require an active fractional listing with a tag number. The tag number from the listing will be sold when investors purchase shares. Please create a fractional listing first or link an existing one to this asset.'
+                ])->withInput();
+            }
+            
+            if (!$listing->tag_number) {
+                return back()->withErrors([
+                    'asset_id' => 'The fractional listing linked to this livestock asset must have a tag number. Tag numbers are required for selling livestock assets.'
+                ])->withInput();
+            }
         }
 
         $offering->update($validated);
