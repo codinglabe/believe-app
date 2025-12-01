@@ -4,19 +4,11 @@ import LivestockDashboardLayout from "@/layouts/livestock/LivestockDashboardLayo
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { router, Head, Link } from "@inertiajs/react"
+import { router, Head } from "@inertiajs/react"
 import { useState } from "react"
 import { Trash2, Eye } from "lucide-react"
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 import { route } from "ziggy-js"
-import type { BreadcrumbItem } from "@/types"
-
-const breadcrumbs: BreadcrumbItem[] = [
-    { title: "Admin", href: "#" },
-    { title: "Livestock", href: route('admin.index') },
-    { title: "Listings", href: route('admin.listings') },
-]
-
 interface Animal {
     id: number
     breed: string
@@ -78,7 +70,7 @@ export default function AdminListings({ listings, filters }: ListingsProps) {
     }
 
     return (
-        <LivestockDashboardLayout breadcrumbs={breadcrumbs}>
+        <LivestockDashboardLayout>
             <Head title="Manage Listings - Admin" />
             
             <div className="space-y-6">
@@ -181,10 +173,4 @@ export default function AdminListings({ listings, filters }: ListingsProps) {
         </LivestockDashboardLayout>
     )
 }
-
-
-
-}
-
-
 
