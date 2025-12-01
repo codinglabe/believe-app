@@ -244,7 +244,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity On Ordered</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Quantity On Available</th>
                                         {/* <th className="px-4 py-3 font-medium min-w-32">Unit Price</th> */}
-                                        <th className="px-4 py-3 font-medium min-w-32">Profit Mergin Percentage</th>
+                                        {/* <th className="px-4 py-3 font-medium min-w-32">Profit Mergin Percentage</th> */}
                                         {auth.user.role === "admin" && (
                                         <th className="px-4 py-3 font-medium min-w-32">Organization</th>
                                         )}
@@ -291,11 +291,11 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                     {item.unit_price}
                                                 </span>
                                             </td> */}
-                                            <td className="px-4 py-3 min-w-64">
+                                            {/* <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.profit_margin_percentage}>
                                                     {item.profit_margin_percentage}
                                                 </span>
-                                            </td>
+                                            </td> */}
                                             {auth.user.role === "admin" && (
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.organization?.name}>

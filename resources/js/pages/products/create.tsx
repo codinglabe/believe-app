@@ -78,7 +78,7 @@ export default function Create({ categories, organizations = [], blueprints, pri
         description: '',
         quantity: '',
         // unit_price: '',
-        profit_margin_percentage: 40,
+        // profit_margin_percentage: 40,
         owned_by: 'admin',
         organization_id: '',
         status: 'active',
@@ -279,7 +279,7 @@ const handleCategoryChange = (categoryId: number) => {
         formData.append('name', data.name);
         formData.append('description', data.description);
         formData.append('quantity', data.quantity);
-        formData.append('profit_margin_percentage', data.profit_margin_percentage.toString());
+        // formData.append('profit_margin_percentage', data.profit_margin_percentage.toString());
         formData.append('owned_by', data.owned_by);
         formData.append('status', data.status);
         formData.append('sku', data.sku);
@@ -891,7 +891,7 @@ const handleCategoryChange = (categoryId: number) => {
                                         {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
                                     </div> */}
 
-                                    <div className="space-y-2">
+                                    {/* <div className="space-y-2">
                                         <Label htmlFor="profit_margin_percentage">Profit Margin (%) *</Label>
                                         <Input
                                             id="profit_margin_percentage"
@@ -904,7 +904,7 @@ const handleCategoryChange = (categoryId: number) => {
                                             className={errors.profit_margin_percentage ? 'border-red-500' : ''}
                                         />
                                         {errors.profit_margin_percentage && <p className="text-sm text-red-500">{errors.profit_margin_percentage}</p>}
-                                    </div>
+                                    </div> */}
 
                                     <div className="space-y-2">
                                         <Label htmlFor="sku">SKU *</Label>

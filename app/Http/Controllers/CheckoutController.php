@@ -7,6 +7,7 @@ use App\Models\OrderItem;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\OrderShippingInfo;
+use App\Models\TempOrder;
 use App\Services\PrintifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,7 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Show checkout page
+     * Show checkout page - Step 1
      */
     public function show(): Response
     {
@@ -41,33 +42,16 @@ class CheckoutController extends Controller
             return Inertia::render('Checkout/Empty');
         }
 
-        // Calculate initial shipping cost
-        $shippingCost = 0;
-        $shippingMethods = [];
-
-        try {
-            $shippingData = $this->calculateShippingCost($cart, [
-                'country' => 'US',
-                'state' => '',
-                'city' => '',
-                'zip' => ''
-            ]);
-            $shippingCost = $shippingData['cost'] ?? 0;
-            $shippingMethods = $shippingData['methods'] ?? [];
-        } catch (\Exception $e) {
-            \Log::error('Shipping calculation error: ' . $e->getMessage());
-        }
-
         $subtotal = $cart->getTotal();
-        $taxAmount = $this->calculateTax($subtotal);
-        $totalAmount = $subtotal + $shippingCost + $taxAmount;
+        $platformFeePercentage = config('printify.platform_fee', 3);
+        $platformFee = round($subtotal * ($platformFeePercentage / 100), 2);
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
                 return [
                     'id' => $item->id,
                     'quantity' => $item->quantity,
-                    'unit_price' => $item->unit_price,
+                    'unit_price' => (float) $item->unit_price,
                     'variant_image' => $item->variant_image,
                     'product' => [
                         'name' => $item->product->name,
@@ -80,127 +64,18 @@ class CheckoutController extends Controller
                     ]
                 ];
             }),
-            'subtotal' => $subtotal,
-            'shipping_cost' => $shippingCost,
-            'tax_amount' => $taxAmount,
-            'total_amount' => $totalAmount,
-            'shipping_methods' => $shippingMethods,
-            'stripePublishableKey' => config('services.stripe.secret'),
+            'subtotal' => (float) $subtotal,
+            'platform_fee_percentage' => $platformFeePercentage,
+            'platform_fee' => (float) $platformFee,
+            'donation_percentage' => config('printify.optional_donation_percentage', 10),
+            'stripePublishableKey' => config('services.stripe.key'),
         ]);
     }
 
     /**
-     * Calculate shipping cost from Printify
+     * Step 1: Submit shipping info and create Printify order
      */
-    public function calculateShipping(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'country' => 'required|string',
-            'state' => 'required|string',
-            'city' => 'required|string',
-            'zip' => 'required|string',
-        ]);
-
-        $cart = auth()->user()->cart()->with('items')->first();
-
-        if (!$cart || $cart->items->isEmpty()) {
-            return response()->json(['error' => 'Cart is empty'], 400);
-        }
-
-        try {
-            $shippingData = $this->calculateShippingCost($cart, $validated);
-
-            return response()->json([
-                'success' => true,
-                'shipping_cost' => $shippingData['cost'],
-                'shipping_methods' => $shippingData['methods'],
-                'estimated_delivery' => $shippingData['estimated_delivery'] ?? '5-7 business days',
-            ]);
-        } catch (\Exception $e) {
-            \Log::error('Shipping calculation error: ' . $e->getMessage());
-            return response()->json([
-                'error' => 'Failed to calculate shipping cost',
-                'fallback_cost' => 9.99
-            ], 500);
-        }
-    }
-
-    /**
-     * Calculate shipping cost using Printify API
-     */
-    private function calculateShippingCost(Cart $cart, array $address): array
-    {
-        $lineItems = [];
-
-        $externalIdCounter = 1;
-        foreach ($cart->items as $item) {
-            $externalId = 'line-item-' . $item->id . '-' . $externalIdCounter++;
-
-            // Method 1: Using product_id and variant_id (Primary method)
-            if (!empty($item->product->printify_product_id)) {
-                $lineItems[] = [
-                    'product_id' => $item->product->printify_product_id,
-                    'variant_id' => (int) $item->printify_variant_id,
-                    'quantity' => $item->quantity,
-                    'external_id' => $externalId
-                ];
-            }
-
-            // Method 2: Using print_provider_id and blueprint_id (Fallback method)
-            else if (!empty($item->printify_print_provider_id) && !empty($item->printify_blueprint_id)) {
-                $lineItems[] = [
-                    'print_provider_id' => $item->printify_print_provider_id,
-                    'blueprint_id' => $item->printify_blueprint_id,
-                    'variant_id' => (int) $item->printify_variant_id,
-                    'quantity' => $item->quantity,
-                    'external_id' => $externalId
-                ];
-            }
-
-            // Method 3: Using SKU (Last resort)
-            else if (!empty($item->product->sku)) {
-                $lineItems[] = [
-                    'sku' => $item->product->sku,
-                    'quantity' => $item->quantity,
-                    'external_id' => $externalId
-                ];
-            }
-        }
-
-        // Call Printify shipping calculation API
-        $shippingQuote = $this->printifyService->calculateShipping(
-            $lineItems,
-            $address
-        );
-
-        // Default fallback
-            return [
-                'cost' => ($shippingQuote['standard'] / 100) ?? 9.99,
-                'methods' => [
-                    [
-                        'id' => 'standard',
-                        'name' => 'Standard Shipping',
-                        'cost' => ($shippingQuote['standard'] / 100) ?? 9.99,
-                        'estimated_days' => '10-30 business days'
-                    ]
-                ],
-                'estimated_delivery' => '10-30 business days'
-            ];
-    }
-
-    /**
-     * Calculate tax amount (simplified)
-     */
-    private function calculateTax(float $subtotal): float
-    {
-        // Simplified tax calculation - you can implement proper tax calculation
-        return $subtotal * (config('printify.tax_rate_percentage') / 100);
-    }
-
-    /**
-     * Create payment intent
-     */
-    public function createPaymentIntent(Request $request): JsonResponse
+    public function submitStep1(Request $request): JsonResponse
     {
         $validated = $request->validate([
             'name' => 'required|string',
@@ -211,7 +86,8 @@ class CheckoutController extends Controller
             'state' => 'required|string',
             'zip' => 'required|string',
             'country' => 'required|string',
-            'shipping_method' => 'required|string',
+            'platform_fee' => 'required|numeric',
+            'donation_amount' => 'required|numeric',
         ]);
 
         $user = auth()->user();
@@ -223,20 +99,110 @@ class CheckoutController extends Controller
 
         DB::beginTransaction();
         try {
-            // Calculate final costs
-            $shippingData = $this->calculateShippingCost($cart, $validated);
-            $shippingCost = $shippingData['cost'];
             $subtotal = $cart->getTotal();
-            $taxAmount = $this->calculateTax($subtotal);
-            $totalAmount = $subtotal + $shippingCost + $taxAmount;
 
-            // Create payment intent
+            // Split full name
+            $nameParts = explode(' ', $validated['name']);
+            $firstName = $nameParts[0] ?? 'Customer';
+            $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
+
+            // Create temp order
+            $tempOrder = TempOrder::create([
+                'user_id' => $user->id,
+                'cart_id' => $cart->id,
+                'first_name' => $firstName,
+                'last_name' => $lastName,
+                'email' => $validated['email'],
+                'phone' => $validated['phone'],
+                'shipping_address' => $validated['address'],
+                'city' => $validated['city'],
+                'state' => $validated['state'],
+                'zip' => $validated['zip'],
+                'country' => $validated['country'],
+                'subtotal' => $subtotal,
+                'platform_fee' => $validated['platform_fee'],
+                'donation_amount' => $validated['donation_amount'],
+                'total_amount' => $subtotal + $validated['platform_fee'] + $validated['donation_amount'],
+                'status' => 'pending',
+            ]);
+
+            // Create Printify order
+            $printifyOrderData = $this->preparePrintifyOrder($cart, $tempOrder);
+            $printifyOrder = $this->printifyService->createOrder($printifyOrderData);
+
+            if (!isset($printifyOrder['id'])) {
+                throw new \Exception('Failed to create Printify order');
+            }
+
+            $tempOrder->update([
+                'printify_order_id' => $printifyOrder['id'],
+            ]);
+
+            // Calculate shipping from Printify
+            $shippingData = $this->calculateShippingFromPrintify(
+                $printifyOrder['id'],
+                $validated['country'],
+                $validated['state'],
+                $validated['city'],
+                $validated['zip']
+            );
+
+            // Extract tax from Printify order if available
+            $taxAmount = 0;
+            if (isset($shippingData['total_tax'])) {
+                $taxAmount = round(($shippingData['total_tax'] ?? 0) / 100, 2);
+            }
+
+            // Update temp order with shipping and tax
+            $tempOrder->update([
+                'shipping_methods' => $shippingData['methods'] ?? [],
+                'shipping_cost' => $shippingData['cost'] ?? 0,
+                'tax_amount' => $taxAmount,
+                'total_amount' => $subtotal + $validated['platform_fee'] + $validated['donation_amount'] + ($shippingData['cost'] ?? 0) + $taxAmount,
+                'status' => 'shipping_calculated',
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'temp_order_id' => $tempOrder->id,
+                'shipping_methods' => $shippingData['methods'] ?? [],
+                'shipping_cost' => (float) ($shippingData['cost'] ?? 0),
+                'tax_amount' => (float) $taxAmount,
+                'total_amount' => (float) $tempOrder->total_amount,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Step 1 submission error: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Step 2: Create payment intent
+     */
+    public function createPaymentIntent(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'temp_order_id' => 'required|exists:temp_orders,id',
+            'shipping_method' => 'required|string',
+        ]);
+
+        $user = auth()->user();
+        $tempOrder = TempOrder::where('user_id', $user->id)
+            ->findOrFail($validated['temp_order_id']);
+
+        DB::beginTransaction();
+        try {
+            // Create Stripe payment intent
             $paymentIntent = PaymentIntent::create([
-                'amount' => (int) ($totalAmount * 100), // Convert to cents
+                'amount' => (int) ($tempOrder->total_amount * 100),
                 'currency' => 'usd',
                 'description' => 'Marketplace Order - ' . $user->email,
                 'metadata' => [
                     'user_id' => $user->id,
+                    'temp_order_id' => $tempOrder->id,
                     'order_type' => 'marketplace',
                 ],
                 'automatic_payment_methods' => [
@@ -244,41 +210,146 @@ class CheckoutController extends Controller
                 ],
             ]);
 
-            // Create order record
+            // Update temp order with selected shipping method
+            $tempOrder->update([
+                'selected_shipping_method' => $validated['shipping_method'],
+            ]);
+
+            DB::commit();
+
+            return response()->json([
+                'clientSecret' => $paymentIntent->client_secret,
+                'temp_order_id' => $tempOrder->id,
+                'amount' => (float) $tempOrder->total_amount,
+            ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            \Log::error('Payment intent creation error: ' . $e->getMessage());
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Confirm payment and create final order
+     */
+    public function confirmPayment(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'temp_order_id' => 'required|exists:temp_orders,id',
+            'payment_intent_id' => 'required|string',
+        ]);
+
+        $user = auth()->user();
+        $tempOrder = TempOrder::where('user_id', $user->id)
+            ->with('cart.items.product')
+            ->findOrFail($validated['temp_order_id']);
+
+        DB::beginTransaction();
+        try {
+            $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id']);
+
+            if ($paymentIntent->status !== 'succeeded') {
+                return response()->json(['error' => 'Payment not completed'], 400);
+            }
+
+            // Calculate total donation amount from temp order
+            $totalDonationAmount = $tempOrder->donation_amount;
+
+            // Calculate total subtotal for donation distribution
+            $totalSubtotal = $tempOrder->cart->items->sum(function ($item) {
+                return $item->unit_price * $item->quantity;
+            });
+
+            // Group cart items by organization to calculate donation distribution
+            $organizationItems = [];
+            foreach ($tempOrder->cart->items as $cartItem) {
+                $orgId = $cartItem->product->organization_id;
+                if (!isset($organizationItems[$orgId])) {
+                    $organizationItems[$orgId] = [
+                        'items' => [],
+                        'subtotal' => 0
+                    ];
+                }
+                $organizationItems[$orgId]['items'][] = $cartItem;
+                $organizationItems[$orgId]['subtotal'] += $cartItem->unit_price * $cartItem->quantity;
+            }
+
+            // Calculate donation percentage for each organization based on their subtotal share
+            $organizationDonations = [];
+            foreach ($organizationItems as $orgId => $orgData) {
+                // Avoid division by zero
+                if ($totalSubtotal > 0) {
+                    $orgSubtotalPercentage = ($orgData['subtotal'] / $totalSubtotal) * 100;
+                    $orgDonationAmount = ($totalDonationAmount * $orgSubtotalPercentage) / 100;
+                } else {
+                    $orgSubtotalPercentage = 0;
+                    $orgDonationAmount = 0;
+                }
+
+                $organizationDonations[$orgId] = [
+                    'donation_amount' => $orgDonationAmount,
+                    'subtotal_percentage' => $orgSubtotalPercentage,
+                    'item_count' => count($orgData['items']),
+                    'org_subtotal' => $orgData['subtotal'] // Add this for safety
+                ];
+            }
+
+            // Create final order
             $order = Order::create([
                 'user_id' => $user->id,
-                // 'organization_id' => $cart->items->first()->product->organization_id,
-                'subtotal' => round($subtotal, 2),
-                'tax_amount' => round($taxAmount, 2),
-                'shipping_cost' => round($shippingCost, 2),
-                'total_amount' => round($totalAmount, 2),
-                'status' => 'pending',
+                'subtotal' => $tempOrder->subtotal,
+                'platform_fee' => $tempOrder->platform_fee,
+                'donation_amount' => $tempOrder->donation_amount,
+                'tax_amount' => $tempOrder->tax_amount,
+                'shipping_cost' => $tempOrder->shipping_cost,
+                'total_amount' => $tempOrder->total_amount,
+                'status' => 'processing',
+                'payment_status' => 'paid',
+                'paid_at' => now(),
                 'stripe_payment_intent_id' => $paymentIntent->id,
-                // 'shipping_info' => json_encode($validated),
-                // 'shipping_method' => $validated['shipping_method'],
+                'printify_order_id' => $tempOrder->printify_order_id,
             ]);
 
-            // Split full name into first and last name
-            $fullName = $validated['name'];
-            $nameParts = explode(' ', $fullName);
-            $firstName = $nameParts[0] ?? 'Customer';
-            $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
-
+            // Create shipping info
             OrderShippingInfo::create([
                 'order_id' => $order->id,
-                'first_name' => $firstName,
-                'last_name' => $lastName,
-                'email' => $validated['email'],
-                'phone' => $validated['phone'] ?? null,
-                'shipping_address' => $validated['address'],
-                'city' => $validated['city'],
-                'state' => $validated['state'],
-                'zip' => $validated['zip'],
-                'country' => $validated['country'],
+                'first_name' => $tempOrder->first_name,
+                'last_name' => $tempOrder->last_name,
+                'email' => $tempOrder->email,
+                'phone' => $tempOrder->phone,
+                'shipping_address' => $tempOrder->shipping_address,
+                'city' => $tempOrder->city,
+                'state' => $tempOrder->state,
+                'zip' => $tempOrder->zip,
+                'country' => $tempOrder->country,
+                'shipping_method' => $tempOrder->selected_shipping_method,
             ]);
 
-            // Create order items from cart
-            foreach ($cart->items as $cartItem) {
+            // Create order items from cart with organization-specific donation
+            foreach ($tempOrder->cart->items as $cartItem) {
+                $orgId = $cartItem->product->organization_id;
+                $orgDonationData = $organizationDonations[$orgId] ?? null;
+
+                // Calculate donation per item for this organization
+                $donationPerItem = 0;
+
+                // FIX: Check if orgDonationData exists and has required data
+                if (
+                    $orgDonationData &&
+                    isset($orgDonationData['donation_amount']) &&
+                    isset($orgDonationData['org_subtotal']) &&
+                    $orgDonationData['org_subtotal'] > 0 &&
+                    $orgDonationData['item_count'] > 0
+                ) {
+
+                    $itemSubtotal = $cartItem->unit_price * $cartItem->quantity;
+                    $itemPercentage = ($itemSubtotal / $orgDonationData['org_subtotal']) * 100;
+                    $donationPerItem = ($orgDonationData['donation_amount'] * $itemPercentage) / 100;
+
+                    // Ensure donation per item is not negative
+                    $donationPerItem = max(0, $donationPerItem);
+                }
+
                 OrderItem::create([
                     'order_id' => $order->id,
                     'product_id' => $cartItem->product_id,
@@ -290,6 +361,7 @@ class CheckoutController extends Controller
                     'quantity' => $cartItem->quantity,
                     'unit_price' => $cartItem->unit_price,
                     'subtotal' => $cartItem->unit_price * $cartItem->quantity,
+                    'per_organization_donation_amount' => $donationPerItem,
                     'variant_data' => $cartItem->variant_options,
                     'primary_image' => $cartItem->variant_image,
                 ]);
@@ -302,223 +374,118 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            // Log donation distribution for debugging
+            \Log::info('Donation distribution completed', [
+                'order_id' => $order->id,
+                'total_donation' => $totalDonationAmount,
+                'total_subtotal' => $totalSubtotal,
+                'organization_count' => count($organizationDonations),
+                'organization_donations' => $organizationDonations
+            ]);
+
+            // Clear cart
+            $tempOrder->cart->items()->delete();
+
+            // Update temp order status
+            $tempOrder->update(['status' => 'payment_completed']);
 
             DB::commit();
 
             return response()->json([
-                'clientSecret' => $paymentIntent->client_secret,
+                'success' => true,
                 'orderId' => $order->id,
-                'amount' => $totalAmount,
+                'redirect' => route('user.profile.orders'),
             ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            \Log::error('Payment intent creation error: ' . $e->getMessage());
-            return response()->json(['error' => 'Failed to create payment intent: ' . $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Confirm payment and submit to Printify
-     */
-    public function confirmPayment(Request $request): JsonResponse
-    {
-        $validated = $request->validate([
-            'order_id' => 'required|exists:orders,id',
-            'payment_intent_id' => 'required|string',
-        ]);
-
-        DB::beginTransaction();
-        try {
-            $order = Order::with('items.product', 'shippingInfo')->findOrFail($validated['order_id']);
-            $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id']);
-
-            if ($paymentIntent->status === 'succeeded') {
-                // Mark order as paid
-                $order->update([
-                    'payment_status' => 'paid',
-                    'paid_at' => now(),
-                ]);
-
-                // Submit order to Printify
-                $printifyOrderId = $this->submitToPrintify($order);
-
-                if ($printifyOrderId) {
-                    $order->update([
-                        'printify_order_id' => $printifyOrderId,
-                        'status' => 'processing',
-                        'printify_status' => 'pending'
-                    ]);
-                }
-
-                // Clear user's cart
-                auth()->user()->cart()->first()?->items()->delete();
-
-                DB::commit();
-
-                return response()->json([
-                    'success' => true,
-                    'orderId' => $order->id,
-                    'printifyOrderId' => $printifyOrderId,
-                    'redirect' => route('user.profile.orders'),
-                ]);
-            }
-
-            DB::rollBack();
-            return response()->json(['error' => 'Payment not completed'], 400);
         } catch (\Exception $e) {
             DB::rollBack();
             \Log::error('Payment confirmation error: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            \Log::error('Stack trace: ' . $e->getTraceAsString());
+            return response()->json(['error' => 'Failed to process payment: ' . $e->getMessage()], 500);
         }
     }
 
     /**
-     * Submit order to Printify
+     * Prepare Printify order data
      */
-    private function submitToPrintify(Order $order): ?string
+    private function preparePrintifyOrder(Cart $cart, TempOrder $tempOrder): array
     {
-        try {
-            $lineItems = [];
+        $lineItems = [];
 
-            foreach ($order->items as $item) {
+        foreach ($cart->items as $item) {
+            if (!empty($item->product->printify_product_id)) {
                 $lineItems[] = [
                     'product_id' => $item->product->printify_product_id,
-                    'variant_id' => $item->printify_variant_id,
+                    'variant_id' => (int) $item->printify_variant_id,
                     'quantity' => $item->quantity,
-                    'external_id' => 'order-' . $order->id . '-item-' . $item->id,
+                    'external_id' => 'temp-' . $tempOrder->id . '-item-' . $item->id,
                 ];
             }
-
-            $shippingInfo = $order->shippingInfo;
-
-            $printifyOrder = $this->printifyService->createOrder([
-                'external_id' => 'order-' . $order->id . '-' . uniqid(),
-                'label' => 'ORDER-' . $order->id . '-' . uniqid(),
-                'line_items' => $lineItems,
-                'address_to' => [
-                    'first_name' => $shippingInfo->first_name ?? '',
-                    'last_name' => $shippingInfo->first_name ?? '',
-                    'email' => $shippingInfo->email ?? '',
-                    'phone' => $shippingInfo->phone ?? '',
-                    'country' => $shippingInfo->country ?? '',
-                    'region' => $shippingInfo->state ?? '',
-                    'city' => $shippingInfo->city ?? '',
-                    'address1' => $shippingInfo->shipping_address ?? '',
-                    'address2' => $shippingInfo->shipping_address,
-                    'zip' => $shippingInfo->zip ?? '',
-                ],
-                'shipping_method' => 1, // Assuming standard shipping
-                "send_shipping_notification" => true,
-            ]);
-
-            return $printifyOrder['id'] ?? null;
-        } catch (\Exception $e) {
-            \Log::error('Printify order submission error: ' . $e->getMessage());
-            return null;
         }
+
+        return [
+            'external_id' => 'ORDER-' . $tempOrder->id . '-' . uniqid(),
+            'label' => 'ORDER-LABEL' . $tempOrder->id,
+            'line_items' => $lineItems,
+            'address_to' => [
+                'first_name' => $tempOrder->first_name,
+                'last_name' => $tempOrder->last_name,
+                'email' => $tempOrder->email,
+                'phone' => $tempOrder->phone,
+                'country' => $tempOrder->country,
+                'region' => $tempOrder->state,
+                'city' => $tempOrder->city,
+                'address1' => $tempOrder->shipping_address,
+                'zip' => $tempOrder->zip,
+            ],
+            'send_shipping_notification' => false,
+        ];
     }
 
-
-    // private function submitToPrintify(Order $order): ?string
-    // {
-    //     try {
-    //         $lineItems = [];
-
-    //         foreach ($order->items as $item) {
-
-
-    //             // Check if required fields are present
-    //             if (empty($item->product->printify_product_id) || empty($item->printify_variant_id)) {
-    //                 \Log::error('Missing Printify data for item: ' . $item->id);
-    //                 continue;
-    //             }
-
-    //             $lineItems[] = [
-    //                 'product_id' => $item->product->printify_product_id,
-    //                 'variant_id' => (int) $item->printify_variant_id, // Ensure it's integer
-    //                 'quantity' => (int) $item->quantity, // Ensure it's integer
-    //                 'external_id' => 'order-' . $order->id . '-item-' . $item->id,
-    //             ];
-    //         }
-
-    //         // Check if we have valid line items
-    //         if (empty($lineItems)) {
-    //             \Log::error('No valid line items for Printify order: ' . $order->id);
-    //             return null;
-    //         }
-
-    //         $shippingInfo = $order->shippingInfo;
-
-    //         // Check if shipping info exists
-    //         if (!$shippingInfo) {
-    //             \Log::error('No shipping info found for order: ' . $order->id);
-    //             return null;
-    //         }
-
-
-    //         // Fix: You had $shippingInfo->first_name for last_name
-    //         $addressTo = [
-    //             'first_name' => $shippingInfo->first_name ?? '',
-    //             'last_name' => $shippingInfo->last_name ?? '', // Fixed this line
-    //             'email' => $shippingInfo->email ?? '',
-    //             'phone' => $shippingInfo->phone ?? '',
-    //             'country' => $shippingInfo->country ?? 'US', // Convert country code
-    //             'region' => $shippingInfo->state ?? '',
-    //             'city' => $shippingInfo->city ?? '',
-    //             'address1' => $shippingInfo->shipping_address ?? '', // Fixed field name
-    //             'address2' => '',
-    //             'zip' => $shippingInfo->zip ?? '',
-    //         ];
-
-    //         $printifyData = [
-    //             'external_id' => 'order-' . $order->id . '-' . uniqid(),
-    //             'label' => 'ORDER-' . $order->id,
-    //             'line_items' => $lineItems,
-    //             'address_to' => $addressTo,
-    //             'shipping_method' => 1,
-    //             'send_shipping_notification' => true,
-    //             'is_printify_express' => false,
-    //             'is_economy_shipping' => false,
-    //         ];
-
-
-    //         $printifyOrder = $this->printifyService->createOrder($printifyData);
-
-
-    //         return $printifyOrder['id'] ?? null;
-
-    //     } catch (\Exception $e) {
-    //         \Log::error('Printify order submission error for order ' . $order->id . ': ' . $e->getMessage());
-    //         \Log::error('Stack trace: ' . $e->getTraceAsString());
-    //         return null;
-    //     }
-    // }
-
     /**
-     * Manual Printify submission for failed attempts
+     * Calculate shipping from Printify
      */
-    public function submitToPrintifyManual(Order $order): JsonResponse
-    {
+    private function calculateShippingFromPrintify(
+        string $printifyOrderId,
+        string $country,
+        string $state,
+        string $city,
+        string $zip
+    ): array {
         try {
-            $printifyOrderId = $this->submitToPrintify($order);
+            // Get Printify order details
+            $printifyOrder = $this->printifyService->getOrder($printifyOrderId);
 
-            if ($printifyOrderId) {
-                $order->update([
-                    'printify_order_id' => $printifyOrderId,
-                    'status' => 'processing',
-                ]);
+            $methods = [];
+            $defaultCost = 0;
 
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Order submitted to Printify successfully',
-                    'printify_order_id' => $printifyOrderId,
-                ]);
+            if (isset($printifyOrder['shipping_method'])) {
+                $methods[] = [
+                    'id' => 'standard',
+                    'name' => 'Standard Shipping',
+                    'cost' => (float) (($printifyOrder['shipping_method']['cost'] ?? 0) / 100),
+                    'estimated_days' => '10-30 business days',
+                ];
             }
+            $defaultCost = (float) (($printifyOrder['total_shipping']?? 0) / 100);
 
-            return response()->json(['error' => 'Failed to submit order to Printify'], 500);
+            return [
+                'cost' => $defaultCost,
+                'total_tax' => $printifyOrder['total_tax'],
+                'methods' => $methods,
+            ];
         } catch (\Exception $e) {
-            \Log::error('Manual Printify submission error: ' . $e->getMessage());
-            return response()->json(['error' => $e->getMessage()], 500);
+            \Log::error('Shipping calculation error: ' . $e->getMessage());
+            return [
+                'cost' => 9.99,
+                'methods' => [
+                    [
+                        'id' => 'standard',
+                        'name' => 'Standard Shipping',
+                        'cost' => 9.99,
+                        'estimated_days' => '10-30 business days',
+                    ]
+                ],
+            ];
         }
     }
 }

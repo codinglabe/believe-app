@@ -11,6 +11,7 @@ class OrderItem extends Model
         'order_id',
         'product_id',
         'organization_id',
+        'per_organization_donation_amount',
         'quantity',
         'unit_price',
         'subtotal',

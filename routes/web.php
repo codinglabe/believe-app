@@ -149,11 +149,28 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::delete('/cart/items/{cartItem}', [CartController::class, 'destroy'])->name('cart.destroy');
     Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
 
-    Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
+    // Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
     Route::post('/checkout/shipping-calculation', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
+    // Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
+    // Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
+    // Route::post('/checkout/{order}/submit-printify', [CheckoutController::class, 'submitToPrintify'])->name('checkout.submit-printify');
+
+    // // Step 1 - Shipping
+    // Route::get('/checkout/step1', [CheckoutController::class, 'showStep1'])->name('checkout.step1');
+    // Route::post('/checkout/validate-step1', [CheckoutController::class, 'validateStep1'])->name('checkout.validate-step1');
+
+    // // Step 2 - Payment
+    // Route::get('/checkout/step2', [CheckoutController::class, 'showStep2'])->name('checkout.step2');
+    // Route::post('/checkout/update-donation', [CheckoutController::class, 'updateDonation'])->name('checkout.update-donation');
+    // Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
+    // Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
+
+
+    Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
+
+    Route::post('/checkout/step1', [CheckoutController::class, 'submitStep1'])->name('checkout.step1');
     Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
     Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
-    Route::post('/checkout/{order}/submit-printify', [CheckoutController::class, 'submitToPrintify'])->name('checkout.submit-printify');
 });
 
 /* fractional ownership */

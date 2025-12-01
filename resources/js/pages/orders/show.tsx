@@ -21,7 +21,9 @@ import {
     TrendingUp,
     CreditCard,
     Box,
-    ShoppingCart
+    ShoppingCart,
+    Percent,
+    Heart
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
@@ -96,10 +98,12 @@ interface PrintifyDetails {
 interface Order {
     id: number;
     reference_number: string;
-    subtotal_amount: any;
-    total_amount: any;
-    shipping_cost: any;
-    tax_amount: any;
+    subtotal: number;
+    platform_fee: number;
+    donation_amount: number;
+    shipping_cost: number;
+    tax_amount: number;
+    total_amount: number;
     status: string;
     payment_status: string;
     printify_order_id?: string;
@@ -124,17 +128,23 @@ interface Props extends PageProps {
 
 interface ProfitCalculation {
     revenue: {
-        total: number;          // Total amount customer paid
+        subtotal: number;
+        platform_fee: number;
+        donation: number;
+        shipping: number;
+        tax: number;
+        total: number;
     };
     costs: {
-        products: number;       // Printify product costs
-        shipping: number;       // Printify shipping costs
-        tax: number;           // Printify tax
-        total: number;         // Total Printify costs
+        printify_products: number;
+        printify_shipping: number;
+        printify_tax: number;
+        total: number;
     };
     profit: {
-        amount: number;        // Actual profit (Revenue - Total Costs)
-        margin: number;        // Profit margin percentage
+        platform_fee_profit: number;
+        net_profit: number;
+        margin: number;
     };
 }
 
@@ -148,33 +158,48 @@ export default function Show({ order, userRole }: Props) {
     }, [order]);
 
     const calculateProfit = () => {
-        if (!order.printify_details) return;
+        // REVENUE BREAKDOWN
+        const revenueSubtotal = order.subtotal || 0;
+        const revenuePlatformFee = order.platform_fee || 0;
+        const revenueDonation = order.donation_amount || 0;
+        const revenueShipping = order.shipping_cost || 0;
+        const revenueTax = order.tax_amount || 0;
+        const revenueTotal = order.total_amount || 0;
 
-        // REVENUE - Total amount customer paid
-        const revenueTotal = order.subtotal_amount;
+        // COSTS - Printify Costs
+        const printifyProducts = order.printify_details?.total_price || 0;
+        const printifyShipping = order.printify_details?.total_shipping || 0;
+        const printifyTax = order.printify_details?.total_tax || 0;
+        const totalCosts = printifyProducts + printifyShipping + printifyTax;
 
-        // COSTS - What Printify charges (products + shipping + tax)
-        const costProducts = order.printify_details.total_price || 0;
-        const costShipping = order.printify_details.total_shipping || 0;
-        const costTax = order.printify_details.total_tax || 0;
-        const costTotal = costProducts;
+        // PROFIT CALCULATION
+        // Platform Fee Profit (100% of platform fee goes to us)
+        const platformFeeProfit = revenuePlatformFee;
 
-        // PROFIT CALCULATION (Simple: Revenue - Costs)
-        const profitAmount = revenueTotal - costTotal;
-        const profitMargin = revenueTotal > 0 ? (profitAmount / revenueTotal) * 100 : 0;
+        // Net Profit (Total Revenue - Total Costs)
+        const netProfit = revenueTotal - totalCosts;
+
+        // Profit Margin
+        const profitMargin = revenueTotal > 0 ? (netProfit / revenueTotal) * 100 : 0;
 
         const calculation: ProfitCalculation = {
             revenue: {
+                subtotal: revenueSubtotal,
+                platform_fee: revenuePlatformFee,
+                donation: revenueDonation,
+                shipping: revenueShipping,
+                tax: revenueTax,
                 total: revenueTotal
             },
             costs: {
-                products: costProducts,
-                shipping: costShipping,
-                tax: costTax,
-                total: costTotal
+                printify_products: printifyProducts,
+                printify_shipping: printifyShipping,
+                printify_tax: printifyTax,
+                total: totalCosts
             },
             profit: {
-                amount: profitAmount,
+                platform_fee_profit: platformFeeProfit,
+                net_profit: netProfit,
                 margin: profitMargin
             }
         };
@@ -275,95 +300,165 @@ export default function Show({ order, userRole }: Props) {
                     )}
                 </div>
 
-                {/* Simple Profit Calculation */}
-                {profitCalculation && (
-                    <Card className="bg-gradient-to-r from-blue-50 to-green-50 dark:from-blue-900/20 dark:to-green-900/20 border-blue-200 dark:border-blue-800">
-                        <CardHeader>
-                            <CardTitle className="flex items-center gap-2 text-blue-900 dark:text-blue-100">
-                                <Calculator className="w-5 h-5" />
-                                Profit Analysis
-                            </CardTitle>
-                            <CardDescription>
-                                Simple profit calculation: Revenue minus Printify costs
-                            </CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-6">
-                                {/* Revenue */}
-                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-green-500 shadow-lg">
-                                    <div className="flex items-center justify-center gap-2 mb-3">
-                                        <DollarSign className="w-6 h-6 text-green-600" />
-                                        <span className="text-lg font-semibold text-green-700">Revenue</span>
-                                    </div>
-                                    <div className="text-3xl font-bold text-green-600">
-                                        {formatCurrency(profitCalculation.revenue.total)}
-                                    </div>
-                                    <div className="text-sm text-gray-600 mt-2">Total from Customer</div>
-                                </div>
+                {/* Complete Order Summary */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle className="flex items-center gap-2">
+                            <ShoppingCart className="w-5 h-5" />
+                            Complete Order Summary
+                        </CardTitle>
+                        <CardDescription>
+                            Detailed breakdown of order revenue and costs
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                            {/* Revenue Breakdown */}
+                            <div className="space-y-4">
+                                <h3 className="text-lg font-semibold text-green-600 flex items-center gap-2">
+                                    <DollarSign className="w-5 h-5" />
+                                    Revenue Breakdown
+                                </h3>
 
-                                {/* Costs */}
-                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-orange-500 shadow-lg">
-                                    <div className="flex items-center justify-center gap-2 mb-3">
-                                        <Box className="w-6 h-6 text-orange-600" />
-                                        <span className="text-lg font-semibold text-orange-700">Costs</span>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Products Subtotal</span>
+                                        <span className="font-medium">{formatCurrency(order.subtotal || 0)}</span>
                                     </div>
-                                    <div className="text-3xl font-bold text-orange-600">
-                                        {formatCurrency(profitCalculation.costs.total)}
-                                    </div>
-                                    {/* <div className="text-sm text-gray-600 mt-2">
-                                        <div>Products: {formatCurrency(profitCalculation.costs.products)}</div>
-                                        <div>Shipping: {formatCurrency(profitCalculation.costs.shipping)}</div>
-                                        <div>Tax: {formatCurrency(profitCalculation.costs.tax)}</div>
-                                    </div> */}
-                                     <div className="text-sm text-gray-600 mt-2">Total Production Costs</div>
-                                </div>
 
-                                {/* Profit */}
-                                <div className="text-center p-6 bg-white dark:bg-gray-800 rounded-xl border-2 border-blue-500 shadow-lg">
-                                    <div className="flex items-center justify-center gap-2 mb-3">
-                                        <TrendingUp className={`w-6 h-6 ${getProfitColor(profitCalculation.profit.amount)}`} />
-                                <span className={`text-lg font-semibold ${getProfitColor(profitCalculation.profit.amount)}`}>Profit</span>
-                                    </div>
-                                    <div className={`text-4xl font-bold ${getProfitColor(profitCalculation.profit.amount)}`}>
-                                        {formatCurrency(profitCalculation.profit.amount)}
-                                    </div>
-                                    {/* <div className="text-lg font-semibold mt-2">
-                                        <span className={getProfitColor(profitCalculation.profit.amount)}>
-                                            {profitCalculation.profit.margin.toFixed(1)}% Margin
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600 flex items-center gap-2">
+                                            <Percent className="w-4 h-4" />
+                                            Platform Fee
                                         </span>
-                                    </div> */}
+                                        <span className="font-medium text-blue-600">
+                                            +{formatCurrency(order.platform_fee || 0)}
+                                        </span>
+                                    </div>
+
+                                    {order.donation_amount > 0 && (
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600 flex items-center gap-2">
+                                                <Heart className="w-4 h-4 text-red-500" />
+                                                Donation
+                                            </span>
+                                            <span className="font-medium text-red-600">
+                                                +{formatCurrency(order.donation_amount || 0)}
+                                            </span>
+                                        </div>
+                                    )}
+
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Shipping</span>
+                                        <span className="font-medium">
+                                            +{formatCurrency(order.shipping_cost || 0)}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center py-2 border-b">
+                                        <span className="text-gray-600">Tax</span>
+                                        <span className="font-medium">
+                                            +{formatCurrency(order.tax_amount || 0)}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex justify-between items-center pt-3 border-t-2 border-green-200">
+                                        <span className="text-lg font-bold text-green-600">Total Revenue</span>
+                                        <span className="text-xl font-bold text-green-600">
+                                            {formatCurrency(order.total_amount || 0)}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* Simple Profit Formula */}
-                            <div className="bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl p-4 border border-green-200">
+                            {/* Profit Calculation */}
+                            {profitCalculation && (
+                                <div className="space-y-4">
+                                    <h3 className="text-lg font-semibold text-blue-600 flex items-center gap-2">
+                                        <Calculator className="w-5 h-5" />
+                                        Profit Calculation
+                                    </h3>
+
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600">Platform Fee Profit</span>
+                                            <span className="font-medium text-green-600">
+                                                +{formatCurrency(profitCalculation.profit.platform_fee_profit)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600">Printify Product Costs</span>
+                                            <span className="font-medium text-orange-600">
+                                                -{formatCurrency(profitCalculation.costs.printify_products)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600">Printify Shipping</span>
+                                            <span className="font-medium text-orange-600">
+                                                -{formatCurrency(profitCalculation.costs.printify_shipping)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600">Printify Tax</span>
+                                            <span className="font-medium text-orange-600">
+                                                -{formatCurrency(profitCalculation.costs.printify_tax)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
+                                            <span className="text-lg font-bold text-blue-600">Net Profit</span>
+                                            <span className={`text-xl font-bold ${getProfitColor(profitCalculation.profit.net_profit)}`}>
+                                                {formatCurrency(profitCalculation.profit.net_profit)}
+                                            </span>
+                                        </div>
+
+                                        <div className="text-center pt-2">
+                                            <Badge variant="outline" className={getProfitColor(profitCalculation.profit.net_profit)}>
+                                                Profit Margin: {profitCalculation.profit.margin.toFixed(1)}%
+                                            </Badge>
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Simple Profit Formula */}
+                        {profitCalculation && (
+                            <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl border border-green-200">
                                 <div className="text-center">
-                                    <div className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-2">
+                                    <div className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3">
                                         Profit Formula
                                     </div>
-                                    <div className="text-xl text-blue-800 dark:text-blue-200 font-semibold">
-                                        <span className="text-green-600">Revenue ({formatCurrency(profitCalculation.revenue.total)})</span>
-                                        <span className="mx-4">-</span>
-                                        <span className="text-orange-600">Costs ({formatCurrency(profitCalculation.costs.total)})</span>
-                                        <span className="mx-4">=</span>
-                                        <span className={`text-2xl ${getProfitColor(profitCalculation.profit.amount)}`}>
-                                            {formatCurrency(profitCalculation.profit.amount)}
-                                        </span>
+                                    <div className="text-lg text-blue-800 dark:text-blue-200 font-semibold space-y-2">
+                                        <div>
+                                            <span className="text-green-600">Total Revenue ({formatCurrency(profitCalculation.revenue.total)})</span>
+                                            <span className="mx-4">-</span>
+                                            <span className="text-orange-600">Total Costs ({formatCurrency(profitCalculation.costs.total)})</span>
+                                        </div>
+                                        <div className="text-xl">
+                                            <span className="mx-4">=</span>
+                                            <span className={`${getProfitColor(profitCalculation.profit.net_profit)}`}>
+                                                Net Profit: {formatCurrency(profitCalculation.profit.net_profit)}
+                                            </span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
-                )}
+                        )}
+                    </CardContent>
+                </Card>
 
-                {/* Order Summary */}
+                {/* Order Details */}
                 <Card>
                     <CardHeader>
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-3">
                                 <Package className="w-6 h-6 text-blue-600" />
                                 <div>
-                                    <CardTitle>Order #{order.reference_number}</CardTitle>
+                                    <CardTitle>Order #{order.id}</CardTitle>
                                     <CardDescription>
                                         Placed on {new Date(order.created_at).toLocaleDateString()}
                                         {order.paid_at && ` • Paid on ${new Date(order.paid_at).toLocaleDateString()}`}
@@ -376,7 +471,7 @@ export default function Show({ order, userRole }: Props) {
                                 </Badge>
                                 <div className="text-right">
                                     <div className="text-2xl font-bold text-blue-600">
-                                        {formatCurrency(parseFloat(order.total_amount))}
+                                        {formatCurrency(order.total_amount || 0)}
                                     </div>
                                     <div className="text-sm text-gray-500">Total Amount</div>
                                 </div>
@@ -443,6 +538,58 @@ export default function Show({ order, userRole }: Props) {
                                 </div>
                             </div>
                         )}
+                    </CardContent>
+                </Card>
+
+                {/* Order Products */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Order Products</CardTitle>
+                        <CardDescription>
+                            {order.items.length} product(s) in this order
+                        </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                        <div className="space-y-4">
+                            {order.items.map((item) => (
+                                <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg">
+                                    {item.image && (
+                                        <img
+                                            src={item.image}
+                                            alt={item.name}
+                                            className="w-16 h-16 rounded-lg object-cover border"
+                                        />
+                                    )}
+                                    <div className="flex-1">
+                                        <h5 className="font-medium">{item.name}</h5>
+                                        <p className="text-sm text-gray-600 line-clamp-2">
+                                            {item.description}
+                                        </p>
+                                        {item.variant_data && (
+                                            <div className="mt-1">
+                                                <span className="text-xs text-gray-500">
+                                                    Variant: {JSON.stringify(item.variant_data)}
+                                                </span>
+                                            </div>
+                                        )}
+                                        <div className="mt-2 text-sm text-gray-600">
+                                            Printify Product ID: {item.printify_product_id}
+                                        </div>
+                                    </div>
+                                    <div className="text-right">
+                                        <div className="font-medium">
+                                            {formatCurrency(item.total_price)}
+                                        </div>
+                                        <div className="text-sm text-gray-600">
+                                            {item.quantity} × {formatCurrency(item.unit_price)}
+                                        </div>
+                                        <div className="text-xs text-gray-500 mt-1">
+                                            Unit Price
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </CardContent>
                 </Card>
 
@@ -520,45 +667,6 @@ export default function Show({ order, userRole }: Props) {
                         </CardContent>
                     </Card>
                 )}
-
-                {/* Local Database Products */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Order Products</CardTitle>
-                        <CardDescription>
-                            {order.items.length} product(s) from local database
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-4">
-                            {order.items.map((item) => (
-                                <div key={item.id} className="flex items-start gap-4 p-4 border rounded-lg">
-                                    <div className="flex-1">
-                                        <h5 className="font-medium">{item.name}</h5>
-                                        <p className="text-sm text-gray-600 line-clamp-2">
-                                            {item.description}
-                                        </p>
-                                        {item.variant_data && (
-                                            <div className="mt-1">
-                                                <span className="text-xs text-gray-500">
-                                                    Variant: {JSON.stringify(item.variant_data)}
-                                                </span>
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="text-right">
-                                        <div className="font-medium">
-                                            {formatCurrency(item.total_price)}
-                                        </div>
-                                        <div className="text-sm text-gray-600">
-                                            {item.quantity} × {formatCurrency(item.unit_price)}
-                                        </div>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
 
                 {/* Printify Error */}
                 {order.printify_error && (

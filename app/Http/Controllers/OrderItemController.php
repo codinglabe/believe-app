@@ -66,6 +66,7 @@ class OrderItemController extends Controller
                 'order_id' => $item->order_id,
                 'product_id' => $item->product_id,
                 'organization_id' => $item->organization_id,
+                'per_organization_donation_amount' => $item->per_organization_donation_amount,
                 'name' => $item->name,
                 'quantity' => $item->quantity,
                 'unit_price' => $item->unit_price,

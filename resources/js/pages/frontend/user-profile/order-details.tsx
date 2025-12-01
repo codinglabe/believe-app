@@ -66,6 +66,8 @@ interface Order {
   subtotal: number
   shipping_cost: number
   tax_amount: number
+  platform_fee: number
+  donation_amount: number
   total_amount: number
   printify_order_id?: string
   printify_status?: string
@@ -402,13 +404,25 @@ export default function OrderDetails() {
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Subtotal</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      ${order?.subtotal?.toFixed(2)}
+                      ${(Number(order?.subtotal) || 0).toFixed(2)}
+                    </span>
+                                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Platform Fee</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                                          ${(Number(order?.platform_fee) || 0).toFixed(2)}
+                    </span>
+                                  </div>
+                                  <div className="flex justify-between">
+                    <span className="text-gray-600 dark:text-gray-400">Donation Amount</span>
+                    <span className="font-medium text-gray-900 dark:text-white">
+                                          ${(Number(order?.donation_amount) || 0).toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600 dark:text-gray-400">Shipping</span>
                     <span className="font-medium text-gray-900 dark:text-white">
-                      ${order?.shipping_cost}
+                                          ${(Number(order?.shipping_cost) || 0).toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between">

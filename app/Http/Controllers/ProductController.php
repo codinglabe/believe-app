@@ -446,7 +446,7 @@ class ProductController extends BaseController
             'name' => 'required|string|max:255',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
-            'profit_margin_percentage' => 'required|numeric|min:0',
+            // 'profit_margin_percentage' => 'required|numeric|min:0',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
@@ -493,12 +493,13 @@ class ProductController extends BaseController
                 // Step 2: Get product details to read real cost
                 $productDetails = $this->printifyService->getProduct($printifyProductId);
 
+
                 if (!$productDetails || !isset($productDetails['variants'])) {
                     throw new \Exception('Failed to fetch product details');
                 }
 
                 // Step 3: Update with correct pricing for ALL variants
-                $profitMargin = $request->profit_margin_percentage ?? 40;
+                $profitMargin = 0;
 
                 // Build updated variants - update ALL variants in the product
                 $updatedVariants = [];
@@ -511,29 +512,28 @@ class ProductController extends BaseController
                     $isSelected = in_array($variant['id'], $selectedVariantIds);
 
                     $costInCents = $variant['cost'] ?? 0;
-                    $costInDollars = $costInCents / 100;
+                    // $costInDollars = $costInCents / 100;
 
-                    if ($isSelected) {
-                        // Calculate selling price for selected variants
-                        $sellingPriceInDollars = $this->calculateSellingPrice($costInDollars, $profitMargin);
-                        $sellingPriceInCents = (int) round($sellingPriceInDollars * 100);
-                    } else {
-                        // For non-selected variants, use cost price (or disable them)
-                        $sellingPriceInCents = $costInCents;
-                    }
+                    // if ($isSelected) {
+                    //     // Calculate selling price for selected variants
+                    //     $sellingPriceInDollars = $this->calculateSellingPrice($costInDollars, $profitMargin);
+                    //     $sellingPriceInCents = $sellingPriceInDollars * 100;
+                    // } else {
+                    //     // For non-selected variants, use cost price (or disable them)
+                    //     $sellingPriceInCents = $costInCents;
+                    // }
 
                     $updatedVariants[] = [
                         'id' => $variant['id'],
-                        'price' => $sellingPriceInCents,
+                        'price' => $costInCents,
                         'is_enabled' => $isSelected // Only enable selected variants
                     ];
-
 
                     \Log::info('Prepared variant for update', [
                         'variant_id' => $variant['id'],
                         'is_selected' => $isSelected,
                         'cost_in_cents' => $costInCents,
-                        'selling_price_in_cents' => $sellingPriceInCents,
+                        'selling_price_in_cents' => $costInCents,
                     ]);
                 }
 
@@ -627,7 +627,7 @@ class ProductController extends BaseController
     private function createPrintifyProduct(Request $request, array $validated, array $selectedVariantIds): ?string
     {
         // Use a temporary price for initial creation
-        $tempPrice = 1999; // $19.99 in cents
+        $tempPrice = 100; // $1 in cents
 
         $printifyData = [
             'title' => $validated['name'],
