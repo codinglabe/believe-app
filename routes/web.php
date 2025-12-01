@@ -86,6 +86,15 @@ use App\Http\Controllers\WebhookManagementController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
 
+// ============================================
+// LIVESTOCK DOMAIN ROUTES - MUST BE FIRST
+// ============================================
+// Load livestock routes only when accessing livestock domain
+// This must be before all other routes to take precedence
+Route::domain(config('livestock.domain'))->group(function () {
+    require __DIR__ . '/livestock.php';
+});
+
 // Route::get('/test-broadcast', function () {
 //     $message = App\Models\ChatMessage::first();
 //     event(new App\Events\MessageSent($message));
@@ -94,6 +103,12 @@ use Illuminate\Support\Facades\Http;
 
 Broadcast::routes(['middleware' => ['auth']]);
 
+// ============================================
+// MAIN APP ROUTES - Only accessible on main domain (not livestock domain)
+// ============================================
+// These routes are automatically excluded from livestock domain because
+// livestock routes are defined with Route::domain() above.
+// Routes without Route::domain() only work on the main domain.
 Route::get('/', [HomeController::class, "index"])->name('home');
 
 Route::get("pwa-setup", function () {
@@ -181,6 +196,7 @@ Route::get('/fractional/purchase/success', [\App\Http\Controllers\FractionalOwne
 Route::get('/fractional/purchase/cancel', [\App\Http\Controllers\FractionalOwnershipController::class, 'purchaseCancel'])->middleware('auth')->name('fractional.purchase.cancel');
 Route::get('/fractional/certificate/{order}', [\App\Http\Controllers\FractionalCertificateController::class, 'show'])->middleware('auth')->name('fractional.certificate.show');
 Route::get('/fractional/certificate/{order}/download', [\App\Http\Controllers\FractionalCertificateController::class, 'download'])->middleware('auth')->name('fractional.certificate.download');
+Route::get('/fractional/certificate/{order}/download-pdf', [\App\Http\Controllers\FractionalCertificateController::class, 'downloadPdf'])->middleware('auth')->name('fractional.certificate.download-pdf');
 
 /* events */
 Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alleventsPage');
@@ -895,6 +911,57 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
 });
 
+// Livestock Management Routes (Admin Only)
+Route::prefix('admin/livestock')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin', 'permission:admin.livestock.read'])
+    ->name('admin.livestock.')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\LivestockController::class, 'index'])->name('index');
+        Route::get('/sellers', [\App\Http\Controllers\Admin\LivestockController::class, 'sellers'])->name('sellers');
+        Route::get('/sellers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showSeller'])->name('sellers.show');
+        Route::get('/sellers/{id}/listings', [\App\Http\Controllers\Admin\LivestockController::class, 'sellerListings'])->name('sellers.listings');
+        Route::put('/sellers/{id}/verify', [\App\Http\Controllers\Admin\LivestockController::class, 'verifySeller'])->name('sellers.verify')->middleware('permission:admin.livestock.manage');
+        Route::put('/sellers/{id}/reject', [\App\Http\Controllers\Admin\LivestockController::class, 'rejectSeller'])->name('sellers.reject')->middleware('permission:admin.livestock.manage');
+        Route::delete('/sellers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'deleteSeller'])->name('sellers.delete')->middleware('permission:admin.livestock.manage');
+        Route::get('/listings', [\App\Http\Controllers\Admin\LivestockController::class, 'fractionalListings'])->name('listings');
+        Route::get('/listings/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showFractionalListing'])->name('listings.show');
+        Route::put('/listings/{id}/link-asset', [\App\Http\Controllers\Admin\LivestockController::class, 'linkAssetToFractionalListing'])->name('listings.link-asset')->middleware('permission:admin.livestock.manage');
+        Route::delete('/listings/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'removeListing'])->name('listings.remove')->middleware('permission:admin.livestock.manage');
+        Route::get('/payouts', [\App\Http\Controllers\Admin\LivestockController::class, 'payouts'])->name('payouts');
+        Route::put('/payouts/{id}/approve', [\App\Http\Controllers\Admin\LivestockController::class, 'approvePayout'])->name('payouts.approve')->middleware('permission:admin.livestock.manage');
+        
+        // Buyers routes
+        Route::get('/buyers', [\App\Http\Controllers\Admin\LivestockController::class, 'buyers'])->name('buyers');
+        Route::get('/buyers/create', [\App\Http\Controllers\Admin\LivestockController::class, 'createBuyer'])->name('buyers.create');
+        Route::post('/buyers', [\App\Http\Controllers\Admin\LivestockController::class, 'storeBuyer'])->name('buyers.store');
+        Route::get('/buyers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'showBuyer'])->name('buyers.show');
+        Route::put('/buyers/{id}/link-asset', [\App\Http\Controllers\Admin\LivestockController::class, 'linkAssetToBuyer'])->name('buyers.link-asset')->middleware('permission:admin.livestock.manage');
+        Route::put('/buyers/{id}/verify', [\App\Http\Controllers\Admin\LivestockController::class, 'verifyBuyer'])->name('buyers.verify')->middleware('permission:admin.livestock.manage');
+        Route::put('/buyers/{id}/reject', [\App\Http\Controllers\Admin\LivestockController::class, 'rejectBuyer'])->name('buyers.reject')->middleware('permission:admin.livestock.manage');
+        Route::delete('/buyers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'deleteBuyer'])->name('buyers.delete')->middleware('permission:admin.livestock.manage');
+        
+        // Pre-Generated Tags Routes
+        Route::get('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'index'])->name('pre-generated-tags.index');
+        Route::post('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'store'])->name('pre-generated-tags.store');
+        Route::post('/pre-generated-tags/generate', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'generate'])->name('pre-generated-tags.generate');
+        Route::post('/pre-generated-tags/{id}/assign', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'assign'])->name('pre-generated-tags.assign');
+        Route::post('/pre-generated-tags/{id}/unassign', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'unassign'])->name('pre-generated-tags.unassign');
+        Route::delete('/pre-generated-tags/{id}', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'destroy'])->name('pre-generated-tags.destroy');
+    });
+
+// Country Management Routes (Admin Only)
+Route::prefix('admin/countries')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:admin', 'permission:admin.countries.read'])
+    ->name('admin.countries.')
+    ->group(function () {
+        Route::get('/', [\App\Http\Controllers\Admin\CountryController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Admin\CountryController::class, 'create'])->name('create')->middleware('permission:admin.countries.create');
+        Route::post('/', [\App\Http\Controllers\Admin\CountryController::class, 'store'])->name('store')->middleware('permission:admin.countries.create');
+        Route::get('/{country}/edit', [\App\Http\Controllers\Admin\CountryController::class, 'edit'])->name('edit')->middleware('permission:admin.countries.update');
+        Route::put('/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'update'])->name('update')->middleware('permission:admin.countries.update');
+        Route::delete('/{country}', [\App\Http\Controllers\Admin\CountryController::class, 'destroy'])->name('destroy')->middleware('permission:admin.countries.delete');
+    });
+
 
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
@@ -1000,7 +1067,6 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
     Route::get('/raffles/{raffle}', [App\Http\Controllers\RaffleController::class, 'frontendShow'])->name('raffles.show');
     Route::post('/raffles/{raffle}/purchase', [App\Http\Controllers\RaffleController::class, 'purchaseTickets'])->name('raffles.purchase');
 });
-
 
 // Note: Stripe webhooks are handled by Laravel Cashier at /stripe/webhook
 // Configure this URL in your Stripe dashboard

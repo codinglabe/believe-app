@@ -8,8 +8,15 @@ function isSecureContext() {
     return window.isSecureContext || window.location.hostname === 'localhost';
 }
 
+import { isLivestockDomain } from '../lib/livestock-domain';
+
 export function registerServiceWorker() {
     if (typeof window === 'undefined' || typeof navigator === 'undefined') {
+        return;
+    }
+
+    // Don't register service worker on livestock domain
+    if (isLivestockDomain()) {
         return;
     }
 

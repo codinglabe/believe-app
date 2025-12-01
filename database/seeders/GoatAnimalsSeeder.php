@@ -1,0 +1,240 @@
+<?php
+
+namespace Database\Seeders;
+
+use App\Models\LivestockUser;
+use App\Models\LivestockAnimal;
+use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
+use Carbon\Carbon;
+
+class GoatAnimalsSeeder extends Seeder
+{
+    /**
+     * Run the database seeds.
+     */
+    public function run(): void
+    {
+        // Get or create a livestock user for the animals
+        $user = LivestockUser::firstOrCreate(
+            ['email' => 'nazruljebon98@gmail.com'],
+            [
+                'name' => 'John Goat Farmer',
+                'password' => Hash::make('password'),
+                'phone' => '+1234567890',
+                'address' => '123 Farm Road',
+                'city' => 'Farmville',
+                'state' => 'TX',
+                'zip_code' => '75001',
+                'country' => 'USA',
+                'status' => 'active',
+                'is_verified' => true,
+                'email_verified_at' => now(),
+            ]
+        );
+
+        $goats = [
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Boer',
+                'sex' => 'male',
+                'ear_tag' => 'GT-001',
+                'date_of_birth' => Carbon::now()->subMonths(24),
+                'age_months' => 24,
+                'weight_kg' => 85.5,
+                'color_markings' => 'White body with brown head',
+                'location' => 'Pasture A',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 450.00,
+                'current_market_value' => 650.00,
+                'status' => 'available',
+                'notes' => 'Strong breeding buck, excellent genetics. Good temperament.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Nubian',
+                'sex' => 'female',
+                'ear_tag' => 'GT-002',
+                'date_of_birth' => Carbon::now()->subMonths(18),
+                'age_months' => 18,
+                'weight_kg' => 65.0,
+                'color_markings' => 'Brown with white spots',
+                'location' => 'Pasture B',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 380.00,
+                'current_market_value' => 550.00,
+                'status' => 'available',
+                'notes' => 'High milk producer. Good mothering instincts.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Alpine',
+                'sex' => 'female',
+                'ear_tag' => 'GT-003',
+                'date_of_birth' => Carbon::now()->subMonths(30),
+                'age_months' => 30,
+                'weight_kg' => 70.5,
+                'color_markings' => 'Black and white',
+                'location' => 'Pasture A',
+                'health_status' => 'good',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 420.00,
+                'current_market_value' => 580.00,
+                'status' => 'available',
+                'notes' => 'Experienced doe, has produced 2 healthy kids.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Kiko',
+                'sex' => 'male',
+                'ear_tag' => 'GT-004',
+                'date_of_birth' => Carbon::now()->subMonths(12),
+                'age_months' => 12,
+                'weight_kg' => 55.0,
+                'color_markings' => 'Solid white',
+                'location' => 'Pasture C',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 350.00,
+                'current_market_value' => 480.00,
+                'status' => 'available',
+                'notes' => 'Young buck, hardy breed. Good for meat production.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Saanen',
+                'sex' => 'female',
+                'ear_tag' => 'GT-005',
+                'date_of_birth' => Carbon::now()->subMonths(36),
+                'age_months' => 36,
+                'weight_kg' => 75.0,
+                'color_markings' => 'Pure white',
+                'location' => 'Pasture B',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 500.00,
+                'current_market_value' => 700.00,
+                'status' => 'available',
+                'notes' => 'Premium dairy goat. Excellent milk production record.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Boer',
+                'sex' => 'female',
+                'ear_tag' => 'GT-006',
+                'date_of_birth' => Carbon::now()->subMonths(15),
+                'age_months' => 15,
+                'weight_kg' => 60.0,
+                'color_markings' => 'Red and white',
+                'location' => 'Pasture A',
+                'health_status' => 'good',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 400.00,
+                'current_market_value' => 520.00,
+                'status' => 'available',
+                'notes' => 'Young doe, ready for breeding. Good conformation.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'LaMancha',
+                'sex' => 'female',
+                'ear_tag' => 'GT-007',
+                'date_of_birth' => Carbon::now()->subMonths(27),
+                'age_months' => 27,
+                'weight_kg' => 68.0,
+                'color_markings' => 'Brown with black markings',
+                'location' => 'Pasture C',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 450.00,
+                'current_market_value' => 600.00,
+                'status' => 'available',
+                'notes' => 'Calm temperament, good for beginners. Excellent milk quality.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Nigerian Dwarf',
+                'sex' => 'female',
+                'ear_tag' => 'GT-008',
+                'date_of_birth' => Carbon::now()->subMonths(20),
+                'age_months' => 20,
+                'weight_kg' => 35.0,
+                'color_markings' => 'Multi-colored (brown, black, white)',
+                'location' => 'Pasture B',
+                'health_status' => 'excellent',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 280.00,
+                'current_market_value' => 380.00,
+                'status' => 'available',
+                'notes' => 'Small breed, high butterfat milk. Great for small farms.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Boer',
+                'sex' => 'male',
+                'ear_tag' => 'GT-009',
+                'date_of_birth' => Carbon::now()->subMonths(42),
+                'age_months' => 42,
+                'weight_kg' => 95.0,
+                'color_markings' => 'White with brown head and neck',
+                'location' => 'Pasture A',
+                'health_status' => 'good',
+                'fertility_status' => 'fertile',
+                'original_purchase_price' => 550.00,
+                'current_market_value' => 750.00,
+                'status' => 'available',
+                'notes' => 'Mature breeding buck. Proven sire with excellent offspring.',
+            ],
+            [
+                'livestock_user_id' => $user->id,
+                'current_owner_livestock_user_id' => $user->id,
+                'species' => 'goat',
+                'breed' => 'Alpine',
+                'sex' => 'female',
+                'ear_tag' => 'GT-010',
+                'date_of_birth' => Carbon::now()->subMonths(9),
+                'age_months' => 9,
+                'weight_kg' => 45.0,
+                'color_markings' => 'Chamoisee (brown with black markings)',
+                'location' => 'Pasture C',
+                'health_status' => 'excellent',
+                'fertility_status' => 'unknown',
+                'original_purchase_price' => 320.00,
+                'current_market_value' => 420.00,
+                'status' => 'available',
+                'notes' => 'Young doe, not yet bred. Growing well.',
+            ],
+        ];
+
+        foreach ($goats as $goat) {
+            LivestockAnimal::updateOrCreate(
+                ['ear_tag' => $goat['ear_tag']],
+                $goat
+            );
+        }
+
+        $this->command->info('Created ' . count($goats) . ' goat animals successfully!');
+    }
+}
+
+

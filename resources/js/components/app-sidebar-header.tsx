@@ -104,7 +104,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
 
     return (
         <header 
-            className="border-sidebar-border/50 flex justify-between h-16 shrink-0 items-center gap-2 border-b px-3 sm:px-4 md:px-6 transition-[left,width] duration-200 ease-linear fixed top-0 left-0 md:left-[var(--sidebar-width,16rem)] right-0 z-40 bg-background"
+            className="flex justify-between h-16 shrink-0 items-center gap-2 border-b-2 border-gray-200 dark:border-gray-800 px-3 sm:px-4 md:px-6 transition-[left,width] duration-200 ease-linear fixed top-0 left-0 md:left-[var(--sidebar-width,16rem)] right-0 z-40 bg-background shadow-sm"
             style={typeof window !== 'undefined' && window.innerWidth >= 768 && sidebarCollapsed ? {
                 left: 'calc(var(--sidebar-width-icon, 3rem) + 1rem + 2px)'
             } : undefined}

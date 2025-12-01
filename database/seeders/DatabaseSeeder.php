@@ -42,6 +42,7 @@ class DatabaseSeeder extends Seeder
         $this->call(ComprehensivePermissionsSeeder::class);
         $this->call(ComplianceReviewPermissionSeeder::class);
         $this->call(JobPostsPermisstionSeeder::class);
+        $this->call(LivestockPermissionsSeeder::class);
         $this->call(assignRole::class);
 
         // Step 3: Seed users and assign roles/permissions

@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { ArrowLeft, Save, Coins } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
 
@@ -71,17 +72,34 @@ export default function AssetCreate({ defaults }: AssetCreateProps) {
                             <div className="grid gap-6 md:grid-cols-2">
                                 <div className="space-y-2 md:col-span-2">
                                     <Label htmlFor="type">Asset Type *</Label>
-                                    <Input
-                                        id="type"
-                                        type="text"
+                                    <Select
                                         value={data.type}
-                                        onChange={(e) => setData("type", e.target.value)}
-                                        placeholder="e.g., gold, real-estate, art, cryptocurrency"
+                                        onValueChange={(value) => setData("type", value)}
                                         required
-                                        className={errors.type ? "border-red-500" : ""}
-                                    />
+                                    >
+                                        <SelectTrigger 
+                                            id="type"
+                                            className={errors.type ? "border-red-500" : ""}
+                                        >
+                                            <SelectValue placeholder="Select asset type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="goat">Goat</SelectItem>
+                                            <SelectItem value="livestock">Livestock</SelectItem>
+                                            <SelectItem value="livestock_goat">Livestock Goat</SelectItem>
+                                            <SelectItem value="gold">Gold</SelectItem>
+                                            <SelectItem value="precious_metals">Precious Metals</SelectItem>
+                                            <SelectItem value="real_estate">Real Estate</SelectItem>
+                                            <SelectItem value="art">Art</SelectItem>
+                                            <SelectItem value="cryptocurrency">Cryptocurrency</SelectItem>
+                                            <SelectItem value="stocks">Stocks</SelectItem>
+                                            <SelectItem value="bonds">Bonds</SelectItem>
+                                            <SelectItem value="commodities">Commodities</SelectItem>
+                                            <SelectItem value="other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
                                     {errors.type && <p className="text-sm text-red-500">{errors.type}</p>}
-                                    <p className="text-xs text-muted-foreground">The category or type of asset (e.g., gold, real estate, art)</p>
+                                    <p className="text-xs text-muted-foreground">The category or type of asset. Select "Goat" or "Livestock" for livestock fractional ownership.</p>
                                 </div>
 
                                 <div className="space-y-2">

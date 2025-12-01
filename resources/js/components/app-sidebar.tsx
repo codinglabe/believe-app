@@ -40,9 +40,11 @@ import {
     PieChart,
     Clock,
     UserCheck,
-    Info
+    Info,
+    Heart
 } from 'lucide-react';
 import SiteTitle from './site-title';
+import { route } from 'ziggy-js';
 
 
 const mainNavItems: (NavItem | NavGroup)[] = [
@@ -418,6 +420,47 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ],
     },
 
+    // Livestock Management Section
+    {
+        title: 'Livestock Management',
+        icon: Heart,
+        permission: "admin.livestock.read",
+        items: [
+            {
+                title: 'Livestock',
+                href: '/admin/livestock/listings',
+                icon: Heart,
+                permission: "admin.livestock.read"
+            },
+            {
+                title: 'Sellers',
+                href: '/admin/livestock/sellers',
+                icon: Users,
+                permission: "admin.livestock.read"
+            },
+            {
+                title: 'Buyers',
+                href: '/admin/livestock/buyers',
+                icon: ShoppingCart,
+                permission: "admin.livestock.read"
+            },
+        ]
+    },
+    // Country Management Section
+    {
+        title: 'Country Management',
+        icon: Building,
+        permission: "admin.countries.read",
+        items: [
+            {
+                title: 'Countries',
+                href: '/admin/countries',
+                icon: Building,
+                permission: "admin.countries.read"
+            },
+        ]
+    },
+
     // User Management Section
     {
         title: 'User Management',
@@ -469,8 +512,9 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
 export function AppSidebar() {
     return (
-        <Sidebar collapsible="icon" variant="inset" className='z-30 border-r border-border/50 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&_[data-sidebar=sidebar]]:!bg-background'>
-            <SidebarHeader className="border-b border-border/50 !bg-background">
+        <Sidebar collapsible="icon" variant="inset" className='z-30 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&_[data-sidebar=sidebar]]:!bg-background'>
+            <div className="h-full border-r-2 border-gray-200 dark:border-gray-800">
+                <SidebarHeader className="border-b-2 border-gray-200 dark:border-gray-800 !bg-background">
                 <SidebarMenu>
                     <SidebarMenuItem>
                         <SidebarMenuButton size="lg" asChild className="hover:bg-accent/50 transition-colors">
@@ -483,15 +527,16 @@ export function AppSidebar() {
                 </SidebarMenu>
             </SidebarHeader>
 
-            <SidebarContent className="px-2 py-4 !bg-background">
-                <div className="space-y-2">
-                    <NavMain items={mainNavItems} />
-                </div>
-            </SidebarContent>
+                <SidebarContent className="px-2 py-4 !bg-background">
+                    <div className="space-y-2">
+                        <NavMain items={mainNavItems} />
+                    </div>
+                </SidebarContent>
 
-            {/* <SidebarFooter>
-                <NavUser />
-            </SidebarFooter> */}
+                {/* <SidebarFooter>
+                    <NavUser />
+                </SidebarFooter> */}
+            </div>
         </Sidebar>
     );
 }

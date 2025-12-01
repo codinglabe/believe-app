@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react"
 import { X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { isLivestockDomain } from "@/lib/livestock-domain"
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>
@@ -15,6 +16,11 @@ export function PWAInstallPrompt() {
   const [isInstalled, setIsInstalled] = useState(false)
 
   useEffect(() => {
+    // Don't show PWA prompt on livestock domain
+    if (isLivestockDomain()) {
+      return
+    }
+
     // Check if app is already installed
     if (window.matchMedia("(display-mode: standalone)").matches) {
       setIsInstalled(true)
@@ -99,6 +105,11 @@ export function PWAInstallPrompt() {
     // Store permanent dismissal flag
     localStorage.setItem("pwaPromptDismissed", "true")
     setShowPrompt(false)
+  }
+
+  // Don't show PWA prompt on livestock domain
+  if (isLivestockDomain()) {
+    return null
   }
 
   if (isInstalled || !showPrompt) {

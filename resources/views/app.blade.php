@@ -46,11 +46,20 @@
             }
         </style>
 
-        <title inertia>{{ config('app.name', 'Laravel') }}</title>
+        @php
+            $isLivestock = function_exists('is_livestock_domain') ? is_livestock_domain() : false;
+        @endphp
 
-        <Link rel="icon" href="/favicon.ico" sizes="any">
-        <Link rel="icon" href="/favicon.svg" type="image/svg+xml">
-        <Link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @else {{ config('app.name', 'Laravel') }} @endif</title>
+
+        @if($isLivestock)
+            <link rel="icon" href="/livestock/fav.ico" sizes="any">
+            <link rel="apple-touch-icon" href="/livestock/logo.png">
+        @else
+            <link rel="icon" href="/favicon.ico" sizes="any">
+            <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+            <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+        @endif
 
 
 
