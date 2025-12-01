@@ -287,8 +287,18 @@ class LivestockController extends BaseController
             ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
 
+        // Calculate stats
+        $stats = [
+            'total' => LivestockListing::count(),
+            'active' => LivestockListing::where('status', 'active')->count(),
+            'pending' => LivestockListing::where('status', 'pending')->count(),
+            'sold' => LivestockListing::where('status', 'sold')->count(),
+            'removed' => LivestockListing::where('status', 'removed')->count(),
+        ];
+
         return Inertia::render('admin/Livestock/Listings', [
             'listings' => $listings,
+            'stats' => $stats,
             'filters' => [
                 'status' => $status,
                 'per_page' => $perPage,
@@ -733,6 +743,7 @@ class LivestockController extends BaseController
             }
         ]);
 
+        // Search filter
         if ($search) {
             $query->where(function($q) use ($search) {
                 $q->where('tag_number', 'LIKE', "%{$search}%")
@@ -748,16 +759,23 @@ class LivestockController extends BaseController
             });
         }
 
-        if ($status) {
-            $query->where('status', $status);
+        // Status filter - handle both database status and computed statuses
+        if ($status && $status !== 'all') {
+            // Handle special statuses that need to be computed
+            if ($status === 'awaiting_assignment') {
+                $query->whereNull('livestock_animal_id');
+            } elseif ($status !== 'sold') {
+                // Regular database status (active, pending, sold_out, cancelled)
+                $query->where('status', $status);
+            }
+            // 'sold' status will be filtered after progress calculation
         }
 
-        $listings = $query->orderBy('created_at', 'desc')
-            ->paginate($perPage, ['*'], 'page', $page)
-            ->withQueryString();
+        // Get all matching listings (without pagination) to calculate progress and apply sold filter
+        $allListings = $query->orderBy('created_at', 'desc')->get();
 
         // Transform listings to include progress information
-        $listings->getCollection()->transform(function($listing) {
+        $transformedListings = $allListings->map(function($listing) {
             $progressPercentage = 0;
             $soldShares = 0;
             $totalShares = 0;
@@ -774,45 +792,59 @@ class LivestockController extends BaseController
                 if ($offering && $offering->total_shares > 0) {
                     $hasTokenSelling = true;
                     $tokensPerShare = $offering->tokens_per_share;
-                    $totalTokensAvailable = $offering->total_shares * $tokensPerShare;
+                    
+                    // For livestock assets, each tag represents ONE share
+                    // So total tokens available for THIS tag = tokensPerShare (not total_shares * tokensPerShare)
+                    $totalTokensAvailable = $tokensPerShare; // Each tag = 1 share = tokensPerShare tokens
+                    $totalShares = 1; // Each tag = 1 share
                     
                     // Calculate tokens sold for THIS SPECIFIC TAG only
-                    // Check both: orders with this tag_number directly, AND orders with this tag in tag_allocations meta
-                    // This ensures each tag (GM-001, GM-002, etc.) shows its own progress independently
-                    $tokensSoldDirect = \App\Models\FractionalOrder::where('offering_id', $offering->id)
+                    // IMPORTANT: Avoid double-counting!
+                    // If an order has tag_allocations in meta, use ONLY that (don't count from tag_number field)
+                    // If an order doesn't have tag_allocations, count from tag_number field
+                    $totalTokensSold = \App\Models\FractionalOrder::where('offering_id', $offering->id)
                         ->where('status', 'paid')
-                        ->where('tag_number', $listing->tag_number)
-                        ->sum('tokens');
-                    
-                    // Also check tag_allocations in meta for orders that have multiple tags
-                    $tokensSoldFromMeta = \App\Models\FractionalOrder::where('offering_id', $offering->id)
-                        ->where('status', 'paid')
-                        ->whereNotNull('meta')
                         ->get()
                         ->sum(function ($order) use ($listing) {
                             $meta = $order->meta ?? [];
                             $tagAllocs = $meta['tag_allocations'] ?? [];
-                            return $tagAllocs[$listing->tag_number] ?? 0;
+                            
+                            // If order has tag_allocations in meta, use that (more accurate for multi-tag orders)
+                            if (!empty($tagAllocs) && isset($tagAllocs[$listing->tag_number])) {
+                                return $tagAllocs[$listing->tag_number];
+                            }
+                            
+                            // Otherwise, if tag_number matches directly and no tag_allocations, count the tokens
+                            // Only count if tag_allocations is empty to avoid double-counting
+                            if (empty($tagAllocs) && $order->tag_number === $listing->tag_number) {
+                                return $order->tokens;
+                            }
+                            
+                            return 0;
                         });
                     
-                    $totalTokensSold = $tokensSoldDirect + $tokensSoldFromMeta;
-                    
-                    $totalShares = $offering->total_shares;
                     $soldTokens = min($totalTokensSold, $totalTokensAvailable);
                     $remainingTokens = max(0, $totalTokensAvailable - $soldTokens);
-                    $remainingShares = floor($remainingTokens / $tokensPerShare);
-                    $soldShares = $totalShares - $remainingShares;
+                    // For livestock: each tag = 1 share, so sold_shares is 0 or 1
+                    $soldShares = $soldTokens >= $totalTokensAvailable ? 1 : 0; // 1 if fully sold, 0 otherwise
+                    $remainingShares = 1 - $soldShares; // 0 if fully sold, 1 if not sold
                     
                     if ($totalTokensAvailable > 0) {
                         $progressPercentage = round(($soldTokens / $totalTokensAvailable) * 100, 2);
                     }
                     
-                    // Only show progress if this tag actually has sold tokens
-                    if ($soldTokens == 0) {
-                        $hasTokenSelling = false;
+                    // Show progress if there are tokens available (even if 0 sold)
+                    if ($totalTokensAvailable > 0) {
+                        $hasTokenSelling = true;
                     }
                 }
             }
+
+            // Check if tag is fully sold
+            $isFullySold = ($totalTokensAvailable > 0 && $soldTokens >= $totalTokensAvailable);
+            
+            // Check if awaiting animal assignment
+            $awaitingAssignment = is_null($listing->livestock_animal_id);
 
             return [
                 'id' => $listing->id,
@@ -821,6 +853,9 @@ class LivestockController extends BaseController
                 'status' => $listing->status,
                 'notes' => $listing->notes,
                 'created_at' => $listing->created_at,
+                'livestock_animal_id' => $listing->livestock_animal_id,
+                'is_fully_sold' => $isFullySold,
+                'awaiting_assignment' => $awaitingAssignment,
                 'animal' => $listing->animal ? [
                     'id' => $listing->animal->id,
                     'species' => $listing->animal->species,
@@ -851,6 +886,27 @@ class LivestockController extends BaseController
                 ],
             ];
         });
+
+        // Apply sold filter after progress calculation (since we need progress to determine if sold)
+        if ($status === 'sold') {
+            $transformedListings = $transformedListings->filter(function($listing) {
+                return $listing['is_fully_sold'] === true;
+            })->values();
+        }
+
+        // Manual pagination after all filters
+        $total = $transformedListings->count();
+        $offset = ($page - 1) * $perPage;
+        $paginatedItems = $transformedListings->slice($offset, $perPage)->values();
+
+        // Create paginator
+        $listings = new \Illuminate\Pagination\LengthAwarePaginator(
+            $paginatedItems,
+            $total,
+            $perPage,
+            $page,
+            ['path' => $request->url(), 'query' => $request->query()]
+        );
 
         // Calculate stats
         $stats = [
@@ -1057,3 +1113,4 @@ class LivestockController extends BaseController
         return back()->with('success', 'Asset linked successfully.');
     }
 }
+

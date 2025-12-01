@@ -72,8 +72,36 @@ class BuyerController extends BaseController
             return redirect()->route('home');
         }
 
+        // Get countries API URL for the combobox
+        $countriesApiUrl = route('api.countries.search');
+        
+        // Get initial country option if country is set
+        $initialCountryOption = null;
+        if ($profile->country) {
+            // Try to find country by code first, then by name
+            $country = \App\Models\Country::where('code', $profile->country)
+                ->orWhere('name', $profile->country)
+                ->where('is_active', true)
+                ->first();
+            
+            if ($country) {
+                $initialCountryOption = [
+                    'value' => $country->code,
+                    'label' => $country->name . ' (' . $country->code . ')',
+                ];
+            } else {
+                // If country not found in database, use the stored value as label
+                $initialCountryOption = [
+                    'value' => $profile->country,
+                    'label' => $profile->country,
+                ];
+            }
+        }
+
         return Inertia::render('Livestock/Buyer/EditProfile', [
             'profile' => $profile,
+            'countriesApiUrl' => $countriesApiUrl,
+            'initialCountryOption' => $initialCountryOption,
         ]);
     }
 
