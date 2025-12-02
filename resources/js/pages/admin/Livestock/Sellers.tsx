@@ -100,15 +100,15 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
         setIsRejecting(true)
         router.put(`/admin/livestock/sellers/${rejectSeller.id}/reject`, {
             rejection_reason: rejectionReason.trim()
-        }, {
-            onSuccess: () => {
+            }, {
+                onSuccess: () => {
                 showSuccessToast('Seller rejected successfully.')
                 setRejectSeller(null)
                 setRejectionReason('')
                 setIsRejecting(false)
-            },
-            onError: () => {
-                showErrorToast('Failed to reject seller.')
+                },
+                onError: () => {
+                    showErrorToast('Failed to reject seller.')
                 setIsRejecting(false)
             }
         })
@@ -203,8 +203,8 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
             <div className="space-y-6 p-4 sm:p-6">
                 {/* Header Section */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Manage Sellers</h1>
+                <div>
+                    <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Manage Sellers</h1>
                         <p className="text-gray-600 dark:text-gray-400 mt-1.5">
                             Verify and manage seller profiles for the livestock marketplace
                         </p>
@@ -277,7 +277,7 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                         </CardContent>
                     </Card>
                     <Card className="border-gray-200 dark:border-gray-800 hover:shadow-md transition-shadow">
-                        <CardContent className="p-4">
+                    <CardContent className="p-4">
                             <div className="flex items-center justify-between">
                                 <div>
                                     <p className="text-xs font-medium text-gray-600 dark:text-gray-400 uppercase tracking-wide">Rejected</p>
@@ -287,8 +287,8 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                                     <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
                                 </div>
                             </div>
-                        </CardContent>
-                    </Card>
+                    </CardContent>
+                </Card>
                 </div>
 
                 {/* Sellers Grid */}
@@ -315,7 +315,7 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <CardTitle className="text-lg font-semibold truncate text-gray-900 dark:text-white">
-                                                            {seller.farm_name}
+                                                    {seller.farm_name}
                                                         </CardTitle>
                                                         <div className="flex items-center gap-2 mt-2">
                                                             <Badge 
@@ -324,7 +324,7 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                                                             >
                                                                 <StatusIcon className="h-3.5 w-3.5" />
                                                                 <span className="capitalize">{statusConfig.label}</span>
-                                                            </Badge>
+                                                </Badge>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -410,14 +410,14 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                                                 {(seller.verification_status === 'pending' || seller.verification_status === 'rejected') && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
-                                                                onClick={() => handleVerify(seller.id)}
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        onClick={() => handleVerify(seller.id)}
                                                                 className="h-8 w-8 p-0 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/30 hover:border-green-300 dark:hover:border-green-700"
-                                                            >
+                                                    >
                                                                 <CheckCircle className="h-4 w-4" />
-                                                            </Button>
+                                                    </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>
                                                             <p>Verify Seller</p>
@@ -428,14 +428,14 @@ export default function AdminSellers({ sellers, filters }: SellersProps) {
                                                 {(seller.verification_status === 'pending' || seller.verification_status === 'verified') && (
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
-                                                            <Button
-                                                                variant="outline"
-                                                                size="sm"
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
                                                                 onClick={() => handleRejectClick(seller)}
                                                                 className="h-8 w-8 p-0 border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/30 hover:border-red-300 dark:hover:border-red-700"
-                                                            >
+                                                    >
                                                                 <XCircle className="h-4 w-4" />
-                                                            </Button>
+                                                    </Button>
                                                         </TooltipTrigger>
                                                         <TooltipContent>
                                                             <p>Reject Seller</p>

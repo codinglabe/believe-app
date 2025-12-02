@@ -347,10 +347,10 @@ export default function BreedingShow({ event }: ShowProps) {
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                     <Link href="/breeding" className="w-full sm:w-auto">
                         <Button variant="outline" className="w-full sm:w-auto border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/20">
-                            <ArrowLeft className="h-4 w-4 mr-2" />
-                            Back to Breeding Events
-                        </Button>
-                    </Link>
+                        <ArrowLeft className="h-4 w-4 mr-2" />
+                        Back to Breeding Events
+                    </Button>
+                </Link>
                     <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <Link href={`/breeding/${event.id}/edit`} className="w-full sm:w-auto">
                             <Button className="w-full sm:w-auto bg-gradient-to-r from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white">
@@ -388,8 +388,8 @@ export default function BreedingShow({ event }: ShowProps) {
                                         </div>
                                         <div className="flex-1">
                                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Male (Sire)</p>
-                                            <p className="font-semibold text-gray-900 dark:text-white">
-                                                {event.male.breed}
+                                        <p className="font-semibold text-gray-900 dark:text-white">
+                                            {event.male.breed}
                                                 {event.male.ear_tag && (
                                                     <span className="text-amber-600 dark:text-amber-400 ml-1">
                                                         ({event.male.ear_tag})
@@ -404,8 +404,8 @@ export default function BreedingShow({ event }: ShowProps) {
                                         </div>
                                         <div className="flex-1">
                                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Female (Dam)</p>
-                                            <p className="font-semibold text-gray-900 dark:text-white">
-                                                {event.female.breed}
+                                        <p className="font-semibold text-gray-900 dark:text-white">
+                                            {event.female.breed}
                                                 {event.female.ear_tag && (
                                                     <span className="text-amber-600 dark:text-amber-400 ml-1">
                                                         ({event.female.ear_tag})
@@ -419,18 +419,18 @@ export default function BreedingShow({ event }: ShowProps) {
                                             <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                         </div>
                                         <div className="flex-1">
-                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Breeding Date</p>
-                                            <p className="font-semibold text-gray-900 dark:text-white">
-                                                {format(new Date(event.breeding_date), 'MMM dd, yyyy')}
-                                            </p>
-                                        </div>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Breeding Date</p>
+                                        <p className="font-semibold text-gray-900 dark:text-white">
+                                            {format(new Date(event.breeding_date), 'MMM dd, yyyy')}
+                                        </p>
+                                    </div>
                                     </div>
                                     <div className="flex items-start gap-3">
                                         <div className="p-2 bg-amber-50 dark:bg-amber-950/20 rounded-lg">
                                             <Tag className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                         </div>
                                         <div className="flex-1">
-                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Method</p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Method</p>
                                             <Badge 
                                                 variant="outline"
                                                 className="border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400"
@@ -445,10 +445,10 @@ export default function BreedingShow({ event }: ShowProps) {
                                                 <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                             </div>
                                             <div className="flex-1">
-                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Expected Kidding</p>
-                                                <p className="font-semibold text-gray-900 dark:text-white">
-                                                    {format(new Date(event.expected_kidding_date), 'MMM dd, yyyy')}
-                                                </p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Expected Kidding</p>
+                                            <p className="font-semibold text-gray-900 dark:text-white">
+                                                {format(new Date(event.expected_kidding_date), 'MMM dd, yyyy')}
+                                            </p>
                                             </div>
                                         </div>
                                     )}
@@ -458,10 +458,10 @@ export default function BreedingShow({ event }: ShowProps) {
                                                 <Baby className="h-5 w-5 text-green-600 dark:text-green-400" />
                                             </div>
                                             <div className="flex-1">
-                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Actual Kidding</p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Actual Kidding</p>
                                                 <p className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-amber-600 to-orange-600">
-                                                    {format(new Date(event.actual_kidding_date), 'MMM dd, yyyy')}
-                                                </p>
+                                                {format(new Date(event.actual_kidding_date), 'MMM dd, yyyy')}
+                                            </p>
                                             </div>
                                         </div>
                                     )}
@@ -471,10 +471,10 @@ export default function BreedingShow({ event }: ShowProps) {
                                                 <DollarSign className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                             </div>
                                             <div className="flex-1">
-                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Stud Fee</p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Stud Fee</p>
                                                 <p className="font-semibold bg-clip-text text-transparent bg-gradient-to-r from-amber-600 to-orange-600">
-                                                    ${event.stud_fee.toLocaleString()}
-                                                </p>
+                                                ${event.stud_fee.toLocaleString()}
+                                            </p>
                                             </div>
                                         </div>
                                     )}
@@ -484,10 +484,10 @@ export default function BreedingShow({ event }: ShowProps) {
                                                 <Baby className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                                             </div>
                                             <div className="flex-1">
-                                                <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Number of Kids</p>
-                                                <p className="font-semibold text-gray-900 dark:text-white">
-                                                    {event.number_of_kids}
-                                                </p>
+                                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">Number of Kids</p>
+                                            <p className="font-semibold text-gray-900 dark:text-white">
+                                                {event.number_of_kids}
+                                            </p>
                                             </div>
                                         </div>
                                     )}
@@ -736,7 +736,7 @@ export default function BreedingShow({ event }: ShowProps) {
                                 {event.offspring.length > 0 ? (
                                     <div className="space-y-4">
                                         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
-                                            {event.offspring.map((off) => (
+                                        {event.offspring.map((off) => (
                                                 <div
                                                     key={off.id}
                                                     className={`group relative ${editingChildId === off.child.id ? 'col-span-full' : ''}`}
@@ -1003,7 +1003,7 @@ export default function BreedingShow({ event }: ShowProps) {
                                                                         </div>
                                                                     </div>
                                                                 </div>
-                                                            </Link>
+                                                </Link>
                                                             <div className="absolute top-1 right-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                 <Button
                                                                     type="button"
@@ -1026,8 +1026,8 @@ export default function BreedingShow({ event }: ShowProps) {
                                                             </div>
                                                         </>
                                                     )}
-                                                </div>
-                                            ))}
+                                            </div>
+                                        ))}
                                         </div>
                                     </div>
                                 ) : !event.actual_kidding_date ? (
@@ -1147,7 +1147,7 @@ export default function BreedingShow({ event }: ShowProps) {
                                 ) : (
                                     <div className="text-center py-8">
                                         <Baby className="h-12 w-12 text-gray-400 dark:text-gray-600 mx-auto mb-3" />
-                                        <p className="text-gray-600 dark:text-gray-400">No offspring recorded yet.</p>
+                                    <p className="text-gray-600 dark:text-gray-400">No offspring recorded yet.</p>
                                     </div>
                                 )}
                             </CardContent>

@@ -66,6 +66,9 @@ interface FractionalListing {
     status: string
     notes: string | null
     created_at: string
+    livestock_animal_id: number | null
+    is_fully_sold: boolean
+    awaiting_assignment: boolean
     animal: Animal | null
     owner: Owner | null
     progress: Progress
@@ -178,7 +181,7 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                     <div>
                         <h1 className="text-3xl font-bold text-gray-900 dark:text-white flex items-center gap-3">
-                            <Heart className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+                            <Heart className="h-8 w-8 text-blue-600 dark:text-blue-400" />
                             Buyer Listed Livestock
                         </h1>
                         <p className="text-gray-600 dark:text-gray-400 mt-1.5">
@@ -204,8 +207,8 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                     <p className="text-xs font-medium text-gray-600 dark:text-gray-400">Total</p>
                                     <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">{stats.total}</p>
                                 </div>
-                                <div className="p-2 bg-amber-100 dark:bg-amber-900/30 rounded-lg">
-                                    <Tag className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                                    <Tag className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                                 </div>
                             </div>
                         </CardContent>
@@ -288,6 +291,8 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                 <SelectItem value="pending">Pending</SelectItem>
                                 <SelectItem value="sold_out">Sold Out</SelectItem>
                                 <SelectItem value="cancelled">Cancelled</SelectItem>
+                                <SelectItem value="sold">Sold</SelectItem>
+                                <SelectItem value="awaiting_assignment">Awaiting Assignment</SelectItem>
                             </SelectContent>
                         </Select>
                     </div>
@@ -311,10 +316,58 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                                     alt={listing.animal.breed}
                                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                                                 />
+                                                {/* Sold Badge - Top Right Corner */}
+                                                {listing.is_fully_sold && (
+                                                    <div className="absolute top-2 right-2 z-10">
+                                                        <Badge 
+                                                            variant="default"
+                                                            className="flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500 hover:bg-green-600 text-white border-green-600 shadow-lg"
+                                                        >
+                                                            <CheckCircle className="h-3 w-3" />
+                                                            <span>Sold</span>
+                                                        </Badge>
+                                                    </div>
+                                                )}
+                                                {/* Awaiting Assignment Badge - Top Left Corner */}
+                                                {listing.awaiting_assignment && (
+                                                    <div className="absolute top-2 left-2 z-10">
+                                                        <Badge 
+                                                            variant="outline"
+                                                            className="flex items-center gap-1 text-xs font-medium px-2 py-1 border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/90 shadow-lg backdrop-blur-sm"
+                                                        >
+                                                            <Clock className="h-3 w-3" />
+                                                            <span>Awaiting Assignment</span>
+                                                        </Badge>
+                                                    </div>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="relative w-full aspect-[3/2] bg-gray-200 dark:bg-gray-800 rounded-t-lg overflow-hidden mb-0 flex items-center justify-center">
                                                 <Heart className="h-12 w-12 text-gray-400 dark:text-gray-600" />
+                                                {/* Sold Badge - Top Right Corner */}
+                                                {listing.is_fully_sold && (
+                                                    <div className="absolute top-2 right-2 z-10">
+                                                        <Badge 
+                                                            variant="default"
+                                                            className="flex items-center gap-1 text-xs font-medium px-2 py-1 bg-green-500 hover:bg-green-600 text-white border-green-600 shadow-lg"
+                                                        >
+                                                            <CheckCircle className="h-3 w-3" />
+                                                            <span>Sold</span>
+                                                        </Badge>
+                                                    </div>
+                                                )}
+                                                {/* Awaiting Assignment Badge - Top Left Corner */}
+                                                {listing.awaiting_assignment && (
+                                                    <div className="absolute top-2 left-2 z-10">
+                                                        <Badge 
+                                                            variant="outline"
+                                                            className="flex items-center gap-1 text-xs font-medium px-2 py-1 border-yellow-500 text-yellow-600 dark:text-yellow-400 bg-yellow-50 dark:bg-yellow-950/90 shadow-lg backdrop-blur-sm"
+                                                        >
+                                                            <Clock className="h-3 w-3" />
+                                                            <span>Awaiting Assignment</span>
+                                                        </Badge>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
                                         
@@ -326,8 +379,8 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                             <CardHeader className="pb-2 pt-2.5 px-3">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                        <div className="h-9 w-9 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
-                                                            <Tag className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                                        <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
+                                                            <Tag className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                                                         </div>
                                                         <div className="flex-1 min-w-0">
                                                             <CardTitle className="text-sm font-semibold truncate text-gray-900 dark:text-white">
@@ -351,7 +404,7 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                                 {/* Animal Information */}
                                                 {listing.animal && (
                                                     <div className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                                                        <Heart className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                        <Heart className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                                                         <span className="font-semibold">{listing.animal.breed}</span>
                                                         <span className="text-gray-500 dark:text-gray-500">•</span>
                                                         <span className="capitalize">{listing.animal.species}</span>
@@ -363,26 +416,26 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                                 {/* Farm Name */}
                                                 {listing.owner && (
                                                     <div className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-300">
-                                                        <Building2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                                                        <Building2 className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
                                                         <span className="truncate">{listing.owner.farm_name || listing.owner.name || 'N/A'}</span>
                                                     </div>
                                                 )}
 
-                                                {/* Progress Bar - Tag Wise (Only show if tokens are being sold) */}
-                                                {listing.progress.has_token_selling && listing.progress.total_tokens > 0 && (
-                                                    <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-br from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-lg p-2.5 -mx-1">
+                                                {/* Progress Bar - Tag Wise (Always show progress if available) */}
+                                                {listing.progress.total_tokens > 0 && (
+                                                    <div className="space-y-2 pt-2 border-t border-gray-200 dark:border-gray-700 bg-gradient-to-br from-blue-50/50 to-indigo-50/50 dark:from-blue-950/20 dark:to-indigo-950/20 rounded-lg p-2.5 -mx-1">
                                                         <div className="flex items-center justify-between text-xs font-semibold text-gray-800 dark:text-gray-200">
                                                             <div className="flex items-center gap-1.5">
-                                                                <TrendingUp className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                                                                <TrendingUp className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                                                                 <span>Sales Progress</span>
                                                             </div>
-                                                            <span className="font-bold text-amber-700 dark:text-amber-400 text-sm">
+                                                            <span className="font-bold text-blue-700 dark:text-blue-400 text-sm">
                                                                 {listing.progress.percentage.toFixed(1)}%
                                                             </span>
                                                         </div>
                                                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5 overflow-hidden shadow-inner">
                                                             <div
-                                                                className="bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 h-2.5 rounded-full transition-all duration-500 shadow-sm"
+                                                                className="bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-600 h-2.5 rounded-full transition-all duration-500 shadow-sm"
                                                                 style={{ width: `${Math.min(listing.progress.percentage, 100)}%` }}
                                                             />
                                                         </div>
@@ -398,7 +451,7 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                                             </div>
                                                             <div className="flex flex-col text-right">
                                                                 <span className="text-gray-600 dark:text-gray-400 font-medium mb-0.5">Remaining</span>
-                                                                <span className="font-bold text-amber-600 dark:text-amber-400 text-sm">
+                                                                <span className="font-bold text-blue-600 dark:text-blue-400 text-sm">
                                                                     {listing.progress.remaining_tokens.toLocaleString()}
                                                                 </span>
                                                                 <span className="text-gray-500 dark:text-gray-500 text-[10px] mt-0.5">
@@ -414,7 +467,7 @@ export default function FractionalListings({ listings, stats, filters }: Fractio
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
-                                                        className="w-full border-amber-200 dark:border-amber-800 text-amber-600 dark:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                                                        className="w-full border-blue-200 dark:border-blue-800 text-blue-600 dark:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-950/20"
                                                         onClick={() => router.visit(`/admin/livestock/listings/${listing.id}`)}
                                                     >
                                                         <Eye className="h-3.5 w-3.5 mr-1.5" />

@@ -191,3 +191,8 @@ Route::middleware('auth:livestock')->group(function () {
         ->name('logout');
 });
 
+// API Routes for livestock domain
+Route::prefix('api')->name('api.')->group(function () {
+    Route::get('/countries/search', [\App\Http\Controllers\Api\CountryController::class, 'search'])->name('countries.search');
+});
+

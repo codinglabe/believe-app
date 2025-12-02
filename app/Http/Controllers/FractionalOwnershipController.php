@@ -169,34 +169,19 @@ class FractionalOwnershipController extends Controller
             // Load the asset to check its type
             $offering->load('asset');
             
-            // For livestock assets, check actual available tokens across all tags
-            if ($offering->asset && $offering->asset->isLivestockAsset()) {
-                $listings = FractionalListing::where('fractional_asset_id', $offering->asset_id)
-                    ->where('status', 'active')
-                    ->orderBy('id', 'asc')
-                    ->get();
-                
-                if ($listings->isEmpty()) {
-                    DB::rollBack();
-                    return back()->with('error', 'No active fractional listings found for this livestock offering.');
-                }
-                
-                // No validation - allow continuous selling
-                // We will auto-generate new tag numbers if needed
-            } else {
-                // For non-livestock assets, allow continuous selling
-                // No validation needed - system will handle it
-            }
+            // For livestock assets, allow continuous selling
+            // Tag numbers will be auto-generated even if no listings exist
+            // No validation needed - system will handle tag generation automatically
             
             /**
              * Sequential Tag Selling Logic
              * 
              * For livestock/animal assets (goat, livestock, etc.):
-             * - Each tag (GM-001, GM-002, etc.) must be sold completely before moving to the next
+             * - Each tag (ZM-001, ZM-002, etc.) must be sold completely before moving to the next
              * - Tokens are allocated sequentially: complete partial tags first, then new full shares, then remaining tokens
-             * - Example: If GM-001 has 1 token sold and someone invests $85 (1 share + 2 tokens):
-             *   - GM-001 gets 2 tokens (now has 3 tokens total)
-             *   - GM-002 gets 1 full share
+             * - Example: If ZM-001 has 1 token sold and someone invests $85 (1 share + 2 tokens):
+             *   - ZM-001 gets 2 tokens (now has 3 tokens total)
+             *   - ZM-002 gets 1 full share
              */
             $isLivestockAsset = false;
             $orderIds = [];
@@ -207,33 +192,58 @@ class FractionalOwnershipController extends Controller
                 
                 if ($isLivestockAsset) {
                     // Get all active fractional listings for this asset, ordered by creation
+                    // Note: This can be empty - tag numbers will be auto-generated if no listings exist
                     $listings = FractionalListing::where('fractional_asset_id', $offering->asset_id)
                         ->where('status', 'active')
                         ->orderBy('id', 'asc')
                         ->get();
                     
-                    // Get country code from existing listings or buyer profile
+                    // Get country code from buyer's farm country (buyer profile)
+                    // Priority: 1. Buyer profile country, 2. Existing listings, 3. Default 'ZM'
                     $countryCode = null;
-                    if ($listings->isNotEmpty()) {
-                        $countryCode = $listings->first()->country_code;
-                    } else {
-                        // Try to get from buyer profile
-                        $user = Auth::user();
-                        if ($user && $user->buyerProfile && $user->buyerProfile->fractional_asset_id == $offering->asset_id) {
-                            // Get country code from buyer's existing listings
-                            $buyerListing = FractionalListing::where('livestock_user_id', $user->id)
-                                ->where('fractional_asset_id', $offering->asset_id)
-                                ->whereNotNull('country_code')
-                                ->first();
-                            if ($buyerListing) {
-                                $countryCode = $buyerListing->country_code;
+                    
+                    // First, try to get from buyer's profile (farm country code)
+                    $mainUser = Auth::user();
+                    if ($mainUser && method_exists($mainUser, 'livestockUser') && $mainUser->livestockUser) {
+                        $livestockUser = $mainUser->livestockUser;
+                        if ($livestockUser->buyerProfile && $livestockUser->buyerProfile->country) {
+                            // Get country code from buyer profile
+                            // The country field stores the country code (2-letter ISO code)
+                            $countryCode = strtoupper($livestockUser->buyerProfile->country);
+                            
+                            // If it's a full country name, try to get the code from countries table
+                            if (strlen($countryCode) > 2) {
+                                $country = \App\Models\Country::where('name', $livestockUser->buyerProfile->country)
+                                    ->orWhere('code', $livestockUser->buyerProfile->country)
+                                    ->where('is_active', true)
+                                    ->first();
+                                if ($country) {
+                                    $countryCode = strtoupper($country->code);
+                                }
                             }
                         }
-                        
-                        // Default to 'GM' if no country code found
-                        if (!$countryCode) {
-                            $countryCode = 'GM';
+                    }
+                    
+                    // If not found in buyer profile, try existing listings
+                    if (!$countryCode && $listings->isNotEmpty()) {
+                        $countryCode = $listings->first()->country_code;
+                    }
+                    
+                    // If still not found, try buyer's existing listings for this asset
+                    if (!$countryCode && $mainUser && method_exists($mainUser, 'livestockUser') && $mainUser->livestockUser) {
+                        $livestockUser = $mainUser->livestockUser;
+                        $buyerListing = FractionalListing::where('livestock_user_id', $livestockUser->id)
+                            ->where('fractional_asset_id', $offering->asset_id)
+                            ->whereNotNull('country_code')
+                            ->first();
+                        if ($buyerListing) {
+                            $countryCode = $buyerListing->country_code;
                         }
+                    }
+                    
+                    // Default to 'ZM' if no country code found
+                    if (!$countryCode) {
+                        $countryCode = 'ZM';
                     }
                     
                     // Helper function to get or create a pre-generated tag
@@ -272,7 +282,7 @@ class FractionalOwnershipController extends Controller
                         
                         $allTags = array_merge($existingTags, $preGeneratedTags);
                         
-                        // Extract numbers from existing tags (e.g., "GM-001" -> 1)
+                        // Extract numbers from existing tags (e.g., "ZM-001" -> 1)
                         $existingNumbers = [];
                         foreach ($allTags as $tag) {
                             if (preg_match('/^' . preg_quote($countryCode, '/') . '-(\d+)$/i', $tag, $matches)) {
@@ -287,7 +297,7 @@ class FractionalOwnershipController extends Controller
                             $nextNumber = $maxNumber + 1;
                         }
                         
-                        // Generate tag number with zero-padding (e.g., GM-001, GM-002)
+                        // Generate tag number with zero-padding (e.g., ZM-001, ZM-002)
                         $tagNumber = strtoupper($countryCode) . '-' . str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
                         
                         // Double-check uniqueness (in case of race condition)
@@ -321,7 +331,7 @@ class FractionalOwnershipController extends Controller
                     };
                     
                     // Helper function to get or create a listing for a tag number
-                    $getOrCreateListing = function($tagNumber, $countryCode, $fractionalAssetId) use ($offering) {
+                    $getOrCreateListing = function($tagNumber, $countryCode, $fractionalAssetId) use ($offering, $user) {
                         $listing = FractionalListing::where('fractional_asset_id', $fractionalAssetId)
                             ->where('tag_number', $tagNumber)
                             ->where('status', 'active')
@@ -355,38 +365,44 @@ class FractionalOwnershipController extends Controller
                             }
                             // For subsequent listings (continuous selling), livestock_animal_id remains null
                             
-                            // Get user for livestock_user_id
+                            // Get user for livestock_user_id - ALWAYS use the authenticated buyer making the purchase
                             $livestockUserId = null;
-                            $existingListing = FractionalListing::where('fractional_asset_id', $fractionalAssetId)
-                                ->whereNotNull('livestock_user_id')
-                                ->first();
                             
-                            if ($existingListing) {
-                                $livestockUserId = $existingListing->livestock_user_id;
-                            } else {
-                                // Try to get from authenticated user
-                                $user = Auth::user();
-                                if ($user && method_exists($user, 'livestockUser') && $user->livestockUser) {
-                                    $livestockUserId = $user->livestockUser->id;
+                            // First priority: Get from authenticated user (the buyer making the purchase)
+                            if ($user && method_exists($user, 'livestockUser') && $user->livestockUser) {
+                                $livestockUserId = $user->livestockUser->id;
+                            }
+                            
+                            // Fallback: Try to get from existing listings for this asset
+                            if (!$livestockUserId) {
+                                $existingListing = FractionalListing::where('fractional_asset_id', $fractionalAssetId)
+                                    ->whereNotNull('livestock_user_id')
+                                    ->first();
+                                
+                                if ($existingListing) {
+                                    $livestockUserId = $existingListing->livestock_user_id;
                                 }
                             }
                             
-                            // For continuous selling (when listing already exists), livestock_animal_id can be null
-                            // Only require it for the first listing
-                            if (!$hasExistingListing && !$livestockAnimalId) {
-                                Log::warning("Cannot auto-create first fractional listing: missing livestock_animal_id", [
-                                    'tag_number' => $tagNumber,
+                            // If still null, this is an error - buyer must have a livestock user account
+                            if (!$livestockUserId) {
+                                Log::error("Cannot create fractional listing: buyer has no livestock_user_id", [
+                                    'user_id' => $user ? $user->id : null,
                                     'fractional_asset_id' => $fractionalAssetId,
+                                    'tag_number' => $tagNumber,
                                 ]);
-                                return null;
+                                throw new \Exception('Buyer account is not properly set up. Please contact support.');
                             }
                             
+                            // Allow livestock_animal_id to be null - it can be assigned later
+                            // This allows tag generation even when no listings exist and no animal is assigned yet
+                            
                             // Create new listing
-                            // livestock_animal_id is null for continuous selling (subsequent tags)
+                            // livestock_animal_id can be null - will be assigned later via pre-generated tags dashboard
                             $listing = FractionalListing::create([
-                                'livestock_animal_id' => $livestockAnimalId, // null for continuous selling
+                                'livestock_animal_id' => $livestockAnimalId, // Can be null - will be assigned later
                                 'fractional_asset_id' => $fractionalAssetId,
-                                'livestock_user_id' => $livestockUserId,
+                                'livestock_user_id' => $livestockUserId, // Must always be set
                                 'country_code' => $countryCode,
                                 'tag_number' => $tagNumber,
                                 'status' => 'active',
@@ -411,7 +427,7 @@ class FractionalOwnershipController extends Controller
                     $remainingFullShares = $fullShares;
                     $remainingPartialTokens = $tokens;
                     $allTagNumbers = []; // Collect all tag numbers for this purchase
-                    $tagAllocations = []; // Track token allocations per tag: ['GM-001' => 2, 'GM-002' => 10]
+                    $tagAllocations = []; // Track token allocations per tag: ['ZM-001' => 2, 'ZM-002' => 10]
                     
                     // Helper function to get tokens sold for a tag (from database)
                     $getTokensSoldForTag = function($listing) use ($offering) {
@@ -445,6 +461,7 @@ class FractionalOwnershipController extends Controller
                     // Step 1: FIRST, fill ALL tags with leftover tokens (tags with tokens > 0 and < tokensPerShare)
                     // This ensures we fill up existing tags with leftover tokens BEFORE creating new tags
                     // This MUST happen before allocating full shares or creating new tags
+                    // If no listings exist, we'll create tags in Step 1b, Step 2, or Step 3
                     if ($remainingPartialTokens > 0) {
                         // First pass: Fill ALL tags with leftover tokens (loop multiple times to fill all)
                         $filledAny = true;
@@ -690,16 +707,39 @@ class FractionalOwnershipController extends Controller
                     }
                     
                     // Create a SINGLE order with all tag information
-                    // This should never be empty now since we auto-create tags, but keep check for safety
+                    // If no tags were allocated (shouldn't happen, but handle gracefully), create one now
                     if (empty($allTagNumbers)) {
-                        DB::rollBack();
-                        Log::error("Failed to allocate tokens - no tag numbers generated", [
+                        // This should only happen if there was an error in allocation
+                        // Create a tag now as a fallback
+                        Log::warning("No tag numbers generated during allocation - creating fallback tag", [
                             'offering_id' => $offering->id,
                             'total_tokens_needed' => $totalTokensNeeded,
                             'full_shares' => $fullShares,
                             'tokens' => $tokens,
                         ]);
-                        return back()->with('error', 'Unable to allocate tokens. Please try again.');
+                        
+                        // Generate a tag number
+                        $fallbackTagNumber = $getOrCreatePreGeneratedTag($countryCode, $offering->asset_id);
+                        $fallbackListing = $getOrCreateListing($fallbackTagNumber, $countryCode, $offering->asset_id);
+                        
+                        if ($fallbackListing) {
+                            // Allocate all tokens to this fallback tag
+                            $allTagNumbers = [$fallbackTagNumber];
+                            $tagAllocations[$fallbackTagNumber] = $totalTokensNeeded;
+                            
+                            Log::info("Created fallback tag for token allocation", [
+                                'tag_number' => $fallbackTagNumber,
+                                'tokens_allocated' => $totalTokensNeeded,
+                            ]);
+                        } else {
+                            // If even fallback fails, rollback
+                            DB::rollBack();
+                            Log::error("Failed to create fallback tag - cannot proceed", [
+                                'offering_id' => $offering->id,
+                                'tag_number' => $fallbackTagNumber,
+                            ]);
+                            return back()->with('error', 'Unable to allocate tokens. Please try again.');
+                        }
                     }
                     
                     // Verify tag allocations match total tokens needed
@@ -735,29 +775,29 @@ class FractionalOwnershipController extends Controller
                     // Use the first tag number as the primary tag (for backward compatibility)
                     $primaryTagNumber = $allTagNumbers[0];
                     
-                    $order = FractionalOrder::create([
-                        'user_id' => $user->id,
-                        'offering_id' => $offering->id,
+            $order = FractionalOrder::create([
+                'user_id' => $user->id,
+                'offering_id' => $offering->id,
                         'order_number' => $baseOrderNumber,
                         'tag_number' => $primaryTagNumber, // Primary tag for backward compatibility
-                        'tokens' => $totalTokensNeeded,
+                'tokens' => $totalTokensNeeded,
                         'shares' => $fullShares,
                         'amount' => $amountInvested, // Use exact amount invested
-                        'status' => 'requires_payment',
-                        'payment_provider' => 'stripe',
-                        'meta' => [
-                            'full_shares' => $fullShares,
-                            'tokens' => $tokens,
-                            'total_tokens' => $totalTokensNeeded,
+                'status' => 'requires_payment',
+                'payment_provider' => 'stripe',
+                'meta' => [
+                    'full_shares' => $fullShares,
+                    'tokens' => $tokens,
+                    'total_tokens' => $totalTokensNeeded,
                             'tokens_per_share' => $tokensPerShare, // Store for certificate display
                             'is_livestock_asset' => true,
                             'is_goat_asset' => true,
                             'all_tag_numbers' => array_values($allTagNumbers), // Ensure it's a proper array
                             'tag_allocations' => $tagAllocations, // Token allocation per tag
-                        ],
-                    ]);
-                    
-                    $orderIds[] = $order->id;
+                ],
+            ]);
+
+            $orderIds[] = $order->id;
                 } else {
                     // Non-livestock asset: create single order without tag
                     $totalTokensNeeded = ($fullShares * $tokensPerShare) + $tokens;
@@ -979,7 +1019,7 @@ class FractionalOwnershipController extends Controller
                             ->whereNotNull('meta')
                             ->get()
                             ->sum(function ($order) use ($listing) {
-                                $meta = $order->meta ?? [];
+                    $meta = $order->meta ?? [];
                                 $tagAllocs = $meta['tag_allocations'] ?? [];
                                 return $tagAllocs[$listing->tag_number] ?? 0;
                             });
@@ -1018,7 +1058,7 @@ class FractionalOwnershipController extends Controller
                     
                     // Only update status to 'sold_out' when fully sold (no tokens remaining)
                     if ($remainingTokens == 0) {
-                        $offering->status = 'sold_out';
+                    $offering->status = 'sold_out';
                     }
                 }
                 

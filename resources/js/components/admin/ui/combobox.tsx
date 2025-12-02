@@ -45,7 +45,26 @@ export function Combobox({
 
   // Use dynamic options if fetchUrl is provided, otherwise use static options
   const options = fetchUrl ? dynamicOptions : staticOptions
-  const selectedOption = options.find((option) => option.value === value)
+  
+  // Ensure selected value is always in options (for display purposes)
+  // If value exists but not in options, add it from initialOptions or create a placeholder
+  const selectedOptionFromOptions = options.find((option) => option.value === value)
+  const selectedOptionFromInitial = initialOptions.find((option) => option.value === value)
+  
+  // If we have a value but it's not in current options, ensure it's available
+  const optionsWithSelected = React.useMemo(() => {
+    if (value && !selectedOptionFromOptions) {
+      // If found in initialOptions, add it
+      if (selectedOptionFromInitial) {
+        return [selectedOptionFromInitial, ...options]
+      }
+      // Otherwise, create a placeholder option
+      return [{ value: value, label: value }, ...options]
+    }
+    return options
+  }, [options, value, selectedOptionFromOptions, selectedOptionFromInitial])
+  
+  const selectedOption = optionsWithSelected.find((option) => option.value === value)
 
   // Fetch options from API
   const fetchOptions = React.useCallback(async (page: number, search: string, reset: boolean = false) => {
@@ -152,12 +171,12 @@ export function Combobox({
   // Filter static options based on search query (when not using API)
   const filteredOptions = React.useMemo(() => {
     if (fetchUrl) {
-      // When using API, always include "All" option (empty value) from initialOptions if it exists
+      // When using API, use optionsWithSelected to ensure selected value is always available
       const allOption = initialOptions.find(opt => opt.value === '')
       if (allOption) {
-        return [allOption, ...options]
+        return [allOption, ...optionsWithSelected]
       }
-      return options // Already filtered by API
+      return optionsWithSelected // Already filtered by API, but includes selected value
     }
     if (!searchQuery.trim()) {
       return staticOptions

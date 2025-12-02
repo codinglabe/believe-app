@@ -1,14 +1,22 @@
 "use client"
 
-import LivestockDashboardLayout from "@/layouts/livestock/LivestockDashboardLayout"
-import { Card, CardContent } from "@/components/ui/card"
+import AppLayout from "@/layouts/app-layout"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { router, Head } from "@inertiajs/react"
 import { useState } from "react"
-import { Trash2, Eye } from "lucide-react"
+import { Trash2, Eye, Tag, CheckCircle, Clock, Package, XCircle, Filter } from "lucide-react"
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 import { route } from "ziggy-js"
+import type { BreadcrumbItem } from "@/types"
+
+const breadcrumbs: BreadcrumbItem[] = [
+    { title: "Admin", href: "/dashboard" },
+    { title: "Livestock", href: "/admin/livestock" },
+    { title: "Listings", href: "/admin/livestock/listings" },
+]
 interface Animal {
     id: number
     breed: string

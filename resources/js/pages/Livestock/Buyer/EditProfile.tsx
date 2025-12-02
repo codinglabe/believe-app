@@ -23,6 +23,7 @@ import {
 } from "lucide-react"
 import { route } from "ziggy-js"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Combobox } from "@/components/admin/ui/combobox"
 
 interface Profile {
     id: number
@@ -44,9 +45,11 @@ interface Profile {
 
 interface EditProfileProps {
     profile: Profile
+    countriesApiUrl?: string
+    initialCountryOption?: { value: string; label: string } | null
 }
 
-export default function EditBuyerProfile({ profile }: EditProfileProps) {
+export default function EditBuyerProfile({ profile, countriesApiUrl, initialCountryOption }: EditProfileProps) {
     const { data, setData, put, processing, errors } = useForm({
         farm_name: profile.farm_name || '',
         address: profile.address || '',
@@ -222,12 +225,25 @@ export default function EditBuyerProfile({ profile }: EditProfileProps) {
                                     <MapPin className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                                     Country
                                 </Label>
-                                <Input
-                                    id="country"
-                                    value={data.country}
-                                    onChange={(e) => setData('country', e.target.value)}
-                                    className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:border-amber-500 dark:focus:border-amber-500 focus:ring-amber-500 dark:focus:ring-amber-500"
-                                />
+                                {countriesApiUrl ? (
+                                    <Combobox
+                                        value={data.country || ''}
+                                        onValueChange={(value) => setData('country', value)}
+                                        placeholder="Select country..."
+                                        searchPlaceholder="Search countries..."
+                                        emptyText="No country found."
+                                        fetchUrl={countriesApiUrl}
+                                        initialOptions={initialCountryOption ? [initialCountryOption] : []}
+                                        className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:border-amber-500 dark:focus:border-amber-500 focus:ring-amber-500 dark:focus:ring-amber-500"
+                                    />
+                                ) : (
+                                    <Input
+                                        id="country"
+                                        value={data.country}
+                                        onChange={(e) => setData('country', e.target.value)}
+                                        className="bg-white dark:bg-gray-800 text-gray-900 dark:text-white border-gray-200 dark:border-gray-700 focus:border-amber-500 dark:focus:border-amber-500 focus:ring-amber-500 dark:focus:ring-amber-500"
+                                    />
+                                )}
                                 {errors.country && (
                                     <p className="text-sm text-red-500 mt-1">{errors.country}</p>
                                 )}
@@ -411,6 +427,7 @@ export default function EditBuyerProfile({ profile }: EditProfileProps) {
         </LivestockDashboardLayout>
     )
 }
+
 
 
 
