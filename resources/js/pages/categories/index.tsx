@@ -222,14 +222,16 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                             </td>
                                             <td className="px-4 py-3 min-w-28 text-right w-[1%] whitespace-nowrap">
                                                 <div className="flex justify-end gap-2">
-                                                    <PermissionButton permission="category.edit">
-                                                        <Link href={route('categories.edit', item.id)}>
-                                                            <Button variant="outline" size="sm">
-                                                                <Edit className="mr-2 h-4 w-4" />
-                                                                Edit
-                                                            </Button>
-                                                        </Link>
-                                                    </PermissionButton>
+                                                    {auth?.user?.role === 'admin' && (
+                                                        <PermissionButton permission="category.edit">
+                                                            <Link href={route('categories.edit', item.id)}>
+                                                                <Button variant="outline" size="sm">
+                                                                    <Edit className="mr-2 h-4 w-4" />
+                                                                    Edit
+                                                                </Button>
+                                                            </Link>
+                                                        </PermissionButton>
+                                                    )}
                                                     {
                                                         auth.user.role !== 'organization' && (
                                                     <PermissionButton permission="category.delete">

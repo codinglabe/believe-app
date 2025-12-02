@@ -237,6 +237,7 @@ export default function TopicsIndex() {
                                                     )}
                                                 </TableCell>
                                                 <TableCell className="flex gap-2">
+                                                    {auth.user.role === "admin" && (
                                                     <Button
                                                         variant="outline"
                                                         size="sm"
@@ -244,7 +245,8 @@ export default function TopicsIndex() {
                                                         className="bg-white dark:bg-gray-900 text-gray-800 dark:text-gray-200 border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700"
                                                     >
                                                         <Edit className="h-4 w-4 mr-1" /> Edit
-                                                    </Button>
+                                                        </Button>
+                                                        )}
                                                     {auth.user.role === "admin" && (
                                                     <Button variant="destructive" size="sm" onClick={() => openDeleteModal(topic)}>
                                                         <Trash2 className="h-4 w-4 mr-1" /> Delete

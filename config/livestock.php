@@ -11,7 +11,7 @@ return [
     |
     */
 
-    'domain' => env('LIVESTOCK_DOMAIN', 'bidalivestock.test'),
+    'domain' => env('LIVESTOCK_DOMAIN', '127.0.0.1'),
 ];
 
 

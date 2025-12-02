@@ -150,7 +150,7 @@ class CheckoutController extends Controller
             // Extract tax from Printify order if available
             $taxAmount = 0;
             if (isset($shippingData['total_tax'])) {
-                $taxAmount = round(($shippingData['total_tax'] ?? 0) / 100, 2);
+                $taxAmount = ($shippingData['total_tax'] ?? 0) / 100;
             }
 
             // Update temp order with shipping and tax
@@ -182,6 +182,142 @@ class CheckoutController extends Controller
     /**
      * Step 2: Create payment intent
      */
+    // public function createPaymentIntent(Request $request): JsonResponse
+    // {
+    //     $validated = $request->validate([
+    //         'temp_order_id' => 'required|exists:temp_orders,id',
+    //         'shipping_method' => 'required|string',
+    //     ]);
+
+    //     $user = auth()->user();
+    //     $tempOrder = TempOrder::where('user_id', $user->id)
+    //         ->findOrFail($validated['temp_order_id']);
+
+    //     $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+
+    //     dd($printifyOrder);
+
+    //     $newTaxAmount = $printifyOrder['total_tax'];
+
+    //     $tempOrder->update([
+    //             'tax_amount' => $newTaxAmount,
+    //             'total_amount' => $tempOrder->total_amount + $newTaxAmount,
+    //         ]);
+
+    //     DB::beginTransaction();
+    //     try {
+    //         // Create Stripe payment intent
+    //         $paymentIntent = PaymentIntent::create([
+    //             'amount' => (int) ($tempOrder->total_amount * 100),
+    //             'currency' => 'usd',
+    //             'description' => 'Marketplace Order - ' . $user->email,
+    //             'metadata' => [
+    //                 'user_id' => $user->id,
+    //                 'temp_order_id' => $tempOrder->id,
+    //                 'order_type' => 'marketplace',
+    //             ],
+    //             'automatic_payment_methods' => [
+    //                 'enabled' => true,
+    //             ],
+    //         ]);
+
+    //         // Update temp order with selected shipping method
+    //         $tempOrder->update([
+    //             'selected_shipping_method' => $validated['shipping_method'],
+    //         ]);
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'clientSecret' => $paymentIntent->client_secret,
+    //             'temp_order_id' => $tempOrder->id,
+    //             'amount' => (float) $tempOrder->total_amount,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         \Log::error('Payment intent creation error: ' . $e->getMessage());
+    //         return response()->json(['error' => $e->getMessage()], 500);
+    //     }
+    // }
+
+
+    /**
+     * Step 2: Create payment intent
+     */
+    // public function createPaymentIntent(Request $request): JsonResponse
+    // {
+    //     $validated = $request->validate([
+    //         'temp_order_id' => 'required|exists:temp_orders,id',
+    //         'shipping_method' => 'required|string',
+    //     ]);
+
+    //     $user = auth()->user();
+    //     $tempOrder = TempOrder::where('user_id', $user->id)
+    //         ->findOrFail($validated['temp_order_id']);
+
+    //     // Always check Printify for latest tax before payment
+    //     try {
+    //         $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+
+    //         // Convert cents to dollars
+    //         $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+    //         $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+
+    //         // Calculate new total
+    //         $newTotalAmount = $tempOrder->subtotal +
+    //             $tempOrder->platform_fee +
+    //             $tempOrder->donation_amount +
+    //             $newShippingCost +
+    //             $newTaxAmount;
+
+    //         // Update temp order with latest values
+    //         $tempOrder->update([
+    //             'tax_amount' => $newTaxAmount,
+    //             'shipping_cost' => $newShippingCost,
+    //             'total_amount' => $newTotalAmount,
+    //             'selected_shipping_method' => $validated['shipping_method'],
+    //         ]);
+
+    //     } catch (\Exception $e) {
+    //         \Log::error('Failed to get Printify tax update: ' . $e->getMessage());
+    //         // Continue with existing values if Printify fails
+    //     }
+
+    //     DB::beginTransaction();
+    //     try {
+    //         // Create Stripe payment intent with UPDATED amount
+    //         $paymentIntent = PaymentIntent::create([
+    //             'amount' => (int) ($tempOrder->total_amount * 100),
+    //             'currency' => 'usd',
+    //             'description' => 'Marketplace Order - ' . $user->email,
+    //             'metadata' => [
+    //                 'user_id' => $user->id,
+    //                 'temp_order_id' => $tempOrder->id,
+    //                 'order_type' => 'marketplace',
+    //             ],
+    //             'automatic_payment_methods' => [
+    //                 'enabled' => true,
+    //             ],
+    //         ]);
+
+    //         DB::commit();
+
+    //         return response()->json([
+    //             'success' => true,
+    //             'clientSecret' => $paymentIntent->client_secret,
+    //             'temp_order_id' => $tempOrder->id,
+    //             'amount' => (float) $tempOrder->total_amount,
+    //             'tax_amount' => (float) $tempOrder->tax_amount,
+    //             'shipping_cost' => (float) $tempOrder->shipping_cost,
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         DB::rollBack();
+    //         \Log::error('Payment intent creation error: ' . $e->getMessage());
+    //         return response()->json(['error' => $e->getMessage()], 500);
+    //     }
+    // }
+
+
     public function createPaymentIntent(Request $request): JsonResponse
     {
         $validated = $request->validate([
@@ -193,9 +329,98 @@ class CheckoutController extends Controller
         $tempOrder = TempOrder::where('user_id', $user->id)
             ->findOrFail($validated['temp_order_id']);
 
+        $maxRetries = 5;
+        $retryDelay = 2.5; // seconds
+        $newTaxAmount = 0;
+        $newShippingCost = 0;
+        $printifyStatus = null;
+
+        // Try to get Printify order with retry mechanism
+        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+            try {
+                $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+                $printifyStatus = $printifyOrder['status'] ?? null;
+
+                \Log::info('Printify order check attempt', [
+                    'attempt' => $attempt,
+                    'order_id' => $tempOrder->printify_order_id,
+                    'status' => $printifyStatus,
+                    'total_tax' => $printifyOrder['total_tax'] ?? 0,
+                    'total_shipping' => $printifyOrder['total_shipping'] ?? 0,
+                ]);
+
+                // Convert cents to dollars
+                $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+
+                // Check if tax is calculated (non-zero) or if status is ready
+                $isTaxCalculated = $newTaxAmount > 0;
+                $isStatusReady = in_array($printifyStatus, ['on-hold', 'pending', 'cost-calculation'])
+                    ? false
+                    : true;
+
+                // If tax is calculated OR we've reached max retries, break
+                if ($isTaxCalculated || $attempt === $maxRetries) {
+                    break;
+                }
+
+                // Wait before retrying
+                if ($attempt < $maxRetries) {
+                    sleep($retryDelay);
+                }
+
+            } catch (\Exception $e) {
+                \Log::error('Failed to get Printify order on attempt ' . $attempt . ': ' . $e->getMessage());
+
+                // If this is the last attempt, use fallback
+                if ($attempt === $maxRetries) {
+                    $newTaxAmount = $this->estimateTaxFallback($tempOrder);
+                    $newShippingCost = $tempOrder->shipping_cost;
+                    \Log::warning('Using estimated tax after all retries failed');
+                }
+            }
+        }
+
+        // // If tax is still 0 after retries, use estimation
+        // if ($newTaxAmount <= 0) {
+        //     $newTaxAmount = $this->estimateTaxFallback($tempOrder);
+        //     \Log::warning('Tax is 0 after retries, using estimated tax', [
+        //         'estimated_tax' => $newTaxAmount,
+        //         'printify_status' => $printifyStatus,
+        //     ]);
+        // }
+
+        // Calculate new total
+        $newTotalAmount = $tempOrder->subtotal +
+            $tempOrder->platform_fee +
+            $tempOrder->donation_amount +
+            $newShippingCost +
+            $newTaxAmount;
+
+        // Log the calculated amounts
+        \Log::info('Final amounts for payment intent', [
+            'temp_order_id' => $tempOrder->id,
+            'old_tax' => $tempOrder->tax_amount,
+            'new_tax' => $newTaxAmount,
+            'old_shipping' => $tempOrder->shipping_cost,
+            'new_shipping' => $newShippingCost,
+            'old_total' => $tempOrder->total_amount,
+            'new_total' => $newTotalAmount,
+            'printify_status' => $printifyStatus,
+        ]);
+
+        // Update temp order with latest values
+        $tempOrder->update([
+            'tax_amount' => $newTaxAmount,
+            'shipping_cost' => $newShippingCost,
+            'total_amount' => $newTotalAmount,
+            'selected_shipping_method' => $validated['shipping_method'],
+            'printify_status' => $printifyStatus,
+        ]);
+
         DB::beginTransaction();
         try {
-            // Create Stripe payment intent
+            // Create Stripe payment intent with UPDATED amount
             $paymentIntent = PaymentIntent::create([
                 'amount' => (int) ($tempOrder->total_amount * 100),
                 'currency' => 'usd',
@@ -204,23 +429,26 @@ class CheckoutController extends Controller
                     'user_id' => $user->id,
                     'temp_order_id' => $tempOrder->id,
                     'order_type' => 'marketplace',
+                    'printify_status' => $printifyStatus,
+                    'tax_calculated' => $newTaxAmount > 0 ? 'yes' : 'no',
                 ],
                 'automatic_payment_methods' => [
                     'enabled' => true,
                 ],
             ]);
 
-            // Update temp order with selected shipping method
-            $tempOrder->update([
-                'selected_shipping_method' => $validated['shipping_method'],
-            ]);
-
             DB::commit();
 
             return response()->json([
+                'success' => true,
                 'clientSecret' => $paymentIntent->client_secret,
                 'temp_order_id' => $tempOrder->id,
                 'amount' => (float) $tempOrder->total_amount,
+                'tax_amount' => (float) $tempOrder->tax_amount,
+                'shipping_cost' => (float) $tempOrder->shipping_cost,
+                'donation_amount' => (float) $tempOrder->donation_amount,
+                'printify_status' => $printifyStatus,
+                'tax_estimated' => $newTaxAmount <= 0, // Flag if tax was estimated
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -297,6 +525,7 @@ class CheckoutController extends Controller
             // Create final order
             $order = Order::create([
                 'user_id' => $user->id,
+                'organization_id' => $tempOrder->cart->items->first()->product->organization_id ?? null,
                 'subtotal' => $tempOrder->subtotal,
                 'platform_fee' => $tempOrder->platform_fee,
                 'donation_amount' => $tempOrder->donation_amount,
@@ -443,8 +672,8 @@ class CheckoutController extends Controller
 
     /**
      * Calculate shipping from Printify
-     */
-    private function calculateShippingFromPrintify(
+    */
+    public function calculateShippingFromPrintify(
         string $printifyOrderId,
         string $country,
         string $state,
@@ -466,13 +695,21 @@ class CheckoutController extends Controller
                     'estimated_days' => '10-30 business days',
                 ];
             }
+
             $defaultCost = (float) (($printifyOrder['total_shipping']?? 0) / 100);
+
+            // Log donation distribution for debugging
+            \Log::info('Printify order in checkout step1 submit', [
+                'printifyOrder' => $printifyOrder,
+            ]);
 
             return [
                 'cost' => $defaultCost,
                 'total_tax' => $printifyOrder['total_tax'],
                 'methods' => $methods,
             ];
+
+
         } catch (\Exception $e) {
             \Log::error('Shipping calculation error: ' . $e->getMessage());
             return [
@@ -486,6 +723,83 @@ class CheckoutController extends Controller
                     ]
                 ],
             ];
+        }
+    }
+
+
+
+    /**
+     * Update tax amount when Step2 page loads
+     */
+    public function updateTax(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'temp_order_id' => 'required|exists:temp_orders,id',
+        ]);
+
+        $user = auth()->user();
+        $tempOrder = TempOrder::where('user_id', $user->id)
+            ->findOrFail($validated['temp_order_id']);
+
+        try {
+            // Check if we have a Printify order ID
+            if (!$tempOrder->printify_order_id) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'No Printify order found',
+                ], 400);
+            }
+
+            // Get updated Printify order details
+            $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+
+            // Calculate new tax amount
+            $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+            $shippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+
+            // Log the tax update
+            \Log::info('Tax amount updated on Step2 load', [
+                'temp_order_id' => $tempOrder->id,
+                'old_tax_amount' => $tempOrder->tax_amount,
+                'new_tax_amount' => $newTaxAmount,
+                'old_shipping_cost' => $tempOrder->shipping_cost,
+                'new_shipping_cost' => $shippingCost,
+                'printify_order_id' => $tempOrder->printify_order_id,
+            ]);
+
+            // Update temp order with new tax and shipping
+            $oldTotal = $tempOrder->total_amount;
+
+            $tempOrder->update([
+                'tax_amount' => $newTaxAmount,
+                'shipping_cost' => $shippingCost,
+                'total_amount' => $tempOrder->subtotal +
+                    $tempOrder->platform_fee +
+                    $tempOrder->donation_amount +
+                    $shippingCost +
+                    $newTaxAmount,
+            ]);
+
+            // Check if total amount changed significantly
+            $amountChanged = abs($oldTotal - $tempOrder->total_amount) > 0.01;
+
+            return response()->json([
+                'success' => true,
+                'tax_amount' => (float) $newTaxAmount,
+                'shipping_cost' => (float) $shippingCost,
+                'total_amount' => (float) $tempOrder->total_amount,
+                'amount_changed' => $amountChanged,
+                'old_total' => (float) $oldTotal,
+                'new_total' => (float) $tempOrder->total_amount,
+                'difference' => (float) ($tempOrder->total_amount - $oldTotal),
+            ]);
+
+        } catch (\Exception $e) {
+            \Log::error('Tax update error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to update tax amount',
+            ], 500);
         }
     }
 }

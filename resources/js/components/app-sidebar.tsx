@@ -161,6 +161,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "data.management.read"
     },
 
+    {
+                title: 'Raffle Draws',
+                href: '/raffles',
+                icon: Gift,
+                permission: "raffle.read"
+            },
+
     // E-commerce Section
     {
         title: 'E-commerce',
@@ -183,20 +190,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/orders',
                 icon: Package,
                 permission: "ecommerce.read",
-                role: "admin"
             },
-             {
-                title: 'Order Items',
-                href: '/order-items',
-                icon: Package,
-                permission: "ecommerce.read",
-            },
-            {
-                title: 'Raffle Draws',
-                href: '/raffles',
-                icon: Gift,
-                permission: "raffle.read"
-            },
+            //  {
+            //     title: 'Order Items',
+            //     href: '/order-items',
+            //     icon: Package,
+            //     permission: "ecommerce.read",
+            // },
         ]
         // Removed group permission - nav-main will show group if any child is visible
     },
@@ -344,12 +344,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: MessageSquare,
         items: [
             {
-                title: 'Group Chat',
-                href: '/chat-group-topics',
-                icon: MessageSquare,
-                permission: "communication.read"
-            },
-            {
                 title: 'Chat',
                 href: '/chat',
                 icon: Text,
@@ -360,6 +354,26 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/newsletter',
                 icon: Mail,
                 permission: "newsletter.read"
+            },
+        ],
+        permission: "communication.read"
+    },
+
+    {
+        title: 'Group Chat',
+        icon: MessageSquare,
+        items: [
+            {
+                title: 'Create',
+                href: '/chat-group-topics',
+                icon: MessageSquare,
+                permission: "communication.read"
+            },
+            {
+                title: 'Select Chat Topic',
+                href: '/group-topics/select',
+                icon: MessageSquare,
+                permission: "communication.read"
             },
         ],
         permission: "communication.read"

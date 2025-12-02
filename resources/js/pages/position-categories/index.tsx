@@ -231,6 +231,7 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                             </Button>
                                                         </Link>
                                                     </PermissionButton>
+                                                     {auth?.user?.role === 'admin' && (
                                                     <PermissionButton permission="job.position.categories.delete">
                                                         <Button
                                                             variant="outline"
@@ -241,7 +242,8 @@ export default function Index({ categories, filters, allowedPerPage }: Props) {
                                                             <Trash2 className="mr-2 h-4 w-4" />
                                                             Delete
                                                         </Button>
-                                                    </PermissionButton>
+                                                        </PermissionButton>
+                                                         )}
                                                 </div>
                                             </td>
                                         </tr>

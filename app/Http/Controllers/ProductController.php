@@ -443,7 +443,7 @@ class ProductController extends BaseController
         $this->authorizePermission($request, 'product.create');
 
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => 'required|string|max:255|unique:products,name',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
             // 'profit_margin_percentage' => 'required|numeric|min:0',
@@ -463,7 +463,7 @@ class ProductController extends BaseController
             'printify_provider_id' => 'required|integer',
             'printify_variants' => 'required|array',
             'printify_images' => 'required|array|min:1',
-            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:10240',
+            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:1024',
         ]);
 
         try {
@@ -948,7 +948,7 @@ class ProductController extends BaseController
                 $this->printifyService->markPublishingSucceeded(
                     $product->printify_product_id,
                     $product->id,
-                    route('products.show', $product) // Your product URL
+                    route('product.show', $product->id) // Your product URL
                 );
             } else {
                 \Log::warning('Printify product auto-publish failed', [

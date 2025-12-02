@@ -38,10 +38,20 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         [$message, $author] = str(Inspiring::quotes()->random())->explode('-');
-        
+
         // Check if we're on livestock domain and use appropriate guard
-        $isLivestockDomain = is_livestock_domain();
-        $user = $isLivestockDomain 
+        // For development, manually set or check domain
+        $isLivestockDomain = false;
+
+        if (function_exists('is_livestock_domain')) {
+            $isLivestockDomain = is_livestock_domain();
+        } else {
+            // Fallback for development
+            $isLivestockDomain = app()->environment('local') &&
+                (request()->has('livestock') ||
+                    str_contains(request()->url(), 'livestock'));
+        }
+        $user = $isLivestockDomain
             ? $request->user('livestock')
             : $request->user()?->load("organization");
         $role = $user?->roles?->first();
@@ -49,7 +59,7 @@ class HandleInertiaRequests extends Middleware
         // Get all permissions (both role-based and direct user permissions) - only for main app users
         $permissions = [];
         $roles = [];
-        
+
         if ($user && !$isLivestockDomain) {
             $permissions = $user->getAllPermissions()->pluck('name')->toArray();
             $roles = $user->roles?->pluck('name')->toArray() ?? [];
@@ -117,7 +127,7 @@ class HandleInertiaRequests extends Middleware
                 ];
             }
         }
-        
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),

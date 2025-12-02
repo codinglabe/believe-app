@@ -167,6 +167,9 @@ class OrderController extends Controller
             'subtotal_amount' => $orderSubtotal, // Add subtotal
             'shipping_cost' => $order->shipping_cost,
             'tax_amount' => $order->tax_amount,
+            'platform_fee' => $order->platform_fee,
+            'subtotal' => $order->subtotal,
+            'donation_amount' => $order->donation_amount,
             'fee' => $order->fee ?? 0, // Make sure fee is included
             'status' => $order->status,
             'payment_status' => $order->payment_status,

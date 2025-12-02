@@ -36,7 +36,8 @@ interface Step2Data {
   shippingMethods: any[]
   shippingCost: number
   taxAmount: number
-  totalAmount: number
+    totalAmount: number
+     donationAmount: number
 }
 
 export default function CheckoutIndex({
@@ -49,9 +50,11 @@ export default function CheckoutIndex({
 }: CheckoutProps) {
   const [step, setStep] = useState(1)
   const [step2Data, setStep2Data] = useState<Step2Data | null>(null)
+    const [donationAmount, setDonationAmount] = useState(0) // Add this state
 
   const handleStep1Complete = (data: Step2Data) => {
     setStep2Data(data)
+    setDonationAmount(data.donationAmount || 0) // Store donation amount
     setStep(2)
   }
 
@@ -103,8 +106,9 @@ export default function CheckoutIndex({
             <Step2
               items={items}
               subtotal={subtotal}
-              platform_fee={platform_fee}
-              donation_percentage={donation_percentage}
+            platform_fee={platform_fee}
+            donation_percentage={donation_percentage}
+            donation_amount={donationAmount}
               step2Data={step2Data!}
               stripePublishableKey={stripePublishableKey}
               onBack={() => setStep(1)}

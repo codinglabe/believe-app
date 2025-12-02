@@ -165,7 +165,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::post('/cart/clear', [CartController::class, 'clear'])->name('cart.clear');
 
     // Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
-    Route::post('/checkout/shipping-calculation', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
+
     // Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
     // Route::post('/checkout/confirm', [CheckoutController::class, 'confirmPayment'])->name('checkout.confirm');
     // Route::post('/checkout/{order}/submit-printify', [CheckoutController::class, 'submitToPrintify'])->name('checkout.submit-printify');
@@ -182,6 +182,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
 
 
     Route::get('/checkout', [CheckoutController::class, 'show'])->name('checkout.show');
+    Route::post('/checkout/shipping-calculation', [CheckoutController::class, 'calculateShipping'])->name('checkout.shipping');
+    Route::post('/checkout/update-tax', [CheckoutController::class, 'updateTax'])->name('checkout.update-tax');
 
     Route::post('/checkout/step1', [CheckoutController::class, 'submitStep1'])->name('checkout.step1');
     Route::post('/checkout/payment-intent', [CheckoutController::class, 'createPaymentIntent'])->name('checkout.payment-intent');
@@ -259,6 +261,9 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'update' => 'permission:communication.update',
     'destroy' => 'permission:communication.delete'
 ]);
+
+Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])
+    ->name('auth.topics.select');
 
 Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name("chat.")->group(function () {
     Route::get("/", [ChatController::class, 'index'])->name('index');
@@ -723,10 +728,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         ->middleware('permission:ecommerce.read');
 
     /* Order Items Routes */
-    Route::resource('order-items', OrderItemController::class)->middleware([
-        'index' => 'permission:ecommerce.read',
-        'show' => 'permission:ecommerce.read',
-    ]);
+    // Route::resource('order-items', OrderItemController::class)->middleware([
+    //     'index' => 'permission:ecommerce.read',
+    //     'show' => 'permission:ecommerce.read',
+    // ]);
 
 
     // Purchase Order Routes
@@ -904,7 +909,7 @@ Route::prefix('webhooks')->group(function () {
     Route::post('/printify/orders', [PrintifyWebhookController::class, 'handleOrderWebhook']);
 });
 
-Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|organization'])->group(function () {
+Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|'])->group(function () {
     Route::get('/webhooks', [WebhookManagementController::class, 'index'])->name('admin.webhooks.index');
     Route::post('/webhooks/setup-printify', [WebhookManagementController::class, 'setupWebhooks'])->name('admin.webhooks.setup');
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
@@ -929,7 +934,7 @@ Route::prefix('admin/livestock')
         Route::delete('/listings/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'removeListing'])->name('listings.remove')->middleware('permission:admin.livestock.manage');
         Route::get('/payouts', [\App\Http\Controllers\Admin\LivestockController::class, 'payouts'])->name('payouts');
         Route::put('/payouts/{id}/approve', [\App\Http\Controllers\Admin\LivestockController::class, 'approvePayout'])->name('payouts.approve')->middleware('permission:admin.livestock.manage');
-        
+
         // Buyers routes
         Route::get('/buyers', [\App\Http\Controllers\Admin\LivestockController::class, 'buyers'])->name('buyers');
         Route::get('/buyers/create', [\App\Http\Controllers\Admin\LivestockController::class, 'createBuyer'])->name('buyers.create');
@@ -939,7 +944,7 @@ Route::prefix('admin/livestock')
         Route::put('/buyers/{id}/verify', [\App\Http\Controllers\Admin\LivestockController::class, 'verifyBuyer'])->name('buyers.verify')->middleware('permission:admin.livestock.manage');
         Route::put('/buyers/{id}/reject', [\App\Http\Controllers\Admin\LivestockController::class, 'rejectBuyer'])->name('buyers.reject')->middleware('permission:admin.livestock.manage');
         Route::delete('/buyers/{id}', [\App\Http\Controllers\Admin\LivestockController::class, 'deleteBuyer'])->name('buyers.delete')->middleware('permission:admin.livestock.manage');
-        
+
         // Pre-Generated Tags Routes
         Route::get('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'index'])->name('pre-generated-tags.index');
         Route::post('/pre-generated-tags', [\App\Http\Controllers\Admin\PreGeneratedTagController::class, 'store'])->name('pre-generated-tags.store');

@@ -38,10 +38,10 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
     location: auth.user.organization?.address || "",
     joinDate: auth.user.joined || "",
   }
-  
+
   // Ensure avatar path is correct (backend already includes /storage/ prefix)
-  const avatarSrc = profileData.avatar && profileData.avatar.trim() !== '' 
-    ? profileData.avatar 
+  const avatarSrc = profileData.avatar && profileData.avatar.trim() !== ''
+    ? profileData.avatar
     : undefined
 
   return (
@@ -64,8 +64,8 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                   <div className="relative flex-shrink-0">
                     <Avatar className="w-24 h-24 lg:w-32 lg:h-32 border-4 border-white dark:border-gray-700 shadow-lg">
                       {avatarSrc && (
-                        <AvatarImage 
-                          src={avatarSrc} 
+                        <AvatarImage
+                          src={avatarSrc}
                           alt="Profile"
                           className="object-cover"
                         />
@@ -184,13 +184,13 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                               Referral Link
                             </Link>
                           </TabsTrigger>
-                            <TabsTrigger value="interested-topic" asChild>
+                            {/* <TabsTrigger value="interested-topic" asChild>
                             <Link href={route("auth.topics.select")}
                               className="flex items-center gap-2 px-3 py-2 text-sm">
                               <Shield className="h-4 w-4" />
                                 Groups Chat
                             </Link>
-                          </TabsTrigger>
+                          </TabsTrigger> */}
                         </TabsList>
                       </Tabs>
                     </div>
@@ -231,7 +231,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                                                   </Link>
                                               )}
 
-                                              {auth.user.role === "organization" && (
+                                              {auth.user.role !== "organization" && (
                                                   <Link
                                                       href={route("admin.webhooks.index")}
                                                       className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "webhook-manage"
@@ -263,7 +263,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                           <Shield className="h-4 w-4" />
                           Referral Link
                                               </Link>
-                        <Link
+                        {/* <Link
                           href={route("auth.topics.select")}
                           className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors ${activeTab === "interested-topic"
                             ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
@@ -272,7 +272,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                         >
                           <Shield className="h-4 w-4" />
                           Groups Chat
-                        </Link>
+                        </Link> */}
                       </div>
                     </nav>
                   </CardContent>

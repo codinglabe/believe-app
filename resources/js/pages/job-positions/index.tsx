@@ -249,17 +249,20 @@ export default function Index({ jobPositions, filters, allowedPerPage }: Props) 
                                                             </Button>
                                                         </Link>
                                                     </PermissionButton>
-                                                    <PermissionButton permission="job.positions.delete">
-                                                        <Button
-                                                            variant="outline"
-                                                            size="sm"
-                                                            onClick={() => handleDelete(item)}
-                                                            className="text-red-600 hover:text-red-700"
-                                                        >
-                                                            <Trash2 className="mr-2 h-4 w-4" />
-                                                            Delete
-                                                        </Button>
-                                                    </PermissionButton>
+                                                    {auth?.user?.role === 'admin' && (
+                                                        <PermissionButton permission="job.positions.delete">
+                                                            <Button
+                                                                variant="outline"
+                                                                size="sm"
+                                                                onClick={() => handleDelete(item)}
+                                                                className="text-red-600 hover:text-red-700"
+                                                            >
+                                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                                Delete
+                                                            </Button>
+                                                        </PermissionButton>
+                                                    )}
+
                                                 </div>
                                             </td>
                                         </tr>

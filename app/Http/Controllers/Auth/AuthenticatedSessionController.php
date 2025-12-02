@@ -33,7 +33,17 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        $route = is_livestock_domain()
+        $isLivestockDomain = false;
+
+        if (function_exists('is_livestock_domain')) {
+            $isLivestockDomain = is_livestock_domain();
+        } else {
+            // Fallback for development
+            $isLivestockDomain = app()->environment('local') &&
+                (request()->has('livestock') ||
+                    str_contains(request()->url(), 'livestock'));
+        }
+        $route = $isLivestockDomain
             ? (Route::has('seller.dashboard') ? 'seller.dashboard' : 'home')
             : ($request->user()->role === 'user' ? 'user.profile.index' : 'dashboard');
 

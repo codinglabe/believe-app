@@ -48,7 +48,7 @@ export default function Step1({
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
 
-const defaultDonation = (subtotal + platform_fee) * (donation_percentage / 100);
+const defaultDonation =subtotal * (donation_percentage / 100);
 const finalDonationAmount = isDonating ? customDonationAmount || defaultDonation : 0;
 const orderTotal = subtotal + platform_fee + finalDonationAmount;
 
@@ -111,7 +111,9 @@ useEffect(() => {
           shippingMethods: response.data.shipping_methods,
           shippingCost: Number.parseFloat(response.data.shipping_cost.toFixed(2)),
           taxAmount: Number.parseFloat(response.data.tax_amount.toFixed(2)),
-          totalAmount: Number.parseFloat(response.data.total_amount.toFixed(2)),
+            totalAmount: Number.parseFloat(response.data.total_amount.toFixed(2)),
+            // donationAmount: Number.parseFloat(response.data.donation_amount.toFixed(2)),
+            donationAmount: isDonating ? Number.parseFloat(customDonationAmount.toFixed(2)) : 0,
         })
       }
     } catch (error: any) {

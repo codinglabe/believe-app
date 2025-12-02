@@ -126,7 +126,7 @@ interface Props extends PageProps {
     userRole: string;
 }
 
-interface ProfitCalculation {
+interface DonationCalculation {
     revenue: {
         subtotal: number;
         platform_fee: number;
@@ -141,9 +141,9 @@ interface ProfitCalculation {
         printify_tax: number;
         total: number;
     };
-    profit: {
-        platform_fee_profit: number;
-        net_profit: number;
+    Donation: {
+        platform_fee_Donation: number;
+        net_Donation: number;
         margin: number;
     };
 }
@@ -151,13 +151,13 @@ interface ProfitCalculation {
 export default function Show({ order, userRole }: Props) {
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [profitCalculation, setProfitCalculation] = useState<ProfitCalculation | null>(null);
+    const [DonationCalculation, setDonationCalculation] = useState<DonationCalculation | null>(null);
 
     useEffect(() => {
-        calculateProfit();
+        calculateDonation();
     }, [order]);
 
-    const calculateProfit = () => {
+    const calculateDonation = () => {
         // REVENUE BREAKDOWN
         const revenueSubtotal = order.subtotal || 0;
         const revenuePlatformFee = order.platform_fee || 0;
@@ -172,17 +172,17 @@ export default function Show({ order, userRole }: Props) {
         const printifyTax = order.printify_details?.total_tax || 0;
         const totalCosts = printifyProducts + printifyShipping + printifyTax;
 
-        // PROFIT CALCULATION
-        // Platform Fee Profit (100% of platform fee goes to us)
-        const platformFeeProfit = revenuePlatformFee;
+        // Donation CALCULATION
+        // Platform Fee Donation (100% of platform fee goes to us)
+        const platformFeeDonation = revenuePlatformFee;
 
-        // Net Profit (Total Revenue - Total Costs)
-        const netProfit = revenueTotal - totalCosts;
+        // Net Donation (Total Revenue - Total Costs)
+        const netDonation = revenueTotal - totalCosts;
 
-        // Profit Margin
-        const profitMargin = revenueTotal > 0 ? (netProfit / revenueTotal) * 100 : 0;
+        // Donation Margin
+        const DonationMargin = revenueTotal > 0 ? (netDonation / revenueTotal) * 100 : 0;
 
-        const calculation: ProfitCalculation = {
+        const calculation: DonationCalculation = {
             revenue: {
                 subtotal: revenueSubtotal,
                 platform_fee: revenuePlatformFee,
@@ -197,14 +197,14 @@ export default function Show({ order, userRole }: Props) {
                 printify_tax: printifyTax,
                 total: totalCosts
             },
-            profit: {
-                platform_fee_profit: platformFeeProfit,
-                net_profit: netProfit,
-                margin: profitMargin
+            Donation: {
+                platform_fee_Donation: platformFeeDonation,
+                net_Donation: netDonation,
+                margin: DonationMargin
             }
         };
 
-        setProfitCalculation(calculation);
+        setDonationCalculation(calculation);
     };
 
     const canCancelOrder = () => {
@@ -266,9 +266,9 @@ export default function Show({ order, userRole }: Props) {
         }).format(amount);
     }
 
-    const getProfitColor = (profit: number) => {
-        if (profit > 0) return 'text-green-600 dark:text-green-400';
-        if (profit < 0) return 'text-red-600 dark:text-red-400';
+    const getDonationColor = (Donation: number) => {
+        if (Donation > 0) return 'text-green-600 dark:text-green-400';
+        if (Donation < 0) return 'text-red-600 dark:text-red-400';
         return 'text-gray-600 dark:text-gray-400';
     }
 
@@ -371,53 +371,60 @@ export default function Show({ order, userRole }: Props) {
                                 </div>
                             </div>
 
-                            {/* Profit Calculation */}
-                            {profitCalculation && (
+                            {/* Donation Calculation */}
+                            {DonationCalculation && (
                                 <div className="space-y-4">
                                     <h3 className="text-lg font-semibold text-blue-600 flex items-center gap-2">
                                         <Calculator className="w-5 h-5" />
-                                        Profit Calculation
+                                        Donation Calculation
                                     </h3>
 
                                     <div className="space-y-3">
                                         <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Platform Fee Profit</span>
+                                            <span className="text-gray-600">Platform Fee Donation</span>
                                             <span className="font-medium text-green-600">
-                                                +{formatCurrency(profitCalculation.profit.platform_fee_profit)}
+                                                +{formatCurrency(DonationCalculation.Donation.platform_fee_Donation)}
+                                            </span>
+                                        </div>
+
+                                        <div className="flex justify-between items-center py-2 border-b">
+                                            <span className="text-gray-600">Supporter Donation</span>
+                                            <span className="font-medium text-green-600">
+                                                +{formatCurrency(DonationCalculation.revenue.donation)}
                                             </span>
                                         </div>
 
                                         <div className="flex justify-between items-center py-2 border-b">
                                             <span className="text-gray-600">Printify Product Costs</span>
                                             <span className="font-medium text-orange-600">
-                                                -{formatCurrency(profitCalculation.costs.printify_products)}
+                                                -{formatCurrency(DonationCalculation.costs.printify_products)}
                                             </span>
                                         </div>
 
                                         <div className="flex justify-between items-center py-2 border-b">
                                             <span className="text-gray-600">Printify Shipping</span>
                                             <span className="font-medium text-orange-600">
-                                                -{formatCurrency(profitCalculation.costs.printify_shipping)}
+                                                -{formatCurrency(DonationCalculation.costs.printify_shipping)}
                                             </span>
                                         </div>
 
                                         <div className="flex justify-between items-center py-2 border-b">
                                             <span className="text-gray-600">Printify Tax</span>
                                             <span className="font-medium text-orange-600">
-                                                -{formatCurrency(profitCalculation.costs.printify_tax)}
+                                                -{formatCurrency(DonationCalculation.costs.printify_tax)}
                                             </span>
                                         </div>
 
                                         <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
-                                            <span className="text-lg font-bold text-blue-600">Net Profit</span>
-                                            <span className={`text-xl font-bold ${getProfitColor(profitCalculation.profit.net_profit)}`}>
-                                                {formatCurrency(profitCalculation.profit.net_profit)}
+                                            <span className="text-lg font-bold text-blue-600">Net Donation & Platform Fee</span>
+                                            <span className={`text-xl font-bold ${getDonationColor(DonationCalculation.Donation.net_Donation)}`}>
+                                                {formatCurrency(DonationCalculation.Donation.net_Donation)}
                                             </span>
                                         </div>
 
                                         <div className="text-center pt-2">
-                                            <Badge variant="outline" className={getProfitColor(profitCalculation.profit.net_profit)}>
-                                                Profit Margin: {profitCalculation.profit.margin.toFixed(1)}%
+                                            <Badge variant="outline" className={getDonationColor(DonationCalculation.Donation.net_Donation)}>
+                                                Donation Margin: {DonationCalculation.Donation.margin.toFixed(1)}%
                                             </Badge>
                                         </div>
                                     </div>
@@ -425,23 +432,23 @@ export default function Show({ order, userRole }: Props) {
                             )}
                         </div>
 
-                        {/* Simple Profit Formula */}
-                        {profitCalculation && (
+                        {/* Simple Donation Formula */}
+                        {DonationCalculation && (
                             <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl border border-green-200">
                                 <div className="text-center">
                                     <div className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3">
-                                        Profit Formula
+                                        Donation Formula
                                     </div>
                                     <div className="text-lg text-blue-800 dark:text-blue-200 font-semibold space-y-2">
                                         <div>
-                                            <span className="text-green-600">Total Revenue ({formatCurrency(profitCalculation.revenue.total)})</span>
+                                            <span className="text-green-600">Total Revenue ({formatCurrency(DonationCalculation.revenue.total)})</span>
                                             <span className="mx-4">-</span>
-                                            <span className="text-orange-600">Total Costs ({formatCurrency(profitCalculation.costs.total)})</span>
+                                            <span className="text-orange-600">Total Costs ({formatCurrency(DonationCalculation.costs.total)})</span>
                                         </div>
                                         <div className="text-xl">
                                             <span className="mx-4">=</span>
-                                            <span className={`${getProfitColor(profitCalculation.profit.net_profit)}`}>
-                                                Net Profit: {formatCurrency(profitCalculation.profit.net_profit)}
+                                            <span className={`${getDonationColor(DonationCalculation.Donation.net_Donation)}`}>
+                                                Net Donation & Platform Fee: {formatCurrency(DonationCalculation.Donation.net_Donation)}
                                             </span>
                                         </div>
                                     </div>

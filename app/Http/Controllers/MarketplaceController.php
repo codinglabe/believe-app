@@ -37,10 +37,15 @@ class MarketplaceController extends Controller
 
         $search = $request->input('search');
 
-        $authId = Auth::id();
-        $followedOrganizationIds = Auth::user()->favoriteOrganizations()->pluck('organizations.id')->toArray();
-        $userOrganization = Organization::where('user_id', $authId)->first();
-        $userOrganizationId = $userOrganization ? $userOrganization->id : null;
+        $user = Auth::user();
+        $followedOrganizationIds = [];
+        $userOrganizationId = null;
+
+        if ($user) {
+            $followedOrganizationIds = $user->favoriteOrganizations()->pluck('organizations.id')->toArray();
+            $userOrganization = Organization::where('user_id', $user->id)->first();
+            $userOrganizationId = $userOrganization ? $userOrganization->id : null;
+        }
 
         // Combine followed organizations and user's own organization
         $allowedOrganizationIds = $followedOrganizationIds;
@@ -64,8 +69,9 @@ class MarketplaceController extends Controller
             ->when(!empty($organizationIds), function ($query) use ($organizationIds) {
                 $query->whereIn('organization_id', $organizationIds);
             })
-            // Login না থাকলে সব active products show করবে
-            ->when(Auth::check(), function ($query) use($allowedOrganizationIds){
+            // যদি লগইন থাকে, তাহলে শুধু allowed অর্গানাইজেশনের প্রোডাক্ট দেখাবে
+            // লগইন না থাকলে সব active প্রোডাক্ট দেখাবে (এই when ব্লক এক্সিকিউট হবে না)
+            ->when($user && !empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
                 $query->whereIn('organization_id', $allowedOrganizationIds);
             })
             ->where('status', 'active')
@@ -77,9 +83,12 @@ class MarketplaceController extends Controller
         $processedProducts = $this->processProductsWithImagesNDVariantsPrice($products);
 
         $categories = Category::where('status', 'active')->get();
-        $organizations = Organization::when(Auth::check(), function($query) use($allowedOrganizationIds){
-            $query->whereIn('id', $allowedOrganizationIds);
-        })->get(['id', 'name']);
+
+        $organizations = Organization::query()
+            ->when($user && !empty($allowedOrganizationIds), function ($query) use ($allowedOrganizationIds) {
+                $query->whereIn('id', $allowedOrganizationIds);
+            })
+            ->get(['id', 'name']);
 
         return Inertia::render('frontend/marketplace', [
             'products' => $processedProducts,

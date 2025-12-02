@@ -11,6 +11,7 @@ return new class extends Migration
      */
     public function up(): void
     {
+        Schema::dropIfExists('livestock_animals');
         Schema::create('livestock_animals', function (Blueprint $table) {
             $table->id();
             $table->foreignId('livestock_user_id')->constrained('livestock_users')->onDelete('cascade');
@@ -31,7 +32,7 @@ return new class extends Migration
             $table->enum('status', ['available', 'sold', 'off_farm', 'deceased'])->default('available');
             $table->text('notes')->nullable();
             $table->timestamps();
-            
+
             $table->index('livestock_user_id');
             $table->index('current_owner_livestock_user_id');
             $table->index('species');
