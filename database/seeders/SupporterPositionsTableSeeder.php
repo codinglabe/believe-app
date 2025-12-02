@@ -7,7 +7,7 @@ use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
-class FollowerPositionsTableSeeder extends Seeder
+class SupporterPositionsTableSeeder extends Seeder
 {
     /**
      * Run the database seeds.

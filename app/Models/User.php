@@ -583,4 +583,15 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasOne(Cart::class);
     }
+
+    public function supporterPositions()
+    {
+        // If using pivot table
+        return $this->belongsToMany(
+            SupporterPosition::class,
+            'supporter_user_positions', // pivot table name
+            'user_id',
+            'follower_position_id'
+        )->withTimestamps();
+    }
 }

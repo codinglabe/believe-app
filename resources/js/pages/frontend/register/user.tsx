@@ -130,10 +130,14 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
             {/* Logo */}
             <div className="text-center mb-8">
               <Link href={route('home')} className="inline-flex items-center space-x-2">
-                <div className="bg-blue-600 p-3 rounded-xl">
-                  <Heart className="h-8 w-8 text-white" />
+                <div className="bg-gray-200 p-1 rounded-xl">
+                  <img
+                    src="/favicon-96x96.png"
+                    alt="Believe In Unity Logo"
+                    className="h-12 w-12 object-contain"
+                    />
                 </div>
-                <span className="text-2xl font-bold text-gray-900">CareConnect</span>
+                              <span className="text-2xl font-bold text-gray-900 dark:text-gray-300">{import.meta.env.VITE_APP_NAME || 'Believe In Unity'}</span>
               </Link>
             </div>
 

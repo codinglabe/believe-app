@@ -31,7 +31,7 @@ export default function RegisterPage() {
             transition={{ duration: 0.8 }}
             className="text-center mb-12"
           >
-            <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">Join CareConnect</h1>
+                      <h1 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">Join {import.meta.env.APP_NAME}</h1>
             <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
               Choose how you'd like to get started and make a difference today
             </p>

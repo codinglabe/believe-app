@@ -67,5 +67,7 @@ class DatabaseSeeder extends Seeder
         // Step 6: Seed additional data and utilities
         $this->call(RegenerateStripeCustomerIdSeeder::class);
         $this->call(ExistingUserReferralGenerate::class);
+
+        $this->call(SupporterPositionsTableSeeder::class);
     }
 }

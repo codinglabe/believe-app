@@ -1,14 +1,13 @@
 "use client"
 
 import type React from "react"
-
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
-import { Save, X, Upload, CheckCircle, Calendar } from "lucide-react"
+import { Save, X, Upload, CheckCircle } from "lucide-react"
 import { useForm, usePage } from "@inertiajs/react"
 import { toast } from "sonner"
 import { Transition } from "@headlessui/react"
@@ -25,8 +24,6 @@ interface User {
 }
 
 interface PageProps {
-  auth: { user: User }
-  availablePositions: { id: number; name: string }[]
   user: {
     id: number
     name: string
@@ -36,21 +33,22 @@ interface PageProps {
     image?: string
     positions: number[]
   }
+  availablePositions: { id: number; name: string }[]
 }
 
 export default function ProfileEdit() {
- const { user, availablePositions } = usePage<PageProps>().props
+  const { user, availablePositions } = usePage<PageProps>().props
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
     name: user.name || "",
     email: user.email || "",
     phone: user.phone || "",
     dob: user.dob || "",
-      image: null as File | null,
+    image: null as File | null,
     positions: user.positions || [],
   })
 
-  const [previewUrl, setPreviewUrl] = useState( user.image)
+  const [previewUrl, setPreviewUrl] = useState(user.image)
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -60,29 +58,35 @@ export default function ProfileEdit() {
     formData.append("email", data.email)
     formData.append("phone", data.phone)
     formData.append("dob", data.dob)
+
+    // Add positions as array
+    data.positions.forEach((positionId: number) => {
+      formData.append("positions[]", positionId.toString())
+    })
+
     if (data.image) {
       formData.append("image", data.image)
     }
-    formData.append("_method", "PUT")
+
+    // Add method for Laravel
+    formData.append("_method", "POST")
 
     post(route("user.profile.update"), {
-        data: formData,
-        preserveScroll: true,
-        preserveState: true,
-        onSuccess: () => {
-            console.log("Profile updated successfully");
+      data: formData,
+      preserveScroll: true,
+      onSuccess: () => {
         toast.success("Profile updated successfully!")
       },
-      onError: () => {
-        toast.error("Failed to update profile. Please try again.")
+      onError: (errors) => {
+        console.error("Update errors:", errors)
+        toast.error("Failed to update profile. Please check the form.")
       },
     })
   }
 
   const handleCancel = () => {
     reset()
-    setPreviewUrl(null)
-    window.history.back()
+    setPreviewUrl(user.image)
   }
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -94,25 +98,32 @@ export default function ProfileEdit() {
     }
   }
 
+  // Format positions for MultiSelect
+  const positionOptions = availablePositions.map(position => ({
+    label: position.name,
+    value: position.id.toString()
+  }))
+
   return (
-      <ProfileLayout title="Edit Profile" description="Update your personal information and preferences">
-           {/* Success Message */}
-        <Transition
-          show={recentlySuccessful}
-          enter="transition ease-in-out"
-          enterFrom="opacity-0"
-          leave="transition ease-in-out"
-              leaveTo="opacity-0"
-        >
-          <Alert className="border-green-200 mb-2 bg-green-50 dark:border-green-800 dark:bg-green-950">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-700 dark:text-green-400">
-              Profile updated successfully!
-            </AlertDescription>
-          </Alert>
-        </Transition>
+    <ProfileLayout title="Edit Profile" description="Update your personal information and preferences">
+      {/* Success Message */}
+      <Transition
+        show={recentlySuccessful}
+        enter="transition ease-in-out"
+        enterFrom="opacity-0"
+        leave="transition ease-in-out"
+        leaveTo="opacity-0"
+      >
+        <Alert className="border-green-200 mb-2 bg-green-50 dark:border-green-800 dark:bg-green-950">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-700 dark:text-green-400">
+            Profile updated successfully!
+          </AlertDescription>
+        </Alert>
+      </Transition>
+
       <form onSubmit={handleSubmit} className="space-y-6">
-        {/* image Upload */}
+        {/* Image Upload */}
         <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
           <CardHeader className="pb-4">
             <CardTitle className="text-gray-900 dark:text-white text-lg">Profile Picture</CardTitle>
@@ -132,9 +143,17 @@ export default function ProfileEdit() {
                     <Upload className="h-4 w-4" />
                     Upload New Picture
                   </div>
-                  <Input id="image" type="file" accept="image/*" onChange={handleImageChange} className="hidden" />
+                  <Input
+                    id="image"
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageChange}
+                    className="hidden"
+                  />
                 </Label>
-                <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">JPG, PNG or GIF. Max size 2MB.</p>
+                <p className="text-sm text-gray-600 dark:text-gray-300 mt-2">
+                  JPG, PNG or GIF. Max size 2MB.
+                </p>
               </div>
             </div>
             {errors.image && <p className="text-red-600 text-sm mt-2">{errors.image}</p>}
@@ -148,18 +167,19 @@ export default function ProfileEdit() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-                <Label htmlFor="name" className="text-gray-900 dark:text-white">
-                  Full Name *
-                </Label>
-                <Input
-                  id="name"
-                  value={data.name}
-                  onChange={(e) => setData("name", e.target.value)}
-                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                  required
-                />
-                {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
-              </div>
+              <Label htmlFor="name" className="text-gray-900 dark:text-white">
+                Full Name *
+              </Label>
+              <Input
+                id="name"
+                value={data.name}
+                onChange={(e) => setData("name", e.target.value)}
+                className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                required
+              />
+              {errors.name && <p className="text-red-600 text-sm mt-1">{errors.name}</p>}
+            </div>
+
             <div>
               <Label htmlFor="email" className="text-gray-900 dark:text-white">
                 Email Address *
@@ -188,42 +208,41 @@ export default function ProfileEdit() {
                 placeholder="+1 (555) 123-4567"
               />
               {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
-                      </div>
+            </div>
 
-                      {/* Date of Birth */}
-                                      <div>
-                                      <Label htmlFor="dob" className="text-gray-900 dark:text-white font-medium">
-                                          Date of Birth
-                                      </Label>
-                                      <div className="relative mt-1">
-                                          <Input
-                                          id="dob"
-                                          type="date"
-                                          value={data.dob}
-                                          onChange={(e) => setData("dob", e.target.value)}
-                                          className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
-                                          max={new Date().toISOString().split('T')[0]} // Prevent future dates
-                                          />
-                          </div>
-                          {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
-                      </div>
+            <div>
+              <Label htmlFor="dob" className="text-gray-900 dark:text-white">
+                Date of Birth
+              </Label>
+              <Input
+                id="dob"
+                type="date"
+                value={data.dob}
+                onChange={(e) => setData("dob", e.target.value)}
+                className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                max={new Date().toISOString().split('T')[0]}
+              />
+              {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
+            </div>
 
-
-                      <MultiSelect
-            options={availablePositions.map(p => ({
-              label: p.name,
-              value: p.id.toString()
-            }))}
-            selected={data.positions.map(String)}
-            onChange={(selected) => setData('positions', selected.map(Number))}
-            placeholder="Select your supporter role(s)"
-          />
-          {errors.positions && (
-            <p className="text-red-600 text-sm mt-2">{errors.positions}</p>
-          )}
-          <p className="text-sm text-gray-500 mt-2">
-            You can select multiple roles (e.g., Doctor + Volunteer)
-          </p>
+            {/* Supporter Positions */}
+            <div>
+              <Label className="text-gray-900 dark:text-white mb-2 block">
+                Supporter Positions
+              </Label>
+              <MultiSelect
+                options={positionOptions}
+                selected={data.positions.map(String)}
+                onChange={(selected) => setData('positions', selected.map(Number))}
+                placeholder="Select your supporter role(s)"
+              />
+              {errors.positions && (
+                <p className="text-red-600 text-sm mt-2">{errors.positions}</p>
+              )}
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                You can select multiple roles (e.g., Doctor + Volunteer)
+              </p>
+            </div>
           </CardContent>
         </Card>
 
@@ -234,12 +253,16 @@ export default function ProfileEdit() {
             variant="outline"
             onClick={handleCancel}
             disabled={processing}
-            className="bg-transparent"
+            className="border-gray-300 dark:border-gray-600"
           >
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
-          <Button type="submit" disabled={processing} className="bg-blue-600 hover:bg-blue-700">
+          <Button
+            type="submit"
+            disabled={processing}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
             <Save className="h-4 w-4 mr-2" />
             {processing ? "Saving..." : "Save Changes"}
           </Button>

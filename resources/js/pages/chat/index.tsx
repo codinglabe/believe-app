@@ -4,7 +4,7 @@ import { initializeMessaging, requestNotificationPermission } from "@/lib/fireba
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
 import { useEffect } from "react";
-import { Toaster } from 'react-hot-toast';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function ChatPage() {
     const { auth } = usePage().props;

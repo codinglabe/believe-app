@@ -518,7 +518,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                   <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Registration Completed!</h2>
 
                   <p className="text-gray-600 dark:text-gray-300 mb-6">
-                    {successMessage || `${formData.name} has been successfully registered with CareConnect!`}
+                    {successMessage || `${formData.name} has been successfully registered with ${import.meta.env.VITE_APP_NAME}!`}
                   </p>
 
                   <Alert className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">
@@ -573,10 +573,14 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
             <div className="text-center mb-8">
               <Link href={route("home")} className="inline-flex items-center space-x-2">
                 <div className="bg-gradient-to-r from-green-600 to-blue-600 p-3 rounded-xl shadow-lg">
-                  <Heart className="h-8 w-8 text-white" />
+                 <img
+                    src="/favicon-96x96.png"
+                    alt="Believe In Unity Logo"
+                    className="h-12 w-12 object-contain filter brightness-0 invert sepia hue-rotate-60"
+                    />
                 </div>
                 <span className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                  CareConnect
+                  {import.meta.env.VITE_APP_NAME || 'Believe In Unity'}
                 </span>
               </Link>
             </div>

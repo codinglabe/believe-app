@@ -141,10 +141,11 @@ class UserProfileController extends Controller
         ]);
 
         // Sync supporter positions
-        if ($request->has('positions')) {
-            $user->supporterPositions()->sync($request->positions);
+        if (array_key_exists('positions', $validated)) {
+            // If you're using many-to-many, fix the relationship first
+            $user->supporterPositions()->sync($validated['positions']);
         } else {
-            $user->supporterPositions()->detach(); // যদি কিছু না সিলেক্ট করে
+            $user->supporterPositions()->detach();
         }
 
         return back()->with('success', 'Profile updated successfully!');
