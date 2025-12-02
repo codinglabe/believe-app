@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('mating_fees')) {
+            return;
+        }
+
         Schema::create('mating_fees', function (Blueprint $table) {
             $table->id();
             $table->foreignId('male_id')->constrained('livestock_animals')->onDelete('restrict');

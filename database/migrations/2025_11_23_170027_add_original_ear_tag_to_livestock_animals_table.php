@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('livestock_animals', function (Blueprint $table) {
-            $table->string('original_ear_tag')->nullable()->after('ear_tag');
-        });
+        if (!Schema::hasColumn('livestock_animals', 'original_ear_tag')) {
+            Schema::table('livestock_animals', function (Blueprint $table) {
+                $table->string('original_ear_tag')->nullable()->after('ear_tag');
+            });
+        }
     }
 
     /**

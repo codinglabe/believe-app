@@ -12,8 +12,12 @@ return new class extends Migration
     public function up(): void
     {
         Schema::table('fractional_listings', function (Blueprint $table) {
-            $table->string('country_code', 2)->nullable()->after('livestock_user_id');
-            $table->string('tag_number')->unique()->nullable()->after('country_code');
+            if (!Schema::hasColumn('fractional_listings', 'country_code')) {
+                $table->string('country_code', 2)->nullable()->after('livestock_user_id');
+            }
+            if (!Schema::hasColumn('fractional_listings', 'tag_number')) {
+                $table->string('tag_number')->unique()->nullable()->after('country_code');
+            }
         });
     }
 

@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('pre_generated_tags')) {
+            return;
+        }
+
         Schema::create('pre_generated_tags', function (Blueprint $table) {
             $table->id();
             $table->string('country_code', 2);

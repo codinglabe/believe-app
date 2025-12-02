@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('buyer_profiles', function (Blueprint $table) {
-            $table->foreignId('fractional_asset_id')->nullable()->after('livestock_user_id')->constrained('fractional_assets')->onDelete('set null');
-        });
+        if (!Schema::hasColumn('buyer_profiles', 'fractional_asset_id')) {
+            Schema::table('buyer_profiles', function (Blueprint $table) {
+                $table->foreignId('fractional_asset_id')->nullable()->after('livestock_user_id')->constrained('fractional_assets')->onDelete('set null');
+            });
+        }
     }
 
     /**

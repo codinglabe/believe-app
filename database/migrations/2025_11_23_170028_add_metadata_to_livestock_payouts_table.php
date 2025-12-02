@@ -11,9 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('livestock_payouts', function (Blueprint $table) {
-            $table->json('metadata')->nullable()->after('notes');
-        });
+        if (!Schema::hasColumn('livestock_payouts', 'metadata')) {
+            Schema::table('livestock_payouts', function (Blueprint $table) {
+                $table->json('metadata')->nullable()->after('notes');
+            });
+        }
     }
 
     /**

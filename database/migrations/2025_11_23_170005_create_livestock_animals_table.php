@@ -11,7 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::dropIfExists('livestock_animals');
+        if (Schema::hasTable('livestock_animals')) {
+            return;
+        }
+
         Schema::create('livestock_animals', function (Blueprint $table) {
             $table->id();
             $table->foreignId('livestock_user_id')->constrained('livestock_users')->onDelete('cascade');

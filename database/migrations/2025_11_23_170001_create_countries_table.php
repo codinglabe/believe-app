@@ -11,6 +11,10 @@ return new class extends Migration
      */
     public function up(): void
     {
+        if (Schema::hasTable('countries')) {
+            return;
+        }
+
         Schema::create('countries', function (Blueprint $table) {
             $table->id();
             $table->string('code', 2)->unique(); // ISO 3166-1 alpha-2 code
