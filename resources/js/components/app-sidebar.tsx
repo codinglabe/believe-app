@@ -355,6 +355,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Mail,
                 permission: "newsletter.read"
             },
+            {
+                title: 'Email Invites',
+                href: '/email-invite',
+                icon: Mail,
+                permission: "email.invite.read",
+                role: "organization"
+            },
         ],
         permission: "communication.read"
     },

@@ -229,4 +229,14 @@ class Organization extends Model
             ->withPivot('notifications') // notifications column include
             ->withTimestamps();
     }
+
+    public function emailConnections()
+    {
+        return $this->hasMany(EmailConnection::class);
+    }
+
+    public function emailContacts()
+    {
+        return $this->hasMany(EmailContact::class);
+    }
 }
