@@ -53,9 +53,13 @@ export default function LoginPage({ status, canResetPassword }: LoginProps) {
           <div className="text-center mb-8">
             <Link href={route("home")} className="inline-flex items-center space-x-2">
               <div className="bg-blue-600 p-3 rounded-xl">
-                <Heart className="h-8 w-8 text-white" />
+                <img
+                    src="/favicon-96x96.png"
+                    alt="Believe In Unity Logo"
+                    className="h-14 w-14 object-contain filter brightness-0 invert sepia hue-rotate-60 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:h-5 [.group\\/sidebar-wrapper[data-collapsible=icon]_&]:w-5"
+                />
               </div>
-              <span className="text-2xl font-bold text-gray-900">CareConnect</span>
+              <span className="text-2xl font-bold text-gray-900 dark:text-white">{import.meta.env.VITE_APP_NAME || 'Believe In Unity'}</span>
             </Link>
           </div>
 

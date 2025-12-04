@@ -62,7 +62,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         href: '/ai-chat',
         icon: Bot,
         permission: "ai.chat.use",
-        role: "organization"
+        role: "organization",
     },
 
     {
@@ -78,6 +78,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ],
         // permission: "data.management.read"
         role: "organization"
+    },
+
+    {
+        title: 'Followers',
+        href: route("organization.followers.index"),
+        icon: UserCheck,
+        permission: "organization.followers.read",
+        role: "organization",
     },
 
     {
@@ -135,6 +143,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/campaigns/ai/create',
                 icon: Star, // or Send for create campaign
                 permission: "campaign.ai.create"
+            },
+            {
+                title: 'Newsletter',
+                href: '/newsletter',
+                icon: Mail,
+                permission: "newsletter.read"
             },
         ],
         role: "organization"
@@ -348,12 +362,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/chat',
                 icon: Text,
                 permission: "communication.read"
-            },
-            {
-                title: 'Newsletter',
-                href: '/newsletter',
-                icon: Mail,
-                permission: "newsletter.read"
             },
             {
                 title: 'Email Invites',

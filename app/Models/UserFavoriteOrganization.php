@@ -14,6 +14,12 @@ class UserFavoriteOrganization extends Model
         'notifications',
     ];
 
+    protected $casts = [
+        'notifications' => 'boolean',
+        'created_at' => 'datetime',
+        'updated_at' => 'datetime',
+    ];
+
     public function user()
     {
         return $this->belongsTo(User::class);

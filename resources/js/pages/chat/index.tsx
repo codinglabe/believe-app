@@ -1,5 +1,6 @@
 // resources/js/pages/chat/index.tsx
 import { ChatLayout } from "@/components/chat/chat-layout"
+import AppLayout from "@/layouts/app-layout";
 import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase";
 import { ChatProvider } from "@/providers/chat-provider"
 import { usePage } from "@inertiajs/react";
@@ -80,7 +81,7 @@ export default function ChatPage() {
         }
     }, [props.props?.success, props.props?.error])
 
-  return (
+    return (
       <ChatProvider>
           {/* Toast Container */}
             <Toaster
@@ -118,6 +119,6 @@ export default function ChatPage() {
         <main className="h-screen w-full overflow-hidden">
           <ChatLayout />
         </main>
-      </ChatProvider>
+            </ChatProvider>
   )
 }

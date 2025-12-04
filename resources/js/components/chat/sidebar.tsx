@@ -10,6 +10,7 @@ import { useChat } from "@/providers/chat-provider"
 import { UserAvatar } from "@/components/chat/user-avatar"
 import { PlusIcon, SearchIcon } from 'lucide-react'
 import { NotificationBell } from "../notification-bell"
+import { Link, usePage } from "@inertiajs/react"
 
 // Helper function to safely convert to lowercase
 const safeToLower = (str: any): string => {
@@ -29,6 +30,8 @@ export function Sidebar() {
     searchQuery = "",
     setSearchQuery,
   } = useChat()
+
+    const { auth } = usePage().props;
 
   const [isGroupCreateOpen, setIsGroupCreateOpen] = useState(false)
   const [activeTab, setActiveTab] = useState<TabType>("groups")
@@ -95,7 +98,12 @@ export function Sidebar() {
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-xl font-semibold">
-          Dashboard / {getBreadcrumbText()}
+   <Link
+  href={auth?.user?.role !== 'user' ? route("dashboard") : route("user.profile.index")}
+  className="hover:underline"
+>
+  Dashboard
+</Link> / {getBreadcrumbText()}
               </h2>
               <div>
                   <NotificationBell userId={currentUser?.id}/>

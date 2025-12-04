@@ -80,6 +80,7 @@ use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\OrderItemController;
+use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
 use App\Http\Controllers\WebhookManagementController;
@@ -427,6 +428,41 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/credits/checkout', [CreditPurchaseController::class, 'checkout'])->name('credits.checkout');
     Route::get('/credits/success', [CreditPurchaseController::class, 'success'])->name('credits.success');
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
+
+
+
+
+
+    // Organization routes
+    Route::prefix('organization')->group(function () {
+        Route::get('/followers', [FollowerController::class, 'index'])
+            ->name('organization.followers.index');
+
+        Route::post(
+            '/followers/{follower}/toggle-notifications',
+            [FollowerController::class, 'toggleNotifications']
+        )
+            ->name('organization.followers.toggle-notifications');
+
+        Route::delete(
+            '/followers/{follower}',
+            [FollowerController::class, 'destroy']
+        )
+            ->name('organization.followers.destroy');
+
+        // Bulk actions
+        Route::post(
+            '/followers/bulk-toggle-notifications',
+            [FollowerController::class, 'bulkToggleNotifications']
+        )
+            ->name('organization.followers.bulk-toggle-notifications');
+
+        Route::post(
+            '/followers/bulk-destroy',
+            [FollowerController::class, 'bulkDestroy']
+        )
+            ->name('organization.followers.bulk-destroy');
+    });
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
