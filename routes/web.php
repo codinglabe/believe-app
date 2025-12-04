@@ -1027,6 +1027,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     });
 });
 
+
 // route for donation
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
@@ -1075,6 +1076,20 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 // Note: Stripe webhooks are handled by Laravel Cashier at /stripe/webhook
 // Configure this URL in your Stripe dashboard
 // The webhook will process checkout.session.completed events automatically
+
+// Email Invite Routes
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
+    Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
+    Route::post('/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
+    Route::post('/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
+    Route::get('/callback', [App\Http\Controllers\EmailInviteController::class, 'callback'])->name('callback');
+    Route::post('/connections/{connection}/sync', [App\Http\Controllers\EmailInviteController::class, 'syncContacts'])->name('sync');
+    Route::get('/connections/{connection}/sync-status', [App\Http\Controllers\EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');
+    Route::get('/contacts', [App\Http\Controllers\EmailInviteController::class, 'getContacts'])->name('contacts');
+    Route::post('/send-invites', [App\Http\Controllers\EmailInviteController::class, 'sendInvites'])->name('send-invites');
+    Route::delete('/connections/{connection}', [App\Http\Controllers\EmailInviteController::class, 'disconnect'])->name('disconnect');
+    Route::delete('/contacts/{contact}', [App\Http\Controllers\EmailInviteController::class, 'deleteContact'])->name('contacts.delete');
+});
 
 require __DIR__ . '/settings.php';
 require __DIR__ . '/auth.php';

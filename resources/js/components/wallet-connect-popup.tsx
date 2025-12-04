@@ -295,7 +295,7 @@ export function WalletConnectPopup({
                     onConnect()
                     onClose()
                   }}
-                  className={`w-full ${bgPrimary} ${hoverPrimary} text-white shadow-lg`}
+                  className={`w-full ${bgPrimary} ${hoverPrimary} text-primary-foreground dark:text-white shadow-lg`}
                 >
                   Got it!
                 </Button>
@@ -403,16 +403,17 @@ export function WalletConnectPopup({
                   </Button>
                   <Button
                     onClick={handleConnect}
-                    className={`flex-1 ${bgPrimary} ${hoverPrimary} text-white shadow-lg`}
+                    variant="default"
+                    className={`flex-1 ${bgPrimary} ${hoverPrimary} text-primary-foreground dark:text-white shadow-lg font-medium`}
                   >
-                    <Wallet className="w-4 h-4 mr-2" />
-                    Connect Wallet
+                    <Wallet className="w-4 h-4 mr-2 text-primary-foreground dark:text-white" />
+                    <span className="text-primary-foreground dark:text-white font-medium">Connect Wallet</span>
                   </Button>
                 </>
               ) : (
                 <Button
                   onClick={onClose}
-                  className={`w-full ${bgPrimary} ${hoverPrimary} text-white`}
+                  className={`w-full ${bgPrimary} ${hoverPrimary} text-primary-foreground dark:text-white`}
                 >
                   Got it!
                 </Button>
@@ -540,7 +541,7 @@ export function WalletConnectPopup({
                   <Button
                     type="submit"
                     disabled={isSubmitting || !email || !password}
-                    className={`flex-1 ${bgPrimary} ${hoverPrimary} text-white shadow-lg disabled:opacity-50`}
+                    className={`flex-1 ${bgPrimary} ${hoverPrimary} text-primary-foreground dark:text-white shadow-lg disabled:opacity-50`}
                   >
                     {isSubmitting ? (
                       <>

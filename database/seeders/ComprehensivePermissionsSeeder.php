@@ -128,6 +128,9 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Reward Point Management
             'reward.point' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // Email Invite Management
+            'email.invite' => ['read', 'create', 'edit', 'update', 'delete', 'manage', 'sync', 'send'],
         ];
 
         // Create all permissions
@@ -227,6 +230,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             // Volunteer Management - Full access
             'volunteer.read', 'volunteer.create', 'volunteer.edit', 'volunteer.update', 'volunteer.delete', 'volunteer.manage',
             'volunteer.timesheet.read', 'volunteer.timesheet.create', 'volunteer.timesheet.edit', 'volunteer.timesheet.update', 'volunteer.timesheet.delete', 'volunteer.timesheet.manage',
+
+            // Email Invite Management - Full access
+            'email.invite.read', 'email.invite.create', 'email.invite.edit', 'email.invite.update', 'email.invite.delete', 'email.invite.manage', 'email.invite.sync', 'email.invite.send',
         ];
 
         $role->syncPermissions($permissions);

@@ -65,4 +65,16 @@ return [
         'api_key' => env('OPENAI_API_KEY'),
     ],
 
+    'gmail' => [
+        'client_id' => env('GMAIL_CLIENT_ID'),
+        'client_secret' => env('GMAIL_CLIENT_SECRET'),
+        'redirect_uri' => env('GMAIL_REDIRECT_URI', env('APP_URL') . '/email-invite/callback'),
+    ],
+
+    'outlook' => [
+        'client_id' => env('OUTLOOK_CLIENT_ID'),
+        'client_secret' => env('OUTLOOK_CLIENT_SECRET'),
+        'redirect_uri' => env('OUTLOOK_REDIRECT_URI', env('APP_URL') . '/email-invite/callback'),
+    ],
+
 ];
