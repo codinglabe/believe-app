@@ -64,14 +64,10 @@ const defaultContactMethods = [
     title: "Email Support",
     description: "Send us an email and we'll respond within 24 hours",
     contact: "support@believeinunity.org",
-<<<<<<< Updated upstream
     action: "mailto:support@believeinunity.org",
     color: "from-blue-500 to-blue-600",
     bgColor: "bg-blue-50 dark:bg-blue-900/20",
     iconColor: "text-blue-600 dark:text-blue-400",
-=======
-    action: "mailto:hello@believeinunity.org",
->>>>>>> Stashed changes
   },
   {
     icon: Phone,
@@ -104,10 +100,7 @@ const defaultFaqItems = [
   {
     question: "Can I get a tax receipt for my donation?",
     answer:
-<<<<<<< Updated upstream
       "Yes! All donations through Believe in Unity are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
-=======
-      "Yes! All donations through believeinunity are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
   },
   {
     question: "How do I track the impact of my donation?",
@@ -118,7 +111,6 @@ const defaultFaqItems = [
     question: "How are organizations verified?",
     answer:
       "We have a rigorous verification process that includes checking legal status, financial transparency, and impact measurement capabilities.",
->>>>>>> Stashed changes
   },
 ]
 
@@ -128,13 +120,13 @@ const getContactMethodIcon = (title?: string) => {
   return MessageCircle
 }
 
-export default function ContactPage({ 
-  hero, 
-  contactMethods = [], 
-  faqItems = [], 
-  officeHours, 
-  officeLocation, 
-  cta 
+export default function ContactPage({
+  hero,
+  contactMethods = [],
+  faqItems = [],
+  officeHours,
+  officeLocation,
+  cta
 }: ContactPageProps) {
   const { data, setData, post, processing, errors, wasSuccessful } = useForm({
     first_name: '',
@@ -188,9 +180,9 @@ export default function ContactPage({
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
             {/* Contact Form */}
             <div className="lg:col-span-2">
-              <motion.div 
-                initial={{ opacity: 0, y: 30 }} 
-                animate={{ opacity: 1, y: 0 }} 
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.8 }}
               >
                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-xl">
@@ -327,9 +319,9 @@ export default function ContactPage({
                           )}
                         </div>
 
-                        <Button 
-                          type="submit" 
-                          size="lg" 
+                        <Button
+                          type="submit"
+                          size="lg"
                           disabled={processing}
                           className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
                         >
@@ -571,8 +563,8 @@ export default function ContactPage({
                   </p>
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     {cta?.button1_text && cta?.button1_link && (
-                      <Button 
-                        size="lg" 
+                      <Button
+                        size="lg"
                         asChild
                         className="bg-white text-blue-600 hover:bg-gray-100 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
                       >
@@ -597,8 +589,8 @@ export default function ContactPage({
                     )}
                     {!cta && (
                       <>
-                        <Button 
-                          size="lg" 
+                        <Button
+                          size="lg"
                           asChild
                           className="bg-white text-blue-600 hover:bg-gray-100 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
                         >

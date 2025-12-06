@@ -44,14 +44,11 @@ import {
     UserCheck,
     Info,
     Heart,
-<<<<<<< Updated upstream
     Sparkles,
     ArrowRight,
-    MessageCircle
-=======
+    MessageCircle,
     Facebook,
     Link
->>>>>>> Stashed changes
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -648,26 +645,26 @@ export function AppSidebar() {
 
                 {isOrganization && !hasPlan && (
                     <SidebarFooter className="px-3 py-3 border-t border-sidebar-border bg-sidebar flex-shrink-0">
-                    <motion.div 
+                    <motion.div
                         className="relative overflow-hidden rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/15 dark:to-primary/10 border border-primary/20 dark:border-primary/30 p-4"
                         initial={{ opacity: 0, y: 20 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.5, ease: "easeOut" }}
                         whileHover={{ scale: 1.02 }}
                     >
-                        <motion.div 
+                        <motion.div
                             className="flex items-center gap-3 mb-3"
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ duration: 0.5, delay: 0.1 }}
                         >
-                            <motion.div 
+                            <motion.div
                                 className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 dark:bg-primary/25 flex items-center justify-center"
-                                animate={{ 
+                                animate={{
                                     rotate: [0, 10, -10, 0],
                                     scale: [1, 1.1, 1]
                                 }}
-                                transition={{ 
+                                transition={{
                                     duration: 2,
                                     repeat: Infinity,
                                     repeatDelay: 3
@@ -689,7 +686,7 @@ export function AppSidebar() {
                                 whileHover={{ scale: 1.02 }}
                                 whileTap={{ scale: 0.98 }}
                             >
-                                <Button 
+                                <Button
                                     className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium h-9 shadow-sm group"
                                     size="sm"
                                 >
