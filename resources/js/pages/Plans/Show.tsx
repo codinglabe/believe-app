@@ -133,11 +133,11 @@ export default function PlansShow({ plan }: PlansShowProps) {
                                     <span className="text-muted-foreground text-sm sm:text-base md:text-lg">/{plan.frequency}</span>
                                 </div>
                                 {plan.trial_days > 0 && (
-                                    <div className="mb-3 sm:mb-4">
-                                        <p className="text-sm sm:text-base font-medium text-primary">
+                                <div className="mb-3 sm:mb-4">
+                                    <p className="text-sm sm:text-base font-medium text-primary">
                                             {plan.trial_days} day{plan.trial_days !== 1 ? 's' : ''} free trial
-                                        </p>
-                                    </div>
+                                    </p>
+                                </div>
                                 )}
                                 {plan.description && (
                                     <div className="mb-3 sm:mb-4">
@@ -220,9 +220,9 @@ export default function PlansShow({ plan }: PlansShowProps) {
                                         <ArrowRight className="h-3 w-3 sm:h-4 sm:w-4 ml-2" />
                                     </Button>
                                     {plan.trial_days > 0 && (
-                                        <p className="text-xs text-muted-foreground text-center mt-2 px-2">
-                                            No credit card required for trial. Cancel anytime.
-                                        </p>
+                                    <p className="text-xs text-muted-foreground text-center mt-2 px-2">
+                                        No credit card required for trial. Cancel anytime.
+                                    </p>
                                     )}
                                 </div>
                             </CardContent>

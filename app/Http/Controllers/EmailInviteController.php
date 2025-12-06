@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\EmailConnection;
 use App\Models\EmailContact;
+use App\Models\EmailPackage;
 use App\Models\Organization;
 use App\Services\GmailService;
 use App\Services\OutlookService;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use App\Jobs\SyncEmailContacts;
+use Laravel\Cashier\Cashier;
 
 class EmailInviteController extends BaseController
 {
@@ -60,6 +62,14 @@ class EmailInviteController extends BaseController
             ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
 
+        // Get email count information from user's subscription plan
+        $emailsIncluded = $user->emails_included ?? 0;
+        $emailsUsed = $user->emails_used ?? 0;
+        $emailsLeft = max(0, $emailsIncluded - $emailsUsed);
+
+        // Get active email packages
+        $emailPackages = EmailPackage::active()->ordered()->get();
+
         return Inertia::render('EmailInvite/Index', [
             'connections' => $connections->map(function ($connection) {
                 return [
@@ -79,6 +89,20 @@ class EmailInviteController extends BaseController
                 'per_page' => (int) $perPage,
                 'page' => (int) $page,
             ],
+            'emailStats' => [
+                'emails_included' => $emailsIncluded,
+                'emails_used' => $emailsUsed,
+                'emails_left' => $emailsLeft,
+            ],
+            'emailPackages' => $emailPackages->map(function ($package) {
+                return [
+                    'id' => $package->id,
+                    'name' => $package->name,
+                    'description' => $package->description,
+                    'emails_count' => $package->emails_count,
+                    'price' => (float) $package->price,
+                ];
+            }),
         ]);
     }
 
@@ -298,6 +322,14 @@ class EmailInviteController extends BaseController
             ->paginate($perPage, ['*'], 'page', $page)
             ->withQueryString();
 
+        // Get email count information from user's subscription plan
+        $emailsIncluded = $user->emails_included ?? 0;
+        $emailsUsed = $user->emails_used ?? 0;
+        $emailsLeft = max(0, $emailsIncluded - $emailsUsed);
+
+        // Get active email packages
+        $emailPackages = EmailPackage::active()->ordered()->get();
+
         // Return Inertia response with updated connections and contacts
         return Inertia::render('EmailInvite/Index', [
             'connections' => $connections->map(function ($conn) {
@@ -318,6 +350,20 @@ class EmailInviteController extends BaseController
                 'per_page' => (int) $perPage,
                 'page' => (int) $page,
             ],
+            'emailStats' => [
+                'emails_included' => $emailsIncluded,
+                'emails_used' => $emailsUsed,
+                'emails_left' => $emailsLeft,
+            ],
+            'emailPackages' => $emailPackages->map(function ($package) {
+                return [
+                    'id' => $package->id,
+                    'name' => $package->name,
+                    'description' => $package->description,
+                    'emails_count' => $package->emails_count,
+                    'price' => (float) $package->price,
+                ];
+            }),
         ]);
     }
 
@@ -379,8 +425,19 @@ class EmailInviteController extends BaseController
             return response()->json(['error' => 'No valid contacts selected'], 400);
         }
 
+        // Check email limits based on subscription plan
+        $emailsIncluded = $user->emails_included ?? 0;
+        $emailsUsed = $user->emails_used ?? 0;
+        $emailsLeft = max(0, $emailsIncluded - $emailsUsed);
+        $contactsToSend = $contacts->count();
+
+        if ($emailsIncluded > 0 && $emailsLeft < $contactsToSend) {
+            return redirect()->route('email-invite.index')
+                ->with('error', "You have {$emailsLeft} email(s) remaining, but you're trying to send {$contactsToSend} invite(s). Please upgrade your plan or select fewer contacts.");
+        }
+
         // Dispatch job to send invites in the background
-        \App\Jobs\SendEmailInvites::dispatch($contacts, $organization, $request->input('message'));
+        \App\Jobs\SendEmailInvites::dispatch($contacts, $organization, $request->input('message'), $user);
 
         Log::info("Email invites job dispatched for {$contacts->count()} contacts to organization {$organization->id}");
 
@@ -430,5 +487,143 @@ class EmailInviteController extends BaseController
 
         return redirect()->route('email-invite.index')
             ->with('success', 'Contact deleted successfully');
+    }
+
+    /**
+     * Create Stripe checkout session for email pack purchase
+     */
+    public function purchaseEmails(Request $request)
+    {
+        $this->authorizePermission($request, 'email.invite.send');
+        
+        $request->validate([
+            'package_id' => 'required|exists:email_packages,id',
+        ]);
+
+        $user = $request->user();
+        
+        // Get the email package
+        $package = EmailPackage::active()->findOrFail($request->input('package_id'));
+
+        try {
+            // Record pending transaction
+            $transaction = $user->recordTransaction([
+                'type' => 'email_purchase',
+                'amount' => $package->price,
+                'payment_method' => 'stripe',
+                'status' => 'pending',
+                'meta' => [
+                    'emails_to_add' => $package->emails_count,
+                    'package_id' => $package->id,
+                    'package_name' => $package->name,
+                    'description' => "Purchase {$package->name}",
+                ],
+            ]);
+
+            // Calculate total amount in cents
+            $amountInCents = (int) ($package->price * 100);
+
+            // Create checkout session
+            $checkout = $user->checkoutCharge(
+                $amountInCents,
+                $package->name,
+                1,
+                [
+                    'success_url' => route('email-invite.purchase.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                    'cancel_url' => route('email-invite.index') . '?canceled=1',
+                    'metadata' => [
+                        'user_id' => $user->id,
+                        'transaction_id' => $transaction->id,
+                        'type' => 'email_purchase',
+                        'emails_to_add' => $package->emails_count,
+                        'package_id' => $package->id,
+                        'amount' => $package->price,
+                    ],
+                    'payment_method_types' => ['card'],
+                ]
+            );
+            
+            // Return Inertia redirect to Stripe checkout
+            return Inertia::location($checkout->url);
+            
+        } catch (\Exception $e) {
+            Log::error('Email purchase checkout error', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+            ]);
+            
+            return back()->withErrors([
+                'message' => 'Failed to create checkout session. Please try again.',
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * Handle successful email purchase payment
+     */
+    public function purchaseSuccess(Request $request)
+    {
+        try {
+            $sessionId = $request->query('session_id');
+            
+            if (!$sessionId) {
+                return redirect()->route('email-invite.index')->with('error', 'Invalid session ID.');
+            }
+
+            $user = $request->user();
+            
+            // Retrieve the checkout session from Stripe
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
+            
+            if ($session->payment_status !== 'paid') {
+                return redirect()->route('email-invite.index')->with('error', 'Payment was not completed.');
+            }
+
+            // Get metadata from session
+            $metadata = $session->metadata ?? [];
+            $emailsToAdd = (int) ($metadata['emails_to_add'] ?? 0);
+            $transactionId = $metadata['transaction_id'] ?? null;
+
+            if ($emailsToAdd > 0) {
+                // Add emails to user's included count
+                $user->increment('emails_included', $emailsToAdd);
+            }
+
+            // Update transaction status
+            if ($transactionId) {
+                $transaction = \App\Models\Transaction::find($transactionId);
+                if ($transaction) {
+                    $transaction->update([
+                        'status' => 'completed',
+                        'meta' => array_merge(
+                            $transaction->meta ?? [],
+                            [
+                                'stripe_session_id' => $sessionId,
+                                'stripe_payment_intent' => $session->payment_intent,
+                                'payment_status' => $session->payment_status,
+                                'emails_added' => $emailsToAdd,
+                            ]
+                        ),
+                    ]);
+                }
+            }
+
+            Log::info('Emails purchased successfully', [
+                'user_id' => $user->id,
+                'emails_added' => $emailsToAdd,
+                'session_id' => $sessionId,
+            ]);
+
+            return redirect()->route('email-invite.index')->with('success', "Successfully purchased {$emailsToAdd} emails!");
+            
+        } catch (\Exception $e) {
+            Log::error('Email purchase success handler error', [
+                'error' => $e->getMessage(),
+                'session_id' => $request->query('session_id'),
+            ]);
+            
+            return redirect()->route('email-invite.index')->with('error', 'Error processing payment. Please contact support.');
+        }
     }
 }

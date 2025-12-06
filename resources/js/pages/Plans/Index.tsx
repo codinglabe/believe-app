@@ -342,7 +342,7 @@ export default function PlansIndex({ plans, addOns, currentPlan }: PlansIndexPro
                                                             {field.type === 'number' && field.description ? (
                                                                 <p className="text-xs text-muted-foreground">{field.description}</p>
                                                             ) : (
-                                                                <p className="text-xs text-muted-foreground">{field.value}</p>
+                                                            <p className="text-xs text-muted-foreground">{field.value}</p>
                                                             )}
                                                         </div>
                                                     </div>
@@ -370,18 +370,18 @@ export default function PlansIndex({ plans, addOns, currentPlan }: PlansIndexPro
                                                 </Button>
                                             </div>
                                         ) : (
-                                            <Button 
-                                                className={`w-full ${
-                                                    plan.is_popular
-                                                        ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
+                                        <Button 
+                                            className={`w-full ${
+                                                plan.is_popular
+                                                    ? 'bg-primary hover:bg-primary/90 text-primary-foreground'
                                                         : 'bg-primary/90 hover:bg-primary text-primary-foreground'
-                                                }`}
-                                                size="lg"
+                                            }`}
+                                            size="lg"
                                                 onClick={() => handleSubscribe(plan.id)}
-                                            >
+                                        >
                                                 <span>{currentPlan ? 'Switch Plan' : 'Get Started'}</span>
-                                                <ArrowRight className="h-4 w-4 ml-2" />
-                                            </Button>
+                                            <ArrowRight className="h-4 w-4 ml-2" />
+                                        </Button>
                                         )}
                                     </CardContent>
                                 </Card>

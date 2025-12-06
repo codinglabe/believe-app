@@ -20,12 +20,22 @@ import {
     Users,
     Search,
     Filter,
-    Check
+    Check,
+    Package,
+    Send as SendIcon,
+    TrendingUp
 } from "lucide-react"
 import { route } from "ziggy-js"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useDebounce } from "@/hooks/useDebounce"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+} from "@/components/ui/dialog"
 
 interface EmailConnection {
     id: number
@@ -61,6 +71,14 @@ interface PaginatedContacts {
     next_page_url?: string | null
 }
 
+interface EmailPackage {
+    id: number
+    name: string
+    description: string | null
+    emails_count: number
+    price: number
+}
+
 interface EmailInviteIndexProps {
     connections: EmailConnection[]
     contacts: PaginatedContacts
@@ -70,9 +88,15 @@ interface EmailInviteIndexProps {
         per_page: number
         page: number
     }
+    emailStats?: {
+        emails_included: number
+        emails_used: number
+        emails_left: number
+    }
+    emailPackages?: EmailPackage[]
 }
 
-export default function EmailInviteIndex({ connections, contacts: initialContacts, filters: initialFilters }: EmailInviteIndexProps) {
+export default function EmailInviteIndex({ connections, contacts: initialContacts, filters: initialFilters, emailStats, emailPackages = [] }: EmailInviteIndexProps) {
     const { flash } = usePage().props as any
     const [selectedContacts, setSelectedContacts] = useState<number[]>([])
     const [searchTerm, setSearchTerm] = useState(initialFilters?.search || "")
@@ -89,6 +113,9 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
     const [currentPage, setCurrentPage] = useState(initialContacts?.current_page || 1)
     const [hasMore, setHasMore] = useState((initialContacts?.current_page || 0) < (initialContacts?.last_page || 0))
     const [isSendingInvites, setIsSendingInvites] = useState(false)
+    const [buyEmailsModalOpen, setBuyEmailsModalOpen] = useState(false)
+    const [selectedPackageId, setSelectedPackageId] = useState<number | null>(null)
+    const [isPurchasing, setIsPurchasing] = useState(false)
     const scrollContainerRef = useRef<HTMLDivElement>(null)
 
     // Initialize syncing state from connections - persists across page reloads
@@ -447,6 +474,14 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
             return
         }
 
+        // Check email limits
+        if (emailStats && emailStats.emails_included > 0) {
+            if (emailStats.emails_left < selectedContacts.length) {
+                showErrorToast(`You have ${emailStats.emails_left} email(s) remaining, but you're trying to send ${selectedContacts.length} invite(s). Please upgrade your plan or select fewer contacts.`)
+                return
+            }
+        }
+
         // Prevent double submission
         if (isSendingInvites) {
             return
@@ -474,7 +509,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                 setIsSendingInvites(false)
                 },
         })
-    }, [selectedContacts, customMessage, isSendingInvites])
+    }, [selectedContacts, customMessage, isSendingInvites, emailStats])
 
     const getProviderBadge = (provider: string) => {
         const colors = provider === 'gmail' 
@@ -503,8 +538,144 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                     </div>
                 </div>
 
-                {/* Email Connections */}
-                <Card>
+                {/* Email Usage and Connections Grid */}
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Email Usage Card */}
+                    {emailStats && (
+                        <Card>
+                            <CardHeader>
+                                <div className="flex items-start justify-between gap-4">
+                                    <div className="flex-1">
+                                        <CardTitle className="flex items-center gap-2">
+                                            <Mail className="h-5 w-5" />
+                                            Email Usage
+                                        </CardTitle>
+                                        <CardDescription>
+                                            Track your email sending quota based on your subscription plan
+                                        </CardDescription>
+                                    </div>
+                                    {(emailStats.emails_left === 0 || emailStats.emails_included === 0) && (
+                                        <Button
+                                            onClick={() => setBuyEmailsModalOpen(true)}
+                                            size="sm"
+                                            className="flex-shrink-0"
+                                        >
+                                            Buy More Emails
+                                        </Button>
+                                    )}
+                                </div>
+                            </CardHeader>
+                            <CardContent>
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                    {/* Emails Included Card */}
+                                    <div className="bg-card border-border rounded-lg border p-5 shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="bg-blue-500/10 rounded-lg p-2.5 text-blue-600 dark:text-blue-400">
+                                                <Package className="h-5 w-5" />
+                                            </div>
+                                            <p className="text-sm text-muted-foreground font-medium">Emails Included</p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-foreground mb-1">
+                                                {emailStats.emails_included.toLocaleString()}
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground">From your plan</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Emails Sent Card */}
+                                    <div className="bg-card border-border rounded-lg border p-5 shadow-sm hover:shadow-md transition-shadow">
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className="bg-purple-500/10 rounded-lg p-2.5 text-purple-600 dark:text-purple-400">
+                                                <SendIcon className="h-5 w-5" />
+                                            </div>
+                                            <p className="text-sm text-muted-foreground font-medium">Emails Sent</p>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-2xl font-bold text-foreground mb-1">
+                                                {emailStats.emails_used.toLocaleString()}
+                                            </h3>
+                                            <p className="text-xs text-muted-foreground">Total sent</p>
+                                        </div>
+                                    </div>
+
+                                    {/* Emails Remaining Card */}
+                                    <div className={`bg-card rounded-lg border p-5 shadow-sm hover:shadow-md transition-shadow ${
+                                        emailStats.emails_left === 0 
+                                            ? 'border-destructive/50 bg-destructive/5' 
+                                            : emailStats.emails_left < 10
+                                            ? 'border-yellow-500/50 bg-yellow-500/5'
+                                            : 'border-green-500/50 bg-green-500/5 border-border'
+                                    }`}>
+                                        <div className="flex items-center gap-3 mb-4">
+                                            <div className={`rounded-lg p-2.5 ${
+                                                emailStats.emails_left === 0 
+                                                    ? 'bg-destructive/10 text-destructive' 
+                                                    : emailStats.emails_left < 10
+                                                    ? 'bg-yellow-500/10 text-yellow-600 dark:text-yellow-400'
+                                                    : 'bg-green-500/10 text-green-600 dark:text-green-400'
+                                            }`}>
+                                                <TrendingUp className="h-5 w-5" />
+                                            </div>
+                                            <p className="text-sm text-muted-foreground font-medium">Emails Remaining</p>
+                                        </div>
+                                        <div>
+                                            <h3 className={`text-2xl font-bold mb-1 ${
+                                                emailStats.emails_left === 0 
+                                                    ? 'text-destructive' 
+                                                    : emailStats.emails_left < 10
+                                                    ? 'text-yellow-600 dark:text-yellow-400'
+                                                    : 'text-green-600 dark:text-green-400'
+                                            }`}>
+                                                {emailStats.emails_left.toLocaleString()}
+                                            </h3>
+                                            <p className={`text-xs ${
+                                                emailStats.emails_left === 0 
+                                                    ? 'text-destructive/80' 
+                                                    : emailStats.emails_left < 10
+                                                    ? 'text-yellow-600/80 dark:text-yellow-400/80'
+                                                    : 'text-green-600/80 dark:text-green-400/80'
+                                            }`}>
+                                                {emailStats.emails_left === 0 
+                                                    ? 'Upgrade to send more' 
+                                                    : emailStats.emails_left < 10
+                                                    ? 'Running low'
+                                                    : 'Available'
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                                {emailStats.emails_included > 0 && (
+                                    <div className="mt-4">
+                                        <div className="flex items-center justify-between text-sm mb-2">
+                                            <span className="text-muted-foreground">Usage Progress</span>
+                                            <span className="text-muted-foreground">
+                                                {Math.round((emailStats.emails_used / emailStats.emails_included) * 100)}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-muted rounded-full h-2.5">
+                                            <div 
+                                                className={`h-2.5 rounded-full transition-all ${
+                                                    (emailStats.emails_used / emailStats.emails_included) >= 1
+                                                        ? 'bg-destructive'
+                                                        : (emailStats.emails_used / emailStats.emails_included) >= 0.8
+                                                        ? 'bg-yellow-500'
+                                                        : 'bg-primary'
+                                                }`}
+                                                style={{ 
+                                                    width: `${Math.min(100, (emailStats.emails_used / emailStats.emails_included) * 100)}%` 
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {/* Email Connections */}
+                    <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Mail className="h-5 w-5" />
@@ -589,6 +760,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                         </div>
                     </CardContent>
                 </Card>
+                </div>
 
                 {/* Contacts List */}
                 <Card>
@@ -825,10 +997,19 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
 
                             {/* Send Button */}
                             {selectedContacts.length > 0 && (
-                                <div className="pt-4 border-t">
+                                <div className="pt-4 border-t space-y-2">
+                                    {emailStats && emailStats.emails_included > 0 && emailStats.emails_left < selectedContacts.length && (
+                                        <div className="p-3 bg-yellow-500/10 border border-yellow-500/50 rounded-lg text-sm text-yellow-800 dark:text-yellow-200">
+                                            <p className="font-medium">Insufficient Email Quota</p>
+                                            <p>You have {emailStats.emails_left} email(s) remaining, but you're trying to send {selectedContacts.length} invite(s). Please select fewer contacts or upgrade your plan.</p>
+                                        </div>
+                                    )}
                                     <Button
                                         onClick={handleSendInvites}
-                                        disabled={isSendingInvites}
+                                        disabled={
+                                            isSendingInvites || 
+                                            (emailStats && emailStats.emails_included > 0 && emailStats.emails_left < selectedContacts.length)
+                                        }
                                         className="w-full"
                                         size="lg"
                                     >
@@ -841,6 +1022,11 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                                             <>
                                                 <Send className="h-4 w-4 mr-2" />
                                                 Send Invites to {selectedContacts.length} Contact(s)
+                                                {emailStats && emailStats.emails_included > 0 && (
+                                                    <span className="ml-2 text-xs opacity-75">
+                                                        ({emailStats.emails_left} remaining)
+                                                    </span>
+                                                )}
                                             </>
                                         )}
                                     </Button>
@@ -879,6 +1065,117 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                     }}
                     isLoading={isDeletingContact}
                 />
+
+                {/* Buy More Emails Modal */}
+                <Dialog open={buyEmailsModalOpen} onOpenChange={setBuyEmailsModalOpen}>
+                    <DialogContent className="sm:max-w-md">
+                        <DialogHeader>
+                            <DialogTitle className="text-2xl font-bold">Buy More Emails</DialogTitle>
+                            <DialogDescription>
+                                Choose an email pack to add to your account
+                            </DialogDescription>
+                        </DialogHeader>
+                        
+                        <div className="space-y-4 py-4">
+                            {/* Email Packs */}
+                            {emailPackages.length === 0 ? (
+                                <div className="text-center py-8 text-muted-foreground">
+                                    <p>No email packages available</p>
+                                    <p className="text-sm mt-2">Please contact support</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {emailPackages.map((pkg) => (
+                                        <div
+                                            key={pkg.id}
+                                            onClick={() => setSelectedPackageId(pkg.id)}
+                                            className={`relative p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                                selectedPackageId === pkg.id
+                                                    ? 'border-primary bg-primary/5 shadow-md'
+                                                    : 'border-border hover:border-primary/50'
+                                            }`}
+                                        >
+                                            <div className="flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                                                        selectedPackageId === pkg.id
+                                                            ? 'border-primary bg-primary'
+                                                            : 'border-border'
+                                                    }`}>
+                                                        {selectedPackageId === pkg.id && (
+                                                            <div className="w-2 h-2 rounded-full bg-white" />
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <p className="font-semibold text-base">
+                                                            +{pkg.emails_count.toLocaleString()} Emails
+                                                        </p>
+                                                        <p className="text-sm text-muted-foreground">
+                                                            {pkg.name}
+                                                        </p>
+                                                        {pkg.description && (
+                                                            <p className="text-xs text-muted-foreground mt-1">
+                                                                {pkg.description}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                                <div className="text-right">
+                                                    <p className="text-xl font-bold">
+                                                        ${pkg.price.toFixed(2)}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+
+                        <div className="flex gap-3 pt-4 border-t">
+                            <Button
+                                variant="outline"
+                                onClick={() => {
+                                    setBuyEmailsModalOpen(false)
+                                    setSelectedPackageId(null)
+                                }}
+                                className="flex-1"
+                                disabled={isPurchasing}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                onClick={async () => {
+                                    if (!selectedPackageId) {
+                                        showErrorToast("Please select an email package")
+                                        return
+                                    }
+
+                                    setIsPurchasing(true)
+                                    try {
+                                        router.post(route('email-invite.purchase-emails'), {
+                                            package_id: selectedPackageId,
+                                        })
+                                    } catch (error) {
+                                        showErrorToast("Failed to process purchase")
+                                        setIsPurchasing(false)
+                                    }
+                                }}
+                                disabled={!selectedPackageId || isPurchasing || emailPackages.length === 0}
+                                className="flex-1"
+                            >
+                                {isPurchasing ? (
+                                    <>
+                                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                                        Processing...
+                                    </>
+                                ) : (
+                                    'Purchase'
+                                )}
+                            </Button>
+                        </div>
+                    </DialogContent>
+                </Dialog>
             </div>
         </AppSidebarLayout>
     )

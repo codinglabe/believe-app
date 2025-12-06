@@ -380,3 +380,4 @@ export default function AdminPlansShow({ plan }: ShowPlanProps) {
         </AppLayout>
     )
 }
+

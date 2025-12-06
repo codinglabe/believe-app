@@ -80,8 +80,29 @@ class DonationController extends Controller
      */
     public function store(Request $request)
     {
+        // First, try to find organization by ID
+        $organizationId = $request->input('organization_id');
+        $organization = Organization::find($organizationId);
+        
+        // If not found, it might be an ExcelData ID - try to find by EIN
+        if (!$organization) {
+            $excelData = \App\Models\ExcelData::find($organizationId);
+            if ($excelData) {
+                // Find Organization by EIN
+                $organization = Organization::where('ein', $excelData->ein)
+                    ->where('registration_status', 'approved')
+                    ->first();
+            }
+        }
+        
+        // Validate organization exists and is approved
+        if (!$organization || $organization->registration_status !== 'approved') {
+            return redirect()->back()->withErrors([
+                'organization_id' => 'The selected organization is invalid or not approved for donations.'
+            ]);
+        }
+        
         $validated = $request->validate([
-            'organization_id' => 'required|exists:organizations,id',
             'amount' => 'required|numeric|min:1',
             'frequency' => 'required|in:one-time,weekly,monthly',
             'message' => 'nullable|string|max:500',
@@ -89,14 +110,14 @@ class DonationController extends Controller
 
         $user = $request->user();
         $amountInCents = (int) ($validated['amount'] * 100);
-        $organizationName = Organization::find($validated['organization_id'])->name;
+        $organizationName = $organization->name;
         if ($user->hasRole(['organization', 'admin'])) {
             return redirect()->back()->with('warning', 'Please log in with a supporter account to make a donation.');
         }
         // Create donation record
         $donation = Donation::create([
             'user_id' => $user->id,
-            'organization_id' => $validated['organization_id'],
+            'organization_id' => $organization->id,
             'amount' => $validated['amount'],
             'frequency' => $validated['frequency'],
             'status' => 'pending',
@@ -112,7 +133,7 @@ class DonationController extends Controller
                 'cancel_url' => route('donations.cancel'),
                 'metadata' => [
                     'donation_id' => $donation->id,
-                    'organization_id' => $validated['organization_id'],
+                    'organization_id' => $organization->id,
                 ],
                 'payment_method_types' => ['card'],
             ];

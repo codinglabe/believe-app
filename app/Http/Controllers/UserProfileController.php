@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Donation;
 use App\Models\ExcelData;
 use App\Models\Order;
 use App\Models\Organization;
@@ -206,13 +207,84 @@ class UserProfileController extends Controller
         ]);
     }
 
-    public function donations()
+    public function donations(Request $request)
     {
-        // Get user's donation history
-        $donations = collect([]); // Replace with actual query
+        $user = auth()->user();
+        
+        // Get search and filter parameters
+        $search = $request->get('search', '');
+        $statusFilter = $request->get('status', '');
+        $perPage = $request->get('per_page', 4);
+        
+        // Build query
+        $query = Donation::where('user_id', $user->id)
+            ->with('organization:id,name');
+        
+        // Apply search filter
+        if ($search) {
+            $query->whereHas('organization', function ($q) use ($search) {
+                $q->where('name', 'like', '%' . $search . '%');
+            });
+        }
+        
+        // Apply status filter
+        if ($statusFilter && $statusFilter !== 'all') {
+            $query->where('status', $statusFilter);
+        }
+        
+        // Order by date
+        $query->orderBy('donation_date', 'desc')
+            ->orderBy('created_at', 'desc');
+        
+        // Paginate results
+        $donationsPaginated = $query->paginate($perPage);
+        
+        // Transform donations
+        $donations = $donationsPaginated->getCollection()->map(function ($donation) {
+            return [
+                'id' => $donation->id,
+                'organization_name' => $donation->organization->name ?? 'Unknown Organization',
+                'amount' => number_format($donation->amount, 2),
+                'date' => $donation->donation_date ? $donation->donation_date->toDateString() : $donation->created_at->toDateString(),
+                'status' => $donation->status === 'completed' ? 'completed' : ($donation->status === 'pending' ? 'pending' : ($donation->status === 'failed' ? 'failed' : 'processing')),
+                'frequency' => $donation->frequency ?? 'one-time',
+                'impact' => $donation->messages ?? null,
+                'receipt_url' => null, // Add receipt URL if available
+            ];
+        });
+
+        // Calculate stats (always from all donations, not filtered)
+        $totalDonated = Donation::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->sum('amount');
+        
+        $thisYearDonated = Donation::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereYear('donation_date', now()->year)
+            ->sum('amount');
+        
+        $organizationsSupported = Donation::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->distinct('organization_id')
+            ->count('organization_id');
 
         return Inertia::render('frontend/user-profile/donations', [
             'donations' => $donations,
+            'pagination' => [
+                'current_page' => $donationsPaginated->currentPage(),
+                'last_page' => $donationsPaginated->lastPage(),
+                'per_page' => $donationsPaginated->perPage(),
+                'total' => $donationsPaginated->total(),
+                'from' => $donationsPaginated->firstItem(),
+                'to' => $donationsPaginated->lastItem(),
+            ],
+            'filters' => [
+                'search' => $search,
+                'status' => $statusFilter,
+            ],
+            'totalDonated' => (float) $totalDonated,
+            'thisYearDonated' => (float) $thisYearDonated,
+            'organizationsSupported' => (int) $organizationsSupported,
         ]);
     }
 

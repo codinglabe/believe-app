@@ -45,7 +45,8 @@ import {
     Info,
     Heart,
     Sparkles,
-    ArrowRight
+    ArrowRight,
+    MessageCircle
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -560,6 +561,24 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Plans Management',
                 href: '/admin/plans',
                 icon: Sparkles,
+                role: "admin"
+            },
+            {
+                title: 'Email Packages',
+                href: '/admin/email-packages',
+                icon: Mail,
+                role: "admin"
+            },
+            {
+                title: 'Contact Page',
+                href: '/admin/contact-page',
+                icon: MessageCircle,
+                role: "admin"
+            },
+            {
+                title: 'Contact Submissions',
+                href: '/admin/contact-submissions',
+                icon: Mail,
                 role: "admin"
             },
         ]

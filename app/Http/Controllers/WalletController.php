@@ -131,14 +131,13 @@ class WalletController extends Controller
                 ], 401);
             }
 
-            // Call wallet API to get balance
-            // Note: You'll need to provide the actual balance endpoint from your wallet API
+            // Call wallet API to get token balance
             $response = Http::withHeaders([
                 'x-api-key' => self::WALLET_API_KEY,
                 'Abp.TenantId' => self::WALLET_TENANT_ID,
                 'Authorization' => 'Bearer ' . $user->wallet_access_token,
                 'Content-Type' => 'application/json',
-            ])->get(self::WALLET_API_URL . '/services/app/User/GetCurrentUser');
+            ])->get(self::WALLET_API_URL . '/services/app/Customers/GetTokenBalance');
 
             if (!$response->successful()) {
                 // Log the error for debugging
@@ -178,8 +177,8 @@ class WalletController extends Controller
 
             $data = $response->json();
 
-            // Extract balance from response (adjust based on actual API response structure)
-            $walletBalance = $data['result']['balance'] ?? $data['result']['walletBalance'] ?? null;
+            // Extract balance from response: { "result": 0.0, "success": true, ... }
+            $walletBalance = isset($data['result']) ? (float) $data['result'] : null;
 
             // If balance is found in wallet API, optionally sync it to user's balance
             if ($walletBalance !== null) {
@@ -543,10 +542,14 @@ class WalletController extends Controller
 
             $data = $response->json();
 
+            // Parse response: { "result": 0.0, "success": true, ... }
+            $tokenBalance = isset($data['result']) ? (float) $data['result'] : 0;
+
             return response()->json([
                 'success' => true,
-                'balance' => $data['result']['balance'] ?? $data['result']['tokenBalance'] ?? 0,
-                'data' => $data['result'] ?? [],
+                'balance' => $tokenBalance,
+                'tokenBalance' => $tokenBalance,
+                'data' => $data,
             ]);
 
         } catch (\Exception $e) {

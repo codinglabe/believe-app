@@ -11,6 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Check if table exists before creating
+        if (Schema::hasTable('subscriptions')) {
+            return;
+        }
+
+        try {
         Schema::create('subscriptions', function (Blueprint $table) {
             $table->id();
             $table->foreignId('user_id');
@@ -25,6 +31,14 @@ return new class extends Migration
 
             $table->index(['user_id', 'stripe_status']);
         });
+        } catch (\Illuminate\Database\QueryException $e) {
+            // If table already exists, ignore the error
+            if (str_contains($e->getMessage(), 'already exists') || $e->getCode() == '42S01') {
+                return;
+            }
+            // Re-throw if it's a different error
+            throw $e;
+        }
     }
 
     /**

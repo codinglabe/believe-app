@@ -2,29 +2,82 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { Mail, Phone, MapPin, Clock, Send, MessageCircle, HelpCircle, Users } from "lucide-react"
+import { Mail, Phone, MapPin, Clock, Send, MessageCircle, HelpCircle, Users, CheckCircle2, ArrowRight, Building2, Globe } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
-import { Link } from "@inertiajs/react"
+import { Link, useForm } from "@inertiajs/react"
+import { useState } from "react"
+import { Head } from "@inertiajs/react"
 
-const contactMethods = [
+interface ContactPageProps {
+  hero?: {
+    badge_text?: string
+    title?: string
+    description?: string
+  }
+  contactMethods?: Array<{
+    title?: string
+    description?: string
+    contact?: string
+    action?: string
+    color?: string
+    bgColor?: string
+    iconColor?: string
+  }>
+  faqItems?: Array<{
+    question?: string
+    answer?: string
+  }>
+  officeHours?: {
+    day_range?: string
+    hours?: string
+    saturday_day?: string
+    saturday_hours?: string
+    sunday_day?: string
+    sunday_status?: string
+  }
+  officeLocation?: {
+    address_line1?: string
+    address_line2?: string
+    city?: string
+    state?: string
+    zip?: string
+    country?: string
+  }
+  cta?: {
+    title?: string
+    description?: string
+    button1_text?: string
+    button1_link?: string
+    button2_text?: string
+    button2_link?: string
+  }
+}
+
+const defaultContactMethods = [
   {
     icon: Mail,
-    title: "Email Us",
+    title: "Email Support",
     description: "Send us an email and we'll respond within 24 hours",
     contact: "support@believeinunity.org",
-    action: "mailto:hello@careconnect.org",
+    action: "mailto:support@believeinunity.org",
+    color: "from-blue-500 to-blue-600",
+    bgColor: "bg-blue-50 dark:bg-blue-900/20",
+    iconColor: "text-blue-600 dark:text-blue-400",
   },
   {
     icon: Phone,
-    title: "Call Us",
+    title: "Phone Support",
     description: "Speak with our support team directly",
     contact: "+1 (555) 123-4567",
     action: "tel:+15551234567",
+    color: "from-green-500 to-green-600",
+    bgColor: "bg-green-50 dark:bg-green-900/20",
+    iconColor: "text-green-600 dark:text-green-400",
   },
   {
     icon: MessageCircle,
@@ -32,10 +85,13 @@ const contactMethods = [
     description: "Chat with us in real-time during business hours",
     contact: "Available 9 AM - 5 PM EST",
     action: "#",
+    color: "from-purple-500 to-purple-600",
+    bgColor: "bg-purple-50 dark:bg-purple-900/20",
+    iconColor: "text-purple-600 dark:text-purple-400",
   },
 ]
 
-const faqItems = [
+const defaultFaqItems = [
   {
     question: "How do I know my donation is secure?",
     answer:
@@ -44,281 +100,515 @@ const faqItems = [
   {
     question: "Can I get a tax receipt for my donation?",
     answer:
-      "Yes! All donations through CareConnect are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
-  },
-  {
-    question: "How do I track the impact of my donation?",
-    answer:
-      "You can log into your account to see detailed reports on how your donations are being used and the impact they're creating.",
-  },
-  {
-    question: "How are organizations verified?",
-    answer:
-      "We have a rigorous verification process that includes checking legal status, financial transparency, and impact measurement capabilities.",
+      "Yes! All donations through Believe in Unity are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
   },
 ]
 
-export default function ContactPage() {
-    return (
+const getContactMethodIcon = (title?: string) => {
+  if (title?.toLowerCase().includes('email')) return Mail
+  if (title?.toLowerCase().includes('phone')) return Phone
+  return MessageCircle
+}
+
+export default function ContactPage({ 
+  hero, 
+  contactMethods = [], 
+  faqItems = [], 
+  officeHours, 
+  officeLocation, 
+  cta 
+}: ContactPageProps) {
+  const { data, setData, post, processing, errors, wasSuccessful } = useForm({
+    first_name: '',
+    last_name: '',
+    email: '',
+    subject: '',
+    message: '',
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    post('/contact', {
+      preserveScroll: true,
+      onSuccess: () => {
+        // Form will show success message via wasSuccessful
+      },
+    })
+  }
+
+  return (
     <FrontendLayout>
-        <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <Head title="Contact Us - Believe in Unity" />
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         {/* Hero Section */}
-        <section className="bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-20">
-            <div className="container mx-auto px-4">
+        <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-20 md:py-28">
+          <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
+          <div className="container mx-auto px-4 relative z-10">
             <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
-                className="text-center max-w-4xl mx-auto"
+              initial={{ opacity: 0, y: 30 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.8 }}
+              className="text-center max-w-4xl mx-auto"
             >
-                <h1 className="text-4xl md:text-6xl font-bold text-gray-900 dark:text-white mb-6">Get in Touch</h1>
-                <p className="text-xl text-gray-600 dark:text-gray-300 mb-8">
-                Have questions? We're here to help. Reach out to us and we'll get back to you as soon as possible.
-                </p>
+              {hero?.badge_text && (
+                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
+                  <MessageCircle className="h-4 w-4 text-white" />
+                  <span className="text-sm font-medium text-white">{hero.badge_text}</span>
+                </div>
+              )}
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+                {hero?.title || "Get in Touch"}
+              </h1>
+              <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-2xl mx-auto leading-relaxed">
+                {hero?.description || "Have questions? We're here to help. Reach out to us and we'll get back to you as soon as possible."}
+              </p>
             </motion.div>
-            </div>
+          </div>
         </section>
 
-        <div className="container mx-auto px-4 py-12">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div className="container mx-auto px-4 py-16 md:py-20">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 lg:gap-12">
             {/* Contact Form */}
             <div className="lg:col-span-2">
-                <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                    <CardTitle className="text-2xl text-gray-900 dark:text-white">Send us a Message</CardTitle>
-                    <CardDescription className="text-gray-600 dark:text-gray-300">
-                        Fill out the form below and we'll get back to you within 24 hours
-                    </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div>
-                        <Label htmlFor="first-name">First Name *</Label>
-                        <Input
-                            id="first-name"
-                            placeholder="John"
-                            required
-                            className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        />
+              <motion.div 
+                initial={{ opacity: 0, y: 30 }} 
+                animate={{ opacity: 1, y: 0 }} 
+                transition={{ duration: 0.8 }}
+              >
+                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-xl">
+                  <CardHeader className="pb-6 border-b border-gray-200 dark:border-gray-700">
+                    <div className="flex items-center gap-3 mb-2">
+                      <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
+                        <Send className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-2xl md:text-3xl font-bold text-gray-900 dark:text-white">
+                          Send us a Message
+                        </CardTitle>
+                        <CardDescription className="text-gray-600 dark:text-gray-300 mt-1">
+                          Fill out the form below and we'll get back to you within 24 hours
+                        </CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-6">
+                    {wasSuccessful ? (
+                      <motion.div
+                        initial={{ opacity: 0, scale: 0.95 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        className="text-center py-12"
+                      >
+                        <div className="inline-flex items-center justify-center w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full mb-4">
+                          <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
                         </div>
-                        <div>
-                        <Label htmlFor="last-name">Last Name *</Label>
-                        <Input
-                            id="last-name"
-                            placeholder="Doe"
-                            required
-                            className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        />
+                        <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                          Message Sent Successfully!
+                        </h3>
+                        <p className="text-gray-600 dark:text-gray-300 mb-6">
+                          Thank you for contacting us. We'll get back to you within 24 hours.
+                        </p>
+                        <Button
+                          onClick={() => window.location.reload()}
+                          variant="outline"
+                          className="bg-white dark:bg-gray-800"
+                        >
+                          Send Another Message
+                        </Button>
+                      </motion.div>
+                    ) : (
+                      <form onSubmit={handleSubmit} className="space-y-6">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-2">
+                            <Label htmlFor="first-name" className="text-sm font-semibold text-gray-900 dark:text-white">
+                              First Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id="first-name"
+                              value={data.first_name}
+                              onChange={(e) => setData('first_name', e.target.value)}
+                              placeholder="John"
+                              required
+                              className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            {errors.first_name && (
+                              <p className="text-sm text-red-600 dark:text-red-400">{errors.first_name}</p>
+                            )}
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="last-name" className="text-sm font-semibold text-gray-900 dark:text-white">
+                              Last Name <span className="text-red-500">*</span>
+                            </Label>
+                            <Input
+                              id="last-name"
+                              value={data.last_name}
+                              onChange={(e) => setData('last_name', e.target.value)}
+                              placeholder="Doe"
+                              required
+                              className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            {errors.last_name && (
+                              <p className="text-sm text-red-600 dark:text-red-400">{errors.last_name}</p>
+                            )}
+                          </div>
                         </div>
-                    </div>
 
-                    <div>
-                        <Label htmlFor="email">Email Address *</Label>
-                        <Input
-                        id="email"
-                        type="email"
-                        placeholder="john@example.com"
-                        required
-                        className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        />
-                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="email" className="text-sm font-semibold text-gray-900 dark:text-white">
+                            Email Address <span className="text-red-500">*</span>
+                          </Label>
+                          <Input
+                            id="email"
+                            type="email"
+                            value={data.email}
+                            onChange={(e) => setData('email', e.target.value)}
+                            placeholder="john@example.com"
+                            required
+                            className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          {errors.email && (
+                            <p className="text-sm text-red-600 dark:text-red-400">{errors.email}</p>
+                          )}
+                        </div>
 
-                    <div>
-                        <Label htmlFor="subject">Subject *</Label>
-                        <Select>
-                        <SelectTrigger className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white">
-                            <SelectValue placeholder="Select a subject" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                            <SelectItem value="general">General Inquiry</SelectItem>
-                            <SelectItem value="donation">Donation Support</SelectItem>
-                            <SelectItem value="organization">Organization Registration</SelectItem>
-                            <SelectItem value="technical">Technical Support</SelectItem>
-                            <SelectItem value="partnership">Partnership Opportunities</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                        </Select>
-                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="subject" className="text-sm font-semibold text-gray-900 dark:text-white">
+                            Subject <span className="text-red-500">*</span>
+                          </Label>
+                          <Select value={data.subject} onValueChange={(value) => setData('subject', value)}>
+                            <SelectTrigger className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                              <SelectValue placeholder="Select a subject" />
+                            </SelectTrigger>
+                            <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                              <SelectItem value="general">General Inquiry</SelectItem>
+                              <SelectItem value="donation">Donation Support</SelectItem>
+                              <SelectItem value="organization">Organization Registration</SelectItem>
+                              <SelectItem value="technical">Technical Support</SelectItem>
+                              <SelectItem value="partnership">Partnership Opportunities</SelectItem>
+                              <SelectItem value="other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {errors.subject && (
+                            <p className="text-sm text-red-600 dark:text-red-400">{errors.subject}</p>
+                          )}
+                        </div>
 
-                    <div>
-                        <Label htmlFor="message">Message *</Label>
-                        <Textarea
-                        id="message"
-                        placeholder="Tell us how we can help you..."
-                        className="min-h-[150px] bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        required
-                        />
-                    </div>
+                        <div className="space-y-2">
+                          <Label htmlFor="message" className="text-sm font-semibold text-gray-900 dark:text-white">
+                            Message <span className="text-red-500">*</span>
+                          </Label>
+                          <Textarea
+                            id="message"
+                            value={data.message}
+                            onChange={(e) => setData('message', e.target.value)}
+                            placeholder="Tell us how we can help you..."
+                            className="min-h-[180px] bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
+                            required
+                          />
+                          {errors.message && (
+                            <p className="text-sm text-red-600 dark:text-red-400">{errors.message}</p>
+                          )}
+                        </div>
 
-                    <Button size="lg" className="w-full bg-blue-600 hover:bg-blue-700">
-                        <Send className="mr-2 h-5 w-5" />
-                        Send Message
-                    </Button>
-                    </CardContent>
+                        <Button 
+                          type="submit" 
+                          size="lg" 
+                          disabled={processing}
+                          className="w-full h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg hover:shadow-xl transition-all duration-200"
+                        >
+                          {processing ? (
+                            <>
+                              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="mr-2 h-5 w-5" />
+                              Send Message
+                            </>
+                          )}
+                        </Button>
+                      </form>
+                    )}
+                  </CardContent>
                 </Card>
-                </motion.div>
+              </motion.div>
             </div>
 
-            {/* Contact Information */}
+            {/* Contact Information Sidebar */}
             <div className="space-y-6">
-                {/* Contact Methods */}
-                <motion.div
+              {/* Contact Methods */}
+              <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
-                >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">Contact Information</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                    {contactMethods.map((method, index) => (
-                        <div key={index} className="flex items-start space-x-3">
-                        <div className="bg-blue-100 p-2 rounded-lg">
-                            <method.icon className="h-5 w-5 text-blue-600" />
-                        </div>
-                        <div className="flex-1">
-                            <h4 className="font-medium text-gray-900 dark:text-white">{method.title}</h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-1">{method.description}</p>
-                            <Link href={method.action} className="text-sm text-blue-600 hover:underline">
-                            {method.contact}
-                            </Link>
-                        </div>
-                        </div>
-                    ))}
-                    </CardContent>
+              >
+                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      Contact Information
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    {(contactMethods.length > 0 ? contactMethods : defaultContactMethods).map((method, index) => {
+                      const Icon = getContactMethodIcon(method.title)
+                      const methodData = typeof method === 'object' && 'title' in method ? method : defaultContactMethods[index]
+                      return (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
+                        className="group"
+                      >
+                        <Link
+                          href={method.action}
+                          className="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all duration-200 bg-white dark:bg-gray-800"
+                        >
+                          <div className={`p-3 rounded-lg ${methodData.bgColor || 'bg-blue-50 dark:bg-blue-900/20'} group-hover:scale-110 transition-transform duration-200`}>
+                            <Icon className={`h-5 w-5 ${methodData.iconColor || 'text-blue-600 dark:text-blue-400'}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                              {methodData.title || method.title}
+                            </h4>
+                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{methodData.description || method.description}</p>
+                            <p className="text-sm font-medium text-blue-600 dark:text-blue-400 group-hover:underline">
+                              {methodData.contact || method.contact}
+                            </p>
+                          </div>
+                        </Link>
+                      </motion.div>
+                      )
+                    })}
+                  </CardContent>
                 </Card>
-                </motion.div>
+              </motion.div>
 
-                {/* Office Hours */}
-                <motion.div
+              {/* Office Hours */}
+              <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
-                >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                    <CardTitle className="text-lg flex items-center text-gray-900 dark:text-white">
-                        <Clock className="mr-2 h-5 w-5" />
-                        Office Hours
+              >
+                <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 border-blue-200 dark:border-gray-700 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      Office Hours
                     </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                    <div className="space-y-2 text-sm text-gray-600 dark:text-gray-300">
-                        <div className="flex justify-between">
-                        <span>Monday - Friday</span>
-                        <span>9:00 AM - 6:00 PM EST</span>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {officeHours?.day_range && (
+                        <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
+                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.day_range}</span>
+                          <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{officeHours.hours || ''}</span>
                         </div>
-                        <div className="flex justify-between">
-                        <span>Saturday</span>
-                        <span>10:00 AM - 4:00 PM EST</span>
+                      )}
+                      {officeHours?.saturday_day && (
+                        <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
+                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.saturday_day}</span>
+                          <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{officeHours.saturday_hours || ''}</span>
                         </div>
-                        <div className="flex justify-between">
-                        <span>Sunday</span>
-                        <span>Closed</span>
+                      )}
+                      {officeHours?.sunday_day && (
+                        <div className="flex justify-between items-center py-2">
+                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.sunday_day}</span>
+                          <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">{officeHours.sunday_status || 'Closed'}</span>
                         </div>
+                      )}
+                      {!officeHours && (
+                        <>
+                          <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
+                            <span className="font-medium text-gray-900 dark:text-white">Monday - Friday</span>
+                            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">9:00 AM - 6:00 PM EST</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
+                            <span className="font-medium text-gray-900 dark:text-white">Saturday</span>
+                            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">10:00 AM - 4:00 PM EST</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2">
+                            <span className="font-medium text-gray-900 dark:text-white">Sunday</span>
+                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Closed</span>
+                          </div>
+                        </>
+                      )}
                     </div>
-                    </CardContent>
+                  </CardContent>
                 </Card>
-                </motion.div>
+              </motion.div>
 
-                {/* Office Location */}
-                <motion.div
+              {/* Office Location */}
+              <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.4 }}
-                >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                    <CardTitle className="text-lg flex items-center text-gray-900 dark:text-white">
-                        <MapPin className="mr-2 h-5 w-5" />
-                        Our Office
+              >
+                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
+                  <CardHeader className="pb-4">
+                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                      Our Office
                     </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                    <div className="text-sm text-gray-600 dark:text-gray-300">
-                        <p>123 Charity Lane</p>
-                        <p>Suite 456</p>
-                        <p>New York, NY 10001</p>
-                        <p>United States</p>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2 text-gray-700 dark:text-gray-300">
+                      {officeLocation ? (
+                        <>
+                          {officeLocation.address_line1 && <p className="font-medium">{officeLocation.address_line1}</p>}
+                          {officeLocation.address_line2 && <p>{officeLocation.address_line2}</p>}
+                          {(officeLocation.city || officeLocation.state || officeLocation.zip) && (
+                            <p>{[officeLocation.city, officeLocation.state, officeLocation.zip].filter(Boolean).join(', ')}</p>
+                          )}
+                          {officeLocation.country && (
+                            <p className="pt-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                              <Globe className="h-4 w-4" />
+                              <span className="text-sm">{officeLocation.country}</span>
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-medium">123 Charity Lane</p>
+                          <p>Suite 456</p>
+                          <p>New York, NY 10001</p>
+                          <p className="pt-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
+                            <Globe className="h-4 w-4" />
+                            <span className="text-sm">United States</span>
+                          </p>
+                        </>
+                      )}
                     </div>
-                    </CardContent>
+                  </CardContent>
                 </Card>
-                </motion.div>
+              </motion.div>
             </div>
-            </div>
+          </div>
 
-            {/* FAQ Section */}
-            <motion.div
+          {/* FAQ Section */}
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             viewport={{ once: true }}
-            className="mt-16"
-            >
+            className="mt-20 md:mt-24"
+          >
             <div className="text-center mb-12">
-                <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-4">Frequently Asked Questions</h2>
-                <p className="text-xl text-gray-600 dark:text-gray-300">Quick answers to common questions</p>
+              <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
+                Frequently Asked Questions
+              </h2>
+              <p className="text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
+                Quick answers to common questions about our platform and services
+              </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
-                {faqItems.map((item, index) => (
+              {(faqItems.length > 0 ? faqItems : defaultFaqItems).map((item, index) => (
                 <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.6, delay: index * 0.1 }}
-                    viewport={{ once: true }}
+                  key={index}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.6, delay: index * 0.1 }}
+                  viewport={{ once: true }}
                 >
-                    <Card className="h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                  <Card className="h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow duration-200">
                     <CardHeader>
-                        <CardTitle className="text-lg flex items-start text-gray-900 dark:text-white">
-                        <HelpCircle className="mr-2 h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
-                        {item.question}
-                        </CardTitle>
+                      <CardTitle className="text-lg font-semibold flex items-start gap-3 text-gray-900 dark:text-white">
+                        <div className="p-1.5 bg-blue-100 dark:bg-blue-900/30 rounded-lg mt-0.5">
+                          <HelpCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                        </div>
+                        <span>{item.question}</span>
+                      </CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <p className="text-gray-600 dark:text-gray-300">{item.answer}</p>
+                      <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{item.answer}</p>
                     </CardContent>
-                    </Card>
+                  </Card>
                 </motion.div>
-                ))}
+              ))}
             </div>
-            </motion.div>
+          </motion.div>
 
-            {/* CTA Section */}
-            <motion.div
+          {/* CTA Section */}
+          <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             viewport={{ once: true }}
-            className="mt-16 text-center"
-            >
-            <Card className="bg-gradient-to-r from-blue-600 to-green-600 text-white border-0">
-                <CardContent className="py-12">
-                <Users className="h-12 w-12 mx-auto mb-4 opacity-90" />
-                <h3 className="text-2xl font-bold mb-4">Ready to Make a Difference?</h3>
-                <p className="text-lg mb-6 opacity-90 max-w-2xl mx-auto">
-                    Join thousands of supporters making an impact. Start your journey today.
-                </p>
-                <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button size="lg" variant="secondary" className="bg-white text-blue-600 hover:bg-gray-100">
-                    Start Donating
-                    </Button>
-                    <Button
-                    size="lg"
-                    variant="outline"
-                    className="border-white text-white hover:bg-white hover:text-blue-600 bg-transparent"
-                    >
-                    Browse Organizations
-                    </Button>
+            className="mt-20 md:mt-24"
+          >
+            <Card className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white border-0 shadow-2xl overflow-hidden relative">
+              <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
+              <CardContent className="py-16 md:py-20 relative z-10">
+                <div className="text-center max-w-3xl mx-auto">
+                  <div className="inline-flex items-center justify-center w-16 h-16 bg-white/20 backdrop-blur-sm rounded-full mb-6">
+                    <Users className="h-8 w-8 text-white" />
+                  </div>
+                  <h3 className="text-3xl md:text-4xl font-bold mb-4">
+                    {cta?.title || "Ready to Make a Difference?"}
+                  </h3>
+                  <p className="text-lg md:text-xl mb-8 opacity-95 leading-relaxed">
+                    {cta?.description || "Join thousands of supporters making an impact. Start your journey today and help create positive change in our communities."}
+                  </p>
+                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                    {cta?.button1_text && cta?.button1_link && (
+                      <Button 
+                        size="lg" 
+                        asChild
+                        className="bg-white text-blue-600 hover:bg-gray-100 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
+                      >
+                        <Link href={cta.button1_link}>
+                          {cta.button1_text}
+                          <ArrowRight className="ml-2 h-5 w-5" />
+                        </Link>
+                      </Button>
+                    )}
+                    {cta?.button2_text && cta?.button2_link && (
+                      <Button
+                        size="lg"
+                        variant="outline"
+                        asChild
+                        className="border-2 border-white text-white hover:bg-white hover:text-blue-600 bg-transparent font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
+                      >
+                        <Link href={cta.button2_link}>
+                          {cta.button2_text}
+                          <ArrowRight className="ml-2 h-5 w-5" />
+                        </Link>
+                      </Button>
+                    )}
+                    {!cta && (
+                      <>
+                        <Button 
+                          size="lg" 
+                          asChild
+                          className="bg-white text-blue-600 hover:bg-gray-100 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
+                        >
+                          <Link href="/donate">
+                            Start Donating
+                            <ArrowRight className="ml-2 h-5 w-5" />
+                          </Link>
+                        </Button>
+                        <Button
+                          size="lg"
+                          variant="outline"
+                          asChild
+                          className="border-2 border-white text-white hover:bg-white hover:text-blue-600 bg-transparent font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
+                        >
+                          <Link href="/organizations">
+                            Browse Organizations
+                            <ArrowRight className="ml-2 h-5 w-5" />
+                          </Link>
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 </div>
-                </CardContent>
+              </CardContent>
             </Card>
-            </motion.div>
+          </motion.div>
         </div>
-        </div>
+      </div>
     </FrontendLayout>
   )
 }

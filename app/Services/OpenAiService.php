@@ -27,7 +27,7 @@ class OpenAiService
                 ->timeout(120)
                 ->connectTimeout(30)
                 ->post($this->apiUrl, [
-                    'model' => 'gpt-4o-mini',
+                    'model' => 'gpt-3.5-turbo',
                     'messages' => [
                         [
                             'role' => 'system',
@@ -211,7 +211,7 @@ PROMPT;
                 ->timeout(120)
                 ->connectTimeout(30)
                 ->post($this->apiUrl, [
-                    'model' => 'gpt-4o-mini',
+                    'model' => 'gpt-3.5-turbo',
                     'messages' => $messages,
                     'temperature' => 0.7,
                     'max_tokens' => 2000,

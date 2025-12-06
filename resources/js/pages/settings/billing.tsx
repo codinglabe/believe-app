@@ -467,26 +467,26 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                                 <span className="text-green-600 dark:text-green-400">{transaction.credits_added.toLocaleString()}</span>
                               </div>
                             )}
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                              <span className="font-mono text-xs">
-                                {transaction.transaction_id || `TXN#${transaction.id}`}
-                              </span>
-                              <span>
-                                {transaction.processed_at
-                                  ? new Date(transaction.processed_at).toLocaleDateString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })
-                                  : new Date(transaction.created_at).toLocaleDateString('en-US', {
-                                      year: 'numeric',
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })}
-                              </span>
-                              {transaction.payment_method && (
-                                <span className="capitalize">{transaction.payment_method}</span>
-                              )}
+                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                            <span className="font-mono text-xs">
+                              {transaction.transaction_id || `TXN#${transaction.id}`}
+                            </span>
+                            <span>
+                              {transaction.processed_at
+                                ? new Date(transaction.processed_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })
+                                : new Date(transaction.created_at).toLocaleDateString('en-US', {
+                                    year: 'numeric',
+                                    month: 'short',
+                                    day: 'numeric',
+                                  })}
+                            </span>
+                            {transaction.payment_method && (
+                              <span className="capitalize">{transaction.payment_method}</span>
+                            )}
                             </div>
                           </div>
                         </div>

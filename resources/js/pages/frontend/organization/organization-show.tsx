@@ -33,7 +33,8 @@ import DonationModal from "@/components/frontend/donation-modal"
 import { Link, router, useForm } from "@inertiajs/react"
 import { route } from "ziggy-js" // Import route function from ziggy-js
 import axios from "axios"
-import { showErrorToast } from "@/lib/toast"
+import { showErrorToast, showSuccessToast } from "@/lib/toast"
+import { Loader2, Sparkles } from "lucide-react"
 import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge"
 import type React from "react"
 import { useEffect, useState } from "react"
@@ -158,6 +159,8 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   const [currentProductPage, setCurrentProductPage] = useState(1)
   const [currentjobPostsPage, setCurrentjobPostsPage] = useState(1)
   const [cart, setCart] = useState<any[]>([])
+  const [description, setDescription] = useState(organization.description || '')
+  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false)
   const [showCartModal, setShowCartModal] = useState(false)
   const productsPerPage = 4
   const jobPostsPerPage = 4
@@ -239,6 +242,29 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
       })
     } else {
       setShowDonationModal(true)
+    }
+  }
+
+  const handleGenerateDescription = async () => {
+    setIsGeneratingDescription(true)
+    try {
+      // Use the organization.id (ExcelData ID) - works for both registered and unregistered
+      const response = await axios.post(`/organizations/${organization.id}/generate-mission`)
+      
+      if (response.data.success && response.data.description) {
+        setDescription(response.data.description)
+        showSuccessToast('Organization description generated successfully!')
+        // Reload the page to get updated organization data
+        router.reload()
+      } else {
+        showErrorToast(response.data.error || 'Failed to generate organization description')
+      }
+    } catch (error: any) {
+      console.error('Error generating description:', error)
+      const errorMessage = error.response?.data?.error || 'Failed to generate organization description. Please try again.'
+      showErrorToast(errorMessage)
+    } finally {
+      setIsGeneratingDescription(false)
     }
   }
 
@@ -391,9 +417,6 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                 {/* Organization Info */}
                 <div className="flex-1 text-white text-center md:text-left">
                   <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 leading-tight">{organization.name}</h1>
-                  <p className="text-base sm:text-lg opacity-90 mb-4 max-w-2xl mx-auto md:mx-0">
-                    {organization.description}
-                  </p>
                   <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-sm">
                     <div className="flex items-center gap-1">
                       <MapPin className="h-4 w-4" />
@@ -516,17 +539,71 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                 <TabsContent value="about" className="space-y-6">
                   <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                     <CardHeader>
-                      <CardTitle className="text-gray-900 dark:text-white text-xl">About Our Mission</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-6">
-                        {organization.description}
-                      </p>
-
-                      <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 rounded-r-lg">
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Our Mission</h3>
-                        <p className="text-gray-700 dark:text-gray-300">{organization.mission}</p>
+                      <div className="flex items-center justify-end">
+                        {(!description || 
+                          description === 'This organization is listed in our database but has not yet registered for additional features.' ||
+                          description.trim() === '') && (
+                          <Button
+                            onClick={handleGenerateDescription}
+                            disabled={isGeneratingDescription}
+                            size="sm"
+                            variant="outline"
+                            className="flex items-center gap-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          >
+                            {isGeneratingDescription ? (
+                              <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Generating...
+                              </>
+                            ) : (
+                              <>
+                                <Sparkles className="h-4 w-4" />
+                                Bring About
+                              </>
+                            )}
+                          </Button>
+                        )}
                       </div>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                      {/* About Description */}
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">About Us</h3>
+                        <p className="text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                          {description || organization.description || 'No description available.'}
+                        </p>
+                      </div>
+
+                      {/* Mission Statement */}
+                      {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
+                        <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 rounded-r-lg">
+                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Our Mission</h3>
+                          <p className="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
+                            {organization.mission}
+                          </p>
+                        </div>
+                      )}
+
+                      {/* Website Link */}
+                      {organization.website && organization.website.trim() !== '' && organization.website !== 'null' && (
+                        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                          <div className="flex items-center gap-2">
+                            <Globe className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                            <div>
+                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Website: </span>
+                              <a
+                                href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-sm text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                              >
+                                {organization.website.replace(/^https?:\/\//, '')}
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 </TabsContent>

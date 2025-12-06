@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { usePage } from "@inertiajs/react"
 import { X, Wallet, Sparkles, CheckCircle2, Mail, Lock, Eye, EyeOff, DollarSign, User } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -27,6 +28,8 @@ export function WalletConnectPopup({
   walletAppLogo,
   variant = 'default'
 }: WalletConnectPopupProps) {
+  const { csrf_token } = usePage().props as { csrf_token?: string }
+  
   // Style classes based on variant
   const isFrontend = variant === 'frontend'
   const cardBg = isFrontend ? 'bg-white dark:bg-gray-800' : 'bg-card'
@@ -68,15 +71,41 @@ export function WalletConnectPopup({
     setError(null)
     
     try {
+      // Get CSRF token from multiple sources (prioritize Inertia props)
+      const getCsrfToken = () => {
+        // Method 1: From Inertia props (most reliable)
+        if (csrf_token) return csrf_token
+        
+        // Method 2: From meta tag
+        const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        if (metaToken) return metaToken
+        
+        // Method 3: From cookie (XSRF-TOKEN)
+        const cookieToken = document.cookie
+          .split('; ')
+          .find(row => row.startsWith('XSRF-TOKEN='))
+          ?.split('=')[1]
+        if (cookieToken) return decodeURIComponent(cookieToken)
+        
+        return ''
+      }
+      
+      const csrfToken = getCsrfToken()
+      
+      if (!csrfToken) {
+        throw new Error('CSRF token not found. Please refresh the page and try again.')
+      }
+      
       // Call backend API to connect wallet
       const response = await fetch('/chat/wallet/connect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': csrfToken,
           'X-Requested-With': 'XMLHttpRequest',
         },
+        credentials: 'include', // Important: Include cookies for CSRF
         body: JSON.stringify({
           email,
           password,

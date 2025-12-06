@@ -9,8 +9,10 @@ use App\Models\NteeCode;
 use App\Services\ImpactScoreService;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
+use App\Services\OpenAiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelDataTransformer;
@@ -354,10 +356,13 @@ class OrganizationController extends BaseController
         $rowData = $organization->row_data;
         $transformedData = ExcelDataTransformer::transform($rowData);
 
-        // Check if this organization is registered
+        // Check if this organization is registered (approved)
         $registeredOrg = Organization::where('ein', $organization->ein)
             ->where('registration_status', 'approved')
             ->first();
+        
+        // Also check for any Organization record (even pending) to get mission if it exists
+        $anyOrgRecord = Organization::where('ein', $organization->ein)->first();
 
         $isFav = false;
         $notificationsEnabled = false;
@@ -402,8 +407,11 @@ class OrganizationController extends BaseController
                     'email' => $registeredOrg->user->email,
                 ] : null,
             ] : null,
-            'description' => $registeredOrg ? $registeredOrg->description : 'This organization is listed in our database but has not yet registered for additional features.',
-            'mission' => $registeredOrg ? $registeredOrg->mission : 'Mission statement not available for unregistered organizations.',
+            'description' => $registeredOrg ? $registeredOrg->description : ($anyOrgRecord ? $anyOrgRecord->description : 'This organization is listed in our database but has not yet registered for additional features.'),
+            'mission' => $anyOrgRecord && $anyOrgRecord->mission && trim($anyOrgRecord->mission) !== '' 
+                ? $anyOrgRecord->mission 
+                : 'Mission statement not available for unregistered organizations.',
+            'website' => $registeredOrg && $registeredOrg->website ? $registeredOrg->website : ($anyOrgRecord && $anyOrgRecord->website ? $anyOrgRecord->website : null),
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A', // Ruling year from excel data
         ];
 
@@ -691,5 +699,118 @@ class OrganizationController extends BaseController
 
         return redirect()->route('organizations.show', $id)
             ->with('success', $message);
+    }
+
+    /**
+     * Generate mission statement for an organization using OpenAI
+     * Accessible from frontend - no admin restriction, works for registered and unregistered orgs
+     * Accepts ExcelData ID (the public organization ID)
+     */
+    public function generateMission(Request $request, int $id)
+    {
+        try {
+            // Find the ExcelData record (this is the public organization ID)
+            $excelData = ExcelData::where('id', $id)
+                ->where('status', 'complete')
+                ->firstOrFail();
+
+            $rowData = $excelData->row_data;
+            $transformedData = ExcelDataTransformer::transform($rowData);
+
+            // Get organization details from ExcelData
+            $orgName = $transformedData[1] ?? $rowData[1] ?? '';
+            $orgEin = $excelData->ein;
+            $orgClassification = $transformedData[10] ?? $rowData[10] ?? '';
+            $orgNteeCode = $transformedData[26] ?? $rowData[26] ?? '';
+
+            // Find or create Organization record by EIN
+            $organization = Organization::where('ein', $orgEin)->first();
+
+            if ($organization) {
+                // Check if description already exists and is not empty
+                if ($organization->description && trim($organization->description) !== '' && 
+                    $organization->description !== 'This organization is listed in our database but has not yet registered for additional features.') {
+                    return response()->json([
+                        'error' => 'Organization description already exists'
+                    ], 400);
+                }
+
+                $orgDescription = $organization->description ?? '';
+            } else {
+                // Create a new Organization record for unregistered orgs
+                // user_id can be null now
+                $organization = Organization::create([
+                    'ein' => $orgEin,
+                    'name' => $orgName,
+                    'street' => $transformedData[3] ?? $rowData[3] ?? '',
+                    'city' => $transformedData[4] ?? $rowData[4] ?? '',
+                    'state' => $transformedData[5] ?? $rowData[5] ?? '',
+                    'zip' => $transformedData[6] ?? $rowData[6] ?? '',
+                    'classification' => $orgClassification,
+                    'ntee_code' => $orgNteeCode,
+                    'email' => '',
+                    'phone' => '',
+                    'contact_name' => '',
+                    'contact_title' => '',
+                    'description' => '',
+                    'mission' => '',
+                    'registration_status' => 'pending',
+                    'user_id' => null, // Nullable now - no user for unregistered orgs
+                ]);
+
+                $orgDescription = '';
+            }
+
+            // Build prompt for OpenAI to generate "about" description
+            $prompt = "Write a comprehensive and engaging 'About Us' description for a nonprofit organization named \"{$orgName}\". ";
+
+            if ($organization->mission) {
+                $prompt .= "The organization's mission is: {$organization->mission}. ";
+            }
+
+            if ($orgClassification) {
+                $prompt .= "The organization is classified as: {$orgClassification}. ";
+            }
+
+            if ($orgNteeCode) {
+                $prompt .= "The NTEE code is: {$orgNteeCode}. ";
+            }
+
+            $prompt .= "The description should be informative, engaging, and provide a clear overview of what the organization does, who it serves, and its impact. Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.";
+
+            // Generate description using OpenAI
+            $openAiService = new OpenAiService();
+            $generatedDescription = $openAiService->chatCompletion([
+                [
+                    'role' => 'system',
+                    'content' => 'You are a professional nonprofit consultant specializing in writing compelling organization descriptions. Create clear, engaging, and informative "About Us" descriptions for nonprofit organizations.'
+                ],
+                [
+                    'role' => 'user',
+                    'content' => $prompt
+                ]
+            ]);
+
+            // Update organization with generated description
+            $organization->update([
+                'description' => trim($generatedDescription)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'description' => trim($generatedDescription)
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error generating mission statement', [
+                'excel_data_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'error' => 'Failed to generate mission statement. Please try again later.'
+            ], 500);
+        }
     }
 }

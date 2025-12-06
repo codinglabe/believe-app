@@ -43,8 +43,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
+  
+  // Get the correct organization ID - use registered_organization.id if available, otherwise organization.id
+  const organizationId = (organization as any).registered_organization?.id || organization.id
+  
   const [donorInfo, setDonorInfo] = useState({
-    organization_id: organization.id,
+    organization_id: organizationId,
     name: user?.name || "",
     email: user?.email || "",
     phone: user?.phone || "",
@@ -79,9 +83,11 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
   const handleDonate = () => {
     setIsProcessing(true)
+    // Get the correct organization ID
+    const orgId = (organization as any).registered_organization?.id || organization.id
     // Simulate API call
     router.post(route("donations.store"), {
-      organization_id: organization.id,
+      organization_id: orgId,
       amount: getCurrentAmount(),
       frequency: donationType,
       message: donorInfo.message,
@@ -94,8 +100,9 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
         setSelectedAmount(null)
         setCustomAmount("")
         setDonationType("one-time")
+        const orgId = (organization as any).registered_organization?.id || organization.id
         setDonorInfo({
-          organization_id: organization.id,
+          organization_id: orgId,
           name: "",
           email: "",
           phone: "",

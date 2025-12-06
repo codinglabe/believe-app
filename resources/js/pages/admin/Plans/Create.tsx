@@ -269,8 +269,8 @@ export default function AdminPlansCreate() {
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                     <div className="space-y-2">
                                                         <Label>Field Type *</Label>
-                                                        <Select
-                                                            value={field.type}
+                                                        <Select 
+                                                            value={field.type} 
                                                             onValueChange={(value: 'text' | 'number' | 'currency' | 'boolean') => {
                                                                 const updated = [...data.custom_fields]
                                                                 updated[index].type = value

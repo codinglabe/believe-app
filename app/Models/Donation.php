@@ -15,6 +15,13 @@ class Donation extends Model
         'transaction_id',
         'status',
         'messages',
+        'message',
+        'donation_date',
+    ];
+
+    protected $casts = [
+        'donation_date' => 'datetime',
+        'amount' => 'decimal:2',
     ];
 
     /**

@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Mail\EmailInvite;
 use App\Models\EmailContact;
 use App\Models\Organization;
+use App\Models\User;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -26,7 +27,8 @@ class SendEmailInvites implements ShouldQueue
     public function __construct(
         public $contacts,
         public Organization $organization,
-        public ?string $customMessage = null
+        public ?string $customMessage = null,
+        public $user = null
     ) {
         // Ensure contacts is a collection for proper serialization
         if (is_array($this->contacts)) {
@@ -83,6 +85,16 @@ class SendEmailInvites implements ShouldQueue
                     'invite_sent' => true,
                     'invite_sent_at' => now(),
                 ]);
+
+                // Increment emails_used count for the user (count per send)
+                if ($this->user) {
+                    $this->user->increment('emails_used');
+                } elseif ($this->organization && $this->organization->user_id) {
+                    $user = User::find($this->organization->user_id);
+                    if ($user) {
+                        $user->increment('emails_used');
+                    }
+                }
 
                 $sentCount++;
                 Log::info("Email invite sent to {$contactModel->email} for organization {$this->organization->id}");

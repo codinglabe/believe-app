@@ -127,9 +127,8 @@ Route::get('/terms-of-service', function () {
     return Inertia::render('frontend/TermsOfService');
 })->name('terms.service');
 
-Route::get('/contact', function () {
-    return Inertia::render('frontend/contact');
-})->name('contact');
+Route::get('/contact', [App\Http\Controllers\ContactController::class, 'index'])->name('contact');
+Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store'])->name('contact.store');
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(function () {
     Route::get('/admin/about', [AdminAboutPageController::class, 'edit'])->name('admin.about.edit');
@@ -210,6 +209,7 @@ Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('vi
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
 Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
 Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
+Route::post('/organizations/{id}/generate-mission', [OrganizationController::class, 'generateMission'])->name('organizations.generate-mission'); // id is ExcelData ID
 
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
@@ -1084,6 +1084,41 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
 });
 
+// Admin Email Packages Management
+Route::prefix('admin/email-packages')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.email-packages.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\EmailPackageController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\EmailPackageController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\EmailPackageController::class, 'store'])->name('store');
+        Route::get('/{emailPackage}/edit', [App\Http\Controllers\Admin\EmailPackageController::class, 'edit'])->name('edit');
+        Route::put('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'update'])->name('update');
+        Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Contact Page Management
+Route::prefix('admin/contact-page')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.contact-page.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ContactPageController::class, 'index'])->name('index');
+        Route::get('/{section}/edit', [App\Http\Controllers\Admin\ContactPageController::class, 'edit'])->name('edit');
+        Route::put('/{section}', [App\Http\Controllers\Admin\ContactPageController::class, 'update'])->name('update');
+        Route::delete('/{contactPageContent}', [App\Http\Controllers\Admin\ContactPageController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Contact Submissions Management
+Route::prefix('admin/contact-submissions')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.contact-submissions.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'index'])->name('index');
+        Route::get('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'show'])->name('show');
+        Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
+        Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
+    });
+
 // Admin Plans Management
 Route::prefix('admin/plans')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
@@ -1156,6 +1191,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/connections/{connection}/sync-status', [App\Http\Controllers\EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');
     Route::get('/contacts', [App\Http\Controllers\EmailInviteController::class, 'getContacts'])->name('contacts');
     Route::post('/send-invites', [App\Http\Controllers\EmailInviteController::class, 'sendInvites'])->name('send-invites');
+    Route::post('/purchase-emails', [App\Http\Controllers\EmailInviteController::class, 'purchaseEmails'])->name('purchase-emails');
+    Route::get('/purchase/success', [App\Http\Controllers\EmailInviteController::class, 'purchaseSuccess'])->name('purchase.success');
     Route::delete('/connections/{connection}', [App\Http\Controllers\EmailInviteController::class, 'disconnect'])->name('disconnect');
     Route::delete('/contacts/{contact}', [App\Http\Controllers\EmailInviteController::class, 'deleteContact'])->name('contacts.delete');
 });

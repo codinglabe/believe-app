@@ -3,12 +3,14 @@ import { SidebarFooter, SidebarTrigger, useSidebar } from '@/components/ui/sideb
 import { type BreadcrumbItem as BreadcrumbItemType } from '@/types';
 import { NavUser } from './nav-user';
 import { NotificationBell } from './notification-bell';
+import AppearanceToggleDropdown from './appearance-dropdown';
 import { usePage } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { router } from '@inertiajs/react';
 import { LogOut, Wallet } from 'lucide-react';
 import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState } from 'react';
+import { route } from 'ziggy-js';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth } = usePage<{ 
@@ -146,6 +148,9 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         </span>
                     </div>
                 )}
+                
+                {/* Theme Toggle */}
+                <AppearanceToggleDropdown />
                 
                 <SidebarFooter>
                     <NavUser />

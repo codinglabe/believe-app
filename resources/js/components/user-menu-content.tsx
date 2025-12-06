@@ -11,6 +11,7 @@ interface UserMenuContentProps {
 
 export function UserMenuContent({ user }: UserMenuContentProps) {
     const cleanup = useMobileNavigation();
+    const isAdmin = user.role === 'admin';
 
     const handleLogout = () => {
         cleanup();
@@ -26,7 +27,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             {/* Plan Information */}
-            {(user as any).current_plan_details && (
+            {!isAdmin && (user as any).current_plan_details && (
                 <>
                     <DropdownMenuLabel className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">
                         Current Plan
@@ -49,7 +50,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                         </div>
                     </div>
                     <DropdownMenuItem asChild>
-                        <Link className="block w-full" href={route('plans.index')} as="button" prefetch onClick={cleanup}>
+                        <Link className="block w-full" href="/plans" as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
                             Manage Plan
                         </Link>
@@ -59,30 +60,32 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
             )}
             <DropdownMenuGroup>
                 <DropdownMenuItem asChild>
-                    <Link className="block w-full" href={route('home')} as="button" prefetch>
+                    <Link className="block w-full" href="/" as="button" prefetch>
                         <LinkIcon className="mr-2" />
                         Website
                     </Link>
                 </DropdownMenuItem>
+                {!isAdmin && (
+                    <DropdownMenuItem asChild>
+                        <Link className="block w-full" href="/settings/billing" as="button" prefetch onClick={cleanup}>
+                            <CreditCard className="mr-2" />
+                            Billings
+                        </Link>
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
-                    <Link className="block w-full" href={route('billing.index')} as="button" prefetch onClick={cleanup}>
-                        <CreditCard className="mr-2" />
-                        Billings
-                    </Link>
-                </DropdownMenuItem>
-                <DropdownMenuItem asChild>
-                    <Link className="block w-full" href={route('profile.edit')} as="button" prefetch onClick={cleanup}>
+                    <Link className="block w-full" href="/settings/profile" as="button" prefetch onClick={cleanup}>
                         <Settings className="mr-2" />
                         Settings
                     </Link>
                 </DropdownMenuItem>
             </DropdownMenuGroup>
-            {/* Show Plans link if no current plan */}
-            {!(user as any).current_plan_id && (
+            {/* Show Plans link if no current plan - Hidden for admin */}
+            {!isAdmin && !(user as any).current_plan_id && (
                 <>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
-                        <Link className="block w-full" href={route('plans.index')} as="button" prefetch onClick={cleanup}>
+                        <Link className="block w-full" href="/plans" as="button" prefetch onClick={cleanup}>
                             <Crown className="mr-2" />
                             View Plans
                         </Link>
@@ -91,7 +94,7 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
             )}
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-                <Link className="block w-full" method="post" href={route('logout')} as="button" onClick={handleLogout}>
+                <Link className="block w-full" method="post" href="/logout" as="button" onClick={handleLogout}>
                     <LogOut className="mr-2" />
                     Log out
                 </Link>
