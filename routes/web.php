@@ -9,6 +9,7 @@ use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\ExcelDataController;
 use App\Http\Controllers\ExcelDataExportController;
+use App\Http\Controllers\Facebook\PostController;
 use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\JobPositionController;
 use App\Http\Controllers\JobPostController;
@@ -79,6 +80,8 @@ use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
+use App\Http\Controllers\Facebook\AuthController;
+use App\Http\Controllers\Facebook\ConfigurationController;
 use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\PrintifyProductController;
@@ -430,10 +433,7 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/credits/cancel', [CreditPurchaseController::class, 'cancel'])->name('credits.cancel');
 
 
-
-
-
-    // Organization routes
+    // Organization routes follwers
     Route::prefix('organization')->group(function () {
         Route::get('/followers', [FollowerController::class, 'index'])
             ->name('organization.followers.index');
@@ -462,6 +462,29 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
             [FollowerController::class, 'bulkDestroy']
         )
             ->name('organization.followers.bulk-destroy');
+    });
+
+
+    // Facebook Integration Routes
+    Route::prefix('facebook')->group(function () {
+        // Connection Management
+        Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
+        Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
+        Route::get('/configure', [ConfigurationController::class, 'index'])
+            ->name('facebook.configure');
+        Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
+        Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
+        Route::post('/{id}/set-default', [AuthController::class, 'setDefault'])->name('facebook.set-default');
+
+        // Posts Management
+        Route::prefix('/posts')->group(function () {
+            Route::get('/', [PostController::class, 'index'])->name('facebook.posts.index');
+            Route::get('/create', [PostController::class, 'create'])->name('facebook.posts.create');
+            Route::post('/', [PostController::class, 'store'])->name('facebook.posts.store');
+            Route::post('/{id}/publish', [PostController::class, 'publish'])->name('facebook.posts.publish');
+            Route::delete('/{id}', [PostController::class, 'destroy'])->name('facebook.posts.destroy');
+            Route::get('/{id}/analytics', [PostController::class, 'analytics'])->name('facebook.posts.analytics');
+        });
     });
 });
 

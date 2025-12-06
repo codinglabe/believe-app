@@ -77,4 +77,11 @@ return [
         'redirect_uri' => env('OUTLOOK_REDIRECT_URI', env('APP_URL') . '/email-invite/callback'),
     ],
 
+    'facebook' => [
+        'app_id' => env('FACEBOOK_APP_ID'),
+        'app_secret' => env('FACEBOOK_APP_SECRET'),
+        'redirect_uri' => env('FACEBOOK_REDIRECT_URI', env('APP_URL') . '/facebook/callback'),
+        'default_graph_version' => 'v21.0',
+    ],
+
 ];

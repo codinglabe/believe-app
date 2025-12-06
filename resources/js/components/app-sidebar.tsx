@@ -44,9 +44,14 @@ import {
     UserCheck,
     Info,
     Heart,
+<<<<<<< Updated upstream
     Sparkles,
     ArrowRight,
     MessageCircle
+=======
+    Facebook,
+    Link
+>>>>>>> Stashed changes
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -254,6 +259,32 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ]
         // Removed group permission - nav-main will show group if any child is visible
+    },
+
+    {
+        title: 'Facebook',
+        icon: Facebook,
+        role: "organization",
+        items: [
+            {
+                title: 'Connect Pages',
+                href: '/facebook/connect',
+                icon: Link,
+                role: "organization"
+            },
+            {
+                title: 'Posts',
+                href: '/facebook/posts',
+                icon: FileText,
+                role: "organization"
+            },
+            {
+                title: 'Create Post',
+                href: '/facebook/posts/create',
+                icon: Plus,
+                role: "organization"
+            },
+        ],
     },
 
     // Node Management Section

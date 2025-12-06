@@ -142,10 +142,10 @@ const RecentActivityItem = ({ activity }: { activity: ActivityItem }) => {
 }
 
 // Admin Dashboard Component
-const AdminDashboard = ({ 
-  stats, 
-  recentForm1023Applications, 
-  recentOrganizations, 
+const AdminDashboard = ({
+  stats,
+  recentForm1023Applications,
+  recentOrganizations,
   paymentStats,
   recentTransactions = [],
   monthlyRevenue = []
@@ -156,14 +156,14 @@ const AdminDashboard = ({
     const checkTheme = () => {
       setIsDark(document.documentElement.classList.contains('dark'))
     }
-    
+
     checkTheme()
     const observer = new MutationObserver(checkTheme)
     observer.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class']
     })
-    
+
     return () => observer.disconnect()
   }, [])
 
@@ -173,10 +173,10 @@ const AdminDashboard = ({
 
   const formatDate = (dateString: string | null) => {
     if (!dateString) return 'N/A'
-    return new Date(dateString).toLocaleDateString('en-US', { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric' 
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric'
     })
   }
 
@@ -315,8 +315,8 @@ const AdminDashboard = ({
                         tickMargin={2}
                         interval={0}
                         angle={0}
-                        tick={{ 
-                          fontSize: 9, 
+                        tick={{
+                          fontSize: 9,
                           fill: tickColor
                         }}
                       />
@@ -422,7 +422,7 @@ const AdminDashboard = ({
                         </td>
                         <td className="py-3 px-4">
                           <Badge className={
-                            transaction.type === 'Fractional Ownership' 
+                            transaction.type === 'Fractional Ownership'
                               ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-300'
                               : transaction.type === 'Form 1023'
                               ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300'
@@ -434,9 +434,9 @@ const AdminDashboard = ({
                         <td className="py-3 px-4 text-sm font-medium">{transaction.description}</td>
                         <td className="py-3 px-4 text-sm text-muted-foreground">{transaction.user_name}</td>
                         <td className="py-3 px-4 text-sm font-bold text-right">
-                          {new Intl.NumberFormat('en-US', { 
-                            style: 'currency', 
-                            currency: transaction.currency || 'USD' 
+                          {new Intl.NumberFormat('en-US', {
+                            style: 'currency',
+                            currency: transaction.currency || 'USD'
                           }).format(transaction.amount)}
                         </td>
                         <td className="py-3 px-4 text-center">
@@ -589,7 +589,10 @@ interface AdminDashboardProps {
 export default function Dashboard({
   totalOrg = 5,
   orgInfo,
-  totalFav = 12,
+    totalFav = 12,
+    volunteers,
+    donations,
+    events,
   topics = [],
   form1023Application = null,
   form990Filings = null,
@@ -601,10 +604,13 @@ export default function Dashboard({
   paymentStats,
   recentTransactions = [],
   monthlyRevenue = [],
-}: { 
+}: {
   totalOrg?: number
   orgInfo?: any
-  totalFav?: number
+        totalFav?: number
+   volunteers?: number,
+    donations?: number,
+    events?: number,
   topics?: { id: number; name: string }[]
   form1023Application?: any
   form990Filings?: any
@@ -615,14 +621,14 @@ export default function Dashboard({
   const userRole = auth?.user?.role // 'admin' or 'organization'
   const isOrgUser = userRole === "organization" || userRole === "organization_pending"
   const userId = auth?.user?.id // Get user ID to detect user changes
-  
+
   // Wallet Connect Popup State
   const [showWalletPopup, setShowWalletPopup] = useState(false)
   const [walletConnected, setWalletConnected] = useState(false)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
   const [isCheckingWallet, setIsCheckingWallet] = useState(true)
   const [userDismissedPopup, setUserDismissedPopup] = useState(false)
-  
+
   // Check wallet connection status - FORCE CHECK FOR EACH ORGANIZATION USER
   // Re-check when user ID changes (different organization account)
   useEffect(() => {
@@ -633,7 +639,7 @@ export default function Dashboard({
         setWalletConnected(false)
         return
       }
-      
+
       // Reset state when checking (but preserve user dismissal if switching users)
       setIsCheckingWallet(true)
       setWalletConnected(false)
@@ -642,7 +648,7 @@ export default function Dashboard({
         setUserDismissedPopup(false)
       }
       setShowWalletPopup(false)
-      
+
       try {
         // Add cache-busting parameter to ensure fresh check
         const response = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
@@ -655,14 +661,14 @@ export default function Dashboard({
           credentials: 'include',
           cache: 'no-cache',
         })
-        
+
         if (response.ok) {
           const data = await response.json()
           if (data.success && data.connected) {
             // Wallet IS connected
             setWalletConnected(true)
             setShowWalletPopup(false)
-            
+
             // Fetch balance
             try {
               const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
@@ -675,7 +681,7 @@ export default function Dashboard({
                 credentials: 'include',
                 cache: 'no-cache',
               })
-              
+
               if (balanceResponse.ok) {
                 const balanceData = await balanceResponse.json()
                 if (balanceData.success) {
@@ -709,21 +715,21 @@ export default function Dashboard({
         setIsCheckingWallet(false)
       }
     }
-    
+
     // Always check wallet status for organization users
     // Check immediately when component mounts or user changes
     checkWalletStatus()
   }, [isOrgUser, userId]) // Add userId to dependencies to re-check when user changes
-  
+
   // Check if wallet is connected
   const isWalletConnected = walletConnected || (auth.user?.balance !== undefined && auth.user?.balance !== null)
-  
+
   const handleWalletConnect = async () => {
     // Wallet is connected via the popup form
     // Hide the popup and refresh wallet data
     setShowWalletPopup(false)
     setWalletConnected(true)
-    
+
     try {
       // Fetch wallet balance with cache-busting
       const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
@@ -736,21 +742,21 @@ export default function Dashboard({
         credentials: 'include',
         cache: 'no-cache',
       })
-      
+
       if (balanceResponse.ok) {
         const balanceData = await balanceResponse.json()
         if (balanceData.success) {
           setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
         }
       }
-      
+
       // Refresh user data to get updated wallet status
       router.reload({ only: ['auth'] })
     } catch (error) {
       console.error('Failed to fetch wallet balance:', error)
     }
   }
-  
+
   const handleCloseWalletPopup = () => {
     // Allow closing the popup and remember user dismissed it
     setShowWalletPopup(false)
@@ -759,7 +765,7 @@ export default function Dashboard({
 
   // Admin Dashboard
   if (isAdmin && stats) {
-    return <AdminDashboard 
+    return <AdminDashboard
       stats={stats}
       recentForm1023Applications={recentForm1023Applications}
       recentOrganizations={recentOrganizations}
@@ -794,20 +800,20 @@ export default function Dashboard({
   })()
 
   const isRegistrationPending = organization?.registration_status === "pending"
-  
+
   // Check if Form 1023 application has been submitted (not draft)
   const hasSubmittedForm1023 = form1023Application && form1023Application.status !== 'draft'
-  
+
   // If user has "organization" role (not "organization_pending"), they've submitted the application
   // Show full dashboard with application submitted card
   const hasOrganizationRole = userRole === "organization"
-  
+
   // Don't restrict dashboard if:
   // 1. User has "organization" role (they've submitted Form 1023)
   // 2. Form 1023 has been submitted (status is not 'draft')
   const shouldRestrictDashboard = Boolean(
-    organization && 
-    (isComplianceLocked || isRegistrationPending) && 
+    organization &&
+    (isComplianceLocked || isRegistrationPending) &&
     !hasSubmittedForm1023 &&
     !hasOrganizationRole
   )
@@ -854,15 +860,15 @@ export default function Dashboard({
 };
 
   const commonStats = {
-    totalDonations: 12540,
-    donationChange: 12.5,
-    totalEvents: 8,
-    eventsChange: -2,
+    totalDonations: donations,
+    // donationChange: 12.5,
+    totalEvents: events,
+    // eventsChange: -2,
   }
 
   const adminStats = {
     ...commonStats,
-    totalVolunteers: 42,
+    totalVolunteers: volunteers,
     volunteersChange: 5,
     upcomingEvents: 3,
     organizationsManaged: totalOrg,
@@ -870,8 +876,8 @@ export default function Dashboard({
 
   const organizationStats = {
     ...commonStats,
-    myVolunteers: 15,
-    myUpcomingEvents: 2,
+    myVolunteers: volunteers,
+    myUpcomingEvents: events,
     totalFav: totalFav,
   }
 
@@ -1029,8 +1035,8 @@ export default function Dashboard({
                             View Form 1023 Application
                           </Button>
                           {(form1023Application.status === 'draft' || form1023Application.status === 'needs_more_info') && (
-                            <Button 
-                              size="lg" 
+                            <Button
+                              size="lg"
                               variant="outline"
                               onClick={() => router.visit("/dashboard/form1023/apply")}
                               className="bg-green-600 hover:bg-green-700 text-white border-green-600"
@@ -1113,9 +1119,9 @@ export default function Dashboard({
                   <div>
                     <p className="text-xs text-muted-foreground">Wallet Balance</p>
                     <p className="text-xl font-bold text-primary">
-                      ${(walletBalance ?? auth.user?.balance ?? 0).toLocaleString('en-US', { 
-                        minimumFractionDigits: 2, 
-                        maximumFractionDigits: 2 
+                      ${(walletBalance ?? auth.user?.balance ?? 0).toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
                       })}
                     </p>
               </div>
@@ -1136,7 +1142,7 @@ export default function Dashboard({
                 <div className="space-y-2 flex-1">
                   <CardTitle className="text-xl font-semibold">Form 990 Filing Required</CardTitle>
                   <p className="text-sm">
-                    Your organization has {overdueForm990Filings.length} overdue Form 990 filing{overdueForm990Filings.length > 1 ? 's' : ''}. 
+                    Your organization has {overdueForm990Filings.length} overdue Form 990 filing{overdueForm990Filings.length > 1 ? 's' : ''}.
                     Please file immediately to avoid penalties.
                   </p>
                 </div>
@@ -1281,7 +1287,7 @@ export default function Dashboard({
                 }
             }
           }
-          
+
           const colors = getCardColors(form1023Application.status)
           const statusMessages: Record<string, string> = {
             'pending_payment': 'Your Form 1023 application is ready. Please complete the payment to proceed.',
@@ -1290,7 +1296,7 @@ export default function Dashboard({
             'approved': 'Congratulations! Your Form 1023 application has been approved.',
             'draft': 'Your Form 1023 application is saved as a draft. Complete and submit when ready.',
           }
-          
+
           return (
             <Card className={`${colors.border} ${colors.bg} ${colors.text}`}>
               <CardHeader>
@@ -1954,7 +1960,7 @@ export default function Dashboard({
           </div>
         )}
       </div>
-      
+
       {/* Wallet Connect Popup - SHOW FOR ALL ORG USERS WHO DON'T HAVE WALLET CONNECTED */}
       {isOrgUser && !isCheckingWallet && showWalletPopup && (
         <WalletConnectPopup

@@ -285,89 +285,74 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
   }
 
   const handleEINLookup = async () => {
-    if (!einData.ein || einData.ein.length !== 9) {
-      setEinError("Please enter a valid 9-digit EIN")
-      return
-    }
+  if (!einData.ein || einData.ein.length !== 9) {
+    setEinError("Please enter a valid 9-digit EIN")
+    return
+  }
 
-    console.log("Starting EIN lookup for:", einData.ein)
-    setIsLoading(true)
-    setEinError("")
-    setLookupStatus('loading')
+  console.log("Starting EIN lookup for:", einData.ein)
+  setIsLoading(true)
+  setEinError("")
+  setLookupStatus('loading')
 
-    const token = getCsrfToken()
-    if (!token) {
-      setEinError("Security token not available. Please refresh the page.")
-      setIsLoading(false)
-      setLookupStatus('error')
-      return
-    }
+  const token = getCsrfToken()
+  if (!token) {
+    setEinError("Security token not available. Please refresh the page.")
+    setIsLoading(false)
+    setLookupStatus('error')
+    return
+  }
 
-    // Reset editable fields before lookup
-    setFormData((prev) => ({
-      ...prev,
-      ein: einData.ein,
-      name: "",
-      ico: "",
-      street: "",
-      city: "",
-      state: "",
-      zip: "",
-      classification: "",
-      ruling: "",
-      deductibility: "",
-      organization: "",
-      status: "",
-      tax_period: "",
-      filing_req: "",
-      ntee_code: "",
-      has_edited_irs_data: false,
-    }))
-    setIsManualEntry(false)
+  // Reset editable fields before lookup
+  setFormData((prev) => ({
+    ...prev,
+    ein: einData.ein,
+    name: "",
+    ico: "",
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
+    classification: "",
+    ruling: "",
+    deductibility: "",
+    organization: "",
+    status: "",
+    tax_period: "",
+    filing_req: "",
+    ntee_code: "",
+    has_edited_irs_data: false,
+  }))
+  setIsManualEntry(false)
 
-    try {
-      const response = await fetch(route("register.organization.lookup-ein"), {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          "X-CSRF-TOKEN": getCsrfToken(),
-        },
-        body: JSON.stringify({ ein: einData.ein }),
-      })
+  try {
+    const response = await fetch(route("register.organization.lookup-ein"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "X-CSRF-TOKEN": getCsrfToken(),
+      },
+      body: JSON.stringify({ ein: einData.ein }),
+    })
 
-      const data: EINLookupResponse = await response.json()
+    const data: EINLookupResponse = await response.json()
 
-      console.log("EIN lookup response:", data)
+    console.log("EIN lookup response status:", response.status)
+    console.log("EIN lookup response data:", data)
 
-      if (data.success && data.data) {
-        // Update form data with IRS data
-        const irsData = data.data
-
-        setFormData((prev) => ({
-          ...prev,
-          ein: einData.ein,
-          name: irsData.name || "",
-          ico: irsData.ico || "",
-          street: irsData.street || "",
-          city: irsData.city || "",
-          state: irsData.state || "",
-          zip: irsData.zip || "",
-          classification: irsData.classification || "",
-          ruling: irsData.ruling || "",
-          deductibility: irsData.deductibility || "",
-          organization: irsData.organization || "",
-          status: irsData.status || "",
-          tax_period: irsData.tax_period || "",
-          filing_req: irsData.filing_req || "",
-          ntee_code: irsData.ntee_code || "",
-          has_edited_irs_data: false,
-        }))
-
-        setLookupStatus('success')
+    if (!response.ok) {
+      // Handle HTTP errors (4xx, 5xx)
+      if (response.status === 422) {
+        // Validation error
+        setEinError(data.message || data.errors?.ein?.[0] || "This organization is already registered")
+        setLookupStatus('error')
         setIsManualEntry(false)
-        setStep(2)
-      } else {
+        return
+      }
+
+      if (response.status === 404) {
+        // EIN not found
         const cleanEin = einData.ein
         setFormData((prev) => ({
           ...prev,
@@ -391,16 +376,85 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
         setLookupStatus('success')
         setIsManualEntry(true)
         setStep(2)
+        return
       }
-    } catch (error) {
-      console.error("EIN lookup error:", error)
-      setEinError("Error looking up EIN. Please try again.")
+
+      // Other errors
+      setEinError(data.message || "Error looking up EIN. Please try again.")
       setLookupStatus('error')
       setIsManualEntry(true)
-    } finally {
-      setIsLoading(false)
+      return
     }
+
+    if (data.success && data.data) {
+      // Update form data with IRS data
+      const irsData = data.data
+
+      setFormData((prev) => ({
+        ...prev,
+        ein: einData.ein,
+        name: irsData.name || "",
+        ico: irsData.ico || "",
+        street: irsData.street || "",
+        city: irsData.city || "",
+        state: irsData.state || "",
+        zip: irsData.zip || "",
+        classification: irsData.classification || "",
+        ruling: irsData.ruling || "",
+        deductibility: irsData.deductibility || "",
+        organization: irsData.organization || "",
+        status: irsData.status || "",
+        tax_period: irsData.tax_period || "",
+        filing_req: irsData.filing_req || "",
+        ntee_code: irsData.ntee_code || "",
+        has_edited_irs_data: false,
+      }))
+
+      setLookupStatus('success')
+      setIsManualEntry(false)
+      setStep(2)
+    } else {
+      // EIN not found in database
+      const cleanEin = einData.ein
+      setFormData((prev) => ({
+        ...prev,
+        ein: cleanEin,
+        name: "",
+        ico: "",
+        street: "",
+        city: "",
+        state: "",
+        zip: "",
+        classification: "",
+        ruling: "",
+        deductibility: "",
+        organization: "",
+        status: "",
+        tax_period: "",
+        filing_req: "",
+        ntee_code: "",
+        has_edited_irs_data: true,
+      }))
+      setLookupStatus('success')
+      setIsManualEntry(true)
+      setStep(2)
+    }
+  } catch (error: any) {
+    console.error("EIN lookup network error:", error)
+
+    // Handle network errors
+    if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+      setEinError("Network error. Please check your internet connection.")
+    } else {
+      setEinError("Error looking up EIN. Please try again.")
+    }
+
+    setLookupStatus('error')
+    setIsManualEntry(true)
+  } finally {
+    setIsLoading(false)
   }
+}
 
   const handleFinalSubmit = async () => {
     if (!formData.agree_to_terms || !formData.description || !formData.mission) {

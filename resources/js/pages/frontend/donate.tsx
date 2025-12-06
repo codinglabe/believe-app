@@ -624,7 +624,7 @@ export default function DonatePage({
                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
                   <CardHeader>
                     <CardTitle className="text-lg text-gray-900 dark:text-white">
-                      Why Donate Through CareConnect?
+                      Why Donate Through {import.meta.env.VITE_APP_NAME}?
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

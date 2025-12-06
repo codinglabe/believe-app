@@ -80,7 +80,7 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
   //                 </div>
   //                 <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4">Account Created Successfully!</h2>
   //                 <p className="text-gray-600 dark:text-gray-300 mb-6">
-  //                   Welcome to CareConnect! We've sent a verification email to{" "}
+  //                   Welcome to {import.meta.env.VITE_APP_NAME}! We've sent a verification email to{" "}
   //                   <span className="font-medium text-blue-600">{formData.email}</span>
   //                 </p>
   //                 <Alert className="mb-6 border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950">

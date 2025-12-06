@@ -64,10 +64,14 @@ const defaultContactMethods = [
     title: "Email Support",
     description: "Send us an email and we'll respond within 24 hours",
     contact: "support@believeinunity.org",
+<<<<<<< Updated upstream
     action: "mailto:support@believeinunity.org",
     color: "from-blue-500 to-blue-600",
     bgColor: "bg-blue-50 dark:bg-blue-900/20",
     iconColor: "text-blue-600 dark:text-blue-400",
+=======
+    action: "mailto:hello@believeinunity.org",
+>>>>>>> Stashed changes
   },
   {
     icon: Phone,
@@ -100,7 +104,21 @@ const defaultFaqItems = [
   {
     question: "Can I get a tax receipt for my donation?",
     answer:
+<<<<<<< Updated upstream
       "Yes! All donations through Believe in Unity are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
+=======
+      "Yes! All donations through believeinunity are tax-deductible, and you'll receive an official receipt via email immediately after your donation.",
+  },
+  {
+    question: "How do I track the impact of my donation?",
+    answer:
+      "You can log into your account to see detailed reports on how your donations are being used and the impact they're creating.",
+  },
+  {
+    question: "How are organizations verified?",
+    answer:
+      "We have a rigorous verification process that includes checking legal status, financial transparency, and impact measurement capabilities.",
+>>>>>>> Stashed changes
   },
 ]
 
