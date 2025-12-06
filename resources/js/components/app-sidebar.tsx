@@ -1,6 +1,7 @@
 import { NavMain } from '@/components/nav-main';
-import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem } from '@/components/ui/sidebar';
+import { Sidebar, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarFooter } from '@/components/ui/sidebar';
 import { type NavItem, type NavGroup } from '@/types';
+import { usePage } from '@inertiajs/react';
 import {
     Download,
     FileText,
@@ -14,6 +15,7 @@ import {
     GraduationCap,
     Text,
     BarChart3,
+    HeartHandshake,
     Database,
     Users,
     Building2,
@@ -41,10 +43,15 @@ import {
     Clock,
     UserCheck,
     Info,
-    Heart
+    Heart,
+    Sparkles,
+    ArrowRight
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
+import { Button } from '@/components/ui/button';
+import { Link } from '@inertiajs/react';
+import { motion } from 'framer-motion';
 
 
 const mainNavItems: (NavItem | NavGroup)[] = [
@@ -374,6 +381,21 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "communication.read"
     },
 
+    // Donations Section (Organization Only)
+    {
+        title: 'Donations',
+        icon: HeartHandshake,
+        items: [
+            {
+                title: 'All Donations',
+                href: '/donations',
+                icon: HeartHandshake,
+                role: "organization"
+            },
+        ],
+        role: "organization"
+    },
+
     {
         title: 'Group Chat',
         icon: MessageSquare,
@@ -534,19 +556,31 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Info,
                 role: "admin"
             },
+            {
+                title: 'Plans Management',
+                href: '/admin/plans',
+                icon: Sparkles,
+                role: "admin"
+            },
         ]
         // Removed group permission - nav-main will show group if any child is visible
     },
 ];
 
 export function AppSidebar() {
+    const page = usePage();
+    const userRoles = (page.props as any).auth?.roles ?? [];
+    const isOrganization = userRoles.some((role: string) => role.toLowerCase() === 'organization');
+    const currentPlanId = (page.props as any).auth?.user?.current_plan_id ?? null;
+    const hasPlan = currentPlanId !== null;
+
     return (
-        <Sidebar collapsible="icon" variant="inset" className='z-30 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-background [&_[data-sidebar=sidebar]]:!bg-background'>
-            <div className="h-full border-r-2 border-gray-200 dark:border-gray-800">
-                <SidebarHeader className="border-b-2 border-gray-200 dark:border-gray-800 !bg-background">
+        <Sidebar collapsible="icon" variant="inset" className='z-30 [&_.group\\/sidebar-wrapper.has-data-\\[variant\\=inset\\]]:!bg-sidebar [&_[data-sidebar=sidebar]]:!bg-sidebar'>
+            <div className="h-full flex flex-col border-r border-sidebar-border bg-sidebar">
+                <SidebarHeader className="border-b border-sidebar-border bg-sidebar flex-shrink-0 px-4 py-3">
                 <SidebarMenu>
                     <SidebarMenuItem>
-                        <SidebarMenuButton size="lg" asChild className="hover:bg-accent/50 transition-colors">
+                        <SidebarMenuButton size="lg" asChild className="hover:bg-sidebar-accent/50 transition-colors rounded-lg">
                             {/* <Link href="/dashboard" prefetch> */}
                                 {/* <AppLogo /> */}
                                 <SiteTitle href={route("dashboard")} />
@@ -556,15 +590,67 @@ export function AppSidebar() {
                 </SidebarMenu>
             </SidebarHeader>
 
-                <SidebarContent className="px-2 py-4 !bg-background">
-                    <div className="space-y-2">
+                <SidebarContent className="px-3 py-4 bg-sidebar flex-1 overflow-y-auto min-h-0 sidebar-scrollbar">
+                    <div className="space-y-1">
                         <NavMain items={mainNavItems} />
                     </div>
                 </SidebarContent>
 
-                {/* <SidebarFooter>
-                    <NavUser />
-                </SidebarFooter> */}
+                {isOrganization && !hasPlan && (
+                    <SidebarFooter className="px-3 py-3 border-t border-sidebar-border bg-sidebar flex-shrink-0">
+                    <motion.div 
+                        className="relative overflow-hidden rounded-lg bg-gradient-to-br from-primary/10 to-primary/5 dark:from-primary/15 dark:to-primary/10 border border-primary/20 dark:border-primary/30 p-4"
+                        initial={{ opacity: 0, y: 20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        whileHover={{ scale: 1.02 }}
+                    >
+                        <motion.div 
+                            className="flex items-center gap-3 mb-3"
+                            initial={{ opacity: 0, x: -10 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ duration: 0.5, delay: 0.1 }}
+                        >
+                            <motion.div 
+                                className="flex-shrink-0 w-10 h-10 rounded-lg bg-primary/20 dark:bg-primary/25 flex items-center justify-center"
+                                animate={{ 
+                                    rotate: [0, 10, -10, 0],
+                                    scale: [1, 1.1, 1]
+                                }}
+                                transition={{ 
+                                    duration: 2,
+                                    repeat: Infinity,
+                                    repeatDelay: 3
+                                }}
+                            >
+                                <Sparkles className="h-5 w-5 text-primary" />
+                            </motion.div>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-semibold text-sm text-foreground leading-tight mb-1">
+                                    Upgrade to Pro
+                                </h3>
+                                <p className="text-xs text-muted-foreground leading-snug">
+                                    Unlock premium features and tools
+                                </p>
+                            </div>
+                        </motion.div>
+                        <Link href={route('plans.index')}>
+                            <motion.div
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.98 }}
+                            >
+                                <Button 
+                                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-medium h-9 shadow-sm group"
+                                    size="sm"
+                                >
+                                    <span>Upgrade Now</span>
+                                    <ArrowRight className="h-4 w-4 ml-1.5 group-hover:translate-x-1 transition-transform" />
+                                </Button>
+                            </motion.div>
+                        </Link>
+                    </motion.div>
+                </SidebarFooter>
+                )}
             </div>
         </Sidebar>
     );

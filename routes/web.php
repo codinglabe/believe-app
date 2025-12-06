@@ -1071,6 +1071,39 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });
 
+// Organization donations route
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->group(function () {
+    Route::get('/donations', [DonationController::class, 'organizationIndex'])->name('donations.index');
+});
+
+// Plans route
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
+    Route::get('/plans', [App\Http\Controllers\PlansController::class, 'index'])->name('plans.index');
+    Route::post('/plans/{plan}/subscribe', [App\Http\Controllers\PlansController::class, 'subscribe'])->name('plans.subscribe');
+    Route::get('/plans/success', [App\Http\Controllers\PlansController::class, 'success'])->name('plans.success');
+    Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
+});
+
+// Admin Plans Management
+Route::prefix('admin/plans')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.plans.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\PlanController::class, 'index'])->name('index');
+        Route::get('/subscribers', [App\Http\Controllers\Admin\PlanController::class, 'subscribers'])->name('subscribers');
+        Route::get('/create', [App\Http\Controllers\Admin\PlanController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\PlanController::class, 'store'])->name('store');
+        Route::get('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'show'])->name('show');
+        Route::get('/{plan}/edit', [App\Http\Controllers\Admin\PlanController::class, 'edit'])->name('edit');
+        Route::put('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'update'])->name('update');
+        Route::delete('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'destroy'])->name('destroy');
+        
+        // Plan Features
+        Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
+        Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');
+        Route::delete('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'destroyFeature'])->name('features.destroy');
+    });
+
 // IRS BMF Management Routes
 Route::prefix('irs-bmf')->name('irs-bmf.')->middleware(["auth", 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/', [App\Http\Controllers\IrsBmfController::class, 'index'])->name('index');

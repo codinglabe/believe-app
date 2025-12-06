@@ -34,6 +34,30 @@ class BillingController extends Controller
             ->paginate($perPage)
             ->withQueryString();
         
+        // Transform transactions to include plan details
+        $transactions->getCollection()->transform(function ($transaction) {
+            $meta = $transaction->meta ?? [];
+            $transactionData = [
+                'id' => $transaction->id,
+                'type' => $transaction->type,
+                'status' => $transaction->status,
+                'amount' => (float) $transaction->amount,
+                'fee' => (float) $transaction->fee,
+                'currency' => $transaction->currency,
+                'payment_method' => $transaction->payment_method,
+                'transaction_id' => $transaction->transaction_id,
+                'processed_at' => $transaction->processed_at?->toIso8601String(),
+                'created_at' => $transaction->created_at->toIso8601String(),
+                'meta' => $meta,
+                // Include plan details if it's a plan purchase
+                'plan_name' => $meta['plan_name'] ?? null,
+                'plan_frequency' => $meta['plan_frequency'] ?? null,
+                'credits_added' => $meta['credits_added'] ?? null,
+                'description' => $meta['description'] ?? null,
+            ];
+            return $transactionData;
+        });
+        
         return Inertia::render('settings/billing', [
             'wallet' => [
                 'connected' => $walletConnected && !$walletExpired,

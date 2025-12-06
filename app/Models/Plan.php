@@ -3,11 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Plan extends Model
 {
     protected $fillable = [
-        'organization_id',
         'name',
         'frequency',
         'price',
@@ -15,7 +15,28 @@ class Plan extends Model
         'stripe_product_id',
         'description',
         'is_active',
+        'is_popular',
+        'sort_order',
+        'trial_days',
+        'custom_fields', // Dynamic JSON fields
     ];
+
+    protected $casts = [
+        'is_active' => 'boolean',
+        'is_popular' => 'boolean',
+        'price' => 'decimal:2',
+        'sort_order' => 'integer',
+        'trial_days' => 'integer',
+        'custom_fields' => 'array', // Cast JSON to array
+    ];
+
+    /**
+     * Get the plan features.
+     */
+    public function features(): HasMany
+    {
+        return $this->hasMany(PlanFeature::class)->orderBy('sort_order');
+    }
 
     /**
      * Get the formatted price in dollars.
@@ -24,23 +45,7 @@ class Plan extends Model
      */
     public function getFormattedPriceAttribute()
     {
-        return number_format($this->price / 100, 2);
-    }
-
-    /**
-     * Get the frequency in a user-friendly format.
-     *
-     * @return string
-     */
-    public function getFrequencyAttribute()
-    {
-        return match ($this->freequency) {
-            'one-time' => 'One Time',
-            'weekly' => 'Weekly',
-            'monthly' => 'Monthly',
-            'yearly' => 'Yearly',
-            default => ucfirst($this->freequency),
-        };
+        return number_format($this->price, 2);
     }
 
     /**
@@ -52,5 +57,16 @@ class Plan extends Model
     public function scopeActive($query)
     {
         return $query->where('is_active', true);
+    }
+
+    /**
+     * Scope a query to order by sort order.
+     *
+     * @param \Illuminate\Database\Eloquent\Builder $query
+     * @return \Illuminate\Database\Eloquent\Builder
+     */
+    public function scopeOrdered($query)
+    {
+        return $query->orderBy('sort_order')->orderBy('price');
     }
 }

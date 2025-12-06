@@ -104,6 +104,8 @@ class HandleInertiaRequests extends Middleware
                     'balance'=>$user->balance,
                     'reward_points' => $user->reward_points ?? 0,
                     'credits' => $user->credits ?? 0,
+                    'current_plan_id' => $user->current_plan_id ?? null,
+                    'current_plan_details' => $user->current_plan_details ?? null,
                     "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),
                     'favorite_organizations_count' => $user->favoriteOrganizations()->count(),
                     "cover_img" => $user->role !== "organization" ? ($user->cover_img ? '/storage/' . $user->cover_img : null) :($user->organization?->user?->cover_img ? '/storage/' . $user->organization?->user?->cover_img : null),

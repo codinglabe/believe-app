@@ -158,7 +158,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
     // Only reset if it's a full reload (page 1), otherwise keep appending
     useEffect(() => {
         if (initialContacts) {
-            setContacts(initialContacts)
+        setContacts(initialContacts)
         }
         
         // Update syncing connections from props (for page reload persistence)
@@ -459,20 +459,20 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
             contact_ids: selectedContacts,
             message: customMessage || "",
         }, {
-            onSuccess: () => {
-                showSuccessToast(`Invite requests queued for ${selectedContacts.length} contact(s)`)
-                setSelectedContacts([])
-                setCustomMessage("")
+                onSuccess: () => {
+                    showSuccessToast(`Invite requests queued for ${selectedContacts.length} contact(s)`)
+                    setSelectedContacts([])
+                    setCustomMessage("")
                 setIsSendingInvites(false)
-                router.reload()
-            },
-            onError: (errors) => {
-                showErrorToast(errors.contact_ids?.[0] || "Failed to send invites")
+                    router.reload()
+                },
+                onError: (errors) => {
+                    showErrorToast(errors.contact_ids?.[0] || "Failed to send invites")
                 setIsSendingInvites(false)
             },
             onFinish: () => {
                 setIsSendingInvites(false)
-            },
+                },
         })
     }, [selectedContacts, customMessage, isSendingInvites])
 
@@ -651,7 +651,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                                         }`}>
                                             {selectedContacts.length === availableContacts.length && (
                                                 <Check className="h-4 w-4 text-primary-foreground animate-in zoom-in-50 duration-200" />
-                                            )}
+                                        )}
                                         </div>
                                         <span className="font-semibold text-sm">
                                             Select All ({availableContacts.length} available)
@@ -713,7 +713,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                                                                         <div className="absolute inset-0 rounded-lg bg-primary animate-ping opacity-20" />
                                                                         <Check className="h-4 w-4 text-primary-foreground relative z-10 animate-in zoom-in-50 duration-200" />
                                                                     </>
-                                                                )}
+                                                            )}
                                                             </div>
                                                         </div>
                                                     ) : (
@@ -730,8 +730,8 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                                                             <p className={`font-semibold truncate text-base ${
                                                                 isSelected ? 'text-primary' : 'text-foreground'
                                                             }`}>
-                                                                {contact.name || contact.email}
-                                                            </p>
+                                                            {contact.name || contact.email}
+                                                        </p>
                                                         </div>
                                                         {contact.name && (
                                                             <p className="text-sm text-muted-foreground truncate flex items-center gap-1">

@@ -62,6 +62,11 @@ interface Transaction {
   transaction_id: string | null
   processed_at: string | null
   created_at: string
+  meta?: any
+  plan_name?: string | null
+  plan_frequency?: string | null
+  credits_added?: number | null
+  description?: string | null
 }
 
 interface PaginationLink {
@@ -430,7 +435,9 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold capitalize">{transaction.type.replace(/_/g, ' ')}</p>
+                            <p className="font-semibold capitalize">
+                              {transaction.description || transaction.type.replace(/_/g, ' ')}
+                            </p>
                             <Badge
                               variant={
                                 transaction.status === 'completed'
@@ -444,26 +451,43 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                               {transaction.status}
                             </Badge>
                           </div>
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span className="font-mono text-xs">
-                              {transaction.transaction_id || `TXN#${transaction.id}`}
-                            </span>
-                            <span>
-                              {transaction.processed_at
-                                ? new Date(transaction.processed_at).toLocaleDateString('en-US', {
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                  })
-                                : new Date(transaction.created_at).toLocaleDateString('en-US', {
-                                    year: 'numeric',
-                                    month: 'short',
-                                    day: 'numeric',
-                                  })}
-                            </span>
-                            {transaction.payment_method && (
-                              <span className="capitalize">{transaction.payment_method}</span>
+                          <div className="flex flex-col gap-1">
+                            {transaction.plan_name && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium text-foreground">Plan:</span>
+                                <span className="text-muted-foreground">{transaction.plan_name}</span>
+                                {transaction.plan_frequency && (
+                                  <span className="text-muted-foreground">({transaction.plan_frequency})</span>
+                                )}
+                              </div>
                             )}
+                            {transaction.credits_added && transaction.credits_added > 0 && (
+                              <div className="flex items-center gap-2 text-sm">
+                                <span className="font-medium text-foreground">Credits Added:</span>
+                                <span className="text-green-600 dark:text-green-400">{transaction.credits_added.toLocaleString()}</span>
+                              </div>
+                            )}
+                            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                              <span className="font-mono text-xs">
+                                {transaction.transaction_id || `TXN#${transaction.id}`}
+                              </span>
+                              <span>
+                                {transaction.processed_at
+                                  ? new Date(transaction.processed_at).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })
+                                  : new Date(transaction.created_at).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                              </span>
+                              {transaction.payment_method && (
+                                <span className="capitalize">{transaction.payment_method}</span>
+                              )}
+                            </div>
                           </div>
                         </div>
                         <div className="text-right">

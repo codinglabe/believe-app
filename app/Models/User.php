@@ -57,6 +57,12 @@ class User extends Authenticatable implements MustVerifyEmail
         'wallet_user_id',
         'wallet_token_expires_at',
         'wallet_connected_at',
+        'emails_included',
+        'emails_used',
+        'ai_tokens_included',
+        'ai_tokens_used',
+        'current_plan_details',
+        'current_plan_id',
     ];
 
     /**
@@ -83,6 +89,11 @@ class User extends Authenticatable implements MustVerifyEmail
             'password' => 'hashed',
             'wallet_token_expires_at' => 'datetime',
             'wallet_connected_at' => 'datetime',
+            'current_plan_details' => 'array',
+            'emails_included' => 'integer',
+            'emails_used' => 'integer',
+            'ai_tokens_included' => 'integer',
+            'ai_tokens_used' => 'integer',
         ];
     }
 
@@ -582,6 +593,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function cart(): HasOne
     {
         return $this->hasOne(Cart::class);
+    }
+
+    /**
+     * Get the user's current plan
+     */
+    public function currentPlan(): \Illuminate\Database\Eloquent\Relations\BelongsTo
+    {
+        return $this->belongsTo(Plan::class, 'current_plan_id');
     }
 
     public function supporterPositions()

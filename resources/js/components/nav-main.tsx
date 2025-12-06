@@ -163,7 +163,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                     });
 
                     return (
-                        <SidebarGroup key={item.title} className="px-2 py-0">
+                        <SidebarGroup key={item.title} className="px-0 py-0">
                             <SidebarMenu>
                                 <SidebarMenuItem>
                                     <SidebarMenuButton
@@ -174,7 +174,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                         }}
                                         isActive={hasActiveChild}
                                         tooltip={{ children: item.title }}
-                                        className="flex items-center gap-2 w-full"
+                                        className="flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-sm"
                                     >
                                         {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
                                         <span className="truncate flex-1">{item.title}</span>
@@ -182,7 +182,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                             animate={{ rotate: isExpanded ? 90 : 0 }}
                                             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
                                     >
-                                            <ChevronRight className="h-4 w-4 shrink-0" />
+                                            <ChevronRight className="h-4 w-4 shrink-0 opacity-60" />
                                         </motion.div>
                                     </SidebarMenuButton>
                                 </SidebarMenuItem>
@@ -198,7 +198,7 @@ export function NavMain({ items = [] }: NavMainProps) {
                                             duration: 0.3, 
                                             ease: [0.4, 0, 0.2, 1] 
                                         }}
-                                        className="ml-4 space-y-1 overflow-hidden"
+                                        className="ml-6 space-y-0.5 overflow-hidden border-l border-sidebar-border/50 pl-3"
                                     >
                                         {item.items.map((subItem, index) => (
                                             <motion.div
@@ -233,9 +233,9 @@ export function NavMain({ items = [] }: NavMainProps) {
                                                         })()
                                                     }
                                                     tooltip={{ children: subItem.title }}
-                                                            className="flex items-center gap-2 w-full"
+                                                            className="flex items-center gap-2.5 w-full rounded-md px-2.5 py-2 text-sm transition-all duration-200 hover:bg-sidebar-accent/60 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:font-medium data-[active=true]:shadow-sm"
                                                 >
-                                                            <Link href={subItem.href} prefetch className="flex items-center gap-2 w-full">
+                                                            <Link href={subItem.href} prefetch className="flex items-center gap-2.5 w-full">
                                                                 {subItem.icon && <subItem.icon className="h-4 w-4 shrink-0" />}
                                                                 <span className="truncate flex-1">{subItem.title}</span>
                                                     </Link>
@@ -252,16 +252,16 @@ export function NavMain({ items = [] }: NavMainProps) {
                 }
 
                 return (
-                    <SidebarGroup key={item.title} className="px-2 py-0">
+                    <SidebarGroup key={item.title} className="px-0 py-0">
                         <SidebarMenu>
                             <SidebarMenuItem>
                                 <SidebarMenuButton
                                     asChild
                                     isActive={item.href === page.url}
                                     tooltip={{ children: item.title }}
-                                    className="flex items-center gap-2 w-full"
+                                    className="flex items-center gap-3 w-full rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200 hover:bg-sidebar-accent/80 hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground data-[active=true]:shadow-sm"
                                 >
-                                    <Link href={item.href} prefetch className="flex items-center gap-2 w-full">
+                                    <Link href={item.href} prefetch className="flex items-center gap-3 w-full">
                                         {item.icon && <item.icon className="h-4 w-4 shrink-0" />}
                                         <span className="truncate flex-1">{item.title}</span>
                                     </Link>

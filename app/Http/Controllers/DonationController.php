@@ -248,4 +248,27 @@ class DonationController extends Controller
 
         return $price->id;
     }
+
+    /**
+     * Display donations for the organization
+     */
+    public function organizationIndex(Request $request)
+    {
+        $user = $request->user();
+        $organization = Organization::where('user_id', $user->id)->first();
+
+        if (!$organization) {
+            abort(404, 'Organization not found');
+        }
+
+        $donations = Donation::where('organization_id', $organization->id)
+            ->with(['user:id,name,email'])
+            ->orderBy('created_at', 'desc')
+            ->paginate(20);
+
+        return Inertia::render('Donations/Index', [
+            'donations' => $donations,
+            'organization' => $organization,
+        ]);
+    }
 }

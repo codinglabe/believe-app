@@ -142,7 +142,7 @@
     --sidebar: var(--background);
     --sidebar-foreground: oklch(0.985 0 0);
     --sidebar-primary: oklch(0.985 0 0);
-    --sidebar-primary-foreground: oklch(0.985 0 0);
+    --sidebar-primary-foreground: oklch(0.145 0 0);
     --sidebar-accent: oklch(0.269 0 0);
     --sidebar-accent-foreground: oklch(0.985 0 0);
     --sidebar-border: oklch(0.269 0 0);
@@ -213,6 +213,117 @@
 .ai-chat-scrollbar {
   scrollbar-width: thin;
   scrollbar-color: hsl(var(--primary) / 0.4) hsl(var(--muted) / 0.3);
+}
+
+/* Sidebar Custom Scrollbar - Professional Design */
+/* Target the sidebar content element specifically */
+div[data-sidebar="content"]::-webkit-scrollbar,
+.sidebar-scrollbar::-webkit-scrollbar,
+[data-slot="sidebar-content"]::-webkit-scrollbar {
+  width: 6px !important;
+  background: transparent !important;
+}
+
+/* Light mode scrollbar track - clean minimal design */
+div[data-sidebar="content"]::-webkit-scrollbar-track,
+.sidebar-scrollbar::-webkit-scrollbar-track,
+[data-slot="sidebar-content"]::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: 10px !important;
+  margin: 8px 0 !important;
+}
+
+/* Light mode scrollbar thumb - elegant rounded design */
+div[data-sidebar="content"]::-webkit-scrollbar-thumb,
+.sidebar-scrollbar::-webkit-scrollbar-thumb,
+[data-slot="sidebar-content"]::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-border) / 0.4) 0%, 
+    hsl(var(--sidebar-border) / 0.5) 50%,
+    hsl(var(--sidebar-border) / 0.4) 100%) !important;
+  border-radius: 10px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: none !important;
+  min-height: 50px !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+div[data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
+.sidebar-scrollbar::-webkit-scrollbar-thumb:hover,
+[data-slot="sidebar-content"]::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-foreground) / 0.15) 0%, 
+    hsl(var(--sidebar-foreground) / 0.25) 50%,
+    hsl(var(--sidebar-foreground) / 0.15) 100%) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
+  transform: scaleX(1.2) !important;
+}
+
+div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
+.sidebar-scrollbar::-webkit-scrollbar-thumb:active,
+[data-slot="sidebar-content"]::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-foreground) / 0.25) 0%, 
+    hsl(var(--sidebar-foreground) / 0.35) 50%,
+    hsl(var(--sidebar-foreground) / 0.25) 100%) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Dark mode sidebar scrollbar track */
+.dark div[data-sidebar="content"]::-webkit-scrollbar-track,
+.dark .sidebar-scrollbar::-webkit-scrollbar-track,
+.dark [data-slot="sidebar-content"]::-webkit-scrollbar-track {
+  background: transparent !important;
+}
+
+/* Dark mode sidebar scrollbar thumb - elegant design */
+.dark div[data-sidebar="content"]::-webkit-scrollbar-thumb,
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb,
+.dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-border) / 0.5) 0%, 
+    hsl(var(--sidebar-border) / 0.6) 50%,
+    hsl(var(--sidebar-border) / 0.5) 100%) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
+  border-radius: 10px !important;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  border: none !important;
+  min-height: 50px !important;
+}
+
+.dark div[data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb:hover,
+.dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-foreground) / 0.2) 0%, 
+    hsl(var(--sidebar-foreground) / 0.3) 50%,
+    hsl(var(--sidebar-foreground) / 0.2) 100%) !important;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
+  transform: scaleX(1.2) !important;
+}
+
+.dark div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
+.dark .sidebar-scrollbar::-webkit-scrollbar-thumb:active,
+.dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:active {
+  background: linear-gradient(180deg, 
+    hsl(var(--sidebar-foreground) / 0.3) 0%, 
+    hsl(var(--sidebar-foreground) / 0.4) 50%,
+    hsl(var(--sidebar-foreground) / 0.3) 100%) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* Firefox sidebar scrollbar - professional styling */
+div[data-sidebar="content"],
+.sidebar-scrollbar,
+[data-slot="sidebar-content"] {
+  scrollbar-width: thin !important;
+  scrollbar-color: hsl(var(--sidebar-border) / 0.5) transparent !important;
+}
+
+.dark div[data-sidebar="content"],
+.dark .sidebar-scrollbar,
+.dark [data-slot="sidebar-content"] {
+  scrollbar-color: hsl(var(--sidebar-border) / 0.6) transparent !important;
 }
 
 .rich-text-editor-complete .ql-editor {
