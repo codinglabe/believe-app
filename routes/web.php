@@ -1140,7 +1140,7 @@ Route::prefix('admin/contact-submissions')
         Route::get('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'show'])->name('show');
         Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
         Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
-    });
+});
 
 // Admin Plans Management
 Route::prefix('admin/plans')

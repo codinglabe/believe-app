@@ -17,10 +17,13 @@ class ContactSubmission extends Model
         'read_at',
         'read_by',
         'admin_notes',
+        'reply_message',
+        'replied_at',
     ];
 
     protected $casts = [
         'read_at' => 'datetime',
+        'replied_at' => 'datetime',
     ];
 
     public function readBy(): BelongsTo

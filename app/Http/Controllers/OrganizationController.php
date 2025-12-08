@@ -720,6 +720,8 @@ class OrganizationController extends BaseController
             // Get organization details from ExcelData
             $orgName = $transformedData[1] ?? $rowData[1] ?? '';
             $orgEin = $excelData->ein;
+            $orgCity = $transformedData[4] ?? $rowData[4] ?? '';
+            $orgState = $transformedData[5] ?? $rowData[5] ?? '';
             $orgClassification = $transformedData[10] ?? $rowData[10] ?? '';
             $orgNteeCode = $transformedData[26] ?? $rowData[26] ?? '';
 
@@ -736,6 +738,9 @@ class OrganizationController extends BaseController
                 }
 
                 $orgDescription = $organization->description ?? '';
+                // Use organization's city/state if available, otherwise use ExcelData
+                $orgCity = $organization->city ?? $orgCity;
+                $orgState = $organization->state ?? $orgState;
             } else {
                 // Create a new Organization record for unregistered orgs
                 // user_id can be null now
@@ -743,8 +748,8 @@ class OrganizationController extends BaseController
                     'ein' => $orgEin,
                     'name' => $orgName,
                     'street' => $transformedData[3] ?? $rowData[3] ?? '',
-                    'city' => $transformedData[4] ?? $rowData[4] ?? '',
-                    'state' => $transformedData[5] ?? $rowData[5] ?? '',
+                    'city' => $orgCity,
+                    'state' => $orgState,
                     'zip' => $transformedData[6] ?? $rowData[6] ?? '',
                     'classification' => $orgClassification,
                     'ntee_code' => $orgNteeCode,
@@ -762,7 +767,19 @@ class OrganizationController extends BaseController
             }
 
             // Build prompt for OpenAI to generate "about" description
-            $prompt = "Write a comprehensive and engaging 'About Us' description for a nonprofit organization named \"{$orgName}\". ";
+            // Include Name, City, and State to avoid confusion when multiple organizations have the same name
+            $prompt = "Write a comprehensive and engaging 'About Us' description for a nonprofit organization. ";
+            $prompt .= "Organization Name: \"{$orgName}\". ";
+            
+            if ($orgCity && trim($orgCity) !== '') {
+                $prompt .= "Location: {$orgCity}";
+                if ($orgState && trim($orgState) !== '') {
+                    $prompt .= ", {$orgState}";
+                }
+                $prompt .= ". ";
+            } elseif ($orgState && trim($orgState) !== '') {
+                $prompt .= "Location: {$orgState}. ";
+            }
 
             if ($organization->mission) {
                 $prompt .= "The organization's mission is: {$organization->mission}. ";
@@ -776,7 +793,16 @@ class OrganizationController extends BaseController
                 $prompt .= "The NTEE code is: {$orgNteeCode}. ";
             }
 
-            $prompt .= "The description should be informative, engaging, and provide a clear overview of what the organization does, who it serves, and its impact. Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.";
+            $prompt .= "The description should be informative, engaging, and provide a clear overview of what the organization does, who it serves, and its impact. ";
+            $prompt .= "IMPORTANT: The generated description MUST include the organization's name \"{$orgName}\"";
+            if ($orgCity && trim($orgCity) !== '') {
+                $prompt .= ", the city \"{$orgCity}\"";
+            }
+            if ($orgState && trim($orgState) !== '') {
+                $prompt .= ", and the state \"{$orgState}\"";
+            }
+            $prompt .= " within the description text itself. Make sure to naturally incorporate these details into the narrative. ";
+            $prompt .= "Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.";
 
             // Generate description using OpenAI
             $openAiService = new OpenAiService();

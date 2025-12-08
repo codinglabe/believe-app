@@ -183,14 +183,14 @@ export default function ProfileDonations() {
                     <SelectItem value="processing">Processing</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+        </div>
 
-              {/* Export Button */}
+        {/* Export Button */}
               <Button onClick={handleExport} variant="outline" className="bg-transparent whitespace-nowrap">
-                <Download className="h-4 w-4 mr-2" />
+            <Download className="h-4 w-4 mr-2" />
                 <span className="hidden sm:inline">Export</span>
-              </Button>
-            </div>
+          </Button>
+        </div>
           </CardContent>
         </Card>
 
@@ -239,18 +239,18 @@ export default function ProfileDonations() {
                         </div>
                         <div className="flex-1 min-w-0 overflow-hidden">
                           <h4 className="font-bold text-gray-900 dark:text-white text-base md:text-lg mb-1 break-words line-clamp-2">
-                            {donation.organization_name}
-                          </h4>
-                          <Badge
-                            variant="outline"
+                          {donation.organization_name}
+                        </h4>
+                        <Badge
+                          variant="outline"
                             className={`${getStatusColor()} text-xs font-medium flex items-center gap-1.5 w-fit mt-1.5`}
-                          >
+                        >
                             {getStatusIcon()}
                             <span className="capitalize">{donation.status}</span>
-                          </Badge>
+                        </Badge>
                         </div>
                       </div>
-                    </div>
+                      </div>
 
                     {/* Amount Section */}
                     <div className="mb-4">
@@ -258,8 +258,8 @@ export default function ProfileDonations() {
                         <DollarSign className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                         <span className="text-3xl font-bold text-gray-900 dark:text-white">
                           {typeof donation.amount === 'string' ? donation.amount : donation.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                          </span>
+                        </div>
                       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 ml-7">Donation Amount</p>
                     </div>
 
@@ -326,9 +326,9 @@ export default function ProfileDonations() {
                           <span className="sm:hidden">N/A</span>
                         </Button>
                       )}
-                    </div>
-                  </CardContent>
-                </Card>
+                  </div>
+                </CardContent>
+              </Card>
               )
               })}
             </div>
@@ -396,7 +396,7 @@ export default function ProfileDonations() {
                   <ChevronRight className="h-4 w-4" />
                 </Button>
               </div>
-            </div>
+          </div>
             )}
           </>
         ) : (

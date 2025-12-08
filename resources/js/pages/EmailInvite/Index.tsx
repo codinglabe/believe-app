@@ -674,8 +674,8 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
                         </Card>
                     )}
 
-                    {/* Email Connections */}
-                    <Card>
+                {/* Email Connections */}
+                <Card>
                     <CardHeader>
                         <CardTitle className="flex items-center gap-2">
                             <Mail className="h-5 w-5" />

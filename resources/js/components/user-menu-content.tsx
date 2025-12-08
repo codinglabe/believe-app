@@ -66,12 +66,12 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                     </Link>
                 </DropdownMenuItem>
                 {!isAdmin && (
-                    <DropdownMenuItem asChild>
+                <DropdownMenuItem asChild>
                         <Link className="block w-full" href="/settings/billing" as="button" prefetch onClick={cleanup}>
-                            <CreditCard className="mr-2" />
-                            Billings
-                        </Link>
-                    </DropdownMenuItem>
+                        <CreditCard className="mr-2" />
+                        Billings
+                    </Link>
+                </DropdownMenuItem>
                 )}
                 <DropdownMenuItem asChild>
                     <Link className="block w-full" href="/settings/profile" as="button" prefetch onClick={cleanup}>

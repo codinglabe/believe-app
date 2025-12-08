@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Services\ImpactScoreService;
+use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -29,28 +30,39 @@ class DonationController extends Controller
     {
         $user = Auth::user();
 
-        $query = Organization::when($user, function ($q) use ($user) {
-            return $q->whereHas('followers', function ($query) use ($user) {
-                $query->where('user_id', $user->id);
-            });
-        })->whereHas('user', function ($query) {
-            $query->where('role', 'organization')
-                ->where('login_status', 1);
-        });
+        // Show all approved organizations available for donations
+        // Organizations must be approved to receive donations
+        $query = Organization::where('registration_status', 'approved');
 
         // Apply search filter if a search query is present
         if ($request->has('search') && $request->input('search') !== '') {
             $search = $request->input('search');
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%' . $search . '%')
-                    ->orWhere('description', 'like', '%' . $search . '%');
+                    ->orWhere('description', 'like', '%' . $search . '%')
+                    ->orWhere('mission', 'like', '%' . $search . '%')
+                    ->orWhere('city', 'like', '%' . $search . '%')
+                    ->orWhere('state', 'like', '%' . $search . '%');
             });
         }
 
-        $organizations = $query->get(); // Get filtered organizations
+        // Order by name for better UX
+        $query->orderBy('name', 'asc');
+
+        $organizations = $query->get()->map(function ($org) {
+            return [
+                'id' => $org->id,
+                'name' => $org->name,
+                'description' => $org->description ?? $org->mission ?? 'No description available.',
+                'image' => $org->registered_user_image ? asset('storage/' . $org->registered_user_image) : null,
+                'raised' => (float) ($org->balance ?? 0),
+                'goal' => 0, // You can add a goal field if needed
+                'supporters' => $org->donations()->distinct('user_id')->count('user_id'),
+            ];
+        });
 
         return Inertia::render('frontend/donate', [
-            'organizations' => $organizations, // This will now be the filtered list
+            'organizations' => $organizations,
             'message' => 'Please log in to view your donations.',
             'user' => $user ? [
                 'name' => $user->name,
@@ -182,29 +194,55 @@ class DonationController extends Controller
         try {
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
             $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
-            if ($session->payment_intent) {
-                // One-time payment
-                $donation->update([
-                    'transaction_id' => $session->payment_intent,
-                    'payment_method' => $session->payment_method_types[0] ?? 'card',
-                    'status' => 'completed',
-                    'donation_date' => now(),
+            
+            // Check payment status from Stripe session
+            if ($session->payment_status === 'paid') {
+                if ($session->payment_intent) {
+                    // One-time payment
+                    $donation->update([
+                        'transaction_id' => $session->payment_intent,
+                        'payment_method' => $session->payment_method_types[0] ?? 'card',
+                        'status' => 'completed',
+                        'donation_date' => now(),
+                    ]);
+                    
+                    // Award impact points for completed donation
+                    $this->impactScoreService->awardDonationPoints($donation);
+                } elseif ($session->subscription) {
+                    // Recurring payment
+                    $donation->update([
+                        'transaction_id' => $session->subscription,
+                        'payment_method' => 'card',
+                        'status' => 'active',
+                        'donation_date' => now(),
+                    ]);
+                    
+                    // Award impact points for active recurring donation
+                    $this->impactScoreService->awardDonationPoints($donation);
+                } else {
+                    // Payment is paid but no payment_intent or subscription found
+                    // Still mark as completed if payment_status is paid
+                    $donation->update([
+                        'transaction_id' => $session->id,
+                        'payment_method' => $session->payment_method_types[0] ?? 'card',
+                        'status' => 'completed',
+                        'donation_date' => now(),
+                    ]);
+                    
+                    // Award impact points
+                    $this->impactScoreService->awardDonationPoints($donation);
+                }
+            } else {
+                // Payment not completed yet
+                Log::warning('Donation success page accessed but payment not completed', [
+                    'donation_id' => $donation->id,
+                    'session_id' => $sessionId,
+                    'payment_status' => $session->payment_status,
                 ]);
-                
-                // Award impact points for completed donation
-                $this->impactScoreService->awardDonationPoints($donation);
-            } elseif ($session->subscription) {
-                // Recurring payment
-                $donation->update([
-                    'transaction_id' => $session->subscription,
-                    'payment_method' => 'card',
-                    'status' => 'active',
-                    'donation_date' => now(),
-                ]);
-                
-                // Award impact points for active recurring donation
-                $this->impactScoreService->awardDonationPoints($donation);
             }
+
+            // Refresh donation to get updated status
+            $donation->refresh();
 
             return Inertia::render('frontend/organization/donation/success', [
                 'donation' => $donation,
@@ -256,8 +294,12 @@ class DonationController extends Controller
 
         $interval = $intervalMap[$frequency];
 
-        // Your product ID
-        $productId = config('stripe.donation_product_id', 'prod_SgdExZQM4U18aQ');
+        // Get donation product ID dynamically based on current environment
+        $productId = StripeConfigService::getDonationProductId();
+        
+        if (!$productId) {
+            throw new \Exception("Failed to get or create donation product. Please check your Stripe configuration.");
+        }
 
         // Create dynamic price with Stripe
         $price = Cashier::stripe()->prices->create([

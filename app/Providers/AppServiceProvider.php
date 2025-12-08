@@ -31,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
     {
         NodeSell::observe(NodeSellObserver::class);
         Cashier::useCustomerModel(User::class);
+        
         Inertia::share([
             'auth' => function () {
                 $user = Auth::user();

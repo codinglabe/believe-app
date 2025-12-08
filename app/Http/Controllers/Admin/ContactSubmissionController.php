@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\BaseController;
+use App\Jobs\SendContactSubmissionReply;
 use App\Models\ContactSubmission;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -95,6 +96,9 @@ class ContactSubmissionController extends BaseController
         $validated = $request->validate([
             'status' => 'required|in:new,read,replied,archived',
             'admin_notes' => 'nullable|string|max:5000',
+            'reply_message' => 'required_if:status,replied|nullable|string|max:5000',
+        ], [
+            'reply_message.required_if' => 'A reply message is required when marking as replied.',
         ]);
 
         try {
@@ -112,7 +116,26 @@ class ContactSubmissionController extends BaseController
                 $updateData['read_by'] = $request->user()->id;
             }
 
+            // Handle reply message
+            if ($validated['status'] === 'replied' && !empty($validated['reply_message'])) {
+                $updateData['reply_message'] = $validated['reply_message'];
+                $updateData['replied_at'] = now();
+            }
+
             $contactSubmission->update($updateData);
+
+            // Dispatch job to send email after updating the submission
+            if ($validated['status'] === 'replied' && !empty($validated['reply_message'])) {
+                // Reload the submission to get the updated data
+                $contactSubmission->refresh();
+                
+                // Dispatch job to send email
+                SendContactSubmissionReply::dispatch(
+                    $contactSubmission,
+                    $validated['reply_message'],
+                    $request->user()->name
+                );
+            }
 
             return redirect()->back()->with('success', 'Submission status updated successfully.');
         } catch (\Exception $e) {

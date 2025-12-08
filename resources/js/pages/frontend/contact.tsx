@@ -146,7 +146,7 @@ export default function ContactPage({
     })
   }
 
-  return (
+    return (
     <FrontendLayout>
       <Head title="Contact Us - Believe in Unity" />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
@@ -155,10 +155,10 @@ export default function ContactPage({
           <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
           <div className="container mx-auto px-4 relative z-10">
             <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              className="text-center max-w-4xl mx-auto"
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.8 }}
+                className="text-center max-w-4xl mx-auto"
             >
               {hero?.badge_text && (
                 <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 mb-6">
@@ -171,9 +171,9 @@ export default function ContactPage({
               </h1>
               <p className="text-xl md:text-2xl text-blue-100 mb-8 max-w-2xl mx-auto leading-relaxed">
                 {hero?.description || "Have questions? We're here to help. Reach out to us and we'll get back to you as soon as possible."}
-              </p>
+                </p>
             </motion.div>
-          </div>
+            </div>
         </section>
 
         <div className="container mx-auto px-4 py-16 md:py-20">
@@ -196,11 +196,11 @@ export default function ContactPage({
                           Send us a Message
                         </CardTitle>
                         <CardDescription className="text-gray-600 dark:text-gray-300 mt-1">
-                          Fill out the form below and we'll get back to you within 24 hours
-                        </CardDescription>
+                        Fill out the form below and we'll get back to you within 24 hours
+                    </CardDescription>
                       </div>
                     </div>
-                  </CardHeader>
+                    </CardHeader>
                   <CardContent className="pt-6">
                     {wasSuccessful ? (
                       <motion.div
@@ -232,53 +232,53 @@ export default function ContactPage({
                             <Label htmlFor="first-name" className="text-sm font-semibold text-gray-900 dark:text-white">
                               First Name <span className="text-red-500">*</span>
                             </Label>
-                            <Input
-                              id="first-name"
+                        <Input
+                            id="first-name"
                               value={data.first_name}
                               onChange={(e) => setData('first_name', e.target.value)}
-                              placeholder="John"
-                              required
+                            placeholder="John"
+                            required
                               className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
+                        />
                             {errors.first_name && (
                               <p className="text-sm text-red-600 dark:text-red-400">{errors.first_name}</p>
                             )}
-                          </div>
+                        </div>
                           <div className="space-y-2">
                             <Label htmlFor="last-name" className="text-sm font-semibold text-gray-900 dark:text-white">
                               Last Name <span className="text-red-500">*</span>
                             </Label>
-                            <Input
-                              id="last-name"
+                        <Input
+                            id="last-name"
                               value={data.last_name}
                               onChange={(e) => setData('last_name', e.target.value)}
-                              placeholder="Doe"
-                              required
+                            placeholder="Doe"
+                            required
                               className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
+                        />
                             {errors.last_name && (
                               <p className="text-sm text-red-600 dark:text-red-400">{errors.last_name}</p>
                             )}
-                          </div>
                         </div>
+                    </div>
 
                         <div className="space-y-2">
                           <Label htmlFor="email" className="text-sm font-semibold text-gray-900 dark:text-white">
                             Email Address <span className="text-red-500">*</span>
                           </Label>
-                          <Input
-                            id="email"
-                            type="email"
+                        <Input
+                        id="email"
+                        type="email"
                             value={data.email}
                             onChange={(e) => setData('email', e.target.value)}
-                            placeholder="john@example.com"
-                            required
+                        placeholder="john@example.com"
+                        required
                             className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
+                        />
                           {errors.email && (
                             <p className="text-sm text-red-600 dark:text-red-400">{errors.email}</p>
                           )}
-                        </div>
+                    </div>
 
                         <div className="space-y-2">
                           <Label htmlFor="subject" className="text-sm font-semibold text-gray-900 dark:text-white">
@@ -286,38 +286,38 @@ export default function ContactPage({
                           </Label>
                           <Select value={data.subject} onValueChange={(value) => setData('subject', value)}>
                             <SelectTrigger className="h-11 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
-                              <SelectValue placeholder="Select a subject" />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                              <SelectItem value="general">General Inquiry</SelectItem>
-                              <SelectItem value="donation">Donation Support</SelectItem>
-                              <SelectItem value="organization">Organization Registration</SelectItem>
-                              <SelectItem value="technical">Technical Support</SelectItem>
-                              <SelectItem value="partnership">Partnership Opportunities</SelectItem>
-                              <SelectItem value="other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
+                            <SelectValue placeholder="Select a subject" />
+                        </SelectTrigger>
+                        <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                            <SelectItem value="general">General Inquiry</SelectItem>
+                            <SelectItem value="donation">Donation Support</SelectItem>
+                            <SelectItem value="organization">Organization Registration</SelectItem>
+                            <SelectItem value="technical">Technical Support</SelectItem>
+                            <SelectItem value="partnership">Partnership Opportunities</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                        </SelectContent>
+                        </Select>
                           {errors.subject && (
                             <p className="text-sm text-red-600 dark:text-red-400">{errors.subject}</p>
                           )}
-                        </div>
+                    </div>
 
                         <div className="space-y-2">
                           <Label htmlFor="message" className="text-sm font-semibold text-gray-900 dark:text-white">
                             Message <span className="text-red-500">*</span>
                           </Label>
-                          <Textarea
-                            id="message"
+                        <Textarea
+                        id="message"
                             value={data.message}
                             onChange={(e) => setData('message', e.target.value)}
-                            placeholder="Tell us how we can help you..."
+                        placeholder="Tell us how we can help you..."
                             className="min-h-[180px] bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-none"
-                            required
-                          />
+                        required
+                        />
                           {errors.message && (
                             <p className="text-sm text-red-600 dark:text-red-400">{errors.message}</p>
                           )}
-                        </div>
+                    </div>
 
                         <Button
                           type="submit"
@@ -332,34 +332,34 @@ export default function ContactPage({
                             </>
                           ) : (
                             <>
-                              <Send className="mr-2 h-5 w-5" />
-                              Send Message
+                        <Send className="mr-2 h-5 w-5" />
+                        Send Message
                             </>
                           )}
-                        </Button>
+                    </Button>
                       </form>
                     )}
-                  </CardContent>
+                    </CardContent>
                 </Card>
-              </motion.div>
+                </motion.div>
             </div>
 
             {/* Contact Information Sidebar */}
             <div className="space-y-6">
-              {/* Contact Methods */}
-              <motion.div
+                {/* Contact Methods */}
+                <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
-              >
+                >
                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                       <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                       Contact Information
                     </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
+                    </CardHeader>
+                    <CardContent className="space-y-4">
                     {(contactMethods.length > 0 ? contactMethods : defaultContactMethods).map((method, index) => {
                       const Icon = getContactMethodIcon(method.title)
                       const methodData = typeof method === 'object' && 'title' in method ? method : defaultContactMethods[index]
@@ -386,29 +386,29 @@ export default function ContactPage({
                             <p className="text-sm font-medium text-blue-600 dark:text-blue-400 group-hover:underline">
                               {methodData.contact || method.contact}
                             </p>
-                          </div>
-                        </Link>
+                        </div>
+                            </Link>
                       </motion.div>
                       )
                     })}
-                  </CardContent>
+                    </CardContent>
                 </Card>
-              </motion.div>
+                </motion.div>
 
-              {/* Office Hours */}
-              <motion.div
+                {/* Office Hours */}
+                <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
-              >
+                >
                 <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 border-blue-200 dark:border-gray-700 shadow-lg">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                       <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                      Office Hours
+                        Office Hours
                     </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                    </CardHeader>
+                    <CardContent>
                     <div className="space-y-3">
                       {officeHours?.day_range && (
                         <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
@@ -445,24 +445,24 @@ export default function ContactPage({
                         </>
                       )}
                     </div>
-                  </CardContent>
+                    </CardContent>
                 </Card>
-              </motion.div>
+                </motion.div>
 
-              {/* Office Location */}
-              <motion.div
+                {/* Office Location */}
+                <motion.div
                 initial={{ opacity: 0, x: 30 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.4 }}
-              >
+                >
                 <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
                   <CardHeader className="pb-4">
                     <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
                       <MapPin className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                      Our Office
+                        Our Office
                     </CardTitle>
-                  </CardHeader>
-                  <CardContent>
+                    </CardHeader>
+                    <CardContent>
                     <div className="space-y-2 text-gray-700 dark:text-gray-300">
                       {officeLocation ? (
                         <>
@@ -481,8 +481,8 @@ export default function ContactPage({
                       ) : (
                         <>
                           <p className="font-medium">123 Charity Lane</p>
-                          <p>Suite 456</p>
-                          <p>New York, NY 10001</p>
+                        <p>Suite 456</p>
+                        <p>New York, NY 10001</p>
                           <p className="pt-2 flex items-center gap-2 text-blue-600 dark:text-blue-400">
                             <Globe className="h-4 w-4" />
                             <span className="text-sm">United States</span>
@@ -490,20 +490,20 @@ export default function ContactPage({
                         </>
                       )}
                     </div>
-                  </CardContent>
+                    </CardContent>
                 </Card>
-              </motion.div>
+                </motion.div>
             </div>
-          </div>
+            </div>
 
-          {/* FAQ Section */}
-          <motion.div
+            {/* FAQ Section */}
+            <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             viewport={{ once: true }}
             className="mt-20 md:mt-24"
-          >
+            >
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white mb-4">
                 Frequently Asked Questions
@@ -516,11 +516,11 @@ export default function ContactPage({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 max-w-6xl mx-auto">
               {(faqItems.length > 0 ? faqItems : defaultFaqItems).map((item, index) => (
                 <motion.div
-                  key={index}
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.6, delay: index * 0.1 }}
-                  viewport={{ once: true }}
+                    key={index}
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6, delay: index * 0.1 }}
+                    viewport={{ once: true }}
                 >
                   <Card className="h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg hover:shadow-xl transition-shadow duration-200">
                     <CardHeader>
@@ -529,25 +529,25 @@ export default function ContactPage({
                           <HelpCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                         </div>
                         <span>{item.question}</span>
-                      </CardTitle>
+                        </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-gray-600 dark:text-gray-300 leading-relaxed">{item.answer}</p>
                     </CardContent>
-                  </Card>
+                    </Card>
                 </motion.div>
-              ))}
+                ))}
             </div>
-          </motion.div>
+            </motion.div>
 
-          {/* CTA Section */}
-          <motion.div
+            {/* CTA Section */}
+            <motion.div
             initial={{ opacity: 0, y: 30 }}
             whileInView={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8 }}
             viewport={{ once: true }}
             className="mt-20 md:mt-24"
-          >
+            >
             <Card className="bg-gradient-to-r from-blue-600 via-indigo-600 to-purple-600 text-white border-0 shadow-2xl overflow-hidden relative">
               <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,rgba(255,255,255,0.6))]"></div>
               <CardContent className="py-16 md:py-20 relative z-10">
@@ -560,8 +560,8 @@ export default function ContactPage({
                   </h3>
                   <p className="text-lg md:text-xl mb-8 opacity-95 leading-relaxed">
                     {cta?.description || "Join thousands of supporters making an impact. Start your journey today and help create positive change in our communities."}
-                  </p>
-                  <div className="flex flex-col sm:flex-row gap-4 justify-center">
+                </p>
+                <div className="flex flex-col sm:flex-row gap-4 justify-center">
                     {cta?.button1_text && cta?.button1_link && (
                       <Button
                         size="lg"
@@ -595,30 +595,30 @@ export default function ContactPage({
                           className="bg-white text-blue-600 hover:bg-gray-100 font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
                         >
                           <Link href="/donate">
-                            Start Donating
+                    Start Donating
                             <ArrowRight className="ml-2 h-5 w-5" />
                           </Link>
-                        </Button>
-                        <Button
-                          size="lg"
-                          variant="outline"
+                    </Button>
+                    <Button
+                    size="lg"
+                    variant="outline"
                           asChild
                           className="border-2 border-white text-white hover:bg-white hover:text-blue-600 bg-transparent font-semibold shadow-lg hover:shadow-xl transition-all duration-200 h-12 px-8"
-                        >
+                    >
                           <Link href="/organizations">
-                            Browse Organizations
+                    Browse Organizations
                             <ArrowRight className="ml-2 h-5 w-5" />
                           </Link>
-                        </Button>
+                    </Button>
                       </>
                     )}
                   </div>
                 </div>
-              </CardContent>
+                </CardContent>
             </Card>
-          </motion.div>
+            </motion.div>
         </div>
-      </div>
+        </div>
     </FrontendLayout>
   )
 }

@@ -4,10 +4,12 @@ namespace App\Services;
 
 use App\Models\Organization;
 use App\Models\Form990Filing;
+use App\Models\IrsBoardMember;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class IRSForm990Service
@@ -99,9 +101,14 @@ class IRSForm990Service
                 $cleanReturnEIN = preg_replace('/[^0-9]/', '', $returnEIN);
                 
                 if ($cleanReturnEIN === $ein) {
+                    $taxYear = (string) $return->TaxYr ?? null;
+                    
+                    // Extract board members from this return
+                    $this->extractAndStoreBoardMembers($cleanReturnEIN, $return, $taxYear);
+                    
                     return [
                         'ein' => $cleanReturnEIN,
-                        'tax_year' => (string) $return->TaxYr ?? null,
+                        'tax_year' => $taxYear,
                         'form_type' => (string) $return->FormType ?? '990',
                         'filing_date' => $this->parseDate((string) $return->FiledDt ?? null),
                         'is_filed' => true,
@@ -119,32 +126,575 @@ class IRSForm990Service
     }
 
     /**
-     * Download IRS Form 990 XML files
-     * This should be run periodically to get the latest data
+     * Download IRS Form 990 XML files from official IRS URLs
+     * Files are in ZIP format organized by year and month
+     * URL pattern: https://apps.irs.gov/pub/epostcard/990/xml/{year}/{year}_TEOS_XML_{month}A.zip
+     * 
+     * @param string $taxYear
+     * @return bool
      */
     public function downloadIRSData(string $taxYear): bool
     {
         try {
-            // IRS provides bulk data downloads
-            // URL format may vary - check IRS.gov for current URLs
-            $url = self::IRS_DATA_BASE_URL . "eo_{$taxYear}.xml";
+            // Create storage directories
+            $storageDir = storage_path("app/irs-data/{$taxYear}");
+            $zipDir = storage_path("app/irs-data/{$taxYear}/zips");
             
-            $response = Http::timeout(300)->get($url);
-            
-            if ($response->successful()) {
-                $storagePath = "irs-data/{$taxYear}/form990.xml";
-                Storage::put($storagePath, $response->body());
-                
-                Log::info("IRS data downloaded for year {$taxYear}");
-                return true;
+            if (!is_dir($storageDir)) {
+                mkdir($storageDir, 0755, true);
             }
-            
-            return false;
+            if (!is_dir($zipDir)) {
+                mkdir($zipDir, 0755, true);
+            }
+
+            $baseUrl = "https://apps.irs.gov/pub/epostcard/990/xml/{$taxYear}";
+            $downloadedCount = 0;
+            $extractedCount = 0;
+
+            // Process one ZIP at a time: download, extract, process, delete
+            // IRS organizes files by month, with format: {year}_TEOS_XML_{month}A.zip
+            for ($month = 1; $month <= 12; $month++) {
+                $monthStr = str_pad($month, 2, '0', STR_PAD_LEFT);
+                $zipFileName = "{$taxYear}_TEOS_XML_{$monthStr}A.zip";
+                $zipUrl = "{$baseUrl}/{$zipFileName}";
+                $zipPath = "{$zipDir}/{$zipFileName}";
+
+                try {
+                    Log::info("=== Processing month {$monthStr} ===");
+                    Log::info("Downloading: {$zipUrl}");
+                    
+                    $response = Http::timeout(600) // 10 minutes for large files
+                        ->retry(2, 2000)
+                        ->withHeaders([
+                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                        ])
+                        ->get($zipUrl);
+                    
+                    if ($response->successful()) {
+                        // Save ZIP file
+                        file_put_contents($zipPath, $response->body());
+                        $fileSize = filesize($zipPath);
+                        Log::info("Downloaded {$zipFileName} ({$fileSize} bytes)");
+                        $downloadedCount++;
+
+                        // Extract and process ZIP file immediately
+                        if ($this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear)) {
+                            $extractedCount++;
+                            Log::info("✓ Processed and cleaned up {$zipFileName}");
+                            
+                            // Delete ZIP file after processing
+                            if (file_exists($zipPath) && unlink($zipPath)) {
+                                Log::info("  Deleted ZIP file: {$zipFileName}");
+                            }
+                        }
+                    } else {
+                        // File doesn't exist for this month (normal for future months)
+                        Log::debug("File not found: {$zipFileName} (HTTP {$response->status()})");
+                    }
+                } catch (\Exception $e) {
+                    Log::warning("Error processing {$zipFileName}: " . $e->getMessage());
+                    // Try to clean up on error
+                    if (file_exists($zipPath)) {
+                        @unlink($zipPath);
+                    }
+                    continue;
+                }
+            }
+
+            // Also try alternative naming for older years (2020, 2019)
+            if ($downloadedCount === 0 && in_array($taxYear, ['2020', '2019', '2021', '2022'])) {
+                $alternativeFiles = [
+                    "{$taxYear}_TEOS_XML_CT1.zip",
+                    "download990xml_{$taxYear}_1.zip",
+                    "download990xml_{$taxYear}_2.zip",
+                    "download990xml_{$taxYear}_3.zip",
+                    "download990xml_{$taxYear}_4.zip",
+                    "download990xml_{$taxYear}_5.zip",
+                    "download990xml_{$taxYear}_6.zip",
+                    "download990xml_{$taxYear}_7.zip",
+                    "download990xml_{$taxYear}_8.zip",
+                ];
+
+                foreach ($alternativeFiles as $fileName) {
+                    $zipUrl = "{$baseUrl}/{$fileName}";
+                    $zipPath = "{$zipDir}/{$fileName}";
+
+                    try {
+                        Log::info("Trying alternative file: {$zipUrl}");
+                        $response = Http::timeout(600)
+                            ->retry(2, 2000)
+                            ->withHeaders([
+                                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+                            ])
+                            ->get($zipUrl);
+                        
+                        if ($response->successful()) {
+                            file_put_contents($zipPath, $response->body());
+                            $downloadedCount++;
+                            if ($this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear)) {
+                                $extractedCount++;
+                                // Delete ZIP after processing
+                                if (file_exists($zipPath) && unlink($zipPath)) {
+                                    Log::info("  Deleted ZIP: {$fileName}");
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        continue;
+                    }
+                }
+            }
+
+            if ($downloadedCount > 0) {
+                Log::info("Successfully downloaded {$downloadedCount} ZIP file(s) and extracted {$extractedCount} for year {$taxYear}");
+                return true;
+            } else {
+                Log::warning("No ZIP files found for year {$taxYear}");
+                Log::info("Please check: https://www.irs.gov/charities-non-profits/form-990-series-downloads");
+                return false;
+            }
             
         } catch (\Exception $e) {
             Log::error("Failed to download IRS data for year {$taxYear}: " . $e->getMessage());
             return false;
         }
+    }
+
+    /**
+     * Extract ZIP file, process XML files immediately, then delete them
+     * This processes one ZIP at a time to keep memory usage low
+     * 
+     * @param string $zipPath
+     * @param string $extractTo
+     * @param string $taxYear
+     * @return bool
+     */
+    private function extractAndProcessZipFile(string $zipPath, string $extractTo, string $taxYear): bool
+    {
+        try {
+            if (!file_exists($zipPath)) {
+                return false;
+            }
+
+            $zip = new \ZipArchive();
+            if ($zip->open($zipPath) !== true) {
+                Log::error("Failed to open ZIP file: {$zipPath}");
+                return false;
+            }
+
+            $xmlFiles = [];
+            
+            // Extract all XML files from ZIP
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $filename = $zip->getNameIndex($i);
+                
+                if (pathinfo($filename, PATHINFO_EXTENSION) === 'xml') {
+                    $content = $zip->getFromIndex($i);
+                    if ($content !== false) {
+                        $xmlFiles[] = $content;
+                    }
+                }
+            }
+            
+            $zip->close();
+
+            if (empty($xmlFiles)) {
+                Log::warning("No XML files found in ZIP: {$zipPath}");
+                return false;
+            }
+
+            Log::info("  Extracted " . count($xmlFiles) . " XML file(s) from ZIP");
+
+            // Process each XML file immediately, then delete it
+            $processedCount = 0;
+            foreach ($xmlFiles as $index => $xmlContent) {
+                $xmlFileName = "form990_" . basename($zipPath, '.zip') . "_{$index}.xml";
+                $xmlPath = "{$extractTo}/{$xmlFileName}";
+                
+                try {
+                    // Save XML file temporarily
+                    file_put_contents($xmlPath, $xmlContent);
+                    
+                    // Process this XML file immediately
+                    $fileResults = $this->processSingleXMLFile($xmlPath, $taxYear);
+                    $processedCount += $fileResults['organizations_processed'];
+                    
+                    Log::info("  Processed {$xmlFileName}: {$fileResults['organizations_processed']} orgs, {$fileResults['board_members_found']} board members");
+                    
+                    // Delete XML file immediately after processing
+                    if (file_exists($xmlPath) && unlink($xmlPath)) {
+                        Log::debug("    Deleted: {$xmlFileName}");
+                    }
+                    
+                } catch (\Exception $e) {
+                    Log::error("  Error processing {$xmlFileName}: " . $e->getMessage());
+                    // Still try to delete on error
+                    if (file_exists($xmlPath)) {
+                        @unlink($xmlPath);
+                    }
+                }
+            }
+
+            Log::info("  ✓ Completed processing ZIP: {$processedCount} organizations processed");
+            return true;
+            
+        } catch (\Exception $e) {
+            Log::error("Error extracting/processing ZIP file {$zipPath}: " . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Process a single XML file and extract board members
+     * 
+     * @param string $xmlPath
+     * @param string $taxYear
+     * @return array
+     */
+    private function processSingleXMLFile(string $xmlPath, string $taxYear): array
+    {
+        $results = [
+            'organizations_processed' => 0,
+            'board_members_found' => 0,
+            'board_members_created' => 0,
+            'board_members_updated' => 0,
+            'board_members_inactivated' => 0,
+            'errors' => 0,
+        ];
+
+        try {
+            if (!Schema::hasTable('irs_board_members')) {
+                return $results;
+            }
+
+            // Load XML with error handling
+            libxml_use_internal_errors(true);
+            $xml = simplexml_load_file($xmlPath);
+            
+            if (!$xml) {
+                $errors = libxml_get_errors();
+                $errorMsg = !empty($errors) ? $errors[0]->message : 'Unknown error';
+                Log::warning("Failed to load XML: {$errorMsg}");
+                libxml_clear_errors();
+                return $results;
+            }
+
+            // Register namespaces - IRS uses default namespace
+            $namespaces = $xml->getNamespaces(true);
+            $defaultNs = $namespaces[''] ?? 'http://www.irs.gov/efile';
+            $xml->registerXPathNamespace('irs', $defaultNs);
+
+            // Try different ways to find Return elements
+            $returns = [];
+            
+            // Method 1: Direct access (with namespace)
+            if (isset($xml->Return)) {
+                $returns = [$xml->Return];
+                Log::debug("Found Return via direct access");
+            }
+            // Method 2: XPath with namespace
+            elseif (!empty($xml->xpath('//irs:Return'))) {
+                $returns = $xml->xpath('//irs:Return');
+                Log::debug("Found Return via XPath with namespace");
+            }
+            // Method 3: XPath without namespace
+            elseif (!empty($xml->xpath('//Return'))) {
+                $returns = $xml->xpath('//Return');
+                Log::debug("Found Return via XPath without namespace");
+            }
+            // Method 4: Check for ReturnData wrapper
+            elseif (isset($xml->ReturnData)) {
+                if (isset($xml->ReturnData->Return)) {
+                    $returns = [$xml->ReturnData->Return];
+                    Log::debug("Found Return via ReturnData wrapper");
+                }
+            }
+
+            if (empty($returns)) {
+                return $results;
+            }
+
+            // Process all returns
+            $returnsArray = is_array($returns) ? $returns : [$returns];
+            
+            foreach ($returnsArray as $return) {
+                try {
+                    // Get EIN - try multiple paths based on actual IRS structure
+                    $returnEIN = null;
+                    if (isset($return->ReturnHeader->Filer->EIN)) {
+                        $returnEIN = (string) $return->ReturnHeader->Filer->EIN;
+                    } elseif (isset($return->ReturnHeader) && isset($return->ReturnHeader->Filer) && isset($return->ReturnHeader->Filer->EIN)) {
+                        $returnEIN = (string) $return->ReturnHeader->Filer->EIN;
+                    } elseif (isset($return->EIN)) {
+                        $returnEIN = (string) $return->EIN;
+                    } elseif (isset($return->Filer->EIN)) {
+                        $returnEIN = (string) $return->Filer->EIN;
+                    }
+                    
+                    $cleanReturnEIN = $returnEIN ? preg_replace('/[^0-9]/', '', $returnEIN) : '';
+                    
+                    if (empty($cleanReturnEIN)) {
+                        Log::debug("Skipping return - no EIN found");
+                        continue;
+                    }
+
+                    // Get tax year
+                    $returnTaxYear = null;
+                    if (isset($return->ReturnHeader->TaxYr)) {
+                        $returnTaxYear = (string) $return->ReturnHeader->TaxYr;
+                    } elseif (isset($return->TaxYr)) {
+                        $returnTaxYear = (string) $return->TaxYr;
+                    }
+                    $returnTaxYear = $returnTaxYear ?: $taxYear;
+                    
+                    Log::info("Processing EIN: {$cleanReturnEIN}, Tax Year: {$returnTaxYear}");
+                    
+                    // Extract board members
+                    $memberStats = $this->extractAndStoreBoardMembersBulk($cleanReturnEIN, $return, $returnTaxYear);
+                    
+                    $results['organizations_processed']++;
+                    $results['board_members_found'] += $memberStats['found'];
+                    $results['board_members_created'] += $memberStats['created'];
+                    $results['board_members_updated'] += $memberStats['updated'];
+                    $results['board_members_inactivated'] += $memberStats['inactivated'];
+                    
+                } catch (\Exception $e) {
+                    Log::error("Error processing return: " . $e->getMessage());
+                    $results['errors']++;
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error processing XML file {$xmlPath}: " . $e->getMessage());
+            $results['errors']++;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Process entire IRS XML file and extract board members for ALL organizations
+     * This processes existing XML files (if download was skipped)
+     * 
+     * @param string $taxYear
+     * @return array Statistics about the processing
+     */
+    public function processBulkIRSBoardMembers(string $taxYear): array
+    {
+        $results = [
+            'organizations_processed' => 0,
+            'board_members_found' => 0,
+            'board_members_created' => 0,
+            'board_members_updated' => 0,
+            'board_members_inactivated' => 0,
+            'errors' => 0,
+        ];
+
+        try {
+            if (!Schema::hasTable('irs_board_members')) {
+                Log::warning('irs_board_members table does not exist. Please run migrations.');
+                return $results;
+            }
+
+            $dataDir = storage_path("app/irs-data/{$taxYear}");
+            
+            if (!is_dir($dataDir)) {
+                Log::error("IRS data directory not found for year {$taxYear}. Please download first.");
+                return $results;
+            }
+
+            // Find all XML files in the directory (exclude zips folder)
+            $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function($file) {
+                return strpos($file, 'zips') === false;
+            });
+            
+            if (empty($xmlFiles)) {
+                Log::info("No XML files found in {$dataDir}. Processing will happen during download.");
+                return $results;
+            }
+
+            Log::info("=== Processing existing XML files for year {$taxYear} ===");
+            Log::info("Found " . count($xmlFiles) . " XML file(s) to process");
+
+            // Process each XML file and delete after processing
+            foreach ($xmlFiles as $xmlPath) {
+                try {
+                    $fileName = basename($xmlPath);
+                    Log::info("Processing: {$fileName}");
+                    
+                    $fileResults = $this->processSingleXMLFile($xmlPath, $taxYear);
+                    
+                    $results['organizations_processed'] += $fileResults['organizations_processed'];
+                    $results['board_members_found'] += $fileResults['board_members_found'];
+                    $results['board_members_created'] += $fileResults['board_members_created'];
+                    $results['board_members_updated'] += $fileResults['board_members_updated'];
+                    $results['board_members_inactivated'] += $fileResults['board_members_inactivated'];
+                    $results['errors'] += $fileResults['errors'];
+                    
+                    Log::info("✓ {$fileName}: {$fileResults['organizations_processed']} orgs, {$fileResults['board_members_found']} board members");
+                    
+                    // Delete XML file after processing
+                    if (file_exists($xmlPath) && unlink($xmlPath)) {
+                        Log::info("  Deleted: {$fileName}");
+                    }
+                    
+                } catch (\Exception $e) {
+                    Log::error("Error processing {$xmlPath}: " . $e->getMessage());
+                    $results['errors']++;
+                }
+            }
+
+            Log::info("Bulk processing completed. Processed {$results['organizations_processed']} organizations, found {$results['board_members_found']} board members.");
+
+        } catch (\Exception $e) {
+            Log::error("Error processing bulk IRS board members for year {$taxYear}: " . $e->getMessage());
+            $results['errors']++;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Extract and store board members for a single organization (bulk processing version)
+     * Saves all board members regardless of organization database matching
+     * Returns statistics instead of void
+     * 
+     * @param string $ein
+     * @param \SimpleXMLElement $return
+     * @param string|null $taxYear
+     * @return array
+     */
+    private function extractAndStoreBoardMembersBulk(string $ein, $return, ?string $taxYear = null): array
+    {
+        $stats = [
+            'found' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'inactivated' => 0,
+        ];
+
+        try {
+            if (!Schema::hasTable('irs_board_members')) {
+                Log::warning("irs_board_members table does not exist");
+                return $stats;
+            }
+
+            // First try XPath extraction (more reliable for XML)
+            $boardMembers = $this->extractBoardMembersFromXML($return);
+            
+            Log::debug("  XPath extraction found " . count($boardMembers) . " board members for EIN {$ein}");
+            
+            // If XPath didn't work, try array-based extraction
+            if (empty($boardMembers)) {
+                $returnArray = json_decode(json_encode($return), true);
+                
+                $members = null;
+                
+                // Try to find board members in different form types
+                if (isset($returnArray['ReturnData']['IRS990']['Form990PartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990']['Form990PartVIISectionAGrp'];
+                    Log::debug("  Found members in IRS990->Form990PartVIISectionAGrp");
+                } elseif (isset($returnArray['ReturnData']['IRS990EZ']['Form990EZPartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990EZ']['Form990EZPartVIISectionAGrp'];
+                    Log::debug("  Found members in IRS990EZ->Form990EZPartVIISectionAGrp");
+                } elseif (isset($returnArray['ReturnData']['IRS990PF']['Form990PFPartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990PF']['Form990PFPartVIISectionAGrp'];
+                    Log::debug("  Found members in IRS990PF->Form990PFPartVIISectionAGrp");
+                }
+                
+                if ($members) {
+                    $boardMembers = $this->normalizeBoardMemberArray($members);
+                    Log::debug("  Array extraction found " . count($boardMembers) . " board members");
+                }
+            }
+
+            if (empty($boardMembers)) {
+                Log::debug("  No board members found for EIN {$ein}");
+                return $stats;
+            }
+
+            $stats['found'] = count($boardMembers);
+            Log::info("  Extracting {$stats['found']} board members for EIN {$ein}");
+
+            // Get current active board members for this EIN and tax year (for comparison only)
+            $currentActiveMembers = IrsBoardMember::forEin($ein)
+                ->forTaxYear($taxYear)
+                ->active()
+                ->get()
+                ->keyBy(function ($member) {
+                    return strtolower(trim($member->name)) . '|' . strtolower(trim($member->position ?? ''));
+                });
+
+            // Process each board member from IRS data - save all of them
+            foreach ($boardMembers as $memberData) {
+                $name = trim($memberData['name'] ?? '');
+                $position = trim($memberData['position'] ?? '');
+                
+                if (empty($name)) {
+                    continue;
+                }
+
+                $memberKey = strtolower($name) . '|' . strtolower($position);
+                
+                // Check if this member already exists for this EIN and tax year
+                $existingMember = IrsBoardMember::forEin($ein)
+                    ->where('name', $name)
+                    ->where('position', $position)
+                    ->where('tax_year', $taxYear)
+                    ->first();
+
+                if ($existingMember) {
+                    // Update existing member - mark as active if they were inactive
+                    if ($existingMember->status !== 'active') {
+                        $existingMember->reactivate();
+                    }
+                    
+                    // Update IRS data
+                    $existingMember->update([
+                        'irs_data' => $memberData['irs_data'] ?? null,
+                        'appointed_date' => $memberData['appointed_date'] ?? $existingMember->appointed_date,
+                        'term_end_date' => $memberData['term_end_date'] ?? $existingMember->term_end_date,
+                    ]);
+                    
+                    $stats['updated']++;
+                } else {
+                    // Create new board member - save regardless of organization database
+                    try {
+                        IrsBoardMember::create([
+                            'ein' => $ein,
+                            'name' => $name,
+                            'position' => $position ?: null,
+                            'status' => 'active',
+                            'tax_year' => $taxYear,
+                            'appointed_date' => $memberData['appointed_date'] ?? null,
+                            'term_end_date' => $memberData['term_end_date'] ?? null,
+                            'irs_data' => $memberData['irs_data'] ?? null,
+                        ]);
+                        
+                        $stats['created']++;
+                        Log::debug("    Created: {$name} - {$position}");
+                    } catch (\Exception $e) {
+                        Log::error("    Failed to create board member {$name} for EIN {$ein}: " . $e->getMessage());
+                    }
+                }
+
+                // Remove from current active list (so we know who's still active)
+                $currentActiveMembers->forget($memberKey);
+            }
+
+            // Mark members not found in current filing as inactive (but don't delete)
+            foreach ($currentActiveMembers as $inactiveMember) {
+                if ($inactiveMember->status === 'active') {
+                    $inactiveMember->markAsInactive('Not found in latest IRS filing for tax year ' . $taxYear);
+                    $stats['inactivated']++;
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error extracting board members for EIN {$ein}: " . $e->getMessage());
+        }
+
+        return $stats;
     }
 
     /**
@@ -309,6 +859,414 @@ class IRSForm990Service
             Log::error("Error creating missing filing record for organization {$organization->id}: " . $e->getMessage());
             throw $e;
         }
+    }
+
+    /**
+     * Extract and store board members from IRS XML return data
+     * 
+     * @param string $ein
+     * @param \SimpleXMLElement $return
+     * @param string|null $taxYear
+     * @return void
+     */
+    public function extractAndStoreBoardMembers(string $ein, $return, ?string $taxYear = null): void
+    {
+        try {
+            if (!Schema::hasTable('irs_board_members')) {
+                Log::warning('irs_board_members table does not exist. Please run migrations.');
+                return;
+            }
+
+            // First try XPath extraction (more reliable for XML)
+            $boardMembers = $this->extractBoardMembersFromXML($return);
+            
+            // If XPath didn't work, try array-based extraction
+            if (empty($boardMembers)) {
+                $returnArray = json_decode(json_encode($return), true);
+                
+                // IRS Form 990 structure varies, but board members are typically in:
+                // - ReturnData/IRS990/Form990PartVIISectionAGrp (Form 990)
+                // - ReturnData/IRS990EZ/Form990EZPartVIISectionAGrp (Form 990-EZ)
+                // - ReturnData/IRS990PF/Form990PFPartVIISectionAGrp (Form 990-PF)
+                
+                $members = null;
+                
+                // Try to find board members in different form types
+                if (isset($returnArray['ReturnData']['IRS990']['Form990PartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990']['Form990PartVIISectionAGrp'];
+                } elseif (isset($returnArray['ReturnData']['IRS990EZ']['Form990EZPartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990EZ']['Form990EZPartVIISectionAGrp'];
+                } elseif (isset($returnArray['ReturnData']['IRS990PF']['Form990PFPartVIISectionAGrp'])) {
+                    $members = $returnArray['ReturnData']['IRS990PF']['Form990PFPartVIISectionAGrp'];
+                }
+                
+                if ($members) {
+                    $boardMembers = $this->normalizeBoardMemberArray($members);
+                }
+            }
+
+            if (empty($boardMembers)) {
+                Log::info("No board members found in IRS XML for EIN: {$ein}");
+                return;
+            }
+
+            Log::info("Found " . count($boardMembers) . " board members for EIN: {$ein}");
+
+            // Get current active board members for this EIN and tax year
+            $currentActiveMembers = IrsBoardMember::forEin($ein)
+                ->forTaxYear($taxYear)
+                ->active()
+                ->get()
+                ->keyBy(function ($member) {
+                    return strtolower(trim($member->name)) . '|' . strtolower(trim($member->position ?? ''));
+                });
+
+            // Process each board member from IRS data
+            foreach ($boardMembers as $memberData) {
+                $name = trim($memberData['name'] ?? '');
+                $position = trim($memberData['position'] ?? '');
+                
+                if (empty($name)) {
+                    continue;
+                }
+
+                $memberKey = strtolower($name) . '|' . strtolower($position);
+                
+                // Check if this member already exists
+                $existingMember = IrsBoardMember::forEin($ein)
+                    ->where('name', $name)
+                    ->where('position', $position)
+                    ->where('tax_year', $taxYear)
+                    ->first();
+
+                if ($existingMember) {
+                    // Update existing member - mark as active if they were inactive
+                    if ($existingMember->status !== 'active') {
+                        $existingMember->reactivate();
+                    }
+                    
+                    // Update IRS data
+                    $existingMember->update([
+                        'irs_data' => $memberData['irs_data'] ?? null,
+                        'appointed_date' => $memberData['appointed_date'] ?? $existingMember->appointed_date,
+                        'term_end_date' => $memberData['term_end_date'] ?? $existingMember->term_end_date,
+                    ]);
+                } else {
+                    // Create new board member
+                    IrsBoardMember::create([
+                        'ein' => $ein,
+                        'name' => $name,
+                        'position' => $position ?: null,
+                        'status' => 'active',
+                        'tax_year' => $taxYear,
+                        'appointed_date' => $memberData['appointed_date'] ?? null,
+                        'term_end_date' => $memberData['term_end_date'] ?? null,
+                        'irs_data' => $memberData['irs_data'] ?? null,
+                    ]);
+                }
+
+                // Remove from current active list (so we know who's still active)
+                $currentActiveMembers->forget($memberKey);
+            }
+
+            // Mark members not found in current filing as inactive (but don't delete)
+            foreach ($currentActiveMembers as $inactiveMember) {
+                if ($inactiveMember->status === 'active') {
+                    $inactiveMember->markAsInactive('Not found in latest IRS filing for tax year ' . $taxYear);
+                    Log::info("Marked board member as inactive: {$inactiveMember->name} (EIN: {$ein})");
+                }
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error extracting board members for EIN {$ein}: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * Normalize board member array (handle both single and multiple members)
+     */
+    private function normalizeBoardMemberArray($members): array
+    {
+        if (empty($members)) {
+            return [];
+        }
+
+        $normalized = [];
+        
+        // Handle numeric array (multiple members)
+        if (isset($members[0])) {
+            foreach ($members as $member) {
+                $normalized[] = $this->extractMemberData($member);
+            }
+        } else {
+            // Single member
+            $normalized[] = $this->extractMemberData($members);
+        }
+
+        return array_filter($normalized, function($member) {
+            return !empty($member['name']);
+        });
+    }
+
+    /**
+     * Extract member data from array structure
+     */
+    private function extractMemberData($member): array
+    {
+        if (!is_array($member)) {
+            return [];
+        }
+
+        $name = '';
+        $position = '';
+        $appointedDate = null;
+        $termEndDate = null;
+
+        // Try different field names for name
+        $nameFields = ['PersonNm', 'Name', 'PersonName', 'OfficerNm', 'DirectorNm'];
+        foreach ($nameFields as $field) {
+            if (isset($member[$field])) {
+                $name = is_array($member[$field]) ? ($member[$field]['@value'] ?? '') : (string) $member[$field];
+                break;
+            }
+        }
+
+        // Try different field names for position/title
+        $positionFields = ['Title', 'Position', 'TitleTxt', 'OfficerTitle', 'DirectorTitle'];
+        foreach ($positionFields as $field) {
+            if (isset($member[$field])) {
+                $position = is_array($member[$field]) ? ($member[$field]['@value'] ?? '') : (string) $member[$field];
+                break;
+            }
+        }
+
+        // Try to extract dates
+        if (isset($member['AppointedDt'])) {
+            $appointedDate = $this->parseDate((string) $member['AppointedDt']);
+        }
+        if (isset($member['TermEndDt'])) {
+            $termEndDate = $this->parseDate((string) $member['TermEndDt']);
+        }
+
+        return [
+            'name' => trim($name),
+            'position' => trim($position),
+            'appointed_date' => $appointedDate,
+            'term_end_date' => $termEndDate,
+            'irs_data' => $member,
+        ];
+    }
+
+    /**
+     * Extract board members using XPath (alternative method)
+     * Based on actual IRS XML structure: ReturnData > IRS990 > Form990PartVIISectionAGrp
+     */
+    private function extractBoardMembersFromXML($return): array
+    {
+        $members = [];
+        
+        try {
+            // Register namespaces
+            $namespaces = $return->getNamespaces(true);
+            $defaultNs = $namespaces[''] ?? 'http://www.irs.gov/efile';
+            $return->registerXPathNamespace('irs', $defaultNs);
+
+            // Try different paths based on actual IRS structure
+            $found = null;
+            
+            // Method 1: Direct path - ReturnData > IRS990 > Form990PartVIISectionAGrp
+            if (isset($return->ReturnData->IRS990->Form990PartVIISectionAGrp)) {
+                $found = $return->ReturnData->IRS990->Form990PartVIISectionAGrp;
+                Log::debug("    Found via: ReturnData->IRS990->Form990PartVIISectionAGrp");
+            }
+            // Method 2: ReturnData > IRS990EZ > Form990EZPartVIISectionAGrp
+            elseif (isset($return->ReturnData->IRS990EZ->Form990EZPartVIISectionAGrp)) {
+                $found = $return->ReturnData->IRS990EZ->Form990EZPartVIISectionAGrp;
+                Log::debug("    Found via: ReturnData->IRS990EZ->Form990EZPartVIISectionAGrp");
+            }
+            // Method 3: ReturnData > IRS990PF > Form990PFPartVIISectionAGrp
+            elseif (isset($return->ReturnData->IRS990PF->Form990PFPartVIISectionAGrp)) {
+                $found = $return->ReturnData->IRS990PF->Form990PFPartVIISectionAGrp;
+                Log::debug("    Found via: ReturnData->IRS990PF->Form990PFPartVIISectionAGrp");
+            }
+            // Method 4: XPath search
+            else {
+                $xpaths = [
+                    './/irs:Form990PartVIISectionAGrp',
+                    './/irs:Form990EZPartVIISectionAGrp',
+                    './/irs:Form990PFPartVIISectionAGrp',
+                    './/Form990PartVIISectionAGrp',
+                    './/Form990EZPartVIISectionAGrp',
+                    './/Form990PFPartVIISectionAGrp',
+                    '//irs:ReturnData//irs:IRS990//irs:Form990PartVIISectionAGrp',
+                    '//ReturnData//IRS990//Form990PartVIISectionAGrp',
+                ];
+                
+                foreach ($xpaths as $xpath) {
+                    try {
+                        $found = $return->xpath($xpath);
+                        if ($found && count($found) > 0) {
+                            Log::debug("    Found via XPath: {$xpath}");
+                            break;
+                        }
+                    } catch (\Exception $e) {
+                        continue;
+                    }
+                }
+            }
+
+            if (empty($found)) {
+                Log::debug("    No board members found in this return");
+                return $members;
+            }
+
+            // Normalize to array
+            $foundArray = is_array($found) ? $found : [$found];
+            
+            Log::info("    Found " . count($foundArray) . " board member record(s)");
+            
+            foreach ($foundArray as $member) {
+                // Get name - IRS uses PersonNm
+                $name = '';
+                if (isset($member->PersonNm)) {
+                    $name = (string) $member->PersonNm;
+                } elseif (isset($member->Name)) {
+                    $name = (string) $member->Name;
+                } elseif (isset($member->PersonName)) {
+                    $name = (string) $member->PersonName;
+                }
+                
+                // Get position/title - IRS uses TitleTxt
+                $position = '';
+                if (isset($member->TitleTxt)) {
+                    $position = (string) $member->TitleTxt;
+                } elseif (isset($member->Title)) {
+                    $position = (string) $member->Title;
+                } elseif (isset($member->Position)) {
+                    $position = (string) $member->Position;
+                }
+                
+                if (!empty($name)) {
+                    // IRS XML doesn't always have dates, so these may be null
+                    $appointedDate = isset($member->AppointedDt) ? $this->parseDate((string) $member->AppointedDt) : null;
+                    $termEndDate = isset($member->TermEndDt) ? $this->parseDate((string) $member->TermEndDt) : null;
+                    
+                    $members[] = [
+                        'name' => trim($name),
+                        'position' => trim($position),
+                        'appointed_date' => $appointedDate,
+                        'term_end_date' => $termEndDate,
+                        'irs_data' => json_decode(json_encode($member), true),
+                    ];
+                    
+                    Log::debug("      - {$name} ({$position})");
+                }
+            }
+            
+        } catch (\Exception $e) {
+            Log::warning("XPath extraction failed: " . $e->getMessage());
+            Log::warning("Stack trace: " . $e->getTraceAsString());
+        }
+
+        return $members;
+    }
+
+    /**
+     * Sync board members for a specific organization
+     * 
+     * @param string $ein
+     * @param string|null $taxYear
+     * @return array
+     */
+    public function syncBoardMembersForOrganization(string $ein, ?string $taxYear = null): array
+    {
+        $results = [
+            'processed' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'inactivated' => 0,
+            'errors' => 0,
+        ];
+
+        try {
+            if (!Schema::hasTable('irs_board_members')) {
+                Log::warning('irs_board_members table does not exist. Please run migrations.');
+                return $results;
+            }
+
+            if (!$taxYear) {
+                $taxYear = (string) Carbon::now()->year;
+            }
+
+            // Get counts before sync
+            $beforeActiveCount = IrsBoardMember::forEin($ein)
+                ->forTaxYear($taxYear)
+                ->active()
+                ->count();
+
+            // Check filing status and extract board members
+            $filingData = $this->checkFilingStatus($ein, $taxYear);
+            
+            if ($filingData && isset($filingData['irs_data'])) {
+                // Board members should have been extracted during checkFilingStatus
+                // Count the results after sync
+                $afterActiveCount = IrsBoardMember::forEin($ein)
+                    ->forTaxYear($taxYear)
+                    ->active()
+                    ->count();
+                
+                $results['processed'] = $afterActiveCount;
+                
+                // Calculate created/updated based on difference
+                if ($afterActiveCount > $beforeActiveCount) {
+                    $results['created'] = $afterActiveCount - $beforeActiveCount;
+                } else {
+                    $results['updated'] = $afterActiveCount; // All were updated
+                }
+                
+                // Count inactivated members
+                $results['inactivated'] = IrsBoardMember::forEin($ein)
+                    ->forTaxYear($taxYear)
+                    ->where('status', 'inactive')
+                    ->where('updated_at', '>=', now()->subMinute())
+                    ->count();
+            } else {
+                Log::warning("No filing data found for EIN {$ein} in tax year {$taxYear}");
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error syncing board members for EIN {$ein}: " . $e->getMessage());
+            $results['errors']++;
+        }
+
+        return $results;
+    }
+
+    /**
+     * Check and update expired board member terms
+     * This should be run periodically (e.g., via cron)
+     */
+    public function updateExpiredBoardMemberTerms(): int
+    {
+        $expiredCount = 0;
+
+        try {
+            $expiredMembers = IrsBoardMember::where('status', 'active')
+                ->whereNotNull('term_end_date')
+                ->where('term_end_date', '<', now())
+                ->get();
+
+            foreach ($expiredMembers as $member) {
+                $member->markAsExpired();
+                $expiredCount++;
+                Log::info("Marked board member as expired: {$member->name} (EIN: {$member->ein}, Term ended: {$member->term_end_date})");
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error updating expired board member terms: " . $e->getMessage());
+        }
+
+        return $expiredCount;
     }
 }
 

@@ -1,7 +1,7 @@
 "use client"
 
 import React from "react"
-import { Head, Link, router, useForm } from "@inertiajs/react"
+import { Head, Link, useForm } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -12,7 +12,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { 
     ArrowLeft,
     Mail,
-    User,
     Clock,
     CheckCircle2,
     MessageSquare,
@@ -36,6 +35,7 @@ interface ContactSubmission {
         email: string
     } | null
     admin_notes: string | null
+    reply_message: string | null
     created_at: string
     updated_at: string
 }
@@ -51,18 +51,23 @@ const breadcrumbs: BreadcrumbItem[] = [
 ]
 
 export default function AdminContactSubmissionShow({ submission }: ContactSubmissionShowProps) {
-    const { data, setData, put, processing } = useForm({
+    const { data, setData, put, processing, errors } = useForm({
         status: submission.status,
         admin_notes: submission.admin_notes || '',
+        reply_message: submission.reply_message || '',
     })
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        put(`/admin/contact-submissions/${submission.id}/status`)
+        put(`/admin/contact-submissions/${submission.id}/status`, {
+            onSuccess: () => {
+                // Optionally show success message
+            },
+        })
     }
 
     const getStatusBadge = (status: string) => {
-        const variants: Record<string, { className: string; icon: any; label: string }> = {
+        const variants: Record<string, { className: string; icon: React.ComponentType<{ className?: string }>; label: string }> = {
             new: {
                 className: 'bg-blue-100 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800',
                 icon: Clock,
@@ -205,7 +210,7 @@ export default function AdminContactSubmissionShow({ submission }: ContactSubmis
                                 <form onSubmit={handleSubmit} className="space-y-4">
                                     <div className="space-y-2">
                                         <Label htmlFor="status">Status</Label>
-                                        <Select value={data.status} onValueChange={(value) => setData('status', value as any)}>
+                                        <Select value={data.status} onValueChange={(value) => setData('status', value as 'new' | 'read' | 'replied' | 'archived')}>
                                             <SelectTrigger id="status">
                                                 <SelectValue />
                                             </SelectTrigger>
@@ -224,10 +229,38 @@ export default function AdminContactSubmissionShow({ submission }: ContactSubmis
                                             value={data.admin_notes}
                                             onChange={(e) => setData('admin_notes', e.target.value)}
                                             placeholder="Add internal notes about this submission..."
-                                            rows={6}
-                                            className="resize-none"
+                                            rows={4}
+                                            className={errors.admin_notes ? 'border-red-500' : ''}
                                         />
+                                        {errors.admin_notes && (
+                                            <p className="text-sm text-red-500">{errors.admin_notes}</p>
+                                        )}
                                     </div>
+                                    {data.status === 'replied' && (
+                                        <div className="space-y-2">
+                                            <Label htmlFor="reply_message">
+                                                Reply Message <span className="text-red-500">*</span>
+                                            </Label>
+                                            <Textarea
+                                                id="reply_message"
+                                                value={data.reply_message}
+                                                onChange={(e) => setData('reply_message', e.target.value)}
+                                                placeholder="Enter your reply message to send to the submitter..."
+                                                rows={6}
+                                                className={errors.reply_message ? 'border-red-500' : ''}
+                                                required
+                                            />
+                                            {errors.reply_message && (
+                                                <p className="text-sm text-red-500">{errors.reply_message}</p>
+                                            )}
+                                            <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
+                                                <Mail className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
+                                                <p className="text-xs text-blue-700 dark:text-blue-300">
+                                                    This message will be sent via email to <strong>{submission.email}</strong> when you save.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
                                     <Button type="submit" disabled={processing} className="w-full">
                                         {processing ? (
                                             <>

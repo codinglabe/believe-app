@@ -255,13 +255,6 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
       <Head title="Billing & Wallet" />
       
       <div className="space-y-6">
-        {/* Page Header */}
-        <div>
-          <h1 className="text-3xl font-bold text-foreground">Billing & Wallet</h1>
-          <p className="text-muted-foreground mt-2">
-            Manage your wallet connection and view your balance
-          </p>
-        </div>
 
         {/* Wallet Connection Card */}
         <Card>

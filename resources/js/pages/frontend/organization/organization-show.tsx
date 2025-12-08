@@ -566,6 +566,25 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-6">
+                      {/* Organization Name, City, and State */}
+                      <div className="pb-4 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                          <div>
+                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                              {organization.name}
+                            </h3>
+                            {(organization.city || organization.state) && (
+                              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
+                                <MapPin className="h-4 w-4" />
+                                <span>
+                                  {[organization.city, organization.state].filter(Boolean).join(', ')}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* About Description */}
                       <div>
                         <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">About Us</h3>

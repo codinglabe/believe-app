@@ -119,6 +119,14 @@ class Organization extends Model
         return $this->hasMany(BoardMember::class);
     }
 
+    /**
+     * Get IRS board members for this organization (by EIN)
+     */
+    public function irsBoardMembers()
+    {
+        return $this->hasMany(IrsBoardMember::class, 'ein', 'ein');
+    }
+
     public function newsletterRecipients()
     {
         return $this->hasMany(NewsletterRecipient::class, 'organization_id');

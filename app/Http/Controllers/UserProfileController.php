@@ -241,12 +241,23 @@ class UserProfileController extends Controller
         
         // Transform donations
         $donations = $donationsPaginated->getCollection()->map(function ($donation) {
+            // Map status correctly - 'active' for recurring donations should be shown as 'completed'
+            $displayStatus = $donation->status;
+            if ($donation->status === 'active') {
+                // Recurring donations with 'active' status are successfully paid
+                $displayStatus = 'completed';
+            } elseif (!in_array($donation->status, ['completed', 'pending', 'failed', 'canceled', 'active'])) {
+                // If status is unknown or 'processing', check if payment was actually completed
+                // For now, if it's not pending/failed/canceled, assume it's completed
+                $displayStatus = 'completed';
+            }
+            
             return [
                 'id' => $donation->id,
                 'organization_name' => $donation->organization->name ?? 'Unknown Organization',
                 'amount' => number_format($donation->amount, 2),
                 'date' => $donation->donation_date ? $donation->donation_date->toDateString() : $donation->created_at->toDateString(),
-                'status' => $donation->status === 'completed' ? 'completed' : ($donation->status === 'pending' ? 'pending' : ($donation->status === 'failed' ? 'failed' : 'processing')),
+                'status' => $displayStatus,
                 'frequency' => $donation->frequency ?? 'one-time',
                 'impact' => $donation->messages ?? null,
                 'receipt_url' => null, // Add receipt URL if available
@@ -254,17 +265,18 @@ class UserProfileController extends Controller
         });
 
         // Calculate stats (always from all donations, not filtered)
+        // Include both 'completed' and 'active' statuses as successful donations
         $totalDonated = Donation::where('user_id', $user->id)
-            ->where('status', 'completed')
+            ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
         
         $thisYearDonated = Donation::where('user_id', $user->id)
-            ->where('status', 'completed')
+            ->whereIn('status', ['completed', 'active'])
             ->whereYear('donation_date', now()->year)
             ->sum('amount');
         
         $organizationsSupported = Donation::where('user_id', $user->id)
-            ->where('status', 'completed')
+            ->whereIn('status', ['completed', 'active'])
             ->distinct('organization_id')
             ->count('organization_id');
 

@@ -18,8 +18,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
 
         Route::get('settings/password', [PasswordController::class, 'edit'])->name('password.edit');
         Route::get('/settings/settings/referral', [ReferralLinkController::class, 'edit'])->name('referral.edit');
-        Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index')->middleware('role:admin');
-        Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update')->middleware('role:admin');
+        // Payment Methods - Admin Only (applies globally to all users)
+        Route::middleware('role:admin')->group(function () {
+            Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
+            Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
+        });
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');
         })->name('appearance');
