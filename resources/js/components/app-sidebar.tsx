@@ -48,12 +48,12 @@ import {
     ArrowRight,
     MessageCircle,
     Facebook,
-    Link
+    Link,
+    Newspaper
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
-import { Link } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 
 
@@ -65,6 +65,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: BarChart3,
         permission: "dashboard.read"
     },
+
+    // Feed
+    // {
+    //     title: 'Feed',
+    //     href: route('feed.index'),
+    //     icon: Newspaper,
+    // },
 
     // AI Chat Assistant
     {
