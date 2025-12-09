@@ -48,12 +48,13 @@ import {
     ArrowRight,
     MessageCircle,
     Facebook,
-    Link,
+    Link as LinkIcon,
     Newspaper
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
+import { Link } from '@inertiajs/react';
 import { motion } from 'framer-motion';
 
 
@@ -273,7 +274,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             {
                 title: 'Connect Pages',
                 href: '/facebook/connect',
-                icon: Link,
+                icon: LinkIcon,
                 role: "organization"
             },
             {
