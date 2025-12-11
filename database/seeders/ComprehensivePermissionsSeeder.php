@@ -134,6 +134,9 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Email Invite Management
             'email.invite' => ['read', 'create', 'edit', 'update', 'delete', 'manage', 'sync', 'send'],
+
+            // Promotional Banner Management
+            'promotional.banner' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
         ];
 
         // Create all permissions

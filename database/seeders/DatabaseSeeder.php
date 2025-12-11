@@ -61,6 +61,7 @@ class DatabaseSeeder extends Seeder
         $this->call(ChatRoomsSeeder::class);
         $this->call(PlanSeeder::class);
         $this->call(ContactPageContentSeeder::class);
+        $this->call(PromotionalBannerSeeder::class);
 
         // Step 5: Seed organization-related data
         $this->call(OrganizationBoardMembersSeeder::class);

@@ -33,6 +33,7 @@ import {
   AlertCircle,
   XCircle,
 } from "lucide-react"
+import PromotionalBanner from "@/components/PromotionalBanner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -147,6 +148,8 @@ const AdminDashboard = ({
   recentForm1023Applications,
   recentOrganizations,
   paymentStats,
+  promotionalBanner,
+  promotionalBanners,
   recentTransactions = [],
   monthlyRevenue = []
 }: AdminDashboardProps) => {
@@ -217,6 +220,10 @@ const AdminDashboard = ({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Admin Dashboard" />
       <div className="m-3 md:m-6 space-y-6">
+        {/* Promotional Banner */}
+        {(promotionalBanners || promotionalBanner) && (
+          <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
+        )}
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
@@ -536,6 +543,17 @@ const AdminDashboard = ({
 
 interface AdminDashboardProps {
   isAdmin?: boolean
+  promotionalBanner?: {
+    id: number
+    title?: string | null
+    type: 'image' | 'text'
+    image_url?: string | null
+    text_content?: string | null
+    external_link?: string | null
+    background_color?: string | null
+    text_color?: string | null
+    description?: string | null
+  } | null
   stats?: {
     totalOrganizations: number
     approvedOrganizations: number
@@ -604,6 +622,8 @@ export default function Dashboard({
   paymentStats,
   recentTransactions = [],
   monthlyRevenue = [],
+  promotionalBanner = null,
+  promotionalBanners = null,
 }: {
   totalOrg?: number
   orgInfo?: any
@@ -765,7 +785,7 @@ export default function Dashboard({
 
   // Admin Dashboard
   if (isAdmin && stats) {
-    return <AdminDashboard
+    return <AdminDashboard promotionalBanner={promotionalBanner} promotionalBanners={promotionalBanners}
       stats={stats}
       recentForm1023Applications={recentForm1023Applications}
       recentOrganizations={recentOrganizations}
@@ -1075,6 +1095,10 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
+        {/* Promotional Banner */}
+        {(promotionalBanners || promotionalBanner) && (
+          <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
+        )}
         {/* <div className="bg-card border-border rounded-lg border p-6 shadow-sm">
           <h1 className="text-2xl font-bold">
             {welcomeMessages[userRole as keyof typeof welcomeMessages] || "Welcome!"}

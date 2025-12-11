@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Organization;
 use App\Models\Form990Filing;
 use App\Models\IrsBoardMember;
+use App\Models\BoardMember;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -660,7 +661,7 @@ class IRSForm990Service
                 } else {
                     // Create new board member - save regardless of organization database
                     try {
-                        IrsBoardMember::create([
+                        $newMember = IrsBoardMember::create([
                             'ein' => $ein,
                             'name' => $name,
                             'position' => $position ?: null,
@@ -672,9 +673,10 @@ class IRSForm990Service
                         ]);
                         
                         $stats['created']++;
-                        Log::debug("    Created: {$name} - {$position}");
+                        Log::info("    ✓ CREATED IRS Board Member: ID={$newMember->id}, Name='{$name}', Position='{$position}', TaxYear='{$taxYear}', EIN='{$ein}'");
                     } catch (\Exception $e) {
-                        Log::error("    Failed to create board member {$name} for EIN {$ein}: " . $e->getMessage());
+                        Log::error("    ✗ Failed to create board member {$name} for EIN {$ein}: " . $e->getMessage());
+                        Log::error("    Error details: " . $e->getTraceAsString());
                     }
                 }
 
@@ -689,6 +691,9 @@ class IRSForm990Service
                     $stats['inactivated']++;
                 }
             }
+
+            // After storing IRS board members, verify organization's board members against IRS data
+            $this->verifyOrganizationBoardMembers($ein, $taxYear);
 
         } catch (\Exception $e) {
             Log::error("Error extracting board members for EIN {$ein}: " . $e->getMessage());
@@ -1198,40 +1203,72 @@ class IRSForm990Service
                 $taxYear = (string) Carbon::now()->year;
             }
 
+            // Clean EIN
+            $cleanEIN = preg_replace('/[^0-9]/', '', $ein);
+
             // Get counts before sync
-            $beforeActiveCount = IrsBoardMember::forEin($ein)
+            $beforeActiveCount = IrsBoardMember::forEin($cleanEIN)
                 ->forTaxYear($taxYear)
                 ->active()
                 ->count();
 
-            // Check filing status and extract board members
-            $filingData = $this->checkFilingStatus($ein, $taxYear);
+            // Search for this EIN in XML files and extract board members
+            $dataDir = storage_path("app/irs-data/{$taxYear}");
+            $xmlFiles = [];
             
-            if ($filingData && isset($filingData['irs_data'])) {
-                // Board members should have been extracted during checkFilingStatus
-                // Count the results after sync
-                $afterActiveCount = IrsBoardMember::forEin($ein)
-                    ->forTaxYear($taxYear)
-                    ->active()
-                    ->count();
-                
-                $results['processed'] = $afterActiveCount;
-                
-                // Calculate created/updated based on difference
-                if ($afterActiveCount > $beforeActiveCount) {
-                    $results['created'] = $afterActiveCount - $beforeActiveCount;
-                } else {
-                    $results['updated'] = $afterActiveCount; // All were updated
+            if (is_dir($dataDir)) {
+                $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function($file) {
+                    return strpos($file, 'zips') === false;
+                });
+            }
+
+            if (empty($xmlFiles)) {
+                Log::warning("No XML files found for year {$taxYear}. Cannot sync board members for EIN {$ein}");
+                return $results;
+            }
+
+            // Search through XML files for this specific EIN
+            $found = false;
+            foreach ($xmlFiles as $xmlPath) {
+                try {
+                    $xml = @simplexml_load_file($xmlPath);
+                    
+                    if (!$xml) {
+                        continue;
+                    }
+
+                    // Search for the EIN in this XML file
+                    foreach ($xml->xpath('//Return') as $return) {
+                        $returnEIN = (string) ($return->ReturnHeader->Filer->EIN ?? $return->EIN ?? '');
+                        $cleanReturnEIN = preg_replace('/[^0-9]/', '', $returnEIN);
+                        
+                        if ($cleanReturnEIN === $cleanEIN) {
+                            Log::info("Found EIN {$ein} in XML file: " . basename($xmlPath));
+                            
+                            // Extract tax year from return
+                            $returnTaxYear = (string) ($return->ReturnHeader->TaxYear ?? $return->TaxYr ?? $taxYear);
+                            
+                            // Extract and store board members
+                            $memberStats = $this->extractAndStoreBoardMembersBulk($cleanEIN, $return, $returnTaxYear);
+                            
+                            $results['processed'] = 1;
+                            $results['created'] = $memberStats['created'];
+                            $results['updated'] = $memberStats['updated'];
+                            $results['inactivated'] = $memberStats['inactivated'];
+                            
+                            $found = true;
+                            break 2; // Break out of both loops
+                        }
+                    }
+                } catch (\Exception $e) {
+                    Log::error("Error processing XML file {$xmlPath} for EIN {$ein}: " . $e->getMessage());
+                    continue;
                 }
-                
-                // Count inactivated members
-                $results['inactivated'] = IrsBoardMember::forEin($ein)
-                    ->forTaxYear($taxYear)
-                    ->where('status', 'inactive')
-                    ->where('updated_at', '>=', now()->subMinute())
-                    ->count();
-            } else {
-                Log::warning("No filing data found for EIN {$ein} in tax year {$taxYear}");
+            }
+
+            if (!$found) {
+                Log::warning("EIN {$ein} not found in any XML files for tax year {$taxYear}");
+                $results['errors']++;
             }
 
         } catch (\Exception $e) {
@@ -1267,6 +1304,416 @@ class IRSForm990Service
         }
 
         return $expiredCount;
+    }
+
+    /**
+     * Verify board members for a specific organization by EIN
+     * This is called after IRS board members are synced for that EIN
+     * 
+     * @param string $ein Organization EIN
+     * @param string|null $taxYear Tax year to verify against
+     * @return void
+     */
+    private function verifyOrganizationBoardMembers(string $ein, ?string $taxYear = null): void
+    {
+        try {
+            if (!$taxYear) {
+                $taxYear = (string) Carbon::now()->year;
+            }
+
+            // Normalize EIN (remove dashes and spaces)
+            $cleanEIN = preg_replace('/[^0-9]/', '', $ein);
+            
+            // Find organization by EIN
+            $organization = Organization::whereRaw("REPLACE(REPLACE(ein, '-', ''), ' ', '') = ?", [$cleanEIN])
+                ->first();
+
+            if (!$organization) {
+                Log::debug("Organization not found for EIN: {$ein} (clean: {$cleanEIN}) - skipping verification");
+                return;
+            }
+
+            Log::info("=== Verifying board members for organization: {$organization->name} (EIN: {$ein}) ===");
+            Log::info("Clean EIN: {$cleanEIN} - Fetching IRS board members by EIN only (no tax year filter)");
+
+            // Get ALL active IRS board members for this EIN ONLY (no tax year filter)
+            $irsBoardMembers = IrsBoardMember::where('ein', $cleanEIN)
+                ->where('status', 'active')
+                ->get();
+
+            // Log IRS board members found (all tax years)
+            Log::info("Active IRS board members for EIN {$cleanEIN} (all tax years): " . $irsBoardMembers->count());
+            foreach ($irsBoardMembers as $irsMember) {
+                Log::info("  IRS Active Member: Name='{$irsMember->name}', Position='{$irsMember->position}', Status='{$irsMember->status}', TaxYear='{$irsMember->tax_year}'");
+            }
+
+            if ($irsBoardMembers->isEmpty()) {
+                Log::warning("No ACTIVE IRS board members found for EIN {$ein} (all tax years) - marking all as not_found");
+                
+                // Check if there are any inactive IRS members
+                $allIrsForEin = IrsBoardMember::forEin($cleanEIN)->get();
+                if ($allIrsForEin->isNotEmpty()) {
+                    Log::info("However, found " . $allIrsForEin->count() . " IRS board members in database for EIN {$cleanEIN} (all tax years and statuses):");
+                    foreach ($allIrsForEin as $irsMember) {
+                        Log::info("  IRS Record: Name='{$irsMember->name}', Position='{$irsMember->position}', Status='{$irsMember->status}', TaxYear='{$irsMember->tax_year}', Created='{$irsMember->created_at}'");
+                    }
+                } else {
+                    Log::warning("No IRS board members found in database at all for EIN {$cleanEIN}");
+                }
+                
+                // Get organization's board members to show what we have
+                $boardMembers = $organization->boardMembers()->with('user')->get();
+                Log::info("Organization has " . $boardMembers->count() . " board members in database:");
+                foreach ($boardMembers as $bm) {
+                    Log::info("  DB Member: Name='{$bm->user->name}', Position='{$bm->position}', Current Status='{$bm->verification_status}', Active='{$bm->is_active}'");
+                }
+                
+                // Mark all board members as not found and deactivate
+                $organization->boardMembers()->each(function ($boardMember) {
+                    $boardMember->update([
+                        'verification_status' => 'not_found',
+                        'is_active' => false, // Deactivate when no IRS data
+                        'verified_at' => now(),
+                        'verification_notes' => "No active IRS board members found in database (checked all tax years)",
+                    ]);
+                });
+                return;
+            }
+
+            // Get organization's board members
+            $boardMembers = $organization->boardMembers()->with('user')->get();
+            
+            Log::info("Organization has " . $boardMembers->count() . " board members in database:");
+            foreach ($boardMembers as $bm) {
+                Log::info("  DB Member: Name='{$bm->user->name}', Position='{$bm->position}', Current Status='{$bm->verification_status}', Active='{$bm->is_active}'");
+            }
+
+            Log::info("Starting name comparison (exact match, case-insensitive, ALL tax years):");
+            foreach ($boardMembers as $boardMember) {
+                $userName = $boardMember->user->name ?? '';
+                $userPosition = $boardMember->position ?? '';
+                
+                Log::info("Checking board member: '{$userName}' (Position: '{$userPosition}')");
+                
+                // Check if name matches exactly (case-insensitive) - check ALL tax years
+                $nameMatch = false;
+                $matchedIrsMember = null;
+                $userNameLower = strtolower(trim($userName));
+                
+                Log::info("  Comparing: '{$userNameLower}' against IRS members (all tax years)...");
+                
+                foreach ($irsBoardMembers as $irsMember) {
+                    $irsNameLower = strtolower(trim($irsMember->name));
+                    Log::info("    vs IRS (TaxYear={$irsMember->tax_year}): '{$irsNameLower}' (Position: '{$irsMember->position}')");
+                    
+                    if ($userNameLower === $irsNameLower) {
+                        $nameMatch = true;
+                        $matchedIrsMember = $irsMember;
+                        Log::info("    ✓ MATCH FOUND! User name '{$userNameLower}' matches IRS name '{$irsNameLower}' (TaxYear: {$irsMember->tax_year})");
+                        break;
+                    }
+                }
+                
+                if ($nameMatch && $matchedIrsMember) {
+                    // Verified - name matches exactly, ensure member is active
+                    $oldStatus = $boardMember->verification_status;
+                    $oldActive = $boardMember->is_active;
+                    $matchedTaxYear = $matchedIrsMember->tax_year;
+                    
+                    // Always update verification status when match is found - use direct property assignment to ensure it saves
+                    $boardMember->verification_status = 'verified';
+                    $boardMember->is_active = true;
+                    $boardMember->verified_at = now();
+                    $boardMember->verification_notes = "Verified against IRS Form 990. Name matched in IRS data (Tax Year: {$matchedTaxYear}).";
+                    $saved = $boardMember->save();
+                    
+                    Log::info("  ✓ VERIFIED and ACTIVATED: '{$userName}' - Status changed from '{$oldStatus}'/'{$oldActive}' to 'verified'/true (matched in tax year {$matchedTaxYear})");
+                    Log::info("  ✓ Save result: " . ($saved ? 'SUCCESS' : 'FAILED'));
+                    
+                    // Reload from database to verify update persisted
+                    $boardMember->refresh();
+                    Log::info("  ✓ Current verification_status after save: '{$boardMember->verification_status}', is_active: " . ($boardMember->is_active ? 'true' : 'false'));
+                    
+                    // Double check by querying database directly
+                    $dbCheck = DB::table('board_members')->where('id', $boardMember->id)->first();
+                    if ($dbCheck) {
+                        Log::info("  ✓ Database check - verification_status: '{$dbCheck->verification_status}', is_active: " . ($dbCheck->is_active ? '1' : '0'));
+                    }
+                } else {
+                    // Not found in IRS data
+                    Log::info("  ✗ NO MATCH: '{$userName}' not found in IRS data (checked all tax years)");
+                    
+                    $oldStatus = $boardMember->verification_status;
+                    $oldActive = $boardMember->is_active;
+                    
+                    $boardMember->update([
+                        'verification_status' => 'not_found',
+                        'verified_at' => now(),
+                        'verification_notes' => "Not found in IRS Form 990 data. Name does not match any active board members in IRS filing (checked all tax years).",
+                    ]);
+                    
+                    // Deactivate not found members
+                    if ($boardMember->is_active) {
+                        $boardMember->update(['is_active' => false]);
+                        Log::info("  ✗ DEACTIVATED: '{$userName}' - Status changed from '{$oldStatus}'/true to 'not_found'/false");
+                    } else {
+                        Log::info("  ✗ NOT FOUND (already inactive): '{$userName}' - Status: '{$oldStatus}'/false");
+                    }
+                }
+            }
+
+            Log::info("Completed verification for organization: {$organization->name} (EIN: {$ein})");
+
+        } catch (\Exception $e) {
+            Log::error("Error verifying board members for EIN {$ein}: " . $e->getMessage());
+            Log::error("Stack trace: " . $e->getTraceAsString());
+        }
+    }
+
+    /**
+     * Verify board members against IRS data (batch verification for all organizations)
+     * Compares board_members table with irs_board_members table
+     * Updates verification status and deactivates mismatched members
+     * 
+     * @param string|null $ein If provided, only verify for this organization
+     * @param string|null $taxYear Tax year to verify against (default: current year)
+     * @return array Statistics about verification
+     */
+    public function verifyBoardMembersAgainstIRS(?string $ein = null, ?string $taxYear = null): array
+    {
+        $stats = [
+            'verified' => 0,
+            'not_found' => 0,
+            'deactivated' => 0,
+        ];
+
+        try {
+            if (!$taxYear) {
+                $taxYear = (string) Carbon::now()->year;
+            }
+
+            // Get all organizations to verify
+            $organizations = Organization::whereNotNull('ein')
+                ->when($ein, function ($query) use ($ein) {
+                    $cleanEIN = preg_replace('/[^0-9]/', '', $ein);
+                    // Use normalized lookup to match EINs with or without dashes
+                    return $query->whereRaw("REPLACE(REPLACE(ein, '-', ''), ' ', '') = ?", [$cleanEIN]);
+                })
+                ->get();
+
+            foreach ($organizations as $organization) {
+                $cleanEIN = preg_replace('/[^0-9]/', '', $organization->ein);
+                
+                Log::info("=== Verifying organization: {$organization->name} (EIN: {$cleanEIN}) ===");
+                Log::info("Tax Year: {$taxYear}, Clean EIN: {$cleanEIN}");
+                
+                // Get ALL IRS board members for this EIN (any tax year) to see what we have
+                $allIrsMembers = IrsBoardMember::forEin($cleanEIN)->get();
+                Log::info("Total IRS board members in database for EIN {$cleanEIN} (all tax years): " . $allIrsMembers->count());
+                foreach ($allIrsMembers as $irsMember) {
+                    Log::info("  IRS DB Record: ID={$irsMember->id}, Name='{$irsMember->name}', Position='{$irsMember->position}', Status='{$irsMember->status}', TaxYear='{$irsMember->tax_year}', Created='{$irsMember->created_at}'");
+                }
+                
+                // Get IRS board members for this organization for the SPECIFIC tax year
+                // Only use IRS data that was synced for this exact tax year
+                // Fetch IRS board members by EIN ONLY (no tax year filter)
+                $irsBoardMembers = IrsBoardMember::where('ein', $cleanEIN)
+                    ->where('status', 'active')
+                    ->get();
+
+                // Log IRS board members found (by EIN only, all tax years)
+                Log::info("Active IRS board members for EIN {$cleanEIN} (by EIN only): " . $irsBoardMembers->count());
+                foreach ($irsBoardMembers as $irsMember) {
+                    Log::info("  IRS Active Member: Name='{$irsMember->name}', Position='{$irsMember->position}', Status='{$irsMember->status}', TaxYear='{$irsMember->tax_year}'");
+                }
+
+                // If no active IRS board members found for this EIN (all tax years), mark all as not_found
+                if ($irsBoardMembers->isEmpty()) {
+                    Log::warning("No ACTIVE IRS board members found for EIN {$cleanEIN} (all tax years) - marking all as not_found");
+                    
+                    // Check if there are any inactive IRS members
+                    $allIrsMembers = IrsBoardMember::forEin($cleanEIN)->get();
+                    if ($allIrsMembers->isNotEmpty()) {
+                        Log::info("However, found " . $allIrsMembers->count() . " IRS board members in database for EIN {$cleanEIN} (all tax years and statuses):");
+                        foreach ($allIrsMembers as $irsMember) {
+                            Log::info("  IRS Record: Name='{$irsMember->name}', Position='{$irsMember->position}', Status='{$irsMember->status}', TaxYear='{$irsMember->tax_year}', Created='{$irsMember->created_at}'");
+                        }
+                    } else {
+                        Log::warning("No IRS board members found in database at all for EIN {$cleanEIN}");
+                    }
+                    
+                    // Get organization's board members to show what we have
+                    $boardMembers = $organization->boardMembers()->with('user')->get();
+                    Log::info("Organization has " . $boardMembers->count() . " board members in database:");
+                    foreach ($boardMembers as $bm) {
+                        Log::info("  DB Member: Name='{$bm->user->name}', Position='{$bm->position}', Current Status='{$bm->verification_status}', Active='{$bm->is_active}'");
+                    }
+                    
+                    $organization->boardMembers()->each(function ($boardMember) use (&$stats) {
+                        $boardMember->update([
+                            'verification_status' => 'not_found',
+                            'verified_at' => now(),
+                            'verification_notes' => "No active IRS board members found in database (checked all tax years).",
+                        ]);
+                        
+                        // Deactivate not found members
+                        if ($boardMember->is_active) {
+                            $boardMember->update(['is_active' => false]);
+                            $stats['deactivated']++;
+                            
+                            // Note: History not recorded for system actions - verification_notes contains this information
+                        }
+                        $stats['not_found']++;
+                    });
+                    continue; // Skip to next organization
+                }
+
+                // Get organization's board members
+                $boardMembers = $organization->boardMembers()->with('user')->get();
+                
+                Log::info("Organization has " . $boardMembers->count() . " board members in database:");
+                foreach ($boardMembers as $bm) {
+                    Log::info("  DB Member: Name='{$bm->user->name}', Position='{$bm->position}', Current Status='{$bm->verification_status}', Active='{$bm->is_active}'");
+                }
+
+                Log::info("Starting name comparison (exact match, case-insensitive, ALL tax years) for EIN {$cleanEIN}:");
+                foreach ($boardMembers as $boardMember) {
+                    $userName = $boardMember->user->name ?? '';
+                    $userPosition = $boardMember->position ?? '';
+                    
+                    Log::info("Checking board member: '{$userName}' (Position: '{$userPosition}')");
+                    
+                    // Check if name matches exactly (case-insensitive) - check ALL tax years
+                    $nameMatch = false;
+                    $matchedIrsMember = null;
+                    $userNameLower = strtolower(trim($userName));
+                    
+                    Log::info("  Comparing: '{$userNameLower}' against IRS members (all tax years)...");
+                    
+                    foreach ($irsBoardMembers as $irsMember) {
+                        $irsNameLower = strtolower(trim($irsMember->name));
+                        Log::info("    vs IRS (TaxYear={$irsMember->tax_year}): '{$irsNameLower}' (Position: '{$irsMember->position}')");
+                        
+                        if ($userNameLower === $irsNameLower) {
+                            $nameMatch = true;
+                            $matchedIrsMember = $irsMember;
+                            Log::info("    ✓ MATCH FOUND! User name '{$userNameLower}' matches IRS name '{$irsNameLower}' (TaxYear: {$irsMember->tax_year})");
+                            break;
+                        }
+                    }
+                    
+                    if ($nameMatch && $matchedIrsMember) {
+                        // Verified - name matches exactly, ensure member is active
+                        $oldStatus = $boardMember->verification_status;
+                        $oldActive = $boardMember->is_active;
+                        $matchedTaxYear = $matchedIrsMember->tax_year;
+                        
+                        // Always update verification status when match is found - use direct property assignment to ensure it saves
+                        $boardMember->verification_status = 'verified';
+                        $boardMember->is_active = true;
+                        $boardMember->verified_at = now();
+                        $boardMember->verification_notes = "Verified against IRS Form 990. Name matched in IRS data (Tax Year: {$matchedTaxYear}).";
+                        $saved = $boardMember->save();
+                        
+                        $stats['verified']++;
+                        Log::info("  ✓ VERIFIED and ACTIVATED: '{$userName}' - Status changed from '{$oldStatus}'/'{$oldActive}' to 'verified'/true (matched in tax year {$matchedTaxYear}, EIN: {$cleanEIN})");
+                        Log::info("  ✓ Save result: " . ($saved ? 'SUCCESS' : 'FAILED'));
+                        
+                        // Reload from database to verify update persisted
+                        $boardMember->refresh();
+                        Log::info("  ✓ Current verification_status after save: '{$boardMember->verification_status}', is_active: " . ($boardMember->is_active ? 'true' : 'false'));
+                        
+                        // Double check by querying database directly
+                        $dbCheck = \DB::table('board_members')->where('id', $boardMember->id)->first();
+                        Log::info("  ✓ Database check - verification_status: '{$dbCheck->verification_status}', is_active: " . ($dbCheck->is_active ? '1' : '0'));
+                    } else {
+                        // Not found in IRS data (all tax years)
+                        Log::info("  ✗ NO MATCH: '{$userName}' not found in IRS data (checked all tax years)");
+                        
+                        $oldStatus = $boardMember->verification_status;
+                        $oldActive = $boardMember->is_active;
+                        
+                        $boardMember->update([
+                            'verification_status' => 'not_found',
+                            'verified_at' => now(),
+                            'verification_notes' => "Not found in IRS Form 990 data. Name does not match any active board members in IRS filing (checked all tax years).",
+                        ]);
+                        
+                        // Deactivate not found members
+                        if ($boardMember->is_active) {
+                            $boardMember->update(['is_active' => false]);
+                            $stats['deactivated']++;
+                            
+                            // Note: History not recorded for system actions - verification_notes contains this information
+                            Log::info("  ✗ DEACTIVATED: '{$userName}' - Status changed from '{$oldStatus}'/true to 'not_found'/false (EIN: {$cleanEIN})");
+                        } else {
+                            Log::info("  ✗ NOT FOUND (already inactive): '{$userName}' - Status: '{$oldStatus}'/false (EIN: {$cleanEIN})");
+                        }
+                        $stats['not_found']++;
+                    }
+                }
+                
+                Log::info("=== Completed verification for organization: {$organization->name} (EIN: {$cleanEIN}) ===");
+            }
+
+        } catch (\Exception $e) {
+            Log::error("Error verifying board members against IRS: " . $e->getMessage());
+        }
+
+        return $stats;
+    }
+
+    /**
+     * Normalize name for comparison (remove extra spaces, lowercase, trim)
+     */
+    private function normalizeName(string $name): string
+    {
+        return strtolower(trim(preg_replace('/\s+/', ' ', $name)));
+    }
+
+    /**
+     * Normalize position for comparison
+     */
+    private function normalizePosition(string $position): string
+    {
+        return strtolower(trim(preg_replace('/\s+/', ' ', $position)));
+    }
+
+    /**
+     * Check if names match (with fuzzy matching)
+     */
+    private function namesMatch(string $name1, string $name2): bool
+    {
+        // Exact match
+        if ($name1 === $name2) {
+            return true;
+        }
+        
+        // Similarity check (85% or higher)
+        $similarity = 0;
+        similar_text($name1, $name2, $similarity);
+        
+        return $similarity >= 85;
+    }
+
+    /**
+     * Fuzzy match board member against IRS data
+     * Returns array with 'matched' boolean and 'member' if matched
+     */
+    private function fuzzyMatchBoardMember(string $normalizedName, string $normalizedPosition, $irsBoardMembers): array
+    {
+        foreach ($irsBoardMembers as $irsMember) {
+            $irsName = $this->normalizeName($irsMember->name);
+            $irsPosition = $this->normalizePosition($irsMember->position ?? '');
+            
+            // Check if both name and position match with fuzzy logic
+            if ($this->namesMatch($normalizedName, $irsName) && 
+                $this->namesMatch($normalizedPosition, $irsPosition)) {
+                return ['matched' => true, 'member' => $irsMember];
+            }
+        }
+        
+        return ['matched' => false, 'member' => null];
     }
 }
 

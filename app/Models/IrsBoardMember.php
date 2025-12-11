@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -44,7 +45,7 @@ class IrsBoardMember extends Model
     /**
      * Scope to get only active board members
      */
-    public function scopeActive($query)
+    public function scopeActive(Builder $query): Builder
     {
         return $query->where('status', 'active');
     }
@@ -52,7 +53,7 @@ class IrsBoardMember extends Model
     /**
      * Scope to get board members for a specific EIN
      */
-    public function scopeForEin($query, string $ein)
+    public function scopeForEin(Builder $query, string $ein): Builder
     {
         return $query->where('ein', $ein);
     }
@@ -60,7 +61,7 @@ class IrsBoardMember extends Model
     /**
      * Scope to get board members for a specific tax year
      */
-    public function scopeForTaxYear($query, string $taxYear)
+    public function scopeForTaxYear(Builder $query, string $taxYear): Builder
     {
         return $query->where('tax_year', $taxYear);
     }

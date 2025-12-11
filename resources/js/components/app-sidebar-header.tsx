@@ -11,6 +11,7 @@ import { LogOut, Wallet } from 'lucide-react';
 import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
+import { WalletPopup } from './WalletPopup';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth } = usePage<{ 
@@ -25,6 +26,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
     const [walletConnected, setWalletConnected] = useState(false);
+    const [walletPopupOpen, setWalletPopupOpen] = useState(false);
     
     const isOrgUser = auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending';
 
@@ -56,9 +58,10 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 
                 if (response.ok) {
                     const data = await response.json();
-                    if (data.success && data.connected) {
+                    // For organization users, always fetch balance (they're always "connected" using org balance)
+                    if (data.success && (data.connected || data.source === 'organization')) {
                         setWalletConnected(true);
-                        // Fetch balance
+                        // Fetch balance (will be organization balance for org users)
                         const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
                             method: 'GET',
                             headers: {
@@ -73,7 +76,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         if (balanceResponse.ok) {
                             const balanceData = await balanceResponse.json();
                             if (balanceData.success) {
-                                setWalletBalance(balanceData.balance || balanceData.local_balance || 0);
+                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
                             }
                         }
                     } else {
@@ -136,17 +139,43 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     <NotificationBell userId={auth.user.id} />
                 )}
                 
-                {/* Wallet Balance Display for Organization Users - After Bell */}
-                {isOrgUser && walletConnected && walletBalance !== null && (
-                    <div className="flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-semibold text-primary bg-primary/10 border border-primary/20 rounded-md sm:rounded-lg px-2 sm:px-3 py-1 sm:py-1.5">
-                        <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary shrink-0" />
+                {/* Wallet Balance Display for Organization Users - Always visible */}
+                {isOrgUser && (
+                    <button
+                        onClick={() => setWalletPopupOpen(true)}
+                        className={`flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-semibold rounded-md sm:rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 transition-colors ${
+                            walletConnected && walletBalance !== null
+                                ? 'text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20'
+                                : 'text-muted-foreground bg-muted border border-border hover:bg-muted/80'
+                        }`}
+                        title="View wallet details"
+                    >
+                        <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span className="whitespace-nowrap">
-                            ${walletBalance.toLocaleString('en-US', { 
-                                minimumFractionDigits: 2, 
-                                maximumFractionDigits: 2 
-                            })}
+                            {walletConnected && walletBalance !== null ? (
+                                `$${walletBalance.toLocaleString('en-US', { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                })}`
+                            ) : walletBalance !== null ? (
+                                `$${walletBalance.toLocaleString('en-US', { 
+                                    minimumFractionDigits: 2, 
+                                    maximumFractionDigits: 2 
+                                })}`
+                            ) : (
+                                '$0.00'
+                            )}
                         </span>
-                    </div>
+                    </button>
+                )}
+                
+                {/* Wallet Popup */}
+                {isOrgUser && (
+                    <WalletPopup
+                        isOpen={walletPopupOpen}
+                        onClose={() => setWalletPopupOpen(false)}
+                        organizationName={(auth?.user as any)?.organization?.name || undefined}
+                    />
                 )}
                 
                 {/* Theme Toggle */}

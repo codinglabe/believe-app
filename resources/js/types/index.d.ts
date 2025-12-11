@@ -239,6 +239,9 @@ export interface BoardMember {
     user_id: number;
     position: string;
     is_active: boolean;
+    verification_status: 'pending' | 'verified' | 'unverified' | 'not_found';
+    verified_at: string | null;
+    verification_notes: string | null;
     appointed_on: string;
     term_ends_on: string | null;
     created_at: string;

@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Organization;
+use App\Models\BoardMember;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Http;
@@ -106,13 +108,59 @@ class WalletController extends Controller
 
     /**
      * Get user's wallet balance
+     * For organization users, returns the organization's balance
      */
     public function getBalance(Request $request)
     {
         try {
             $user = Auth::user();
 
-            // Check if wallet is connected
+            // Check if user is an organization user
+            $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
+            
+            if ($isOrgUser) {
+                // Get organization through board membership or direct relationship
+                $organization = null;
+                
+                // Try to get organization through board membership
+                $boardMember = BoardMember::where('user_id', $user->id)->first();
+                if ($boardMember) {
+                    $organization = Organization::find($boardMember->organization_id);
+                }
+                
+                // If not found, try direct relationship (if organization has user_id pointing to this user)
+                if (!$organization) {
+                    $organization = Organization::where('user_id', $user->id)->first();
+                }
+                
+                if ($organization) {
+                    return response()->json([
+                        'success' => true,
+                        'balance' => (float) ($organization->balance ?? 0),
+                        'organization_balance' => (float) ($organization->balance ?? 0),
+                        'local_balance' => (float) ($organization->balance ?? 0),
+                        'currency' => 'USD',
+                        'connected' => true,
+                        'source' => 'organization',
+                        'organization_id' => $organization->id,
+                        'organization_name' => $organization->name,
+                    ]);
+                } else {
+                    // Organization user but no organization found
+                    return response()->json([
+                        'success' => true,
+                        'balance' => 0,
+                        'organization_balance' => 0,
+                        'local_balance' => 0,
+                        'currency' => 'USD',
+                        'connected' => true,
+                        'source' => 'organization',
+                        'note' => 'No organization found for this user',
+                    ]);
+                }
+            }
+
+            // For regular users, check if wallet is connected
             if (!$user->wallet_access_token) {
                 return response()->json([
                     'success' => false,
@@ -210,11 +258,44 @@ class WalletController extends Controller
 
     /**
      * Check wallet connection status
+     * For organization users, always returns connected (using organization balance)
      */
     public function status(Request $request)
     {
         $user = Auth::user();
 
+        // Check if user is an organization user
+        $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
+        
+        if ($isOrgUser) {
+            // Get organization through board membership or direct relationship
+            $organization = null;
+            $boardMember = BoardMember::where('user_id', $user->id)->first();
+            if ($boardMember) {
+                $organization = Organization::find($boardMember->organization_id);
+            }
+            if (!$organization) {
+                $organization = Organization::where('user_id', $user->id)->first();
+            }
+            
+            // Generate a wallet address based on organization ID (for display purposes)
+            $walletAddress = $organization 
+                ? '0x' . str_pad(dechex($organization->id), 40, '0', STR_PAD_LEFT)
+                : null;
+
+            return response()->json([
+                'success' => true,
+                'connected' => true, // Organization users are always "connected" using organization balance
+                'expired' => false,
+                'wallet_user_id' => $organization?->id,
+                'address' => $walletAddress,
+                'source' => 'organization',
+                'organization_id' => $organization?->id,
+                'organization_name' => $organization?->name,
+            ]);
+        }
+
+        // For regular users, check wallet connection
         $isConnected = !empty($user->wallet_access_token);
         $isExpired = $isConnected && $user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast();
 

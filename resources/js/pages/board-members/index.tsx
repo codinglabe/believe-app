@@ -5,7 +5,8 @@ import { useState } from "react"
 import { useForm, router, usePage } from "@inertiajs/react"
 import type { PageProps, Organization, BoardMember as BoardMemberType, User } from "@/types"
 import AppLayout from "@/layouts/app-layout"
-import { Users, Plus, UserCheck, UserX, Calendar, Mail, Briefcase, Shield, Crown } from "lucide-react"
+import { Users, Plus, UserCheck, UserX, Calendar, Mail, Briefcase, Shield, Crown, CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react"
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
 interface Props extends PageProps {
   organization: Organization
@@ -106,87 +107,138 @@ export default function Index({ organization, boardMembers }: Props) {
     }
   }
 
+  const getVerificationStatusConfig = (status: string) => {
+    switch (status) {
+      case 'verified':
+        return {
+          label: 'Verified',
+          icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+          className: "bg-green-100 text-green-800 border-green-300 dark:bg-green-900/30 dark:text-green-400 dark:border-green-700",
+        }
+      case 'unverified':
+        return {
+          label: 'Unverified',
+          icon: <AlertCircle className="h-3.5 w-3.5" />,
+          className: "bg-amber-100 text-amber-800 border-amber-300 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-700",
+        }
+      case 'not_found':
+        return {
+          label: 'Not Found',
+          icon: <XCircle className="h-3.5 w-3.5" />,
+          className: "bg-red-100 text-red-800 border-red-300 dark:bg-red-900/30 dark:text-red-400 dark:border-red-700",
+        }
+      default:
+        return {
+          label: 'Pending',
+          icon: <Clock className="h-3.5 w-3.5" />,
+          className: "bg-gray-100 text-gray-800 border-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600",
+        }
+    }
+  }
+
   return (
     <AppLayout>
       <div className="min-h-screen bg-background">
-        <div className="bg-gradient-to-r from-primary to-secondary text-primary-foreground">
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex items-center gap-3 mb-2">
-              <Users className="h-8 w-8" />
-              <h1 className="text-3xl font-bold text-balance">Board of Directors</h1>
-            </div>
-            <p className="text-primary-foreground/80 text-lg">{organization.name}</p>
-            <div className="flex items-center gap-2 mt-2">
-              <span className="bg-white/20 px-2 py-1 rounded text-sm">
-                Your role: {auth.user.organization_role}
-              </span>
+        {/* Enhanced Header */}
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white shadow-xl">
+          <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-6 sm:py-8 md:py-10 lg:py-12">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 sm:gap-3 md:gap-4 mb-2 sm:mb-3">
+                  <div className="p-2 sm:p-2.5 md:p-3 bg-white/20 backdrop-blur-sm rounded-lg sm:rounded-xl shadow-lg flex-shrink-0">
+                    <Users className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight truncate">Board of Directors</h1>
+                    <p className="text-blue-100 text-sm sm:text-base md:text-lg mt-1 font-medium truncate">{organization.name}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 sm:gap-3 mt-3 sm:mt-4">
+                  <span className="bg-white/20 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border border-white/30 shadow-sm inline-flex items-center gap-1.5 sm:gap-2">
+                    <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
+                    <span className="truncate">Your role: <span className="capitalize font-semibold">{auth.user.organization_role}</span></span>
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-            <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm font-medium">Total Members</p>
-                  <p className="text-3xl font-bold text-card-foreground">{boardMembers.length}</p>
+        <div className="w-full px-3 sm:px-4 md:px-6 lg:px-8 py-4 sm:py-6 lg:py-8">
+          {/* Enhanced Statistics Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 mb-6 sm:mb-8 lg:mb-10">
+            <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-border shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-muted-foreground text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1 sm:mb-2 truncate">Total Members</p>
+                  <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-card-foreground">{boardMembers.length}</p>
                 </div>
-                <Users className="h-8 w-8 text-primary" />
+                <div className="p-2 sm:p-3 md:p-4 bg-primary/10 rounded-lg sm:rounded-xl flex-shrink-0">
+                  <Users className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-primary" />
+                </div>
               </div>
             </div>
-            <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm font-medium">Active Members</p>
-                  <p className="text-3xl font-bold text-card-foreground">{activeMembers.length}</p>
+            <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-border shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-muted-foreground text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1 sm:mb-2 truncate">Active Members</p>
+                  <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-secondary">{activeMembers.length}</p>
                 </div>
-                <UserCheck className="h-8 w-8 text-secondary" />
+                <div className="p-2 sm:p-3 md:p-4 bg-secondary/10 rounded-lg sm:rounded-xl flex-shrink-0">
+                  <UserCheck className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-secondary" />
+                </div>
               </div>
             </div>
-            <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm font-medium">Inactive Members</p>
-                  <p className="text-3xl font-bold text-card-foreground">{inactiveMembers.length}</p>
+            <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-border shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-muted-foreground text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1 sm:mb-2 truncate">Verification Issues</p>
+                  <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-yellow-600 dark:text-yellow-400">
+                    {boardMembers.filter(m => m.verification_status === 'unverified' || m.verification_status === 'not_found').length}
+                  </p>
                 </div>
-                <UserX className="h-8 w-8 text-destructive" />
+                <div className="p-2 sm:p-3 md:p-4 bg-yellow-100 dark:bg-yellow-900/30 rounded-lg sm:rounded-xl flex-shrink-0">
+                  <AlertCircle className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-yellow-600 dark:text-yellow-400" />
+                </div>
               </div>
             </div>
-            <div className="bg-card rounded-xl p-6 border border-border shadow-sm">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-muted-foreground text-sm font-medium">Admins</p>
-                  <p className="text-3xl font-bold text-card-foreground">
+            <div className="bg-card rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-border shadow-lg hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="text-muted-foreground text-xs sm:text-sm font-semibold uppercase tracking-wide mb-1 sm:mb-2 truncate">Administrators</p>
+                  <p className="text-2xl sm:text-3xl md:text-4xl font-bold text-card-foreground">
                     {boardMembers.filter(m => m.user.organization_role === 'admin').length}
                   </p>
                 </div>
-                <Shield className="h-8 w-8 text-blue-500" />
+                <div className="p-2 sm:p-3 md:p-4 bg-primary/10 rounded-lg sm:rounded-xl flex-shrink-0">
+                  <Shield className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 text-primary" />
+                </div>
               </div>
             </div>
           </div>
 
-          <div className="bg-card rounded-xl border border-border shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-border">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
-                  <h2 className="text-xl font-semibold text-card-foreground">Board Members</h2>
-                  <p className="text-muted-foreground text-sm mt-1">Manage your organization's board members</p>
+          {/* Enhanced Main Card */}
+          <div className="bg-card rounded-xl sm:rounded-2xl border border-border shadow-xl overflow-hidden">
+            <div className="p-4 sm:p-5 md:p-6 bg-muted/50 border-b border-border">
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 sm:gap-4">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl sm:text-2xl font-bold text-card-foreground">Board Members</h2>
+                  <p className="text-muted-foreground text-xs sm:text-sm mt-1 hidden sm:block">Manage and verify your organization's board members</p>
                 </div>
                   <button
                     onClick={() => setShowAddForm(!showAddForm)}
-                    className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 shadow-sm"
+                    className="inline-flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold py-2.5 sm:py-3 px-4 sm:px-6 rounded-lg sm:rounded-xl transition-all duration-200 shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 w-full sm:w-auto"
                   >
-                    <Plus className="h-4 w-4" />
-                    Add Member
+                    <Plus className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <span className="text-sm sm:text-base">Add Member</span>
                   </button>
               </div>
             </div>
 
             {showAddForm && (
-              <div className="p-6 bg-muted border-b border-border">
-                <form onSubmit={handleSubmit} className="space-y-6">
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+              <div className="p-4 sm:p-6 md:p-8 bg-muted/30 border-b border-border">
+                <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
                     <div className="space-y-2">
                       <label htmlFor="name" className="block text-sm font-medium text-card-foreground">
                         Full Name
@@ -262,18 +314,18 @@ export default function Index({ organization, boardMembers }: Props) {
                       )}
                     </div>
                   </div>
-                  <div className="flex justify-end gap-3">
+                  <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-2">
                     <button
                       type="button"
                       onClick={() => setShowAddForm(false)}
-                      className="px-4 py-2.5 text-muted-foreground hover:text-card-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors duration-200"
+                      className="px-4 py-2.5 text-muted-foreground hover:text-card-foreground border border-border rounded-lg hover:bg-muted/50 transition-colors duration-200 w-full sm:w-auto text-sm sm:text-base"
                     >
                       Cancel
                     </button>
                     <button
                       type="submit"
                       disabled={processing}
-                      className="inline-flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto text-sm sm:text-base"
                     >
                       {processing ? "Adding..." : "Add Member"}
                     </button>
@@ -282,23 +334,23 @@ export default function Index({ organization, boardMembers }: Props) {
               </div>
             )}
 
-            <div className="p-6">
-              {/* Mobile view - Cards */}
-              <div className="block md:hidden space-y-4">
+            <div className="p-3 sm:p-4 md:p-6">
+              {/* Enhanced Mobile view - Cards */}
+              <div className="block lg:hidden space-y-3 sm:space-y-4">
                 {boardMembers.map((member) => (
-                  <div key={member.id} className="bg-popover border border-border rounded-lg p-4 space-y-3">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
+                  <div key={member.id} className="bg-card border border-border rounded-xl p-4 sm:p-5 space-y-3 sm:space-y-4 shadow-md hover:shadow-lg transition-all duration-200">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-semibold text-popover-foreground">{member.user.name}</h3>
+                          <h3 className="font-semibold text-card-foreground truncate text-sm sm:text-base">{member.user.name}</h3>
                           {getRoleIcon(member.user.organization_role)}
                         </div>
-                        <div className="flex items-center gap-1 text-muted-foreground text-sm">
-                          <Mail className="h-3 w-3" />
-                          {member.user.email}
+                        <div className="flex items-center gap-1 text-muted-foreground text-xs sm:text-sm truncate">
+                          <Mail className="h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">{member.user.email}</span>
                         </div>
                       </div>
-                      <div className="flex flex-col items-end gap-2">
+                      <div className="flex flex-col items-end gap-1.5 sm:gap-2 flex-shrink-0">
                         <span
                           className={`px-2 py-1 text-xs font-medium rounded-full border ${getRoleColor(member.user.organization_role)}`}
                         >
@@ -311,23 +363,46 @@ export default function Index({ organization, boardMembers }: Props) {
                         >
                           {member.is_active ? "Active" : "Inactive"}
                         </span>
+                        {(() => {
+                          // Show verification status for all statuses except pending
+                          const status = member.verification_status || 'pending'
+                          if (status === 'pending') {
+                            return null
+                          }
+                          const verification = getVerificationStatusConfig(status)
+                          return (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span
+                                  className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full border ${verification.className} cursor-help`}
+                                >
+                                  {verification.icon}
+                                  {verification.label}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent>
+                                <p className="max-w-xs">{member.verification_notes || 'No verification details available'}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          )
+                        })()}
                       </div>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Briefcase className="h-3 w-3" />
-                        {member.position}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1.5">
+                        <Briefcase className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span className="truncate">{member.position}</span>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(member.appointed_on).toLocaleDateString()}
+                      <div className="flex items-center gap-1.5">
+                        <Calendar className="h-3.5 w-3.5 flex-shrink-0" />
+                        <span>{new Date(member.appointed_on).toLocaleDateString()}</span>
                       </div>
                     </div>
-                    <div className="flex gap-2 pt-2">
+                    <div className="flex flex-col sm:flex-row gap-2 pt-2">
                       {canEdit(member) && (
                         <button
                           onClick={() => updateStatus(member, !member.is_active)}
-                          className={`flex-1 py-2 px-3 text-xs font-medium rounded-lg transition-colors duration-200 ${
+                          className={`flex-1 sm:flex-none py-2 px-3 text-xs sm:text-sm font-medium rounded-lg transition-colors duration-200 ${
                             member.is_active
                               ? "bg-destructive/10 text-destructive hover:bg-destructive/20"
                               : "bg-secondary/10 text-secondary hover:bg-secondary/20"
@@ -343,7 +418,7 @@ export default function Index({ organization, boardMembers }: Props) {
                               router.delete(route("board-members.destroy", member.id))
                             }
                           }}
-                          className="px-3 py-2 text-xs font-medium text-destructive bg-destructive/10 hover:bg-destructive/20 rounded-lg transition-colors duration-200"
+                          className="w-full sm:w-auto px-3 py-2 text-xs sm:text-sm font-medium text-destructive bg-destructive/10 hover:bg-destructive/20 rounded-lg transition-colors duration-200"
                         >
                           Remove
                         </button>
@@ -353,64 +428,107 @@ export default function Index({ organization, boardMembers }: Props) {
                 ))}
               </div>
 
-              {/* Desktop view - Table */}
-              <div className="hidden md:block overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Member</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Role</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Position</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Status</th>
-                      <th className="text-left py-3 px-4 font-medium text-muted-foreground text-sm">Appointed</th>
-                      <th className="text-right py-3 px-4 font-medium text-muted-foreground text-sm">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
+              {/* Enhanced Desktop view - Table */}
+              <div className="hidden lg:block overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6">
+                <div className="inline-block min-w-full align-middle">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="bg-muted/50 border-b-2 border-border">
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Member</th>
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden xl:table-cell">Role</th>
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Position</th>
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Status</th>
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden xl:table-cell">Verification</th>
+                        <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden 2xl:table-cell">Appointed</th>
+                        <th className="text-right py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
                     {boardMembers.map((member) => (
                       <tr
                         key={member.id}
-                        className="border-b border-border hover:bg-muted/30 transition-colors duration-200"
+                        className="bg-card hover:bg-muted/30 transition-colors duration-150"
                       >
-                        <td className="py-4 px-4">
-                          <div className="flex items-center gap-2">
-                            <div>
-                              <div className="font-medium text-card-foreground">{member.user.name}</div>
-                              <div className="text-sm text-muted-foreground">{member.user.email}</div>
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
+                          <div className="flex items-center gap-2 sm:gap-3">
+                            <div className="flex-shrink-0">
+                              <div className="h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 rounded-full bg-primary/20 flex items-center justify-center text-primary font-semibold text-xs sm:text-sm">
+                                {member.user.name.charAt(0).toUpperCase()}
+                              </div>
                             </div>
-                            {getRoleIcon(member.user.organization_role)}
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-card-foreground text-sm sm:text-base truncate">{member.user.name}</div>
+                              <div className="text-xs sm:text-sm text-muted-foreground truncate hidden sm:block">{member.user.email}</div>
+                            </div>
+                            <div className="xl:hidden">{getRoleIcon(member.user.organization_role)}</div>
                           </div>
                         </td>
-                        <td className="py-4 px-4">
-                          <span className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full border ${getRoleColor(member.user.organization_role)}`}>
-                            {member.user.organization_role}
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 hidden xl:table-cell">
+                          <span className={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-lg border-2 ${getRoleColor(member.user.organization_role)} shadow-sm`}>
+                            <span className="capitalize">{member.user.organization_role}</span>
                           </span>
                         </td>
-                        <td className="py-4 px-4 text-card-foreground">{member.position}</td>
-                        <td className="py-4 px-4">
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
+                          <span className="text-card-foreground font-medium text-sm sm:text-base truncate block">{member.position}</span>
+                        </td>
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 text-xs font-medium rounded-full ${
-                              member.is_active ? "bg-green-700 text-white" : "bg-red-700 text-white"
+                            className={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-lg shadow-sm ${
+                              member.is_active 
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800" 
+                                : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800"
                             }`}
                           >
                             {member.is_active ? "Active" : "Inactive"}
                           </span>
                         </td>
-                        <td className="py-4 px-4 text-muted-foreground">
-                          {new Date(member.appointed_on).toLocaleDateString()}
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 hidden xl:table-cell">
+                          {(() => {
+                            // Show verification status for all statuses except pending
+                            const status = member.verification_status || 'pending'
+                            if (status === 'pending') {
+                              return <span className="text-muted-foreground text-sm">—</span>
+                            }
+                            const verification = getVerificationStatusConfig(status)
+                            return (
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2 sm:px-2.5 py-0.5 text-xs font-medium rounded-full border ${verification.className} cursor-help`}
+                                  >
+                                    {verification.icon}
+                                    <span className="hidden 2xl:inline">{verification.label}</span>
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <p className="max-w-xs">{member.verification_notes || 'No verification details available'}</p>
+                                </TooltipContent>
+                              </Tooltip>
+                            )
+                          })()}
                         </td>
-                        <td className="py-4 px-4">
-                          <div className="flex items-center justify-end gap-2">
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 hidden 2xl:table-cell">
+                          <span className="text-muted-foreground font-medium text-sm">
+                            {new Date(member.appointed_on).toLocaleDateString('en-US', { 
+                              year: 'numeric', 
+                              month: 'short', 
+                              day: 'numeric' 
+                            })}
+                          </span>
+                        </td>
+                        <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
+                          <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap">
                             {canEdit(member) && (
                               <button
                                 onClick={() => updateStatus(member, !member.is_active)}
-                                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors duration-200 ${
+                                className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs font-semibold rounded-lg transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-105 whitespace-nowrap ${
                                   member.is_active
-                                    ? "bg-red-700 text-white hover:bg-red-900"
-                                    : "bg-green-700 text-white hover:bg-green-900"
+                                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                    : "bg-secondary text-secondary-foreground hover:bg-secondary/90"
                                 }`}
                               >
-                                {member.is_active ? "Deactivate" : "Activate"}
+                                <span className="hidden lg:inline">{member.is_active ? "Deactivate" : "Activate"}</span>
+                                <span className="lg:hidden">{member.is_active ? "Deact" : "Act"}</span>
                               </button>
                             )}
                             {canDelete(member) && (
@@ -420,7 +538,7 @@ export default function Index({ organization, boardMembers }: Props) {
                                     router.delete(route("board-members.destroy", member.id))
                                   }
                                 }}
-                                className="px-3 py-1.5 text-xs font-medium bg-red-700 text-white hover:bg-red-900 rounded-lg transition-colors duration-200"
+                                className="px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs font-semibold bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-lg transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-105 whitespace-nowrap"
                               >
                                 Remove
                               </button>
@@ -429,8 +547,9 @@ export default function Index({ organization, boardMembers }: Props) {
                         </td>
                       </tr>
                     ))}
-                  </tbody>
-                </table>
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {boardMembers.length === 0 && (

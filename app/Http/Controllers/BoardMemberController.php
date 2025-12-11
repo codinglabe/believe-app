@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Models\BoardMember;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\IrsBoardMember;
 use App\Notifications\BoardMemberInvitation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
+use Carbon\Carbon;
 
 class BoardMemberController extends Controller
 {
@@ -84,11 +87,54 @@ class BoardMemberController extends Controller
             }
         }
 
+        // Verify name against IRS board members
+        $verificationStatus = 'pending';
+        $verificationNotes = null;
+        
+        if ($organization->ein) {
+            $cleanEIN = preg_replace('/[^0-9]/', '', $organization->ein);
+            
+            // Fetch IRS board members by EIN ONLY (no tax year filter)
+            $irsBoardMembers = IrsBoardMember::where('ein', $cleanEIN)
+                ->where('status', 'active')
+                ->get();
+            
+            if ($irsBoardMembers->isNotEmpty()) {
+                // Check if name matches exactly (case-insensitive)
+                $nameMatch = false;
+                $userName = strtolower(trim($request->name));
+                
+                foreach ($irsBoardMembers as $irsMember) {
+                    $irsName = strtolower(trim($irsMember->name));
+                    if ($userName === $irsName) {
+                        $nameMatch = true;
+                        break;
+                    }
+                }
+                
+                if ($nameMatch) {
+                    $verificationStatus = 'verified';
+                    $verificationNotes = "Verified against IRS Form 990. Name matched in IRS data (checked all tax years).";
+                } else {
+                    $verificationStatus = 'not_found';
+                    $verificationNotes = "Not found in IRS Form 990 data. Name does not match any active board members in IRS filing (checked all tax years).";
+                }
+            } else {
+                // No IRS data available (all tax years)
+                $verificationStatus = 'not_found';
+                $verificationNotes = "No active IRS board members found in database (checked all tax years). EIN may not be in IRS filing data.";
+            }
+        }
+
         // Create board member record
         $boardMember = BoardMember::create([
             'organization_id' => $organization->id,
             'user_id' => $user->id,
             'position' => $request->position,
+            'is_active' => $verificationStatus !== 'not_found', // Deactivate if not found
+            'verification_status' => $verificationStatus,
+            'verification_notes' => $verificationNotes,
+            'verified_at' => $verificationStatus !== 'pending' ? now() : null,
             'appointed_on' => now(),
         ]);
 
@@ -99,7 +145,14 @@ class BoardMemberController extends Controller
             'changed_by' => auth()->id(),
         ]);
 
-        return redirect()->back()->with('success', 'Board member added successfully.');
+        $message = 'Board member added successfully.';
+        if ($verificationStatus === 'not_found') {
+            $message .= ' Note: This member was not found in IRS data and has been automatically deactivated.';
+        } elseif ($verificationStatus === 'verified') {
+            $message .= ' Member verified against IRS data.';
+        }
+
+        return redirect()->back()->with('success', $message);
     }
 
     public function updateStatus(Request $request, BoardMember $boardMember)
@@ -188,4 +241,5 @@ class BoardMemberController extends Controller
 
         return redirect()->back()->with('success', 'Board member removed successfully.');
     }
+
 }

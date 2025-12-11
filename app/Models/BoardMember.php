@@ -16,12 +16,16 @@ class BoardMember extends Model
         'user_id',
         'position',
         'is_active',
+        'verification_status',
+        'verified_at',
+        'verification_notes',
         'appointed_on',
         'term_ends_on'
     ];
 
     protected $casts = [
         'is_active' => 'boolean',
+        'verified_at' => 'datetime',
         'appointed_on' => 'datetime',
         'term_ends_on' => 'datetime',
     ];

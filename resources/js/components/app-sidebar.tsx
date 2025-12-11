@@ -49,7 +49,8 @@ import {
     MessageCircle,
     Facebook,
     Link as LinkIcon,
-    Newspaper
+    Newspaper,
+    Megaphone
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -604,6 +605,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/admin/email-packages',
                 icon: Mail,
                 role: "admin"
+            },
+            {
+                title: 'Promotional Banners',
+                href: '/admin/promotional-banners',
+                icon: Megaphone,
+                role: "admin",
+                permission: "promotional.banner.read"
             },
             {
                 title: 'Contact Page',

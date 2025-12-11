@@ -13,6 +13,7 @@ use App\Models\Form990Filing;
 use App\Models\FractionalOrder;
 use App\Models\JobApplication;
 use App\Models\JobPost;
+use App\Models\PromotionalBanner;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -188,6 +189,10 @@ class DashboardController extends Controller
                 ->take(10)
                 ->values();
 
+            // Get all active promotional banners for carousel
+            $promotionalBanners = PromotionalBanner::getActiveBanners();
+            $promotionalBanner = $promotionalBanners->first(); // For backward compatibility
+
             return Inertia::render('dashboard', [
                 'isAdmin' => true,
                 'stats' => $stats,
@@ -196,6 +201,50 @@ class DashboardController extends Controller
                 'paymentStats' => $paymentStats,
                 'recentTransactions' => $recentTransactions,
                 'monthlyRevenue' => $monthlyRevenue,
+                'promotionalBanner' => $promotionalBanner ? (function() use ($promotionalBanner) {
+                    $imageUrl = $promotionalBanner->image_url;
+                    // Convert path to full URL if needed
+                    if ($imageUrl) {
+                        $baseUrl = \Illuminate\Support\Facades\Storage::disk('public')->url('');
+                        if (strpos($imageUrl, $baseUrl) !== 0) {
+                            // It's a path, convert to full URL
+                            $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
+                        }
+                    }
+                    return [
+                        'id' => $promotionalBanner->id,
+                        'title' => $promotionalBanner->title,
+                        'type' => $promotionalBanner->type,
+                        'image_url' => $imageUrl,
+                        'text_content' => $promotionalBanner->text_content,
+                        'external_link' => $promotionalBanner->external_link,
+                        'background_color' => $promotionalBanner->background_color,
+                        'text_color' => $promotionalBanner->text_color,
+                        'description' => $promotionalBanner->description,
+                    ];
+                })() : null,
+                'promotionalBanners' => $promotionalBanners->map(function ($banner) {
+                    $imageUrl = $banner->image_url;
+                    // Convert path to full URL if needed
+                    if ($imageUrl) {
+                        $baseUrl = \Illuminate\Support\Facades\Storage::disk('public')->url('');
+                        if (strpos($imageUrl, $baseUrl) !== 0) {
+                            // It's a path, convert to full URL
+                            $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
+                        }
+                    }
+                    return [
+                        'id' => $banner->id,
+                        'title' => $banner->title,
+                        'type' => $banner->type,
+                        'image_url' => $imageUrl,
+                        'text_content' => $banner->text_content,
+                        'external_link' => $banner->external_link,
+                        'background_color' => $banner->background_color,
+                        'text_color' => $banner->text_color,
+                        'description' => $banner->description,
+                    ];
+                })->toArray(),
             ]);
         }
 
@@ -248,6 +297,10 @@ class DashboardController extends Controller
             }
         }
 
+        // Get all active promotional banners for carousel
+        $promotionalBanners = PromotionalBanner::getActiveBanners();
+        $promotionalBanner = $promotionalBanners->first(); // For backward compatibility
+
         // Get Form 990 filing status
         $form990Filings = null;
         $overdueForm990Filings = [];
@@ -297,6 +350,41 @@ class DashboardController extends Controller
             'form1023Application' => $form1023Application,
             'form990Filings' => $form990Filings,
             'overdueForm990Filings' => $overdueForm990Filings,
+            'promotionalBanner' => $promotionalBanner ? (function() use ($promotionalBanner) {
+                $imageUrl = $promotionalBanner->image_url;
+                // Convert path to full URL if needed
+                if ($imageUrl) {
+                    $baseUrl = \Illuminate\Support\Facades\Storage::disk('public')->url('');
+                    if (strpos($imageUrl, $baseUrl) !== 0) {
+                        // It's a path, convert to full URL
+                        $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
+                    }
+                }
+                return [
+                    'id' => $promotionalBanner->id,
+                    'title' => $promotionalBanner->title,
+                    'type' => $promotionalBanner->type,
+                    'image_url' => $imageUrl,
+                    'text_content' => $promotionalBanner->text_content,
+                    'external_link' => $promotionalBanner->external_link,
+                    'background_color' => $promotionalBanner->background_color,
+                    'text_color' => $promotionalBanner->text_color,
+                    'description' => $promotionalBanner->description,
+                ];
+            })() : null,
+            'promotionalBanners' => $promotionalBanners->map(function ($banner) {
+                return [
+                    'id' => $banner->id,
+                    'title' => $banner->title,
+                    'type' => $banner->type,
+                    'image_url' => $banner->image_url,
+                    'text_content' => $banner->text_content,
+                    'external_link' => $banner->external_link,
+                    'background_color' => $banner->background_color,
+                    'text_color' => $banner->text_color,
+                    'description' => $banner->description,
+                ];
+            })->toArray(),
             'topics' => $user->interestedTopics->map(function ($topic) {
                 return [
                     'id' => $topic->id,

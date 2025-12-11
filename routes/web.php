@@ -1120,6 +1120,19 @@ Route::prefix('admin/email-packages')
         Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
     });
 
+// Admin Promotional Banners Management
+Route::prefix('admin/promotional-banners')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:promotional.banner.read'])
+    ->name('admin.promotional-banners.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'store'])->name('store');
+        Route::get('/{promotionalBanner}/edit', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'edit'])->name('edit');
+        Route::put('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'update'])->name('update');
+        Route::delete('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'destroy'])->name('destroy');
+    });
+
 // Admin Contact Page Management
 Route::prefix('admin/contact-page')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
