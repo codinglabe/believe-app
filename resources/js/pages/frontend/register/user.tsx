@@ -42,7 +42,7 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault();
-    post(route('register'), {
+    post('/register', {
       onFinish: () => reset('password', 'password_confirmation'),
     });
   };
@@ -113,165 +113,177 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
 
   return (
     <FrontendLayout>
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-green-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
-      <div className="container mx-auto px-4">
+    <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
+      {/* Background Image Overlay */}
+      <div 
+        className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+        style={{
+          backgroundImage: 'url(/images/believe-hero.png)'
+        }}
+      >
+        {/* Dark overlay for better content readability */}
+        <div className="absolute inset-0 bg-purple-900/70 dark:bg-purple-900/80"></div>
+      </div>
+
+      {/* Subtle Pattern Overlay */}
+      <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+
+      <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-12 sm:py-16 md:py-20">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8 }}
-          className="max-w-md mx-auto"
+          className="max-w-4xl mx-auto"
         >
           {/* Back Button */}
-          <Link href={route("register")} className="inline-flex items-center text-gray-600 hover:text-gray-900 mb-6">
+          <Link href="/register" className="inline-flex items-center text-white/90 hover:text-white mb-6 transition-colors">
             <ArrowLeft className="mr-2 h-4 w-4" />
             Back to registration options
           </Link>
 
-            {/* Logo */}
-            <div className="text-center mb-8">
-              <Link href={route('home')} className="inline-flex items-center space-x-2">
-                <div className="bg-gray-200 p-1 rounded-xl">
-                  <img
-                    src="/favicon-96x96.png"
-                    alt="Believe In Unity Logo"
-                    className="h-12 w-12 object-contain"
-                    />
+          <Card className="border-0 shadow-2xl bg-white/95 dark:bg-gray-800/95 backdrop-blur-md overflow-hidden">
+            {/* Gradient Header */}
+            <div className="bg-gradient-to-br from-blue-500 to-blue-600 dark:from-blue-600 dark:to-blue-700 p-6 sm:p-8">
+              <div className="flex flex-col items-center text-center">
+                <div className="mx-auto bg-white/20 backdrop-blur-sm w-16 h-16 sm:w-20 sm:h-20 rounded-2xl flex items-center justify-center mb-4 shadow-lg">
+                  <User className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
                 </div>
-                              <span className="text-2xl font-bold text-gray-900 dark:text-gray-300">{import.meta.env.VITE_APP_NAME || 'Believe In Unity'}</span>
-              </Link>
-            </div>
-
-            <Card className="border-0 shadow-xl bg-white dark:bg-gray-800">
-              <CardHeader className="text-center">
-                <CardTitle className="text-2xl text-gray-900 dark:text-white">Create Your Account</CardTitle>
-                <CardDescription className="text-gray-600 dark:text-gray-300">
+                <CardTitle className="text-2xl sm:text-3xl font-bold text-white mb-2">Create Your Account</CardTitle>
+                <CardDescription className="text-base text-white/90 max-w-sm">
                   Join thousands of supporters making a difference worldwide
                 </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <form onSubmit={submit} className="space-y-4">
-
+              </div>
+            </div>
+              <CardContent className="p-6 sm:p-8">
+                <form onSubmit={submit} className="space-y-6">
                   {referralCode && (
-                    <div className="text-center">
-                      <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-                        Referral Code Applied
-                      </h3>
-                      <p className="text-gray-600 dark:text-gray-400">
-                        <div className="flex items-center justify-center">
-                          <ShieldCheck className="h-4 w-4 text-green-600" />
-                          <span className="font-bold text-green-600">{referralCode}</span>
-                        </div>
-                      </p>
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
+                      <div className="flex items-center justify-center gap-2 mb-1">
+                        <ShieldCheck className="h-5 w-5 text-green-600" />
+                        <h3 className="text-sm font-semibold text-green-800 dark:text-green-300">
+                          Referral Code Applied
+                        </h3>
+                      </div>
+                      <p className="text-sm font-bold text-green-600 dark:text-green-400">{referralCode}</p>
                     </div>
                   )}
-                  <div>
-                    <Label htmlFor="firstName" className="text-gray-900 dark:text-white">
-                      Full Name
-                    </Label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        id="firstName"
-                        type="text"
-                        placeholder="John"
-                        value={data.name}
-                        onChange={(e) => setData('name', e.target.value)}
-                        disabled={processing}
-                        className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        required
-                      />
-                      <InputError message={errors.name} className="mt-2" />
+
+                  {/* Grid Layout for Form Fields */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Full Name */}
+                    <div className="md:col-span-1">
+                      <Label htmlFor="firstName" className="text-gray-900 dark:text-white font-medium">
+                        Full Name
+                      </Label>
+                      <div className="relative mt-2">
+                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <Input
+                          id="firstName"
+                          type="text"
+                          placeholder="Enter your full name"
+                          value={data.name}
+                          onChange={(e) => setData('name', e.target.value)}
+                          disabled={processing}
+                          className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                          required
+                        />
+                        <InputError message={errors.name} className="mt-2" />
+                      </div>
+                    </div>
+
+                    {/* Email Address */}
+                    <div className="md:col-span-1">
+                      <Label htmlFor="email" className="text-gray-900 dark:text-white font-medium">
+                        Email Address
+                      </Label>
+                      <div className="relative mt-2">
+                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <Input
+                          id="email"
+                          type="email"
+                          placeholder="john@example.com"
+                          value={data.email}
+                          onChange={(e) => setData('email', e.target.value)}
+                          disabled={processing}
+                          className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                          required
+                        />
+                        <InputError message={errors.email} className="mt-2" />
+                      </div>
+                    </div>
+
+                    {/* Password */}
+                    <div className="md:col-span-1">
+                      <Label htmlFor="password" className="text-gray-900 dark:text-white font-medium">
+                        Password
+                      </Label>
+                      <div className="relative mt-2">
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          placeholder="Create a strong password"
+                          value={data.password}
+                          onChange={(e) => setData('password', e.target.value)}
+                          disabled={processing}
+                          className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                        <InputError message={errors.password} className="mt-2" />
+                      </div>
+                    </div>
+
+                    {/* Confirm Password */}
+                    <div className="md:col-span-1">
+                      <Label htmlFor="confirmPassword" className="text-gray-900 dark:text-white font-medium">
+                        Confirm Password
+                      </Label>
+                      <div className="relative mt-2">
+                        <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
+                        <Input
+                          id="confirmPassword"
+                          type={showConfirmPassword ? "text" : "password"}
+                          placeholder="Confirm your password"
+                          value={data.password_confirmation}
+                          onChange={(e) => setData('password_confirmation', e.target.value)}
+                          disabled={processing}
+                          className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                          className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                        >
+                          {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                        </button>
+                        <InputError message={errors.password_confirmation} className="mt-2" />
+                      </div>
+                    </div>
+
+                    {/* Position Selection - Full Width */}
+                    <div className="md:col-span-2">
+                      <Label className="text-gray-900 dark:text-white font-medium">
+                        I am a <span className="text-red-500">*</span>
+                      </Label>
+                      <div className="mt-2">
+                        <MultiSelect
+                          options={positions.map(p => ({ label: p.name, value: p.id.toString() }))}
+                          selected={data.positions.map(String)}
+                          onChange={(selected) => setData('positions', selected.map(Number))}
+                          placeholder="Select your position(s)"
+                        />
+                      </div>
+                      <InputError message={errors.positions} className="mt-2" />
                     </div>
                   </div>
-
-                  <div>
-                    <Label htmlFor="email" className="text-gray-900 dark:text-white">
-                      Email Address
-                    </Label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        id="email"
-                        type="email"
-                        placeholder="john@example.com"
-                        value={data.email}
-                        onChange={(e) => setData('email', e.target.value)}
-                        disabled={processing}
-                        className="pl-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        required
-                      />
-                      <InputError message={errors.email} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="password" className="text-gray-900 dark:text-white">
-                      Password
-                    </Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        id="password"
-                        type={showPassword ? "text" : "password"}
-                        placeholder="Create a strong password"
-                        value={data.password}
-                        onChange={(e) => setData('password', e.target.value)}
-                        disabled={processing}
-                        className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                      </button>
-                      <InputError message={errors.password} />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="confirmPassword" className="text-gray-900 dark:text-white">
-                      Confirm Password
-                    </Label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-                      <Input
-                        id="confirmPassword"
-                        type={showConfirmPassword ? "text" : "password"}
-                        placeholder="Confirm your password"
-                        value={data.password_confirmation}
-                        onChange={(e) => setData('password_confirmation', e.target.value)}
-                        disabled={processing}
-                        className="pl-10 pr-10 h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                      >
-                        {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                      </button>
-                      <InputError message={errors.password_confirmation} />
-                    </div>
-                                  </div>
-
-
-                                  <div>
-        <Label className="text-gray-900 dark:text-white">
-          I am a <span className="text-red-500">*</span>
-        </Label>
-        <MultiSelect
-          options={positions.map(p => ({ label: p.name, value: p.id.toString() }))}
-          selected={data.positions.map(String)}
-          onChange={(selected) => setData('positions', selected.map(Number))}
-          placeholder="Select your position(s)"
-          className="mt-2"
-        />
-        <InputError message={errors.positions} className="mt-2" />
-      </div>
 
                   <div className="space-y-3">
                     <div className="flex items-center space-x-2">
@@ -306,16 +318,19 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
 
                   <Button
                     type="submit"
-                    className="w-full h-12 bg-blue-600 hover:bg-blue-700"
+                    className="w-full h-12 sm:h-14 bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300"
                     disabled={processing}
                   >
                     {processing ? (
                       <>
-                        <LoaderCircle className="h-4 w-4 animate-spin" />
+                        <LoaderCircle className="h-5 w-5 animate-spin mr-2" />
                         Creating Account...
                       </>
                     ) : (
-                      "Create Account"
+                      <>
+                        Create Account
+                        <Heart className="ml-2 h-5 w-5" />
+                      </>
                     )}
                   </Button>
                 </form>
@@ -363,10 +378,10 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
                 </Button>
               </div> */}
 
-                <div className="text-center">
+                <div className="text-center pt-4 border-t border-gray-200 dark:border-gray-700">
                   <p className="text-sm text-gray-600 dark:text-gray-300">
                     Already have an account?{" "}
-                    <Link href={route('login')} className="text-blue-600 hover:underline font-medium">
+                    <Link href="/login" className="text-blue-600 hover:text-blue-700 hover:underline font-medium transition-colors">
                       Sign in
                     </Link>
                   </p>

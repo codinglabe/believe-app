@@ -1,7 +1,7 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
-import { X, Wallet, Copy, Check, RefreshCw, AlertCircle, ChevronDown, Settings, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2 } from 'lucide-react'
+import React, { useState, useEffect, useRef } from 'react'
+import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Settings, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
@@ -13,7 +13,6 @@ interface WalletPopupProps {
 }
 
 export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupProps) {
-    const [walletConnected, setWalletConnected] = useState(false)
     const [walletBalance, setWalletBalance] = useState<number | null>(null)
     const [walletAddress, setWalletAddress] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(false)
@@ -22,21 +21,47 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap'>('main')
     const [sendAmount, setSendAmount] = useState('')
     const [sendAddress, setSendAddress] = useState('')
+    const [recipientSearch, setRecipientSearch] = useState('')
+    const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address: string } | null>(null)
+    const [searchResults, setSearchResults] = useState<Array<{ id: string; type: string; name: string; email?: string; display_name: string; address: string }>>([])
+    const [isLoadingSearch, setIsLoadingSearch] = useState(false)
+    const [showDropdown, setShowDropdown] = useState(false)
+    const searchInputRef = useRef<HTMLInputElement>(null)
+    const dropdownRef = useRef<HTMLDivElement>(null)
     const [swapAmount, setSwapAmount] = useState('')
     const [swapFrom, setSwapFrom] = useState('USD')
     const [swapTo, setSwapTo] = useState('USD')
     const [showSuccess, setShowSuccess] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
     const [successType, setSuccessType] = useState<'send' | 'receive' | 'swap' | null>(null)
+    const [activities, setActivities] = useState<Array<{
+        id: string | number;
+        type: string;
+        amount: number;
+        date: string;
+        status: string;
+        donor_name: string;
+        donor_email?: string;
+        frequency: string;
+        message?: string;
+        transaction_id?: string;
+        is_outgoing?: boolean;
+        recipient_type?: string;
+    }>>([])
+    const [isLoadingActivities, setIsLoadingActivities] = useState(false)
+    const [currentPage, setCurrentPage] = useState(1)
+    const [hasMoreActivities, setHasMoreActivities] = useState(false)
+    const [isLoadingMore, setIsLoadingMore] = useState(false)
 
-    // Fetch wallet status and balance
+    // Fetch organization balance directly (no wallet connection checks)
     useEffect(() => {
         if (!isOpen) return
 
-        const fetchWalletData = async () => {
+        const fetchOrganizationBalance = async () => {
             setIsLoading(true)
             try {
-                const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+                // Fetch organization balance directly
+                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -47,51 +72,123 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     cache: 'no-cache',
                 })
 
-                if (statusResponse.ok) {
-                    const statusData = await statusResponse.json()
-                    // For organization users, always fetch balance (they're always "connected" using org balance)
-                    if (statusData.success && (statusData.connected || statusData.source === 'organization')) {
-                        setWalletConnected(true)
-                        setWalletAddress(statusData.address || null)
-
-                        // Fetch balance (will fetch organization balance for org users)
-                        const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-cache',
-                        })
-
-                        if (balanceResponse.ok) {
-                            const balanceData = await balanceResponse.json()
-                            if (balanceData.success) {
-                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
-                                // Set wallet address if provided
-                                if (statusData.address) {
-                                    setWalletAddress(statusData.address)
-                                }
-                            }
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json()
+                    if (balanceData.success) {
+                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                        // Set wallet address from response or generate from organization ID
+                        if (balanceData.address) {
+                            setWalletAddress(balanceData.address)
+                        } else if (balanceData.organization_id) {
+                            const address = '0x' + balanceData.organization_id.toString(16).padStart(40, '0')
+                            setWalletAddress(address)
                         }
-                    } else {
-                        setWalletConnected(false)
-                        setWalletBalance(null)
-                        setWalletAddress(null)
                     }
                 }
             } catch (error) {
-                console.error('Failed to fetch wallet data:', error)
-                setWalletConnected(false)
+                console.error('Failed to fetch organization balance:', error)
+                setWalletBalance(0)
             } finally {
                 setIsLoading(false)
             }
         }
 
-        fetchWalletData()
+        fetchOrganizationBalance()
     }, [isOpen])
+
+    // Fetch wallet activity when Activity tab is active
+    useEffect(() => {
+        if (!isOpen || activeTab !== 'activity') return
+
+        const fetchActivities = async (page: number = 1, append: boolean = false) => {
+            if (append) {
+                setIsLoadingMore(true)
+            } else {
+                setIsLoadingActivities(true)
+            }
+            
+            try {
+                // Fetch 10 activities per page
+                const response = await fetch(`/chat/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-cache',
+                })
+
+                if (response.ok) {
+                    const data = await response.json()
+                    if (data.success) {
+                        if (append) {
+                            // Append new activities
+                            setActivities(prev => [...prev, ...(data.activities || [])])
+                        } else {
+                            // First load: show all activities from backend
+                            setActivities(data.activities || [])
+                        }
+                        setHasMoreActivities(data.has_more || false)
+                        setCurrentPage(page)
+                    }
+                }
+            } catch (error) {
+                console.error('Failed to fetch wallet activity:', error)
+            } finally {
+                setIsLoadingActivities(false)
+                setIsLoadingMore(false)
+            }
+        }
+
+        // Reset and fetch first page when tab is opened
+        setCurrentPage(1)
+        setHasMoreActivities(false)
+        fetchActivities(1, false)
+    }, [isOpen, activeTab])
+
+    // Handle scroll to load more activities
+    const handleActivityScroll = (e: React.UIEvent<HTMLDivElement>) => {
+        const target = e.currentTarget
+        const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+        
+        // Load more when scrolled near bottom (within 50px) and there are more activities
+        if (scrollBottom < 50 && hasMoreActivities && !isLoadingMore && !isLoadingActivities) {
+            const nextPage = currentPage + 1
+            const fetchActivities = async (page: number) => {
+                setIsLoadingMore(true)
+                try {
+                    const response = await fetch(`/chat/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                    })
+
+                    if (response.ok) {
+                        const data = await response.json()
+                        if (data.success) {
+                            // Append new activities
+                            setActivities(prev => [...prev, ...(data.activities || [])])
+                            setHasMoreActivities(data.has_more || false)
+                            setCurrentPage(page)
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch more wallet activity:', error)
+                } finally {
+                    setIsLoadingMore(false)
+                }
+            }
+            
+            fetchActivities(nextPage)
+        }
+    }
 
     const handleCopyAddress = () => {
         if (walletAddress) {
@@ -136,21 +233,183 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         return `${address.slice(0, 6)}...${address.slice(-4)}`
     }
 
-    const handleSend = () => {
-        if (!sendAmount || !sendAddress) {
-            showErrorToast('Please fill in all fields')
+    // Debounced search function
+    useEffect(() => {
+        if (!recipientSearch || recipientSearch.length < 2) {
+            setSearchResults([])
+            setShowDropdown(false)
+            return
+        }
+
+        const timeoutId = setTimeout(async () => {
+            setIsLoadingSearch(true)
+            try {
+                const response = await fetch(`/chat/wallet/search-recipients?search=${encodeURIComponent(recipientSearch)}&limit=10`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                })
+
+                if (response.ok) {
+                    const data = await response.json()
+                    if (data.success) {
+                        setSearchResults(data.results || [])
+                        setShowDropdown(data.results && data.results.length > 0)
+                    }
+                }
+            } catch (error) {
+                console.error('Search error:', error)
+                setSearchResults([])
+            } finally {
+                setIsLoadingSearch(false)
+            }
+        }, 300)
+
+        return () => clearTimeout(timeoutId)
+    }, [recipientSearch])
+
+    // Close dropdown when clicking outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (
+                dropdownRef.current &&
+                !dropdownRef.current.contains(event.target as Node) &&
+                searchInputRef.current &&
+                !searchInputRef.current.contains(event.target as Node)
+            ) {
+                setShowDropdown(false)
+            }
+        }
+
+        document.addEventListener('mousedown', handleClickOutside)
+        return () => document.removeEventListener('mousedown', handleClickOutside)
+    }, [])
+
+    // Reset recipient search when switching away from send view
+    useEffect(() => {
+        if (actionView !== 'send') {
+            setRecipientSearch('')
+            setSelectedRecipient(null)
+            setSendAddress('')
+            setSearchResults([])
+            setShowDropdown(false)
+        }
+    }, [actionView])
+
+    const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
+        setSelectedRecipient(recipient)
+        setSendAddress(recipient.address)
+        setRecipientSearch(recipient.display_name)
+        setShowDropdown(false)
+    }
+
+    const handleSend = async () => {
+        if (!selectedRecipient) {
+            showErrorToast('Please select a recipient')
+            return
+        }
+
+        const amount = parseFloat(sendAmount)
+        if (!sendAmount || isNaN(amount) || amount <= 0) {
+            showErrorToast('Please enter a valid amount')
+            return
+        }
+
+        if (walletBalance !== null && amount > walletBalance) {
+            showErrorToast(`Insufficient balance. Available: $${walletBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
             return
         }
         
         setIsLoading(true)
         
-        // Simulate API call delay
-        setTimeout(() => {
+        try {
+            const response = await fetch('/chat/wallet/send', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    amount: amount,
+                    recipient_id: selectedRecipient.id,
+                    recipient_address: selectedRecipient.address,
+                }),
+            })
+
+            const data = await response.json()
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to send money')
+            }
+
+            // Update balance from response
+            if (data.data?.sender_balance !== undefined) {
+                setWalletBalance(data.data.sender_balance)
+            } else {
+                // Refresh balance
+                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-cache',
+                })
+
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json()
+                    if (balanceData.success) {
+                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                    }
+                }
+            }
+
+            // Show success
             setSuccessType('send')
-            setSuccessMessage(`Successfully sent $${parseFloat(sendAmount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
+            setSuccessMessage(data.message || `Successfully sent $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to ${selectedRecipient.name}`)
             setShowSuccess(true)
+            
+            // Refresh activities to show the new transaction
+            if (activeTab === 'activity') {
+                try {
+                    const activityResponse = await fetch(`/chat/wallet/activity?page=1&per_page=5&t=${Date.now()}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                    })
+
+                    if (activityResponse.ok) {
+                        const activityData = await activityResponse.json()
+                        if (activityData.success) {
+                            setActivities(activityData.activities || [])
+                            setHasMoreActivities(activityData.has_more || false)
+                            setCurrentPage(1)
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to refresh activities:', error)
+                }
+            }
+            
+            // Clear form
             setSendAmount('')
             setSendAddress('')
+            setSelectedRecipient(null)
+            setRecipientSearch('')
             setIsLoading(false)
             
             // Hide success and return to main after 3 seconds
@@ -159,7 +418,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 setSuccessType(null)
                 setActionView('main')
             }, 3000)
-        }, 1000)
+        } catch (error) {
+            console.error('Send error:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Failed to send money. Please try again.'
+            showErrorToast(errorMessage)
+            setIsLoading(false)
+        }
     }
 
     const handleSwap = () => {
@@ -292,7 +556,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         )}
 
                         {/* Content */}
-                        <div className="flex-1 overflow-y-auto relative">
+                        <div className="flex-1 overflow-hidden relative flex flex-col min-h-0">
                             {/* Success Animation Overlay */}
                             <AnimatePresence>
                                 {showSuccess && (
@@ -396,7 +660,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         <div>
                                             <label className="text-xs text-muted-foreground mb-1.5 block">Send Amount</label>
                                             <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">$</span>
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
                                                 <input
                                                     type="number"
                                                     step="0.01"
@@ -405,7 +669,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     value={sendAmount}
                                                     onChange={(e) => setSendAmount(e.target.value)}
                                                     placeholder="0.00"
-                                                    className="w-full pl-8 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                    className="w-full pl-8 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                                                 />
                                             </div>
                                             {walletBalance !== null && (
@@ -414,20 +678,108 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 </p>
                                             )}
                                         </div>
-                                        <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">To Address</label>
-                                            <input
-                                                type="text"
-                                                value={sendAddress}
-                                                onChange={(e) => setSendAddress(e.target.value)}
-                                                placeholder="Enter wallet address"
-                                                className="w-full px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary font-mono text-sm"
-                                            />
+                                        <div className="relative">
+                                            <label className="text-xs text-muted-foreground mb-1.5 block">Send To</label>
+                                            <div className="relative">
+                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                                                <input
+                                                    ref={searchInputRef}
+                                                    type="text"
+                                                    value={recipientSearch}
+                                                    onChange={(e) => {
+                                                        setRecipientSearch(e.target.value)
+                                                        setShowDropdown(true)
+                                                        if (!e.target.value) {
+                                                            setSelectedRecipient(null)
+                                                            setSendAddress('')
+                                                        }
+                                                    }}
+                                                    onFocus={() => {
+                                                        if (searchResults.length > 0) {
+                                                            setShowDropdown(true)
+                                                        }
+                                                    }}
+                                                    placeholder="Search by name or email..."
+                                                    className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 text-sm"
+                                                />
+                                                {isLoadingSearch && (
+                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+                                                        <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+                                                    </div>
+                                                )}
+                                            </div>
+                                            
+                                            {/* Dropdown Results */}
+                                            <AnimatePresence>
+                                                {showDropdown && searchResults.length > 0 && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, y: -10 }}
+                                                        animate={{ opacity: 1, y: 0 }}
+                                                        exit={{ opacity: 0, y: -10 }}
+                                                        transition={{ duration: 0.2 }}
+                                                        ref={dropdownRef}
+                                                        className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                                        style={{
+                                                            scrollbarWidth: 'none',
+                                                            msOverflowStyle: 'none',
+                                                        }}
+                                                    >
+                                                        {searchResults.map((result) => (
+                                                            <button
+                                                                key={result.id}
+                                                                type="button"
+                                                                onClick={() => handleSelectRecipient(result)}
+                                                                className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 ${
+                                                                    selectedRecipient?.id === result.id ? 'bg-purple-50 dark:bg-purple-900/20' : ''
+                                                                }`}
+                                                            >
+                                                                <div className={`p-2 rounded-lg ${
+                                                                    result.type === 'organization' 
+                                                                        ? 'bg-blue-500/10 text-blue-500' 
+                                                                        : 'bg-green-500/10 text-green-500'
+                                                                }`}>
+                                                                    {result.type === 'organization' ? (
+                                                                        <Building2 className="h-4 w-4" />
+                                                                    ) : (
+                                                                        <User className="h-4 w-4" />
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-medium truncate">{result.name}</p>
+                                                                    {result.email && (
+                                                                        <p className="text-xs text-muted-foreground truncate">{result.email}</p>
+                                                                    )}
+                                                                </div>
+                                                                <span className={`text-xs px-2 py-1 rounded ${
+                                                                    result.type === 'organization'
+                                                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                                                                        : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                                                                }`}>
+                                                                    {result.type === 'organization' ? 'Organization' : 'User'}
+                                                                </span>
+                                                            </button>
+                                                        ))}
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>
+                                            
+                                            {selectedRecipient && (
+                                                <div className="mt-2 p-2 sm:p-2.5 bg-muted/50 rounded-lg flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
+                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                        <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                                        <span className="text-muted-foreground flex-shrink-0">Selected:</span>
+                                                        <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
+                                                    </div>
+                                                    <span className="text-muted-foreground font-mono text-[10px] sm:ml-auto flex-shrink-0">
+                                                        {formatAddress(selectedRecipient.address)}
+                                                    </span>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                     <Button
                                         onClick={handleSend}
-                                        disabled={isLoading || !sendAmount || !sendAddress}
+                                        disabled={isLoading || !sendAmount || (!selectedRecipient && !sendAddress)}
                                         className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                                     >
                                         {isLoading ? (
@@ -500,7 +852,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 <select
                                                     value={swapFrom}
                                                     onChange={(e) => setSwapFrom(e.target.value)}
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                                                 >
                                                     <option value="USD">USD</option>
                                                     <option value="ETH">ETH</option>
@@ -513,7 +865,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     value={swapAmount}
                                                     onChange={(e) => setSwapAmount(e.target.value)}
                                                     placeholder="0.00"
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                                                 />
                                             </div>
                                         </div>
@@ -535,7 +887,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 <select
                                                     value={swapTo}
                                                     onChange={(e) => setSwapTo(e.target.value)}
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                                                 >
                                                     <option value="USD">USD</option>
                                                     <option value="ETH">ETH</option>
@@ -661,17 +1013,117 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         <span className="text-muted-foreground">Network</span>
                                         <div className="flex items-center gap-1.5">
                                             <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                                            <span className="font-medium">{walletConnected ? 'Connected' : 'Not Connected'}</span>
+                                            <span className="font-medium">Organization Wallet</span>
                                         </div>
                                     </div>
                                 </div>
                             ) : (
                                 /* Activity Tab */
-                                <div className="p-4">
-                                    <div className="text-center py-12">
-                                        <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                                        <p className="text-sm text-muted-foreground">No transactions yet</p>
-                                    </div>
+                                <div 
+                                    className="overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                    onScroll={handleActivityScroll}
+                                    style={{ 
+                                        height: '350px',
+                                        maxHeight: '350px',
+                                        minHeight: '350px',
+                                    }}
+                                >
+                                    {isLoadingActivities ? (
+                                        <div className="text-center py-8">
+                                            <RefreshCw className="h-6 w-6 text-muted-foreground mx-auto mb-3 animate-spin" />
+                                            <p className="text-sm text-muted-foreground">Loading activity...</p>
+                                        </div>
+                                    ) : activities.length === 0 ? (
+                                        <div className="text-center py-12">
+                                            <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
+                                            <p className="text-sm text-muted-foreground">No transactions yet</p>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="space-y-2">
+                                                {activities.map((activity) => {
+                                                    const isTransferSent = activity.type === 'transfer_sent'
+                                                    const isTransferReceived = activity.type === 'transfer_received'
+                                                    const isDonation = activity.type === 'donation'
+                                                    
+                                                    return (
+                                                        <motion.div
+                                                            key={activity.id}
+                                                            initial={{ opacity: 0, y: 10 }}
+                                                            animate={{ opacity: 1, y: 0 }}
+                                                            className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                                                        >
+                                                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                                <div className={`p-2 rounded-lg ${
+                                                                    isTransferSent 
+                                                                        ? 'bg-red-500/10' 
+                                                                        : isTransferReceived 
+                                                                        ? 'bg-blue-500/10'
+                                                                        : 'bg-green-500/10'
+                                                                }`}>
+                                                                    {isTransferSent ? (
+                                                                        <ArrowUpRight className="h-4 w-4 text-red-500" />
+                                                                    ) : isTransferReceived ? (
+                                                                        <ArrowDownLeft className="h-4 w-4 text-blue-500" />
+                                                                    ) : (
+                                                                        <ArrowDownLeft className="h-4 w-4 text-green-500" />
+                                                                    )}
+                                                                </div>
+                                                                <div className="flex-1 min-w-0">
+                                                                    <p className="text-sm font-medium truncate">
+                                                                        {isTransferSent 
+                                                                            ? `Sent to ${activity.donor_name}`
+                                                                            : isTransferReceived
+                                                                            ? `Received from ${activity.donor_name}`
+                                                                            : `Donation from ${activity.donor_name}`
+                                                                        }
+                                                                    </p>
+                                                                    <p className="text-xs text-muted-foreground">
+                                                                        {new Date(activity.date).toLocaleDateString('en-US', {
+                                                                            month: 'short',
+                                                                            day: 'numeric',
+                                                                            year: 'numeric',
+                                                                            hour: '2-digit',
+                                                                            minute: '2-digit'
+                                                                        })}
+                                                                    </p>
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-right ml-3">
+                                                                <p className={`text-sm font-semibold ${
+                                                                    isTransferSent 
+                                                                        ? 'text-red-600'
+                                                                        : isTransferReceived
+                                                                        ? 'text-blue-600'
+                                                                        : 'text-green-600'
+                                                                }`}>
+                                                                    {isTransferSent ? '-' : '+'}${activity.amount.toLocaleString('en-US', {
+                                                                        minimumFractionDigits: 2,
+                                                                        maximumFractionDigits: 2
+                                                                    })}
+                                                                </p>
+                                                                {isDonation && activity.frequency !== 'one-time' && (
+                                                                    <p className="text-xs text-muted-foreground capitalize">
+                                                                        {activity.frequency}
+                                                                    </p>
+                                                                )}
+                                                                {isTransferSent && activity.recipient_type && (
+                                                                    <p className="text-xs text-muted-foreground capitalize">
+                                                                        {activity.recipient_type}
+                                                                    </p>
+                                                                )}
+                                                            </div>
+                                                        </motion.div>
+                                                    )
+                                                })}
+                                            </div>
+                                            {isLoadingMore && (
+                                                <div className="text-center py-4">
+                                                    <RefreshCw className="h-5 w-5 text-muted-foreground mx-auto animate-spin" />
+                                                </div>
+                                            )}
+                                        </>
+                                    )}
                                 </div>
                             )}
                         </div>

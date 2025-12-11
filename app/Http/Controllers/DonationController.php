@@ -206,6 +206,18 @@ class DonationController extends Controller
                         'donation_date' => now(),
                     ]);
                     
+                    // Add donation amount to organization's user balance
+                    if ($donation->organization && $donation->organization->user) {
+                        $donation->organization->user->increment('balance', $donation->amount);
+                        Log::info('Donation added to organization user balance', [
+                            'donation_id' => $donation->id,
+                            'organization_id' => $donation->organization->id,
+                            'user_id' => $donation->organization->user->id,
+                            'amount' => $donation->amount,
+                            'new_balance' => $donation->organization->user->fresh()->balance,
+                        ]);
+                    }
+                    
                     // Award impact points for completed donation
                     $this->impactScoreService->awardDonationPoints($donation);
                 } elseif ($session->subscription) {
@@ -216,6 +228,18 @@ class DonationController extends Controller
                         'status' => 'active',
                         'donation_date' => now(),
                     ]);
+                    
+                    // Add donation amount to organization's user balance for recurring donations
+                    if ($donation->organization && $donation->organization->user) {
+                        $donation->organization->user->increment('balance', $donation->amount);
+                        Log::info('Recurring donation added to organization user balance', [
+                            'donation_id' => $donation->id,
+                            'organization_id' => $donation->organization->id,
+                            'user_id' => $donation->organization->user->id,
+                            'amount' => $donation->amount,
+                            'new_balance' => $donation->organization->user->fresh()->balance,
+                        ]);
+                    }
                     
                     // Award impact points for active recurring donation
                     $this->impactScoreService->awardDonationPoints($donation);
@@ -228,6 +252,18 @@ class DonationController extends Controller
                         'status' => 'completed',
                         'donation_date' => now(),
                     ]);
+                    
+                    // Add donation amount to organization's user balance
+                    if ($donation->organization && $donation->organization->user) {
+                        $donation->organization->user->increment('balance', $donation->amount);
+                        Log::info('Donation added to organization user balance (fallback)', [
+                            'donation_id' => $donation->id,
+                            'organization_id' => $donation->organization->id,
+                            'user_id' => $donation->organization->user->id,
+                            'amount' => $donation->amount,
+                            'new_balance' => $donation->organization->user->fresh()->balance,
+                        ]);
+                    }
                     
                     // Award impact points
                     $this->impactScoreService->awardDonationPoints($donation);

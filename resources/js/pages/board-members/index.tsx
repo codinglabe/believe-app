@@ -152,12 +152,12 @@ export default function Index({ organization, boardMembers }: Props) {
                     <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight truncate">Board of Directors</h1>
                     <p className="text-blue-100 text-sm sm:text-base md:text-lg mt-1 font-medium truncate">{organization.name}</p>
                   </div>
-                </div>
+            </div>
                 <div className="flex items-center gap-2 sm:gap-3 mt-3 sm:mt-4">
                   <span className="bg-white/20 backdrop-blur-sm px-3 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs sm:text-sm font-medium border border-white/30 shadow-sm inline-flex items-center gap-1.5 sm:gap-2">
                     <Shield className="h-3.5 w-3.5 sm:h-4 sm:w-4 flex-shrink-0" />
                     <span className="truncate">Your role: <span className="capitalize font-semibold">{auth.user.organization_role}</span></span>
-                  </span>
+              </span>
                 </div>
               </div>
             </div>
@@ -431,8 +431,8 @@ export default function Index({ organization, boardMembers }: Props) {
               {/* Enhanced Desktop view - Table */}
               <div className="hidden lg:block overflow-x-auto -mx-3 sm:-mx-4 md:-mx-6 px-3 sm:px-4 md:px-6">
                 <div className="inline-block min-w-full align-middle">
-                  <table className="w-full">
-                    <thead>
+                <table className="w-full">
+                  <thead>
                       <tr className="bg-muted/50 border-b-2 border-border">
                         <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Member</th>
                         <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden xl:table-cell">Role</th>
@@ -441,8 +441,8 @@ export default function Index({ organization, boardMembers }: Props) {
                         <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden xl:table-cell">Verification</th>
                         <th className="text-left py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider hidden 2xl:table-cell">Appointed</th>
                         <th className="text-right py-3 sm:py-4 px-3 sm:px-4 md:px-6 font-bold text-muted-foreground text-xs sm:text-sm uppercase tracking-wider">Actions</th>
-                      </tr>
-                    </thead>
+                    </tr>
+                  </thead>
                     <tbody className="divide-y divide-border">
                     {boardMembers.map((member) => (
                       <tr
@@ -547,8 +547,8 @@ export default function Index({ organization, boardMembers }: Props) {
                         </td>
                       </tr>
                     ))}
-                    </tbody>
-                  </table>
+                  </tbody>
+                </table>
                 </div>
               </div>
 

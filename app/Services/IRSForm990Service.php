@@ -1244,7 +1244,7 @@ class IRSForm990Service
                         
                         if ($cleanReturnEIN === $cleanEIN) {
                             Log::info("Found EIN {$ein} in XML file: " . basename($xmlPath));
-                            
+                
                             // Extract tax year from return
                             $returnTaxYear = (string) ($return->ReturnHeader->TaxYear ?? $return->TaxYr ?? $taxYear);
                             

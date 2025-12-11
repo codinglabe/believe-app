@@ -222,70 +222,74 @@ export default function DonatePage({
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}
-        <section className="bg-gradient-to-br from-blue-600 to-green-600 py-20">
-          <div className="container mx-auto px-4">
+        <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
               className="text-center max-w-4xl mx-auto"
             >
-              <h1 className="text-4xl md:text-6xl font-bold mb-6 text-gray-900 dark:text-white">
+              <div className="inline-flex items-center justify-center mb-4">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl shadow-lg">
+                  <Heart className="h-8 w-8 sm:h-10 sm:w-10 text-white fill-white" />
+                </div>
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
                 Make a Difference Today
               </h1>
-              <p className="text-xl mb-8 opacity-90 text-gray-700 dark:text-gray-300">
+              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto mb-8">
                 Your donation, no matter the size, creates real impact in communities worldwide. Join thousands of
                 supporters making positive change happen.
               </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-3xl mx-auto">
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">$2.5M+</div>
-                  <div className="opacity-90 text-gray-600 dark:text-gray-300">Total Donated</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-3xl mx-auto mt-8">
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">$2.5M+</div>
+                  <div className="text-sm sm:text-base text-white/90">Total Donated</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">15,000+</div>
-                  <div className="opacity-90 text-gray-600 dark:text-gray-300">Active Donors</div>
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">15,000+</div>
+                  <div className="text-sm sm:text-base text-white/90">Active Donors</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-2 text-gray-900 dark:text-white">500+</div>
-                  <div className="opacity-90 text-gray-600 dark:text-gray-300">Projects Funded</div>
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">500+</div>
+                  <div className="text-sm sm:text-base text-white/90">Projects Funded</div>
                 </div>
               </div>
             </motion.div>
           </div>
         </section>
-        <div className="container mx-auto px-4 py-12">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Donation Form */}
             <div className="lg:col-span-2">
               <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-                <Card className="mb-8 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-2xl flex items-center text-gray-900 dark:text-white">
-                      <Heart className="mr-3 h-6 w-6 text-red-500" />
-                      Make Your Donation
-                    </CardTitle>
-                    <CardDescription className="text-gray-600 dark:text-gray-300">
-                      {selectedCause ? (
-                        <>
-                          You are donating to{" "}
-                          <span className="font-semibold text-blue-600 dark:text-blue-400">{selectedCause.name}</span>.
-                          <Button
-                            variant="link"
-                            onClick={handleClearCauseSelection}
-                            className="p-0 h-auto ml-2 text-sm text-blue-500 dark:text-blue-300"
-                          >
-                            (Change)
-                          </Button>
-                        </>
-                      ) : (
-                        "Select a non-profit organization below to direct your donation."
-                      )}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
+                {/* Card Header */}
+                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-6 py-4 mb-0">
+                  <div className="flex items-center text-white">
+                    <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg mr-3">
+                      <Heart className="h-5 w-5 text-white fill-white" />
+                    </div>
+                    <h2 className="text-xl sm:text-2xl font-bold">Make Your Donation</h2>
+                  </div>
+                  {selectedCause && (
+                    <p className="text-white/90 text-sm mt-2 ml-[3.25rem]">
+                      You are donating to{" "}
+                      <span className="font-semibold text-white">{selectedCause.name}</span>.
+                      <Button
+                        variant="link"
+                        onClick={handleClearCauseSelection}
+                        className="p-0 h-auto ml-2 text-sm text-white/90 hover:text-white underline"
+                      >
+                        (Change)
+                      </Button>
+                    </p>
+                  )}
+                </div>
+                <Card className="mb-8 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg rounded-t-none">
+                  <CardContent className="space-y-6 pt-6">
                     {/* Organization Search and Selection */}
                     <div className="relative" ref={searchContainerRef}>
                       <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
@@ -336,7 +340,7 @@ export default function DonatePage({
                                     performSearch(searchQuery)
                                   }
                                 }}
-                                className="w-full pl-10 pr-10 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                                className="w-full pl-12 pr-10 h-12 sm:h-14 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
                               />
                               {searchQuery && (
                                 <Button
@@ -414,25 +418,25 @@ export default function DonatePage({
                         onValueChange={setDonationType}
                         className="grid grid-cols-1 md:grid-cols-3 gap-4"
                       >
-                        <div className="flex items-center space-x-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <RadioGroupItem value="one-time" id="one-time" />
+                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
+                          <RadioGroupItem value="one-time" id="one-time" className="border-purple-600" />
                           <Label htmlFor="one-time" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-medium">One-time</div>
-                            <div className="text-xs text-gray-500">Single donation</div>
+                            <div className="font-semibold">One-time</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Single donation</div>
                           </Label>
                         </div>
-                        <div className="flex items-center space-x-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <RadioGroupItem value="weekly" id="weekly" />
+                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
+                          <RadioGroupItem value="weekly" id="weekly" className="border-purple-600" />
                           <Label htmlFor="weekly" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-medium">Weekly</div>
-                            <div className="text-xs text-gray-500">Every week</div>
+                            <div className="font-semibold">Weekly</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Every week</div>
                           </Label>
                         </div>
-                        <div className="flex items-center space-x-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
-                          <RadioGroupItem value="monthly" id="monthly" />
+                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
+                          <RadioGroupItem value="monthly" id="monthly" className="border-purple-600" />
                           <Label htmlFor="monthly" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-medium">Monthly</div>
-                            <div className="text-xs text-gray-500">Every month</div>
+                            <div className="font-semibold">Monthly</div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">Every month</div>
                           </Label>
                         </div>
                       </RadioGroup>
@@ -442,13 +446,17 @@ export default function DonatePage({
                       <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
                         Select Amount
                       </Label>
-                      <div className="grid grid-cols-3 gap-3 mb-4">
+                      <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-4">
                         {donationAmounts.map((amount) => (
                           <Button
                             key={amount}
                             variant={selectedAmount === amount ? "default" : "outline"}
                             onClick={() => handleAmountSelect(amount)}
-                            className="h-12 text-lg"
+                            className={`h-12 sm:h-14 text-base sm:text-lg font-semibold transition-all duration-200 ${
+                              selectedAmount === amount
+                                ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md hover:shadow-lg"
+                                : "border-gray-300 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20"
+                            }`}
                           >
                             ${amount}
                           </Button>
@@ -466,24 +474,24 @@ export default function DonatePage({
                             placeholder="0.00"
                             value={customAmount}
                             onChange={(e) => handleCustomAmountChange(e.target.value)}
-                            className="pl-8 h-12 text-lg bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                            className="pl-8 h-12 sm:h-14 text-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                           />
                         </div>
                       </div>
                     </div>
                     {/* Recurring Donation Impact */}
                     {getCurrentAmount() > 0 && donationType !== "one-time" && (
-                      <Card className="bg-blue-50 dark:bg-blue-950 border-blue-200 dark:border-blue-800">
-                        <CardContent className="pt-4">
+                      <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800 shadow-md">
+                        <CardContent className="pt-6">
                           <div className="text-center">
-                            <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-2">
+                            <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 text-lg">
                               Your {donationType} impact
                             </h4>
-                            <div className="text-2xl font-bold text-blue-800 dark:text-blue-200 mb-1">
+                            <div className="text-3xl font-bold text-purple-800 dark:text-purple-200 mb-2">
                               ${getCurrentAmount()}
                               {getFrequencyText()}
                             </div>
-                            <p className="text-blue-700 dark:text-blue-300 text-sm">
+                            <p className="text-purple-700 dark:text-purple-300 text-sm font-medium">
                               That's ${getAnnualImpact().toLocaleString()} per year making a difference!
                             </p>
                           </div>
@@ -501,11 +509,11 @@ export default function DonatePage({
                           placeholder="John Doe"
                           value={name}
                           onChange={(e) => setName(e.target.value)}
-                          className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                          className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         />
                       </div>
                       <div>
-                        <Label htmlFor="email" className="text-gray-900 dark:text-white">
+                        <Label htmlFor="email" className="text-gray-900 dark:text-white font-semibold">
                           Email
                         </Label>
                         <Input
@@ -514,12 +522,12 @@ export default function DonatePage({
                           placeholder="john@example.com"
                           value={email}
                           onChange={(e) => setEmail(e.target.value)}
-                          className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                          className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         />
                       </div>
                     </div>
                     <div>
-                      <Label htmlFor="phone" className="text-gray-900 dark:text-white">
+                      <Label htmlFor="phone" className="text-gray-900 dark:text-white font-semibold">
                         Phone (Optional)
                       </Label>
                       <Input
@@ -528,12 +536,12 @@ export default function DonatePage({
                         placeholder="+1 (555) 123-4567"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                        className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                       />
                     </div>
                     {/* Message */}
                     <div>
-                      <Label htmlFor="message" className="text-gray-900 dark:text-white">
+                      <Label htmlFor="message" className="text-gray-900 dark:text-white font-semibold">
                         Message (Optional)
                       </Label>
                       <Textarea
@@ -541,14 +549,14 @@ export default function DonatePage({
                         placeholder="Share why you're supporting this cause..."
                         value={donorMessage}
                         onChange={(e) => setDonorMessage(e.target.value)}
-                        className="min-h-[100px] bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                        className="min-h-[100px] bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                       />
                     </div>
                     {submissionError && <div className="text-red-500 text-sm text-center">{submissionError}</div>}
                     {/* Payment Button */}
                     <Button
                       size="lg"
-                      className="w-full h-14 text-lg bg-blue-600 hover:bg-blue-700"
+                      className="w-full h-14 sm:h-16 text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
                       onClick={handleSubmit}
                       disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting}
                     >
@@ -581,10 +589,11 @@ export default function DonatePage({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.2 }}
               >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">Your Impact</CardTitle>
-                  </CardHeader>
+                {/* Card Header */}
+                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
+                  <h3 className="text-base font-bold text-white">Your Impact</h3>
+                </div>
+                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md rounded-t-none">
                   <CardContent>
                     {getCurrentAmount() > 0 ? (
                       <div className="space-y-3">
@@ -621,12 +630,13 @@ export default function DonatePage({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
               >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">
-                      Why Donate Through {import.meta.env.VITE_APP_NAME}?
-                    </CardTitle>
-                  </CardHeader>
+                {/* Card Header */}
+                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
+                  <h3 className="text-base font-bold text-white">
+                    Why Donate Through {import.meta.env.VITE_APP_NAME}?
+                  </h3>
+                </div>
+                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md rounded-t-none">
                   <CardContent>
                     <div className="space-y-4">
                       <div className="flex items-start">
@@ -662,10 +672,14 @@ export default function DonatePage({
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.4 }}
               >
-                <Card className="bg-gradient-to-br from-green-50 to-blue-50 dark:from-green-950 dark:to-blue-950 border-green-200 dark:border-green-800">
-                  <CardHeader>
-                    <CardTitle className="text-lg text-gray-900 dark:text-white">💚 Recurring Donations</CardTitle>
-                  </CardHeader>
+                {/* Card Header */}
+                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
+                  <h3 className="text-base font-bold text-white flex items-center gap-2">
+                    <Heart className="h-4 w-4 text-white fill-white" />
+                    Recurring Donations
+                  </h3>
+                </div>
+                <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800 shadow-md rounded-t-none">
                   <CardContent>
                     <div className="space-y-3 text-sm">
                       <div className="flex items-center gap-2">

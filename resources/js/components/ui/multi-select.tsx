@@ -36,31 +36,41 @@ export function MultiSelect({ options, selected, onChange, placeholder, classNam
         <Button
           variant="outline"
           role="combobox"
-          className={cn("w-full justify-between h-12", className)}
+          className={cn(
+            "w-full justify-between h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white hover:bg-gray-50 dark:hover:bg-gray-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all duration-200",
+            className
+          )}
         >
-          <span className="truncate">
+          <span className="truncate text-left">
             {selected.length === 0 ? placeholder : selectedLabels || "Select positions..."}
           </span>
-          <ChevronsUpDown className="ml-2 h-4 w-4 opacity-50" />
+          <ChevronsUpDown className="ml-2 h-5 w-5 opacity-50 shrink-0" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-full p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search positions..." />
-          <CommandEmpty>No position found.</CommandEmpty>
-          <CommandGroup className="max-h-64 overflow-auto">
+      <PopoverContent 
+        className="w-[var(--radix-popover-trigger-width)] p-0 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 shadow-lg rounded-lg" 
+        align="start"
+      >
+        <Command className="bg-white dark:bg-gray-800">
+          <CommandInput 
+            placeholder="Search positions..." 
+            className="text-gray-900 dark:text-white border-b border-gray-200 dark:border-gray-700 focus:border-blue-500"
+          />
+          <CommandEmpty className="text-gray-500 dark:text-gray-400 py-4 text-sm">No position found.</CommandEmpty>
+          <CommandGroup className="max-h-64 overflow-auto p-1">
             {options.map((option) => (
               <CommandItem
                 key={option.value}
                 onSelect={() => handleToggle(option.value)}
+                className="text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-700 focus:bg-gray-100 dark:focus:bg-gray-700 cursor-pointer rounded-md"
               >
                 <Check
                   className={cn(
-                    "mr-2 h-4 w-4",
+                    "mr-2 h-4 w-4 text-blue-600 dark:text-blue-400",
                     selected.includes(option.value) ? "opacity-100" : "opacity-0"
                   )}
                 />
-                {option.label}
+                <span className="text-sm">{option.label}</span>
               </CommandItem>
             ))}
           </CommandGroup>

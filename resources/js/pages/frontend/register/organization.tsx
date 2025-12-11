@@ -28,8 +28,6 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
-import { c } from "node_modules/framer-motion/dist/types.d-Cjd591yU"
 
 // Types
 interface EINLookupResponse {
@@ -326,7 +324,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
   setIsManualEntry(false)
 
   try {
-    const response = await fetch(route("register.organization.lookup-ein"), {
+    const response = await fetch("/register/organization/lookup-ein", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -484,7 +482,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
         }
       })
 
-      const response = await fetch(route("register.organization.store"), {
+      const response = await fetch("/register/organization", {
         method: "POST",
         headers: {
           "Accept": "application/json",
@@ -555,16 +553,30 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
   if (registrationSuccess || step === 5) {
     return (
       <FrontendLayout>
-        <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 flex items-center justify-center py-12">
-          <div className="container mx-auto px-4">
+        <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
+          {/* Background Image Overlay */}
+          <div 
+            className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+            style={{
+              backgroundImage: 'url(/images/believe-hero.png)'
+            }}
+          >
+            {/* Dark overlay for better content readability */}
+            <div className="absolute inset-0 bg-purple-900/70 dark:bg-purple-900/80"></div>
+          </div>
+
+          {/* Subtle Pattern Overlay */}
+          <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-12 sm:py-16 md:py-20">
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.6 }}
               className="max-w-md mx-auto"
             >
-              <Card className="border-0 shadow-xl bg-white dark:bg-gray-800 text-center">
-                <CardContent className="pt-8 pb-8">
+              <Card className="border-0 shadow-2xl bg-white/95 dark:bg-gray-800/95 backdrop-blur-md overflow-hidden text-center">
+                <CardContent className="p-6 sm:p-8">
                   <div className="w-16 h-16 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center mx-auto mb-6">
                     <CheckCircle className="h-8 w-8 text-green-600" />
                   </div>
@@ -584,14 +596,14 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                   </Alert>
 
                   <div className="space-y-3">
-                    <Link href={route("login")}>
-                      <Button className="w-full bg-green-600 hover:bg-green-700">Go to Sign In</Button>
+                    <Link href="/login">
+                      <Button className="w-full h-12 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300">Go to Sign In</Button>
                     </Link>
                   </div>
 
                   <p className="text-sm text-gray-500 dark:text-gray-400 mt-4">
                     Questions about your registration?{" "}
-                    <Link href={route("contact")} className="text-blue-600 hover:underline">
+                    <Link href="/contact" className="text-blue-600 hover:underline">
                       Contact our support team
                     </Link>
                   </p>
@@ -606,8 +618,22 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gradient-to-br from-green-50 via-white to-blue-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12">
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
+        {/* Background Image Overlay */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
+          style={{
+            backgroundImage: 'url(/images/believe-hero.png)'
+          }}
+        >
+          {/* Dark overlay for better content readability */}
+          <div className="absolute inset-0 bg-purple-900/70 dark:bg-purple-900/80"></div>
+        </div>
+
+        {/* Subtle Pattern Overlay */}
+        <div className="absolute inset-0 bg-grid-pattern opacity-5"></div>
+
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10 py-12 sm:py-16 md:py-20">
           <motion.div
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -616,28 +642,12 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
           >
             {/* Back Button */}
             <Link
-              href={route("register", { ref: referralCode })}
-              className="inline-flex items-center text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200 mb-6 transition-colors"
+              href={referralCode ? `/register?ref=${referralCode}` : "/register"}
+              className="inline-flex items-center text-white/90 hover:text-white mb-6 transition-colors"
             >
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to registration options
             </Link>
-
-            {/* Logo */}
-            <div className="text-center mb-8">
-              <Link href={route("home")} className="inline-flex items-center space-x-2">
-                <div className="bg-gradient-to-r from-green-600 to-blue-600 p-3 rounded-xl shadow-lg">
-                 <img
-                    src="/favicon-96x96.png"
-                    alt="Believe In Unity Logo"
-                    className="h-12 w-12 object-contain filter brightness-0 invert sepia hue-rotate-60"
-                    />
-                </div>
-                <span className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
-                  {import.meta.env.VITE_APP_NAME || 'Believe In Unity'}
-                </span>
-              </Link>
-            </div>
 
             {/* Progress Indicator */}
             <div className="mb-8">
@@ -647,18 +657,20 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                     <button
                       onClick={() => goToStep(stepNumber)}
                       disabled={stepNumber > step && !validateStep(step)}
-                      className={`w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center font-semibold text-sm transition-all duration-200 ${step >= stepNumber
-                          ? "bg-gradient-to-r from-green-600 to-blue-600 text-white shadow-lg"
-                          : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-300 dark:hover:bg-gray-600"
+                      className={`w-10 h-10 sm:w-12 sm:h-12 rounded-full flex items-center justify-center font-semibold text-sm transition-all duration-200 border-2 ${
+                        step >= stepNumber
+                          ? "bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg border-green-400"
+                          : "bg-white/10 dark:bg-gray-700/50 text-white/70 dark:text-gray-400 border-white/20 dark:border-gray-600 hover:bg-white/20 dark:hover:bg-gray-600"
                         } ${stepNumber <= step ? "cursor-pointer" : "cursor-not-allowed"}`}
                     >
-                      {step > stepNumber ? <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5" /> : stepNumber}
+                      {step > stepNumber ? <CheckCircle className="h-5 w-5 sm:h-6 sm:w-6" /> : stepNumber}
                     </button>
                     {stepNumber < 4 && (
                       <div
-                        className={`w-8 sm:w-16 h-0.5 sm:h-1 mx-1 sm:mx-2 transition-all duration-200 ${step > stepNumber
-                            ? "bg-gradient-to-r from-green-600 to-blue-600"
-                            : "bg-gray-200 dark:bg-gray-700"
+                        className={`w-8 sm:w-16 h-1 mx-1 sm:mx-2 transition-all duration-200 rounded-full ${
+                          step > stepNumber
+                            ? "bg-gradient-to-r from-green-500 to-green-600"
+                            : "bg-white/20 dark:bg-gray-700/50"
                           }`}
                       />
                     )}
@@ -667,7 +679,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
               </div>
 
               <div className="flex justify-center mt-3 sm:mt-4">
-                <span className="text-xs sm:text-sm text-gray-600 dark:text-gray-400 text-center px-4">
+                <span className="text-xs sm:text-sm text-white/90 dark:text-white/80 text-center px-4">
                   Step {step} of 4:{" "}
                   {step === 1
                     ? "EIN Verification"
@@ -680,21 +692,28 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
               </div>
             </div>
 
-            <Card className="border-0 shadow-2xl bg-white dark:bg-gray-800 mx-2 sm:mx-0">
-              <CardHeader className="text-center px-4 sm:px-6">
-                <CardTitle className="text-xl sm:text-2xl flex items-center justify-center flex-wrap">
-                  <Building2 className="mr-2 sm:mr-3 h-5 w-5 sm:h-6 sm:w-6 text-green-600" />
-                  <span className="text-center">Register Your Organization</span>
-                </CardTitle>
-                <CardDescription className="text-sm sm:text-base mt-2">
-                  {step === 1 && "Enter your EIN to verify your organization with the IRS"}
-                  {step === 2 && "Review your organization details"}
-                  {step === 3 && "Provide contact information and create account"}
-                  {step === 4 && "Complete your registration"}
-                </CardDescription>
-              </CardHeader>
+            <Card className="border-0 shadow-2xl bg-white/95 dark:bg-gray-800/95 backdrop-blur-md overflow-hidden">
+              {/* Gradient Header */}
+              <div className="bg-gradient-to-br from-green-500 to-green-600 dark:from-green-600 dark:to-green-700 p-4 sm:p-5">
+                <div className="flex flex-col items-center text-center">
+                  <div className="mx-auto bg-white rounded-xl w-16 h-16 sm:w-20 sm:h-20 flex items-center justify-center mb-2 shadow-lg p-2.5">
+                    <img
+                      src="/favicon-96x96.png"
+                      alt="Believe In Unity Logo"
+                      className="h-full w-full object-contain"
+                    />
+                  </div>
+                  <CardTitle className="text-xl sm:text-2xl font-bold text-white mb-1">Register Your Organization</CardTitle>
+                  <CardDescription className="text-sm text-white/90 max-w-sm">
+                    {step === 1 && "Enter your EIN to verify your organization with the IRS"}
+                    {step === 2 && "Review your organization details"}
+                    {step === 3 && "Provide contact information and create account"}
+                    {step === 4 && "Complete your registration"}
+                  </CardDescription>
+                </div>
+              </div>
 
-              <CardContent className="space-y-6 sm:space-y-8 px-4 sm:px-6">
+              <CardContent className="p-6 sm:p-8 space-y-6">
                 {/* General Error Alert */}
                 {errors.general && (
                   <Alert className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950">
@@ -763,7 +782,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                       <Button
                         onClick={handleEINLookup}
                         disabled={isLoading || !validateStep(1)}
-                        className="w-full mt-6 h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                        className="w-full mt-6 h-12 sm:h-14 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none disabled:hover:scale-100"
                       >
                         {isLoading ? (
                           <>
@@ -1001,7 +1020,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                           setLookupStatus('idle')
                         }}
                         variant="outline"
-                        className="w-full sm:flex-1 order-2 sm:order-1"
+                        className="w-full sm:flex-1 h-12 sm:h-14 order-2 sm:order-1"
                       >
                         Back to EIN
                       </Button>
@@ -1009,7 +1028,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                         <Button
                           onClick={() => setStep(3)}
                           disabled={!validateStep(2)}
-                          className="w-full bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50"
+                          className="w-full h-12 sm:h-14 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:transform-none"
                         >
                           Continue
                         </Button>
@@ -1231,14 +1250,14 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                       <Button
                         onClick={() => setStep(2)}
                         variant="outline"
-                        className="w-full sm:flex-1 order-2 sm:order-1"
+                        className="w-full sm:flex-1 h-12 sm:h-14 order-2 sm:order-1"
                       >
                         Back
                       </Button>
                       <Button
                         onClick={() => setStep(4)}
                         disabled={!validateStep(3)}
-                        className="w-full sm:flex-1 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 order-1 sm:order-2 disabled:opacity-50"
+                        className="w-full sm:flex-1 h-12 sm:h-14 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 order-1 sm:order-2 disabled:opacity-50 disabled:transform-none"
                       >
                         Continue
                       </Button>
@@ -1337,13 +1356,13 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
                       <Button
                         onClick={() => setStep(3)}
                         variant="outline"
-                        className="w-full sm:flex-1 order-2 sm:order-1"
+                        className="w-full sm:flex-1 h-12 sm:h-14 order-2 sm:order-1"
                       >
                         Back
                       </Button>
                       <Button
                         onClick={handleFinalSubmit}
-                        className="w-full sm:flex-1 h-12 bg-gradient-to-r from-green-600 to-blue-600 hover:from-green-700 hover:to-blue-700 disabled:opacity-50"
+                        className="w-full sm:flex-1 h-12 sm:h-14 bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white font-bold text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-[1.02] transition-all duration-300 disabled:opacity-50 disabled:transform-none"
                         disabled={!validateStep(4) || isLoading}
                       >
                         {isLoading ? (

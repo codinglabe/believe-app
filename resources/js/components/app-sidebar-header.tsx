@@ -39,13 +39,14 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
         // Sidebar context not available, will use CSS fallback
     }
 
-    // Check wallet connection status and fetch balance
+    // Fetch organization balance directly (no wallet connection checks)
     useEffect(() => {
-        const checkWalletStatus = async () => {
+        const fetchOrganizationBalance = async () => {
             if (!isOrgUser) return;
             
             try {
-                const response = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+                // Fetch organization balance directly
+                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -56,43 +57,23 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     cache: 'no-cache',
                 });
                 
-                if (response.ok) {
-                    const data = await response.json();
-                    // For organization users, always fetch balance (they're always "connected" using org balance)
-                    if (data.success && (data.connected || data.source === 'organization')) {
-                        setWalletConnected(true);
-                        // Fetch balance (will be organization balance for org users)
-                        const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-cache',
-                        });
-                        
-                        if (balanceResponse.ok) {
-                            const balanceData = await balanceResponse.json();
-                            if (balanceData.success) {
-                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
-                            }
-                        }
-                    } else {
-                        setWalletConnected(false);
-                        setWalletBalance(null);
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json();
+                    if (balanceData.success) {
+                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
+                        setWalletConnected(true); // Always connected for organization users
                     }
                 }
             } catch (error) {
-                console.error('Failed to check wallet status:', error);
+                console.error('Failed to fetch organization balance:', error);
+                setWalletBalance(0);
             }
         };
         
-        checkWalletStatus();
+        fetchOrganizationBalance();
         
         // Refresh balance every 30 seconds
-        const interval = setInterval(checkWalletStatus, 30000);
+        const interval = setInterval(fetchOrganizationBalance, 30000);
         return () => clearInterval(interval);
     }, [isOrgUser]);
 

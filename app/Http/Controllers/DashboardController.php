@@ -189,10 +189,7 @@ class DashboardController extends Controller
                 ->take(10)
                 ->values();
 
-            // Get all active promotional banners for carousel
-            $promotionalBanners = PromotionalBanner::getActiveBanners();
-            $promotionalBanner = $promotionalBanners->first(); // For backward compatibility
-
+            // Promotional banners are only shown for organization users, not admins
             return Inertia::render('dashboard', [
                 'isAdmin' => true,
                 'stats' => $stats,
@@ -201,50 +198,8 @@ class DashboardController extends Controller
                 'paymentStats' => $paymentStats,
                 'recentTransactions' => $recentTransactions,
                 'monthlyRevenue' => $monthlyRevenue,
-                'promotionalBanner' => $promotionalBanner ? (function() use ($promotionalBanner) {
-                    $imageUrl = $promotionalBanner->image_url;
-                    // Convert path to full URL if needed
-                    if ($imageUrl) {
-                        $baseUrl = \Illuminate\Support\Facades\Storage::disk('public')->url('');
-                        if (strpos($imageUrl, $baseUrl) !== 0) {
-                            // It's a path, convert to full URL
-                            $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
-                        }
-                    }
-                    return [
-                        'id' => $promotionalBanner->id,
-                        'title' => $promotionalBanner->title,
-                        'type' => $promotionalBanner->type,
-                        'image_url' => $imageUrl,
-                        'text_content' => $promotionalBanner->text_content,
-                        'external_link' => $promotionalBanner->external_link,
-                        'background_color' => $promotionalBanner->background_color,
-                        'text_color' => $promotionalBanner->text_color,
-                        'description' => $promotionalBanner->description,
-                    ];
-                })() : null,
-                'promotionalBanners' => $promotionalBanners->map(function ($banner) {
-                    $imageUrl = $banner->image_url;
-                    // Convert path to full URL if needed
-                    if ($imageUrl) {
-                        $baseUrl = \Illuminate\Support\Facades\Storage::disk('public')->url('');
-                        if (strpos($imageUrl, $baseUrl) !== 0) {
-                            // It's a path, convert to full URL
-                            $imageUrl = \Illuminate\Support\Facades\Storage::disk('public')->url($imageUrl);
-                        }
-                    }
-                    return [
-                        'id' => $banner->id,
-                        'title' => $banner->title,
-                        'type' => $banner->type,
-                        'image_url' => $imageUrl,
-                        'text_content' => $banner->text_content,
-                        'external_link' => $banner->external_link,
-                        'background_color' => $banner->background_color,
-                        'text_color' => $banner->text_color,
-                        'description' => $banner->description,
-                    ];
-                })->toArray(),
+                'promotionalBanner' => null,
+                'promotionalBanners' => null,
             ]);
         }
 

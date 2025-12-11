@@ -220,10 +220,7 @@ const AdminDashboard = ({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Admin Dashboard" />
       <div className="m-3 md:m-6 space-y-6">
-        {/* Promotional Banner */}
-        {(promotionalBanners || promotionalBanner) && (
-          <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
-        )}
+        {/* Promotional Banner - Only shown for organization users, not admins */}
         {/* Header */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
@@ -1095,8 +1092,8 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
-        {/* Promotional Banner */}
-        {(promotionalBanners || promotionalBanner) && (
+        {/* Promotional Banner - Only shown for organization users */}
+        {isOrgUser && (promotionalBanners || promotionalBanner) && (
           <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />
         )}
         {/* <div className="bg-card border-border rounded-lg border p-6 shadow-sm">

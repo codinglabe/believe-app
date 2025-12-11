@@ -290,6 +290,9 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
         Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
         Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
         Route::get('/status', [WalletController::class, 'status'])->name('status');
+        Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
+        Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
+        Route::post('/send', [WalletController::class, 'send'])->name('send');
         Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
 
         // User Rewards Routes

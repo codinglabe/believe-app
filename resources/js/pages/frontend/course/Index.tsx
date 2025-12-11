@@ -2,7 +2,7 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, Search, X, Loader2, BookOpen, Users, Clock, Calendar, Globe, MapPin, Star, Award } from "lucide-react"
+import { Heart, Search, X, Loader2, BookOpen, Users, Clock, Calendar, Globe, MapPin, Star, Award, Filter, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter } from "@/components/frontend/ui/card"
 import { Input } from "@/components/ui/input"
@@ -280,9 +280,9 @@ export default function FrontendCoursesListPage({
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}
-        <section className="bg-gradient-to-br from-blue-600 to-green-600 py-12 sm:py-16 md:py-20">
+        <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -290,94 +290,103 @@ export default function FrontendCoursesListPage({
               transition={{ duration: 0.8 }}
               className="text-center max-w-4xl mx-auto"
             >
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold mb-4 sm:mb-6 text-white flex flex-col sm:flex-row items-center justify-center gap-2 sm:gap-4">
-                <Heart className="w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 lg:w-16 lg:h-16 text-red-300" />
-                <span>Courses & Events</span>
+              <div className="inline-flex items-center justify-center mb-4">
+                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl shadow-lg">
+                  <BookOpen className="h-8 w-8 sm:h-10 sm:w-10 text-white" />
+                </div>
+              </div>
+              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
+                Courses & Events
               </h1>
-              <p className="text-base sm:text-lg md:text-xl mb-6 sm:mb-8 opacity-90 text-white px-4 sm:px-0">
+              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto mb-8">
                 Discover courses and events that make a difference. Learn new skills while contributing to your community's growth
                 and development.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 sm:gap-6 md:gap-8 max-w-3xl mx-auto px-4 sm:px-0">
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold mb-2 text-white">{initialCourses.total}+</div>
-                  <div className="opacity-90 text-blue-100 text-sm sm:text-base">Courses & Events</div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-3xl mx-auto mt-8">
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">{initialCourses.total}+</div>
+                  <div className="text-sm sm:text-base text-white/90">Courses & Events</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold mb-2 text-white">5,000+</div>
-                  <div className="opacity-90 text-blue-100 text-sm sm:text-base">Students Enrolled</div>
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">5,000+</div>
+                  <div className="text-sm sm:text-base text-white/90">Students Enrolled</div>
                 </div>
-                <div className="text-center">
-                  <div className="text-2xl sm:text-3xl font-bold mb-2 text-white">200+</div>
-                  <div className="opacity-90 text-blue-100 text-sm sm:text-base">Organizations</div>
+                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
+                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">200+</div>
+                  <div className="text-sm sm:text-base text-white/90">Organizations</div>
                 </div>
               </div>
             </motion.div>
           </div>
         </section>
 
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 md:py-12">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
           {/* Search and Filter Section */}
           <motion.section
             initial={{ opacity: 0, y: 30 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.1 }}
-            className="mb-6 sm:mb-8"
+            className="mb-8"
           >
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-4 sm:p-6 border border-gray-200 dark:border-gray-700">
+            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-lg p-6 sm:p-8 border border-gray-200 dark:border-gray-700">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-lg font-bold text-gray-900 dark:text-white">Search & Filter</h2>
+                {hasActiveFilters && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={clearFilters}
+                    className="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 text-sm font-medium"
+                  >
+                    <X className="h-4 w-4 mr-1" />
+                    Clear all
+                  </Button>
+                )}
+              </div>
               <div className="space-y-4" ref={searchContainerRef}>
                 {/* Search Bar */}
                 <div className="relative">
-                  <Search className="absolute left-3 sm:left-4 top-1/2 transform -translate-y-1/2 text-gray-500 w-4 h-4 sm:w-5 sm:h-5" />
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
                   <Input
                     type="text"
                     placeholder="Search courses, events, topics, organizations..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onFocus={() => setIsSearchFocused(true)}
-                    className="w-full pl-10 sm:pl-12 pr-10 sm:pr-12 py-2 sm:py-3 text-base sm:text-lg rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                    className="w-full pl-12 pr-12 h-12 sm:h-14 rounded-lg border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
                   />
                   {searchQuery && (
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => setSearchQuery("")}
-                      className="absolute right-2 sm:right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:bg-transparent w-8 h-8 sm:w-10 sm:h-10"
+                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:bg-transparent"
                     >
-                      <X className="h-4 w-4 sm:h-5 sm:w-5" />
+                      <X className="h-4 w-4" />
                     </Button>
                   )}
                   {isSearching && (
-                    <div className="absolute right-10 sm:right-12 top-1/2 transform -translate-y-1/2">
-                      <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin text-blue-500" />
+                    <div className="absolute right-12 top-1/2 transform -translate-y-1/2">
+                      <Loader2 className="h-5 w-5 animate-spin text-purple-600" />
                     </div>
                   )}
                 </div>
 
                 {/* Filter Toggle */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-0">
+                <div className="flex items-center gap-3">
                   <Button
                     variant="outline"
                     onClick={() => setShowFilters(!showFilters)}
-                    className="flex items-center gap-2 w-full sm:w-auto justify-center sm:justify-start"
+                    className="flex items-center gap-2 h-12 border-gray-300 dark:border-gray-600"
                   >
+                    <Filter className="h-4 w-4" />
                     Filters
                     {hasActiveFilters && (
-                      <Badge variant="secondary" className="ml-2">
+                      <Badge variant="secondary" className="ml-1 bg-purple-600 text-white">
                         Active
                       </Badge>
                     )}
                   </Button>
-
-                  {hasActiveFilters && (
-                    <Button
-                      variant="ghost"
-                      onClick={clearFilters}
-                      className="text-blue-600 hover:text-blue-700 w-full sm:w-auto text-sm"
-                    >
-                      Clear all filters
-                    </Button>
-                  )}
                 </div>
 
                 {/* Expandable Filters */}
@@ -388,15 +397,15 @@ export default function FrontendCoursesListPage({
                       animate={{ opacity: 1, height: "auto" }}
                       exit={{ opacity: 0, height: 0 }}
                       transition={{ duration: 0.3 }}
-                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
+                      className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 pt-4 border-t border-gray-200 dark:border-gray-600"
                     >
-                      {/* Type Filter - First */}
+                      {/* Type Filter */}
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Type</Label>
+                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Type</Label>
                         <select
                           value={selectedType}
                           onChange={(e) => setSelectedType(e.target.value)}
-                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         >
                           <option value="all">All Types</option>
                           <option value="course">Course</option>
@@ -407,11 +416,11 @@ export default function FrontendCoursesListPage({
                       {/* Topic/Event Type Filter - Dynamic */}
                       {selectedType === "event" ? (
                         <div>
-                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Event Type</Label>
+                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Event Type</Label>
                           <select
                             value={selectedEventTypeId || ""}
                             onChange={(e) => setSelectedEventTypeId(e.target.value ? Number.parseInt(e.target.value) : null)}
-                            className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                            className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                           >
                             <option value="">All Event Types</option>
                             {eventTypes.map((eventType) => (
@@ -423,28 +432,28 @@ export default function FrontendCoursesListPage({
                         </div>
                       ) : (
                         <div>
-                          <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Course Topic</Label>
+                          <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Course Topic</Label>
                           <select
                             value={selectedTopicId || ""}
                             onChange={(e) => setSelectedTopicId(e.target.value ? Number.parseInt(e.target.value) : null)}
-                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
-                        >
-                          <option value="">All Topics</option>
-                          {topics.map((topic) => (
-                            <option key={topic.id} value={topic.id}>
-                              {topic.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                            className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                          >
+                            <option value="">All Topics</option>
+                            {topics.map((topic) => (
+                              <option key={topic.id} value={topic.id}>
+                                {topic.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       )}
 
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">Organization</Label>
+                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">Organization</Label>
                         <select
                           value={selectedOrganization || ""}
                           onChange={(e) => setSelectedOrganization(e.target.value ? e.target.value : null)}
-                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         >
                           <option value="">All Organizations</option>
                           {organizations.map((organization) => (
@@ -457,34 +466,34 @@ export default function FrontendCoursesListPage({
 
                       {/* Format Filter */}
                       <div>
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">
                           Format
                         </Label>
                         <select
                           value={selectedFormat}
                           onChange={(e) => setSelectedFormat(e.target.value)}
-                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         >
                           <option value="all">All Formats</option>
-                          <option value="online">💻 Online</option>
-                          <option value="in_person">🏢 In-Person</option>
-                          <option value="hybrid">🔄 Hybrid</option>
+                          <option value="online">Online</option>
+                          <option value="in_person">In-Person</option>
+                          <option value="hybrid">Hybrid</option>
                         </select>
                       </div>
 
                       {/* Pricing Filter */}
-                      <div className="sm:col-span-2 lg:col-span-1">
-                        <Label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                      <div>
+                        <Label className="text-sm font-semibold text-gray-900 dark:text-white mb-2 block">
                           Pricing
                         </Label>
                         <select
                           value={selectedPricing}
                           onChange={(e) => setSelectedPricing(e.target.value)}
-                          className="w-full px-3 py-2 text-sm sm:text-base border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-blue-500 focus:border-blue-500"
+                          className="w-full px-3 py-2.5 h-12 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                         >
                           <option value="all">All Pricing</option>
-                          <option value="free">🆓 Free</option>
-                          <option value="paid">💰 Paid</option>
+                          <option value="free">Free</option>
+                          <option value="paid">Paid</option>
                         </select>
                       </div>
                     </motion.div>
@@ -495,70 +504,69 @@ export default function FrontendCoursesListPage({
           </motion.section>
 
           {/* Results Info */}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 sm:gap-4 mb-6 sm:mb-8">
-            <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}>
-              <p className="text-gray-600 dark:text-gray-400 text-base sm:text-lg">
-                Showing {initialCourses.from}-{initialCourses.to} of {initialCourses.total} courses & events
-              </p>
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+            <div>
+              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">
+                Courses & Events {initialCourses.total > 0 && <span className="text-purple-600 dark:text-purple-400">({initialCourses.total})</span>}
+              </h2>
               {hasActiveFilters && (
-                <p className="text-xs sm:text-sm text-blue-600 dark:text-blue-400">
+                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                   Filtered results •{" "}
-                  <button onClick={clearFilters} className="underline">
+                  <button onClick={clearFilters} className="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 underline font-medium">
                     Show all
                   </button>
                 </p>
               )}
-            </motion.div>
-            <div className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              Page {initialCourses.current_page} of {initialCourses.last_page}
+            </div>
+            <div className="text-sm text-gray-600 dark:text-gray-400 font-medium">
+              Showing {initialCourses.from}-{initialCourses.to} of {initialCourses.total}
             </div>
           </div>
 
           {/* Courses Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
             {initialCourses.data.map((course, index) => (
               <motion.div
                 key={course.id}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: index * 0.1 }}
-                whileHover={{ y: -5 }}
                 className="group"
               >
-                <Card className="h-full hover:shadow-xl transition-all duration-300 border-0 shadow-md overflow-hidden">
+                <Card className="h-full bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:shadow-xl transition-all duration-300 overflow-hidden hover:border-purple-300 dark:hover:border-purple-600">
                   {/* Course Image */}
                   <div className="relative overflow-hidden">
                     <img
                       src={course.image_url || "/placeholder.svg?height=200&width=300&query=community course"}
                       alt={course.name}
-                      className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
+                      className="w-full h-56 object-cover group-hover:scale-110 transition-transform duration-500"
                     />
-                    <div className="absolute top-4 left-4">
-                      <Badge variant={course.pricing_type === "free" ? "secondary" : "default"}>
+                    <div className="absolute top-3 left-3">
+                      <Badge className={course.pricing_type === "free" ? "bg-green-500 text-white shadow-md" : "bg-purple-600 text-white shadow-md"}>
                         {course.formatted_price}
                       </Badge>
                     </div>
-                    <div className="absolute top-4 right-4">
-                      <Badge className={getFormatColor(course.format)}>
+                    <div className="absolute top-3 right-3">
+                      <Badge className={`${getFormatColor(course.format)} shadow-md backdrop-blur-sm`}>
                         <span className="flex items-center gap-1">
                           {getFormatIcon(course.format)}
                           {course.format.replace("_", " ")}
                         </span>
                       </Badge>
                     </div>
-                    <div className="absolute bottom-4 right-4">
-                      <Badge className={course.type === "course" ? "bg-blue-600 text-white" : "bg-purple-600 text-white"}>
+                    <div className="absolute bottom-3 right-3">
+                      <Badge className={course.type === "course" ? "bg-blue-600 text-white shadow-md" : "bg-purple-600 text-white shadow-md"}>
                         {course.type === "course" ? "Course" : "Event"}
                       </Badge>
                     </div>
                   </div>
 
-                  <CardContent className="pb-3 space-y-4">
+                  <CardContent className="p-5 sm:p-6 space-y-4">
                     <div>
-                      <h3 className="font-semibold text-lg text-slate-900 dark:text-white line-clamp-2 mb-2">
+                      <h3 className="font-bold text-lg text-gray-900 dark:text-white line-clamp-2 mb-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                         {course.name}
                       </h3>
-                      <CardDescription className="line-clamp-2 text-sm">{parse(course.description)}</CardDescription>
+                      <CardDescription className="line-clamp-3 text-sm text-gray-600 dark:text-gray-300 min-h-[3.75rem]">{parse(course.description)}</CardDescription>
                     </div>
 
                     <div className="flex justify-between items-start mb-2">
@@ -575,54 +583,54 @@ export default function FrontendCoursesListPage({
                     </div>
 
                     {/* Target Audience */}
-                    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-                      <Users className="w-4 h-4" />
+                    <div className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 pb-3 border-b border-gray-100 dark:border-gray-700">
+                      <Users className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                       <span className="truncate">{course.target_audience}</span>
                     </div>
 
                     {/* Organization */}
-                    <div className="flex items-center gap-3">
-                      <Avatar className="w-8 h-8">
+                    <div className="flex items-center gap-3 pb-3 border-b border-gray-100 dark:border-gray-700">
+                      <Avatar className="w-8 h-8 border-2 border-purple-200 dark:border-purple-800">
                         <AvatarImage src={`/placeholder.svg?height=32&width=32&query=${course.organization.name}`} />
-                        <AvatarFallback className="text-xs">
+                        <AvatarFallback className="text-xs bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200">
                           {course.organization.name}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
                           {course?.organization_name ? course?.organization_name:course?.organization.name}
                         </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{course?.creator?.role}</p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">{course?.creator?.role}</p>
                       </div>
                     </div>
 
                     {/* Course Stats */}
-                    <div className="grid grid-cols-2 gap-4 text-sm">
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Users className="w-4 h-4" />
+                    <div className="grid grid-cols-2 gap-3 text-sm pb-3 border-b border-gray-100 dark:border-gray-700">
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Users className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                         <span>
                           {course.enrolled}/{course.max_participants}
                         </span>
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Calendar className="w-4 h-4" />
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Calendar className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                         <span>{new Date(course.start_date).toLocaleDateString()}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Clock className="w-4 h-4" />
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                         <span>{course.start_time}</span>
                       </div>
-                      <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                        <Globe className="w-4 h-4" />
+                      <div className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                        <Globe className="w-4 h-4 text-purple-600 dark:text-purple-400 flex-shrink-0" />
                         <span>{course.language}</span>
                       </div>
                     </div>
 
                     {/* Enrollment Progress */}
-                    <div className="space-y-2">
+                    <div className="space-y-2 pb-3 border-b border-gray-100 dark:border-gray-700">
                       <div className="flex justify-between text-sm">
-                        <span className="text-slate-600 dark:text-slate-400">Enrollment</span>
-                        <span className="text-slate-900 dark:text-white font-medium">
+                        <span className="text-gray-600 dark:text-gray-400 font-medium">Enrollment</span>
+                        <span className="text-gray-900 dark:text-white font-bold text-purple-600 dark:text-purple-400">
                           {course.max_participants > 0 
                             ? Math.round((course.enrolled / course.max_participants) * 100)
                             : 0}%
@@ -663,19 +671,19 @@ export default function FrontendCoursesListPage({
                     </div>
                   </CardContent>
 
-                  <CardFooter className="pt-0">
-                    <div className="flex justify-between items-center w-full">
+                  <CardFooter className="pt-0 pb-5">
+                    <div className="flex justify-between items-center w-full gap-3">
                       <div className="flex items-center gap-1">
                         {course.pricing_type === "free" ? (
-                          <span className="text-2xl font-bold text-green-600">Free</span>
+                          <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">Free</span>
                         ) : (
-                          <>
-                            <span className="text-2xl font-bold text-green-600">${course.course_fee}</span>
-                          </>
+                          <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">${course.course_fee}</span>
                         )}
                       </div>
-                      <Link href={`/courses/${course.slug}`}>
-                        <Button className="bg-primary hover:bg-primary/90">View Details</Button>
+                      <Link href={`/courses/${course.slug}`} className="flex-1">
+                        <Button className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-semibold shadow-md hover:shadow-lg transition-all duration-300">
+                          View Details
+                        </Button>
                       </Link>
                     </div>
                   </CardFooter>
@@ -686,93 +694,94 @@ export default function FrontendCoursesListPage({
 
           {/* No Results */}
           {initialCourses.data.length === 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-center py-12 sm:py-16 px-4">
-              <BookOpen className="w-16 h-16 sm:w-20 sm:h-20 text-gray-400 mx-auto mb-4 sm:mb-6" />
-              <h3 className="text-xl sm:text-2xl font-medium text-gray-900 dark:text-white mb-3 sm:mb-4">
+            <div className="text-center py-16 sm:py-20">
+              <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
+                <BookOpen className="h-10 w-10 text-gray-400" />
+              </div>
+              <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
                 No courses found
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4 sm:mb-6 text-sm sm:text-base max-w-md mx-auto">
+              <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
                 Try adjusting your search or filter criteria to find the perfect course for you.
               </p>
-              <Button onClick={clearFilters} variant="outline" className="w-full sm:w-auto bg-transparent">
-                Clear all filters
-              </Button>
-            </motion.div>
+              {hasActiveFilters && (
+                <Button onClick={clearFilters} variant="outline" className="border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20 h-11 px-6">
+                  Clear all filters
+                </Button>
+              )}
+            </div>
           )}
 
           {/* Pagination */}
           {initialCourses.last_page > 1 && (
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: 0.3 }}
-              className="flex flex-col items-center space-y-4 sm:space-y-6"
-            >
-              {/* Page Info */}
-              <div className="text-center">
-                <p className="text-gray-600 dark:text-gray-400 text-sm sm:text-base">
-                  Page {initialCourses.current_page} of {initialCourses.last_page} • {initialCourses.total} total
-                  courses
-                </p>
-              </div>
-
-              {/* Pagination Controls */}
-              <div className="flex flex-wrap justify-center gap-1 sm:gap-2 px-4">
-                {Array.from(
-                  { length: Math.min(initialCourses.last_page, window.innerWidth < 640 ? 5 : 10) },
-                  (_, i) => {
-                    let pageNum
-                    const maxPages = window.innerWidth < 640 ? 5 : 10
-                    if (initialCourses.last_page <= maxPages) {
-                      pageNum = i + 1
-                    } else {
-                      if (initialCourses.current_page <= Math.floor(maxPages / 2)) {
-                        pageNum = i + 1
-                      } else if (initialCourses.current_page >= initialCourses.last_page - Math.floor(maxPages / 2)) {
-                        pageNum = initialCourses.last_page - maxPages + 1 + i
-                      } else {
-                        pageNum = initialCourses.current_page - Math.floor(maxPages / 2) + i
-                      }
-                    }
-
-                    return (
-                      <Button
-                        key={pageNum}
-                        variant={initialCourses.current_page === pageNum ? "default" : "outline"}
-                        size="sm"
-                        onClick={() => handlePageChange(pageNum)}
-                        className={`w-8 h-8 sm:w-10 sm:h-10 md:w-12 md:h-12 rounded-full text-xs sm:text-sm ${initialCourses.current_page === pageNum
-                          ? "bg-blue-600 hover:bg-blue-700 text-white shadow-lg"
-                          : "hover:bg-blue-50 dark:hover:bg-blue-900"
-                          }`}
-                      >
-                        {pageNum}
-                      </Button>
-                    )
-                  },
-                )}
-              </div>
-
-              {/* Navigation Buttons */}
-              <div className="flex gap-2 sm:gap-4 w-full max-w-xs">
+            <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-8 mt-8 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
                   onClick={() => handlePageChange(initialCourses.current_page - 1)}
                   disabled={initialCourses.current_page === 1}
-                  className="flex items-center gap-1 sm:gap-2 flex-1 text-xs sm:text-sm"
+                  className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 h-10"
                 >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
                   Previous
                 </Button>
+
+                <div className="flex gap-1 flex-wrap justify-center max-w-full">
+                  {(() => {
+                    const maxVisible = 10;
+                    const pages: number[] = [];
+                    
+                    if (initialCourses.last_page <= maxVisible) {
+                      // Show all pages if total is less than max
+                      for (let i = 1; i <= initialCourses.last_page; i++) {
+                        pages.push(i);
+                      }
+                    } else {
+                      // Show pages around current page
+                      const current = initialCourses.current_page;
+                      const half = Math.floor(maxVisible / 2);
+                      
+                      let start = Math.max(1, current - half);
+                      let end = Math.min(initialCourses.last_page, start + maxVisible - 1);
+                      
+                      // Adjust if we're near the end
+                      if (end - start < maxVisible - 1) {
+                        start = Math.max(1, end - maxVisible + 1);
+                      }
+                      
+                      for (let i = start; i <= end; i++) {
+                        pages.push(i);
+                      }
+                    }
+                    
+                    return pages.map((page) => (
+                      <Button
+                        key={page}
+                        variant={initialCourses.current_page === page ? "default" : "outline"}
+                        onClick={() => handlePageChange(page)}
+                        className={`h-10 min-w-[2.5rem] ${
+                          initialCourses.current_page === page
+                            ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md"
+                            : "bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700"
+                        }`}
+                      >
+                        {page}
+                      </Button>
+                    ));
+                  })()}
+                </div>
+
                 <Button
                   variant="outline"
                   onClick={() => handlePageChange(initialCourses.current_page + 1)}
                   disabled={initialCourses.current_page === initialCourses.last_page}
-                  className="flex items-center gap-1 sm:gap-2 flex-1 text-xs sm:text-sm"
+                  className="bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-700 h-10"
                 >
                   Next
+                  <ChevronRight className="h-4 w-4 ml-1" />
                 </Button>
               </div>
-            </motion.div>
+            </div>
           )}
         </div>
       </div>
