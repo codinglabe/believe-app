@@ -82,6 +82,21 @@ export default function Index({ organization, boardMembers }: Props) {
     return false
   }
 
+  const canDeactivate = (member: BoardMemberType) => {
+    // Cannot deactivate Organization Administrator (admin) by anyone
+    if (member.position === 'Organization Administrator') {
+        return false;
+    }
+
+    // Cannot deactivate themselves
+    if (member.user.id === auth.user.id) {
+      return false
+    }
+
+    // Use canEdit logic for other cases
+    return canEdit(member)
+  }
+
   const activeMembers = boardMembers.filter((member) => member.is_active)
   const inactiveMembers = boardMembers.filter((member) => !member.is_active)
 
@@ -399,7 +414,7 @@ export default function Index({ organization, boardMembers }: Props) {
                       </div>
                     </div>
                     <div className="flex flex-col sm:flex-row gap-2 pt-2">
-                      {canEdit(member) && (
+                      {canDeactivate(member) && (
                         <button
                           onClick={() => updateStatus(member, !member.is_active)}
                           className={`flex-1 sm:flex-none py-2 px-3 text-xs sm:text-sm font-medium rounded-lg transition-colors duration-200 ${
@@ -474,8 +489,8 @@ export default function Index({ organization, boardMembers }: Props) {
                         <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
                           <span
                             className={`inline-flex items-center px-2 sm:px-3 py-1 sm:py-1.5 text-xs font-semibold rounded-lg shadow-sm ${
-                              member.is_active 
-                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800" 
+                              member.is_active
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 border border-green-200 dark:border-green-800"
                                 : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800"
                             }`}
                           >
@@ -509,16 +524,16 @@ export default function Index({ organization, boardMembers }: Props) {
                         </td>
                         <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6 hidden 2xl:table-cell">
                           <span className="text-muted-foreground font-medium text-sm">
-                            {new Date(member.appointed_on).toLocaleDateString('en-US', { 
-                              year: 'numeric', 
-                              month: 'short', 
-                              day: 'numeric' 
+                            {new Date(member.appointed_on).toLocaleDateString('en-US', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric'
                             })}
                           </span>
                         </td>
                         <td className="py-3 sm:py-4 md:py-5 px-3 sm:px-4 md:px-6">
                           <div className="flex items-center justify-end gap-1.5 sm:gap-2 flex-wrap">
-                            {canEdit(member) && (
+                            {canDeactivate(member) && (
                               <button
                                 onClick={() => updateStatus(member, !member.is_active)}
                                 className={`px-2 sm:px-3 md:px-4 py-1.5 sm:py-2 text-xs font-semibold rounded-lg transition-all duration-200 shadow-sm hover:shadow-md transform hover:scale-105 whitespace-nowrap ${

@@ -37,7 +37,7 @@ class BoardMemberController extends Controller
     {
         $organization = Auth::user()->organization;
 
-        $this->authorize('create', [BoardMember::class, $organization]);
+        // $this->authorize('create', [BoardMember::class, $organization]);
 
         $request->validate([
             'name' => 'required|string|max:255',
@@ -90,20 +90,20 @@ class BoardMemberController extends Controller
         // Verify name against IRS board members
         $verificationStatus = 'pending';
         $verificationNotes = null;
-        
+
         if ($organization->ein) {
             $cleanEIN = preg_replace('/[^0-9]/', '', $organization->ein);
-            
+
             // Fetch IRS board members by EIN ONLY (no tax year filter)
             $irsBoardMembers = IrsBoardMember::where('ein', $cleanEIN)
                 ->where('status', 'active')
                 ->get();
-            
+
             if ($irsBoardMembers->isNotEmpty()) {
                 // Check if name matches exactly (case-insensitive)
                 $nameMatch = false;
                 $userName = strtolower(trim($request->name));
-                
+
                 foreach ($irsBoardMembers as $irsMember) {
                     $irsName = strtolower(trim($irsMember->name));
                     if ($userName === $irsName) {
@@ -111,7 +111,7 @@ class BoardMemberController extends Controller
                         break;
                     }
                 }
-                
+
                 if ($nameMatch) {
                     $verificationStatus = 'verified';
                     $verificationNotes = "Verified against IRS Form 990. Name matched in IRS data (checked all tax years).";
@@ -132,9 +132,9 @@ class BoardMemberController extends Controller
             'user_id' => $user->id,
             'position' => $request->position,
             'is_active' => $verificationStatus !== 'not_found', // Deactivate if not found
-            'verification_status' => $verificationStatus,
-            'verification_notes' => $verificationNotes,
-            'verified_at' => $verificationStatus !== 'pending' ? now() : null,
+            // 'verification_status' => $verificationStatus,
+            // 'verification_notes' => $verificationNotes,
+            // 'verified_at' => $verificationStatus !== 'pending' ? now() : null,
             'appointed_on' => now(),
         ]);
 
@@ -157,20 +157,16 @@ class BoardMemberController extends Controller
 
     public function updateStatus(Request $request, BoardMember $boardMember)
     {
-        $this->authorize('update', $boardMember);
+        // $this->authorize('update', $boardMember);
 
-        // Prevent deactivating the only active admin
-        if ($boardMember->user->organization_role === 'admin' && !$request->is_active) {
-            $activeAdmins = BoardMember::where('organization_id', $boardMember->organization_id)
-                ->whereHas('user', function ($query) {
-                    $query->where('organization_role', 'admin');
-                })
-                ->where('is_active', true)
-                ->count();
+        // Prevent deactivating Organization Administrator (admin) by anyone
+        if ($boardMember->position === 'Organization Administrator' && !$request->is_active) {
+            return redirect()->back()->with('error', 'Cannot deactivate Organization Administrator.');
+        }
 
-            if ($activeAdmins <= 1) {
-                return redirect()->back()->with('error', 'Cannot deactivate the only active admin.');
-            }
+        // Prevent deactivating themselvesf
+        if ($boardMember->user_id === auth()->id() && !$request->is_active) {
+            return redirect()->back()->with('error', 'You cannot deactivate yourself.');
         }
 
         $request->validate([

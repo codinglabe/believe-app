@@ -4,18 +4,19 @@ import { useEffect, useState } from "react"
 import { RefreshCw, X, Download } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { isLivestockDomain } from "@/lib/livestock-domain"
+import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase"
+import axios from "axios"
 
 export function PWAUpdatePrompt() {
   const [showUpdate, setShowUpdate] = useState(false)
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null)
   const [isUpdating, setIsUpdating] = useState(false)
 
-  // Don't show PWA update prompt on livestock domain
-  if (isLivestockDomain()) {
-    return null
-  }
-
   useEffect(() => {
+    // Don't show PWA update prompt on livestock domain
+    if (isLivestockDomain()) {
+      return
+    }
     if (!("serviceWorker" in navigator)) return
 
     // Check if user has dismissed this update permanently
@@ -93,8 +94,42 @@ export function PWAUpdatePrompt() {
 
       // Wait for the new service worker to take control
       return new Promise<void>((resolve) => {
-        const handleControllerChange = () => {
-          console.log("[PWA] Controller changed, reloading page")
+        const handleControllerChange = async () => {
+          console.log("[PWA] Controller changed, re-initializing push notifications")
+
+          try {
+            // Re-initialize Firebase messaging after service worker update
+            await initializeMessaging()
+            console.log("[PWA] Firebase messaging re-initialized")
+
+            // Re-register push token if user is logged in
+            const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
+            const userId = windowWithLaravel.Laravel?.user?.id ||
+                          (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
+
+            if (userId) {
+              const fcmToken = await requestNotificationPermission()
+              if (fcmToken) {
+                const deviceInfo = {
+                  device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
+                  device_type: 'web',
+                  device_name: navigator.userAgent,
+                  browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
+                  platform: navigator.platform,
+                  user_agent: navigator.userAgent
+                }
+
+                await axios.post("/push-token", {
+                  token: fcmToken,
+                  device_info: deviceInfo
+                })
+                console.log("[PWA] Push token re-registered after update")
+              }
+            }
+          } catch (error) {
+            console.error("[PWA] Failed to re-initialize push notifications:", error)
+          }
+
           navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
           window.location.reload()
           resolve()
@@ -103,7 +138,34 @@ export function PWAUpdatePrompt() {
         navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange)
 
         // Fallback: reload after 3 seconds if controller doesn't change
-        setTimeout(() => {
+        setTimeout(async () => {
+          try {
+            // Try to re-initialize push notifications even on fallback
+            await initializeMessaging()
+            const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
+            const userId = windowWithLaravel.Laravel?.user?.id ||
+                          (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
+            if (userId) {
+              const fcmToken = await requestNotificationPermission()
+              if (fcmToken) {
+                const deviceInfo = {
+                  device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
+                  device_type: 'web',
+                  device_name: navigator.userAgent,
+                  browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
+                  platform: navigator.platform,
+                  user_agent: navigator.userAgent
+                }
+                await axios.post("/push-token", {
+                  token: fcmToken,
+                  device_info: deviceInfo
+                })
+              }
+            }
+          } catch (error) {
+            console.error("[PWA] Fallback re-initialization failed:", error)
+          }
+
           console.log("[PWA] Fallback reload")
           navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
           window.location.reload()
@@ -134,8 +196,8 @@ export function PWAUpdatePrompt() {
     setShowUpdate(false)
   }
 
-  // Don't show if no update available
-  if (!showUpdate) return null
+  // Don't show PWA update prompt on livestock domain or if no update available
+  if (isLivestockDomain() || !showUpdate) return null
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center p-4 sm:items-center sm:p-6 bg-black/50 backdrop-blur-sm">

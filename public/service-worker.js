@@ -107,4 +107,11 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
+// Listen for skip waiting message from the client
+self.addEventListener('message', (event) => {
+    if (event.data && event.data.type === 'SKIP_WAITING') {
+        console.log('[Service Worker] Received SKIP_WAITING message');
+        self.skipWaiting();
+    }
+});
 
