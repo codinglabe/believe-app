@@ -99,7 +99,10 @@ export default function Navbar() {
     { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
     { name: "Courses & Events", href: route("course.index") },
-    ...(isLoggedIn ? [{ name: "Chat", href: route("chat.index") }] : []),
+    ...(isLoggedIn ? [
+      { name: "Social Feed", href: route("social-feed.index") },
+      { name: "Chat", href: route("chat.index") }
+    ] : []),
     { name: "Fractional Ownership", href: "/fractional" },
     { name: "Contact", href: "/contact" },
   ]

@@ -55,7 +55,7 @@ interface PageProps {
   }
 
 export default function HomePage() {
-    const { filterOptions, filters, featuredOrganizations = [] } = usePage<PageProps>().props
+    const { filterOptions, filters, featuredOrganizations = [], posts = [], next_page_url, has_more = false } = usePage<PageProps>().props
     const [isLoading, setIsLoading] = useState(false)
 
     // Handle search from SearchSection component

@@ -23,4 +23,18 @@ export default defineConfig({
             'ziggy-js': resolve(__dirname, 'vendor/tightenco/ziggy'),
         },
     },
+    server: {
+        watch: {
+            // Exclude vendor and node_modules from file watching
+            ignored: [
+                '**/vendor/**',
+                '**/node_modules/**',
+                '**/.git/**',
+                '**/storage/**',
+                '**/bootstrap/cache/**',
+            ],
+            // Use polling as fallback if file watching fails
+            usePolling: false,
+        },
+    },
 });

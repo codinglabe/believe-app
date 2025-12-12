@@ -67,14 +67,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: BarChart3,
         permission: "dashboard.read"
     },
-
-    // Feed
-    // {
-    //     title: 'Feed',
-    //     href: route('feed.index'),
-    //     icon: Newspaper,
-    // },
-
     // AI Chat Assistant
     {
         title: 'AI Chat Assistant',

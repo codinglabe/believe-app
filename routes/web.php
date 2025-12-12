@@ -115,6 +115,20 @@ Broadcast::routes(['middleware' => ['auth']]);
 // Routes without Route::domain() only work on the main domain.
 Route::get('/', [HomeController::class, "index"])->name('home');
 
+// Social Media Feed Routes
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
+    Route::post('/posts', [\App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
+    Route::put('/posts/{post}', [\App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
+    Route::delete('/posts/{post}', [\App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
+    Route::post('/posts/{post}/react', [\App\Http\Controllers\PostController::class, 'react'])->name('posts.react');
+    Route::delete('/posts/{post}/reaction', [\App\Http\Controllers\PostController::class, 'removeReaction'])->name('posts.remove-reaction');
+    Route::post('/posts/{post}/comment', [\App\Http\Controllers\PostController::class, 'comment'])->name('posts.comment');
+    Route::get('/posts/{post}/comments', [\App\Http\Controllers\PostController::class, 'getComments'])->name('posts.comments');
+    Route::post('/posts/{post}/seen', [\App\Http\Controllers\PostController::class, 'markAsSeen'])->name('posts.mark-seen');
+    Route::delete('/comments/{comment}', [\App\Http\Controllers\PostController::class, 'deleteComment'])->name('comments.destroy');
+});
+
 Route::get("pwa-setup", function () {
     return Inertia::render('pwa-setup/page');
 })->name('pwa.install');
@@ -1171,7 +1185,7 @@ Route::prefix('admin/plans')
         Route::get('/{plan}/edit', [App\Http\Controllers\Admin\PlanController::class, 'edit'])->name('edit');
         Route::put('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'update'])->name('update');
         Route::delete('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'destroy'])->name('destroy');
-        
+
         // Plan Features
         Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
         Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');
