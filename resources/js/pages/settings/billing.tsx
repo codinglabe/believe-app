@@ -108,7 +108,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
     const fetchInitialBalance = async () => {
       if (initialWallet.connected) {
         try {
-          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+          const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -141,7 +141,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
   const refreshWalletData = async () => {
     setIsRefreshing(true)
     try {
-      const response = await fetch('/chat/wallet/status', {
+      const response = await fetch('/wallet/status', {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -155,7 +155,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
         const data = await response.json()
         if (data.success && data.connected) {
           // Fetch balance
-          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+          const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -195,7 +195,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
   const handleDisconnect = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/chat/wallet/disconnect', {
+      const response = await fetch('/wallet/disconnect', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',
@@ -256,148 +256,6 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
       
       <div className="space-y-6">
 
-        {/* Wallet Connection Card */}
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  <Wallet className="h-5 w-5" />
-                  Digital Wallet
-                </CardTitle>
-                <CardDescription className="mt-1">
-                  Connect your digital wallet to manage payments and view your balance
-                </CardDescription>
-              </div>
-              {wallet.connected && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refreshWalletData}
-                  disabled={isRefreshing}
-                  className="flex items-center gap-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Refresh
-                </Button>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            {/* Connection Status */}
-            <div className="flex items-center justify-between p-4 rounded-lg border bg-card">
-              <div className="flex items-center gap-3">
-                {wallet.connected ? (
-                  <CheckCircle2 className="h-6 w-6 text-green-500" />
-                ) : (
-                  <XCircle className="h-6 w-6 text-red-500" />
-                )}
-                <div>
-                  <p className="font-semibold">
-                    {wallet.connected ? 'Wallet Connected' : 'Wallet Not Connected'}
-                  </p>
-                  <p className="text-sm text-muted-foreground">
-                    {wallet.connected 
-                      ? 'Your wallet is connected and ready to use'
-                      : 'Connect your wallet to start managing payments'
-                    }
-                  </p>
-                </div>
-              </div>
-              <Badge variant={wallet.connected ? 'default' : 'destructive'}>
-                {wallet.connected ? 'Active' : 'Not Connected'}
-              </Badge>
-            </div>
-
-            {/* Wallet Details - Only show if connected */}
-            {wallet.connected && (
-              <>
-                <Separator />
-                
-                {/* Balance Display */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <Card className="bg-primary/5 border-primary/20">
-                    <CardContent className="p-6">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Current Balance</p>
-                          <p className="text-3xl font-bold text-primary">
-                            ${wallet.balance.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2,
-                            })}
-                          </p>
-                        </div>
-                        <DollarSign className="h-10 w-10 text-primary/50" />
-                      </div>
-                    </CardContent>
-                  </Card>
-
-                  <Card>
-                    <CardContent className="p-6">
-                      <div className="space-y-3">
-                        <div>
-                          <p className="text-sm text-muted-foreground mb-1">Wallet User ID</p>
-                          <p className="font-semibold">{wallet.wallet_user_id || 'N/A'}</p>
-                        </div>
-                        {wallet.connected_at && (
-                          <div>
-                            <p className="text-sm text-muted-foreground mb-1">Connected At</p>
-                            <p className="font-semibold text-sm">{formatDate(wallet.connected_at)}</p>
-                          </div>
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Expiration Info */}
-                {wallet.expires_at && (
-                  <div className="p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
-                    <div className="flex items-start gap-3">
-                      <Calendar className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5" />
-                      <div className="flex-1">
-                        <p className="font-semibold text-amber-900 dark:text-amber-100">
-                          Token Expiration
-                        </p>
-                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                          Your wallet token expires on {formatDate(wallet.expires_at)}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* Disconnect Button */}
-                <div className="flex justify-end">
-                  <Button
-                    variant="destructive"
-                    onClick={() => setShowDisconnectModal(true)}
-                    className="flex items-center gap-2"
-                  >
-                    <LogOut className="h-4 w-4" />
-                    Disconnect Wallet
-                  </Button>
-                </div>
-              </>
-            )}
-
-            {/* Connect Wallet Button - Only show if not connected */}
-            {!wallet.connected && (
-              <div className="flex justify-center">
-                <Button
-                  onClick={() => setShowWalletPopup(true)}
-                  size="lg"
-                  className="flex items-center gap-2"
-                >
-                  <Wallet className="h-5 w-5" />
-                  Connect Wallet
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
         {/* Billing History Card */}
         <Card>
           <CardHeader>
@@ -413,9 +271,9 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                   {initialTransactions.data.map((transaction) => (
                     <div
                       key={transaction.id}
-                      className="flex items-center justify-between p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
+                      className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 p-4 rounded-lg border bg-card hover:bg-accent/50 transition-colors"
                     >
-                      <div className="flex items-center gap-4 flex-1">
+                      <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
                         <div className="flex-shrink-0">
                           {transaction.type === 'deposit' && <ArrowUpCircle className="h-5 w-5 text-green-500" />}
                           {transaction.type === 'withdrawal' && <ArrowDownCircle className="h-5 w-5 text-red-500" />}
@@ -427,8 +285,8 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                           )}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <p className="font-semibold capitalize">
+                          <div className="flex flex-wrap items-center gap-2 mb-1">
+                            <p className="font-semibold capitalize text-sm sm:text-base">
                               {transaction.description || transaction.type.replace(/_/g, ' ')}
                             </p>
                             <Badge
@@ -446,7 +304,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                           </div>
                           <div className="flex flex-col gap-1">
                             {transaction.plan_name && (
-                              <div className="flex items-center gap-2 text-sm">
+                              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                                 <span className="font-medium text-foreground">Plan:</span>
                                 <span className="text-muted-foreground">{transaction.plan_name}</span>
                                 {transaction.plan_frequency && (
@@ -455,16 +313,16 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                               </div>
                             )}
                             {transaction.credits_added && transaction.credits_added > 0 && (
-                              <div className="flex items-center gap-2 text-sm">
+                              <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                                 <span className="font-medium text-foreground">Credits Added:</span>
                                 <span className="text-green-600 dark:text-green-400">{transaction.credits_added.toLocaleString()}</span>
                               </div>
                             )}
-                          <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                            <span className="font-mono text-xs">
+                          <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs sm:text-sm text-muted-foreground mt-1">
+                            <span className="font-mono break-all">
                               {transaction.transaction_id || `TXN#${transaction.id}`}
                             </span>
-                            <span>
+                            <span className="whitespace-nowrap">
                               {transaction.processed_at
                                 ? new Date(transaction.processed_at).toLocaleDateString('en-US', {
                                     year: 'numeric',
@@ -478,34 +336,34 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                                   })}
                             </span>
                             {transaction.payment_method && (
-                              <span className="capitalize">{transaction.payment_method}</span>
+                              <span className="capitalize whitespace-nowrap">{transaction.payment_method}</span>
                             )}
                             </div>
                           </div>
                         </div>
-                        <div className="text-right">
-                          <p
-                            className={`font-bold ${
-                              ['deposit', 'refund', 'donation'].includes(transaction.type)
-                                ? 'text-green-600 dark:text-green-400'
-                                : 'text-red-600 dark:text-red-400'
-                            }`}
-                          >
-                            {['deposit', 'refund', 'donation'].includes(transaction.type) ? '+' : '-'}
-                            {transaction.currency} {Number(transaction.amount).toLocaleString('en-US', {
+                      </div>
+                      <div className="flex-shrink-0 text-left sm:text-right">
+                        <p
+                          className={`font-bold text-base sm:text-lg ${
+                            ['deposit', 'refund', 'donation'].includes(transaction.type)
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
+                          {['deposit', 'refund', 'donation'].includes(transaction.type) ? '+' : '-'}
+                          {transaction.currency} {Number(transaction.amount).toLocaleString('en-US', {
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                        {transaction.fee > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Fee: {transaction.currency} {Number(transaction.fee).toLocaleString('en-US', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
                           </p>
-                          {transaction.fee > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                              Fee: {transaction.currency} {Number(transaction.fee).toLocaleString('en-US', {
-                                minimumFractionDigits: 2,
-                                maximumFractionDigits: 2,
-                              })}
-                            </p>
-                          )}
-                        </div>
+                        )}
                       </div>
                     </div>
                   ))}
@@ -514,12 +372,12 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                 {/* Pagination Controls */}
                 {initialTransactions.last_page > 1 && (
                   <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t">
-                    <div className="text-sm text-muted-foreground">
+                    <div className="text-xs sm:text-sm text-muted-foreground text-center sm:text-left">
                       Showing <span className="font-semibold">{initialTransactions.from || 0}</span> to{' '}
                       <span className="font-semibold">{initialTransactions.to || 0}</span> of{' '}
                       <span className="font-semibold">{initialTransactions.total || 0}</span> results
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 sm:gap-2 w-full sm:w-auto justify-center">
                       <Button
                         variant="outline"
                         size="sm"
@@ -529,11 +387,12 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                           }
                         }}
                         disabled={!initialTransactions.prev_page_url}
+                        className="flex-shrink-0"
                       >
                         <ChevronLeft className="h-4 w-4" />
-                        Previous
+                        <span className="hidden sm:inline ml-1">Previous</span>
                       </Button>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
                         {initialTransactions.links
                           .filter((link) => link.url && !isNaN(Number(link.label)))
                           .map((link, index) => (
@@ -547,7 +406,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                                 }
                               }}
                               disabled={link.active}
-                              className="min-w-[40px]"
+                              className="min-w-[36px] sm:min-w-[40px] flex-shrink-0"
                             >
                               {link.label}
                             </Button>
@@ -562,8 +421,9 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                           }
                         }}
                         disabled={!initialTransactions.next_page_url}
+                        className="flex-shrink-0"
                       >
-                        Next
+                        <span className="hidden sm:inline mr-1">Next</span>
                         <ChevronRight className="h-4 w-4" />
                       </Button>
                     </div>

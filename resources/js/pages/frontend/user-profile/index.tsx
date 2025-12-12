@@ -86,7 +86,7 @@ export default function ProfileIndex() {
 
   const checkWalletStatus = async () => {
     try {
-      const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+      const statusResponse = await fetch(`/wallet/status?t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -101,7 +101,7 @@ export default function ProfileIndex() {
         const statusData = await statusResponse.json()
         if (statusData.success && statusData.connected) {
           // Wallet IS connected, fetch balance
-          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+          const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',

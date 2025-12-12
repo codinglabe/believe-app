@@ -46,7 +46,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
             
             try {
                 // Fetch organization balance directly
-                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',

@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Settings, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User } from 'lucide-react'
+import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Settings, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
@@ -18,8 +18,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [isLoading, setIsLoading] = useState(false)
     const [copied, setCopied] = useState(false)
     const [activeTab, setActiveTab] = useState<'account' | 'activity'>('account')
-    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap'>('main')
+    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney'>('main')
     const [sendAmount, setSendAmount] = useState('')
+    const [addMoneyAmount, setAddMoneyAmount] = useState('')
     const [sendAddress, setSendAddress] = useState('')
     const [recipientSearch, setRecipientSearch] = useState('')
     const [selectedRecipient, setSelectedRecipient] = useState<{ id: string; type: string; name: string; email?: string; display_name: string; address: string } | null>(null)
@@ -33,7 +34,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [swapTo, setSwapTo] = useState('USD')
     const [showSuccess, setShowSuccess] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
-    const [successType, setSuccessType] = useState<'send' | 'receive' | 'swap' | null>(null)
+    const [successType, setSuccessType] = useState<'send' | 'receive' | 'swap' | 'addMoney' | null>(null)
     const [activities, setActivities] = useState<Array<{
         id: string | number;
         type: string;
@@ -52,16 +53,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [currentPage, setCurrentPage] = useState(1)
     const [hasMoreActivities, setHasMoreActivities] = useState(false)
     const [isLoadingMore, setIsLoadingMore] = useState(false)
+    const [bridgeInitialized, setBridgeInitialized] = useState(false)
+    const [kycStatus, setKycStatus] = useState<'not_started' | 'pending' | 'approved' | 'rejected'>('not_started')
+    const [kybStatus, setKybStatus] = useState<'not_started' | 'pending' | 'approved' | 'rejected'>('not_started')
+    const [kycLinkUrl, setKycLinkUrl] = useState<string | null>(null)
+    const [kybLinkUrl, setKybLinkUrl] = useState<string | null>(null)
+    const [requiresVerification, setRequiresVerification] = useState(false)
+    const [verificationType, setVerificationType] = useState<'kyc' | 'kyb' | null>(null)
 
-    // Fetch organization balance directly (no wallet connection checks)
+    // Check Bridge status and fetch balance
     useEffect(() => {
         if (!isOpen) return
 
-        const fetchOrganizationBalance = async () => {
+        const checkBridgeAndFetchBalance = async () => {
             setIsLoading(true)
             try {
-                // Fetch organization balance directly
-                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                // First, check if Bridge wallet is initialized (without fetching balance)
+                const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -72,28 +80,87 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     cache: 'no-cache',
                 })
 
-                if (balanceResponse.ok) {
-                    const balanceData = await balanceResponse.json()
-                    if (balanceData.success) {
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
-                        // Set wallet address from response or generate from organization ID
-                        if (balanceData.address) {
-                            setWalletAddress(balanceData.address)
-                        } else if (balanceData.organization_id) {
-                            const address = '0x' + balanceData.organization_id.toString(16).padStart(40, '0')
-                            setWalletAddress(address)
+                const statusData = await statusResponse.json()
+                
+                if (statusData.success && statusData.initialized) {
+                    // Wallet exists, now fetch balance
+                    setBridgeInitialized(true)
+                    
+                    const balanceResponse = await fetch(`/wallet/bridge/balance?t=${Date.now()}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                    })
+
+                    if (balanceResponse.ok) {
+                        const balanceData = await balanceResponse.json()
+                        if (balanceData.success) {
+                            setWalletBalance(balanceData.balance || 0)
+                        }
+                    }
+                    setIsLoading(false)
+                    return
+                } else {
+                    // Wallet not initialized
+                    setBridgeInitialized(false)
+                }
+
+                // If Bridge wallet is not initialized, try to get regular balance as fallback
+                if (!bridgeInitialized) {
+                    const fallbackResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                    })
+                    
+                    if (fallbackResponse.ok) {
+                        const fallbackData = await fallbackResponse.json()
+                        if (fallbackData.success) {
+                            setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
                         }
                     }
                 }
             } catch (error) {
-                console.error('Failed to fetch organization balance:', error)
-                setWalletBalance(0)
+                console.error('Failed to check Bridge status:', error)
+                setBridgeInitialized(false)
+                // Try to get regular balance as fallback
+                try {
+                    const fallbackResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-cache',
+                    })
+                    if (fallbackResponse.ok) {
+                        const fallbackData = await fallbackResponse.json()
+                        if (fallbackData.success) {
+                            setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
+                        }
+                    }
+                } catch (fallbackError) {
+                    console.error('Failed to fetch fallback balance:', fallbackError)
+                    setWalletBalance(0)
+                }
             } finally {
                 setIsLoading(false)
             }
         }
 
-        fetchOrganizationBalance()
+        checkBridgeAndFetchBalance()
     }, [isOpen])
 
     // Fetch wallet activity when Activity tab is active
@@ -109,7 +176,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             
             try {
                 // Fetch 10 activities per page
-                const response = await fetch(`/chat/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
+                const response = await fetch(`/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -159,7 +226,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             const fetchActivities = async (page: number) => {
                 setIsLoadingMore(true)
                 try {
-                    const response = await fetch(`/chat/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
+                    const response = await fetch(`/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
@@ -199,10 +266,77 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    const handleConnectWallet = async () => {
+        setIsLoading(true)
+        try {
+            const response = await fetch('/wallet/bridge/initialize', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+            })
+
+            const data = await response.json()
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.message || 'Failed to connect wallet')
+            }
+
+            // Successfully connected
+            setBridgeInitialized(true)
+            showSuccessToast('Wallet connected successfully!')
+
+            // Check status first, then fetch balance only if wallet exists
+            const statusResponse = await fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-cache',
+            })
+
+            const statusData = await statusResponse.json()
+            
+            if (statusData.success && statusData.initialized) {
+                // Wallet exists, now fetch balance
+                const balanceResponse = await fetch(`/wallet/bridge/balance?t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-cache',
+                })
+
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json()
+                    if (balanceData.success) {
+                        setWalletBalance(balanceData.balance || 0)
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Connect wallet error:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Failed to connect wallet. Please try again.'
+            showErrorToast(errorMessage)
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
     const handleRefresh = async () => {
         setIsLoading(true)
         try {
-            const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+            const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -244,7 +378,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         const timeoutId = setTimeout(async () => {
             setIsLoadingSearch(true)
             try {
-                const response = await fetch(`/chat/wallet/search-recipients?search=${encodeURIComponent(recipientSearch)}&limit=10`, {
+                const response = await fetch(`/wallet/search-recipients?search=${encodeURIComponent(recipientSearch)}&limit=10`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -300,6 +434,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [actionView])
 
+    // Reset add money amount when switching away from addMoney view
+    useEffect(() => {
+        if (actionView !== 'addMoney') {
+            setAddMoneyAmount('')
+        }
+    }, [actionView])
+
     const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
         setSelectedRecipient(recipient)
         setSendAddress(recipient.address)
@@ -327,7 +468,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setIsLoading(true)
         
         try {
-            const response = await fetch('/chat/wallet/send', {
+            const response = await fetch('/wallet/bridge/send', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -345,6 +486,15 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             const data = await response.json()
 
+            // Check if KYC/KYB verification is required
+            if (data.requires_verification) {
+                setRequiresVerification(true)
+                setVerificationType(data.verification_type || 'kyb')
+                showErrorToast(data.message || 'Verification required')
+                setIsLoading(false)
+                return
+            }
+
             if (!response.ok || !data.success) {
                 throw new Error(data.message || 'Failed to send money')
             }
@@ -354,7 +504,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 setWalletBalance(data.data.sender_balance)
             } else {
                 // Refresh balance
-                const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -381,7 +531,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             // Refresh activities to show the new transaction
             if (activeTab === 'activity') {
                 try {
-                    const activityResponse = await fetch(`/chat/wallet/activity?page=1&per_page=5&t=${Date.now()}`, {
+                    const activityResponse = await fetch(`/wallet/activity?page=1&per_page=5&t=${Date.now()}`, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
@@ -426,29 +576,151 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    // const handleSwap = () => {
+    //     if (!swapAmount || swapFrom === swapTo) {
+    //         showErrorToast('Please enter amount and select different currencies')
+    //         return
+    //     }
+    //     
+    //     setIsLoading(true)
+    //     
+    //     // Simulate API call delay
+    //     setTimeout(() => {
+    //         setSuccessType('swap')
+    //         setSuccessMessage(`Successfully swapped ${swapAmount} ${swapFrom} to ${swapTo}`)
+    //         setShowSuccess(true)
+    //         setSwapAmount('')
+    //         setIsLoading(false)
+    //         
+    //         // Hide success and return to main after 3 seconds
+    //         setTimeout(() => {
+    //             setShowSuccess(false)
+    //             setSuccessType(null)
+    //             setActionView('main')
+    //         }, 3000)
+    //     }, 1000)
+    // }
+
     const handleSwap = () => {
-        if (!swapAmount || swapFrom === swapTo) {
-            showErrorToast('Please enter amount and select different currencies')
+        showErrorToast('Coming Soon')
+    }
+
+    const handleAddMoney = async () => {
+        const amount = parseFloat(addMoneyAmount)
+        if (!addMoneyAmount || isNaN(amount) || amount <= 0) {
+            showErrorToast('Please enter a valid amount')
             return
         }
         
         setIsLoading(true)
         
-        // Simulate API call delay
-        setTimeout(() => {
-            setSuccessType('swap')
-            setSuccessMessage(`Successfully swapped ${swapAmount} ${swapFrom} to ${swapTo}`)
-            setShowSuccess(true)
-            setSwapAmount('')
+        try {
+            // TODO: Replace with actual API endpoint when backend is ready
+            // For now, simulate the API call
+            const response = await fetch('/wallet/bridge/deposit', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                body: JSON.stringify({
+                    amount: amount,
+                }),
+            })
+
+            if (response.ok) {
+                const data = await response.json()
+                
+                // Check if KYC/KYB verification is required
+                if (data.requires_verification) {
+                    setRequiresVerification(true)
+                    setVerificationType(data.verification_type || 'kyc')
+                    showErrorToast(data.message || 'Verification required')
+                    setIsLoading(false)
+                    return
+                }
+                
+                if (data.success) {
+                    // Update balance from response
+                    if (data.data?.balance !== undefined) {
+                        setWalletBalance(data.data.balance)
+                    } else {
+                        // Refresh balance
+                        const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                            cache: 'no-cache',
+                        })
+
+                        if (balanceResponse.ok) {
+                            const balanceData = await balanceResponse.json()
+                            if (balanceData.success) {
+                                setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
+                            }
+                        }
+                    }
+
+                    // Show success
+                    setSuccessType('addMoney')
+                    setSuccessMessage(data.message || `Successfully added $${amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} to your wallet`)
+                    setShowSuccess(true)
+                    
+                    // Always refresh activities to show the new transaction (regardless of active tab)
+                    try {
+                        const activityResponse = await fetch(`/wallet/activity?page=1&per_page=10&t=${Date.now()}`, {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                            cache: 'no-cache',
+                        })
+
+                        if (activityResponse.ok) {
+                            const activityData = await activityResponse.json()
+                            if (activityData.success) {
+                                setActivities(activityData.activities || [])
+                                setHasMoreActivities(activityData.has_more || false)
+                                setCurrentPage(1)
+                            }
+                        }
+                    } catch (error) {
+                        console.error('Failed to refresh activities:', error)
+                    }
+                    
+                    // Clear form
+                    setAddMoneyAmount('')
+                    setIsLoading(false)
+                    
+                    // Hide success and return to main after 3 seconds
+                    setTimeout(() => {
+                        setShowSuccess(false)
+                        setSuccessType(null)
+                        setActionView('main')
+                    }, 3000)
+                } else {
+                    throw new Error(data.message || 'Failed to add money')
+                }
+            } else {
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.message || 'Failed to add money. Please try again.')
+            }
+        } catch (error) {
+            console.error('Add money error:', error)
+            const errorMessage = error instanceof Error ? error.message : 'Failed to add money. Please try again.'
+            showErrorToast(errorMessage)
             setIsLoading(false)
-            
-            // Hide success and return to main after 3 seconds
-            setTimeout(() => {
-                setShowSuccess(false)
-                setSuccessType(null)
-                setActionView('main')
-            }, 3000)
-        }, 1000)
+        }
     }
     
     const handleCopyReceiveAddress = () => {
@@ -485,8 +757,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
                         transition={{ duration: 0.2 }}
-                        className="fixed top-16 right-4 z-50 w-80 sm:w-96 bg-card border border-border rounded-xl shadow-2xl overflow-hidden flex flex-col"
-                        style={{ maxHeight: '90vh' }}
+                        className="fixed inset-0 sm:inset-x-auto sm:top-16 sm:right-4 sm:inset-y-auto z-50 w-full sm:w-80 md:w-96 h-full sm:h-auto bg-card border border-border sm:rounded-xl shadow-2xl overflow-hidden flex flex-col"
+                        style={{ maxHeight: '100vh' }}
                     >
                         {/* Header - MetaMask style */}
                         <div className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
@@ -506,7 +778,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     <span className="font-semibold text-sm">
                                         {actionView === 'send' ? 'Send' : 
                                          actionView === 'receive' ? 'Receive' : 
-                                         actionView === 'swap' ? 'Swap' : 'Account'}
+                                         actionView === 'swap' ? 'Swap' : 
+                                         actionView === 'addMoney' ? 'Deposit' : 'Account'}
                                     </span>
                                 </div>
                                 <button
@@ -586,6 +859,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     {successType === 'send' && 'Transaction Sent!'}
                                                     {successType === 'receive' && 'Address Copied!'}
                                                     {successType === 'swap' && 'Swap Completed!'}
+                                                    {successType === 'addMoney' && 'Money Added!'}
                                                 </h3>
                                                 <p className="text-sm text-muted-foreground">{successMessage}</p>
                                             </motion.div>
@@ -609,7 +883,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             </AnimatePresence>
 
                             {/* Balance Display - Show at top for all action views */}
-                            {(actionView === 'send' || actionView === 'receive' || actionView === 'swap') && !showSuccess && (
+                            {(actionView === 'send' || actionView === 'receive' || actionView === 'swap' || actionView === 'addMoney') && !showSuccess && (
                                 <motion.div
                                     initial={{ opacity: 0, y: -10 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -837,7 +1111,28 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     </div>
                                 </motion.div>
                             ) : !showSuccess && actionView === 'swap' ? (
-                                /* Swap View */
+                                /* Swap View - Coming Soon */
+                                <motion.div
+                                    initial={{ opacity: 0, x: 20 }}
+                                    animate={{ opacity: 1, x: 0 }}
+                                    exit={{ opacity: 0, x: -20 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="p-4 space-y-4"
+                                >
+                                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
+                                        <div className="p-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full">
+                                            <ArrowRightLeft className="h-8 w-8 text-white" />
+                                        </div>
+                                        <div className="text-center">
+                                            <h3 className="text-xl font-bold mb-2">Coming Soon</h3>
+                                            <p className="text-sm text-muted-foreground">
+                                                The swap feature is under development and will be available soon.
+                                            </p>
+                                        </div>
+                                    </div>
+                                </motion.div>
+                            ) : !showSuccess && actionView === 'addMoney' ? (
+                                /* Add Money View */
                                 <motion.div
                                     initial={{ opacity: 0, x: 20 }}
                                     animate={{ opacity: 1, x: 0 }}
@@ -847,73 +1142,52 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 >
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">From</label>
-                                            <div className="flex gap-2">
-                                                <select
-                                                    value={swapFrom}
-                                                    onChange={(e) => setSwapFrom(e.target.value)}
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                                                >
-                                                    <option value="USD">USD</option>
-                                                    <option value="ETH">ETH</option>
-                                                    <option value="BTC">BTC</option>
-                                                </select>
+                                            <label className="text-xs text-muted-foreground mb-1.5 block">Amount to Add</label>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
                                                 <input
                                                     type="number"
                                                     step="0.01"
-                                                    min="0"
-                                                    value={swapAmount}
-                                                    onChange={(e) => setSwapAmount(e.target.value)}
+                                                    min="0.01"
+                                                    value={addMoneyAmount}
+                                                    onChange={(e) => setAddMoneyAmount(e.target.value)}
                                                     placeholder="0.00"
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                                                    className="w-full pl-8 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                                                 />
                                             </div>
+                                            <p className="text-xs text-muted-foreground mt-1">
+                                                Enter the amount you want to add to your wallet
+                                            </p>
                                         </div>
-                                        <div className="flex justify-center">
-                                            <button
-                                                onClick={() => {
-                                                    const temp = swapFrom
-                                                    setSwapFrom(swapTo)
-                                                    setSwapTo(temp)
-                                                }}
-                                                className="p-2 rounded-full bg-muted hover:bg-muted/80 transition-colors"
-                                            >
-                                                <ArrowRightLeft className="h-4 w-4" />
-                                            </button>
-                                        </div>
+                                        
+                                        {/* Payment Method Selection */}
                                         <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">To</label>
-                                            <div className="flex gap-2">
-                                                <select
-                                                    value={swapTo}
-                                                    onChange={(e) => setSwapTo(e.target.value)}
-                                                    className="flex-1 px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                                                >
-                                                    <option value="USD">USD</option>
-                                                    <option value="ETH">ETH</option>
-                                                    <option value="BTC">BTC</option>
-                                                </select>
-                                                <input
-                                                    type="text"
-                                                    value={swapAmount && swapFrom !== swapTo ? (parseFloat(swapAmount) * 0.001).toFixed(6) : '0.00'}
-                                                    readOnly
-                                                    className="flex-1 px-4 py-2.5 bg-muted/50 border border-border rounded-lg text-muted-foreground"
-                                                />
-                                            </div>
+                                            <label className="text-xs text-muted-foreground mb-1.5 block">Payment Method</label>
+                                            <select
+                                                className="w-full px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
+                                                defaultValue="card"
+                                            >
+                                                <option value="card">Credit/Debit Card</option>
+                                                <option value="bank">Bank Transfer</option>
+                                                <option value="paypal">PayPal</option>
+                                            </select>
                                         </div>
                                     </div>
                                     <Button
-                                        onClick={handleSwap}
-                                        disabled={isLoading || !swapAmount || swapFrom === swapTo}
+                                        onClick={handleAddMoney}
+                                        disabled={isLoading || !addMoneyAmount || parseFloat(addMoneyAmount) <= 0}
                                         className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                                     >
                                         {isLoading ? (
                                             <>
                                                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                                Swapping...
+                                                Processing...
                                             </>
                                         ) : (
-                                            'Swap'
+                                            <>
+                                                <Plus className="h-4 w-4 mr-2" />
+                                                Deposit
+                                            </>
                                         )}
                                     </Button>
                                 </motion.div>
@@ -922,33 +1196,142 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
                                 </div>
                             ) : activeTab === 'account' ? (
-                                <div className="p-4 space-y-4">
-                                    {/* Balance - Prominent display */}
-                                    <div className="text-center py-4">
-                                        <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
-                                        <div className="flex items-center justify-center gap-2">
-                                            <span className="text-3xl font-bold">
-                                                ${walletBalance !== null 
-                                                    ? walletBalance.toLocaleString('en-US', { 
-                                                        minimumFractionDigits: 2, 
-                                                        maximumFractionDigits: 2 
-                                                    })
-                                                    : '0.00'
-                                                }
-                                            </span>
-                                            <button
-                                                onClick={handleRefresh}
-                                                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                                !bridgeInitialized && !isLoading ? (
+                                    /* Connect Wallet View */
+                                    <motion.div
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        exit={{ opacity: 0, y: -20 }}
+                                        transition={{ duration: 0.3 }}
+                                        className="flex-1 flex flex-col items-center justify-center p-6 space-y-6"
+                                    >
+                                        <div className="text-center space-y-4">
+                                            <div className="mx-auto w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
+                                                <Wallet className="h-10 w-10 text-white" />
+                                            </div>
+                                            <div>
+                                                <h3 className="text-xl font-bold mb-2">Connect Your Wallet</h3>
+                                                <p className="text-sm text-muted-foreground max-w-sm">
+                                                    Connect your wallet to Bridge to start managing your funds, making transactions, and accessing all wallet features.
+                                                </p>
+                                            </div>
+                                            {organizationName && (
+                                                <div className="p-4 bg-muted rounded-lg border border-border">
+                                                    <div className="flex items-center gap-3">
+                                                        <Building2 className="h-5 w-5 text-primary" />
+                                                        <div className="text-left">
+                                                            <p className="text-xs text-muted-foreground mb-1">Organization</p>
+                                                            <p className="text-sm font-medium">{organizationName}</p>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                            <Button
+                                                onClick={handleConnectWallet}
                                                 disabled={isLoading}
-                                                title="Refresh balance"
+                                                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                                                size="lg"
                                             >
+                                                {isLoading ? (
+                                                    <>
+                                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                                                        Connecting...
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Wallet className="h-4 w-4 mr-2" />
+                                                        Connect Wallet
+                                                    </>
+                                                )}
+                                            </Button>
+                                            <p className="text-xs text-muted-foreground">
+                                                Your organization information will be used to create your Bridge account
+                                            </p>
+                                        </div>
+                                    </motion.div>
+                                ) : (
+                                    <div className="p-4 space-y-4">
+                                        {/* Balance - Prominent display */}
+                                        <div className="text-center py-4">
+                                            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <span className="text-3xl font-bold">
+                                                    ${walletBalance !== null 
+                                                        ? walletBalance.toLocaleString('en-US', { 
+                                                            minimumFractionDigits: 2, 
+                                                            maximumFractionDigits: 2 
+                                                        })
+                                                        : '0.00'
+                                                    }
+                                                </span>
+                                                <button
+                                                    onClick={handleRefresh}
+                                                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+                                                    disabled={isLoading}
+                                                    title="Refresh balance"
+                                                >
                                                 <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
                                             </button>
                                         </div>
                                     </div>
 
+                                    {/* KYC/KYB Verification Banner */}
+                                    {(requiresVerification || kycStatus !== 'approved' || kybStatus !== 'approved') && (
+                                        <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
+                                            <div className="flex items-start gap-2">
+                                                <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                                                <div className="flex-1">
+                                                    <p className="text-sm font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                                                        Verification Required
+                                                    </p>
+                                                    <p className="text-xs text-amber-700 dark:text-amber-300 mb-2">
+                                                        {verificationType === 'kyb' 
+                                                            ? 'Complete KYB verification to use wallet features.'
+                                                            : 'Complete KYC verification to use wallet features.'}
+                                                    </p>
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={async () => {
+                                                            try {
+                                                                const response = await fetch(`/wallet/bridge/${verificationType || 'kyc'}-link`, {
+                                                                    method: 'POST',
+                                                                    headers: {
+                                                                        'Accept': 'application/json',
+                                                                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                                                        'X-Requested-With': 'XMLHttpRequest',
+                                                                    },
+                                                                    credentials: 'include',
+                                                                })
+                                                                if (response.ok) {
+                                                                    const data = await response.json()
+                                                                    if (data.success && data.data?.link_url) {
+                                                                        window.open(data.data.link_url, '_blank')
+                                                                    }
+                                                                }
+                                                            } catch (error) {
+                                                                console.error('Failed to create verification link:', error)
+                                                            }
+                                                        }}
+                                                        className="w-full bg-amber-600 hover:bg-amber-700 text-white text-xs"
+                                                    >
+                                                        Start {verificationType === 'kyb' ? 'KYB' : 'KYC'} Verification
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Transfer/Deposit Actions - MetaMask style */}
-                                    <div className="grid grid-cols-3 gap-2 pb-4 border-b border-border">
+                                    <div className="grid grid-cols-4 gap-2 pb-4 border-b border-border">
+                                        <button
+                                            onClick={() => setActionView('addMoney')}
+                                            className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                                        >
+                                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                                <Plus className="h-4 w-4 text-white" />
+                                            </div>
+                                            <span className="text-xs font-medium">Deposit</span>
+                                        </button>
                                         <button
                                             onClick={() => setActionView('send')}
                                             className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
@@ -1017,16 +1400,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         </div>
                                     </div>
                                 </div>
+                                )
                             ) : (
                                 /* Activity Tab */
                                 <div 
-                                    className="overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                    className="flex-1 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[350px] sm:max-h-[350px] sm:min-h-[350px]"
                                     onScroll={handleActivityScroll}
-                                    style={{ 
-                                        height: '350px',
-                                        maxHeight: '350px',
-                                        minHeight: '350px',
-                                    }}
                                 >
                                     {isLoadingActivities ? (
                                         <div className="text-center py-8">
@@ -1045,40 +1424,47 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     const isTransferSent = activity.type === 'transfer_sent'
                                                     const isTransferReceived = activity.type === 'transfer_received'
                                                     const isDonation = activity.type === 'donation'
+                                                    const isDeposit = activity.type === 'deposit'
                                                     
                                                     return (
                                                         <motion.div
                                                             key={activity.id}
                                                             initial={{ opacity: 0, y: 10 }}
                                                             animate={{ opacity: 1, y: 0 }}
-                                                            className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                                                            className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
                                                         >
-                                                            <div className="flex items-center gap-3 flex-1 min-w-0">
-                                                                <div className={`p-2 rounded-lg ${
+                                                            <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
+                                                                <div className={`p-2 rounded-lg flex-shrink-0 ${
                                                                     isTransferSent 
                                                                         ? 'bg-red-500/10' 
                                                                         : isTransferReceived 
                                                                         ? 'bg-blue-500/10'
+                                                                        : isDeposit
+                                                                        ? 'bg-emerald-500/10'
                                                                         : 'bg-green-500/10'
                                                                 }`}>
                                                                     {isTransferSent ? (
                                                                         <ArrowUpRight className="h-4 w-4 text-red-500" />
                                                                     ) : isTransferReceived ? (
                                                                         <ArrowDownLeft className="h-4 w-4 text-blue-500" />
+                                                                    ) : isDeposit ? (
+                                                                        <Plus className="h-4 w-4 text-emerald-500" />
                                                                     ) : (
                                                                         <ArrowDownLeft className="h-4 w-4 text-green-500" />
                                                                     )}
                                                                 </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-medium truncate">
+                                                                <div className="flex-1 min-w-0 w-full sm:w-auto">
+                                                                    <p className="text-sm font-medium break-words sm:truncate">
                                                                         {isTransferSent 
                                                                             ? `Sent to ${activity.donor_name}`
                                                                             : isTransferReceived
                                                                             ? `Received from ${activity.donor_name}`
+                                                                            : isDeposit
+                                                                            ? `Deposit - ${activity.donor_name}`
                                                                             : `Donation from ${activity.donor_name}`
                                                                         }
                                                                     </p>
-                                                                    <p className="text-xs text-muted-foreground">
+                                                                    <p className="text-xs text-muted-foreground mt-1">
                                                                         {new Date(activity.date).toLocaleDateString('en-US', {
                                                                             month: 'short',
                                                                             day: 'numeric',
@@ -1089,12 +1475,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                     </p>
                                                                 </div>
                                                             </div>
-                                                            <div className="text-right ml-3">
-                                                                <p className={`text-sm font-semibold ${
+                                                            <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
+                                                                <p className={`text-base sm:text-sm font-semibold ${
                                                                     isTransferSent 
                                                                         ? 'text-red-600'
-                                                                        : isTransferReceived
-                                                                        ? 'text-blue-600'
+                                                                        : isTransferReceived || isDeposit
+                                                                        ? 'text-green-600'
                                                                         : 'text-green-600'
                                                                 }`}>
                                                                     {isTransferSent ? '-' : '+'}${activity.amount.toLocaleString('en-US', {
@@ -1102,16 +1488,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                         maximumFractionDigits: 2
                                                                     })}
                                                                 </p>
-                                                                {isDonation && activity.frequency !== 'one-time' && (
-                                                                    <p className="text-xs text-muted-foreground capitalize">
-                                                                        {activity.frequency}
-                                                                    </p>
-                                                                )}
-                                                                {isTransferSent && activity.recipient_type && (
-                                                                    <p className="text-xs text-muted-foreground capitalize">
-                                                                        {activity.recipient_type}
-                                                                    </p>
-                                                                )}
+                                                                <div className="flex flex-col items-end sm:items-end gap-1">
+                                                                    {isDonation && activity.frequency !== 'one-time' && (
+                                                                        <p className="text-xs text-muted-foreground capitalize">
+                                                                            {activity.frequency}
+                                                                        </p>
+                                                                    )}
+                                                                    {isTransferSent && activity.recipient_type && (
+                                                                        <p className="text-xs text-muted-foreground capitalize">
+                                                                            {activity.recipient_type}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </motion.div>
                                                     )

@@ -84,4 +84,11 @@ return [
         'default_graph_version' => 'v21.0',
     ],
 
+    'bridge' => [
+        'api_key' => env('BRIDGE_API_KEY'),
+        'environment' => env('BRIDGE_ENVIRONMENT', 'production'), // sandbox or production
+        'base_url' => env('BRIDGE_BASE_URL'), // Will be set in BridgeService based on environment
+        'webhook_secret' => env('BRIDGE_WEBHOOK_SECRET'),
+    ],
+
 ];

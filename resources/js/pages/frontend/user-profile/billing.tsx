@@ -99,7 +99,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
     const fetchInitialBalance = async () => {
       if (initialWallet.connected) {
         try {
-          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+          const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -132,7 +132,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
   const refreshWalletData = async () => {
     setIsRefreshing(true)
     try {
-      const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+      const statusResponse = await fetch(`/wallet/status?t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -147,7 +147,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
         const statusData = await statusResponse.json()
         if (statusData.success && statusData.connected) {
           // Fetch balance
-          const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+          const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json',
@@ -188,7 +188,7 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
   const handleDisconnect = async () => {
     setIsLoading(true)
     try {
-      const response = await fetch('/chat/wallet/disconnect', {
+      const response = await fetch('/wallet/disconnect', {
         method: 'POST',
         headers: {
           'Accept': 'application/json',

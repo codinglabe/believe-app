@@ -407,6 +407,15 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(SendJob::class);
     }
 
+    /**
+     * Get the Bridge integration for this user
+     */
+    public function bridgeIntegration(): HasOne
+    {
+        return $this->hasOne(BridgeIntegration::class, 'integratable_id')
+            ->where('integratable_type', self::class);
+    }
+
     // Notification preferences
     public function shouldReceivePush()
     {

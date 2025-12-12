@@ -137,6 +137,15 @@ class Organization extends Model
         return substr($this->ein, 0, 2) . '-' . substr($this->ein, 2);
     }
 
+    /**
+     * Get the Bridge integration for this organization
+     */
+    public function bridgeIntegration(): HasOne
+    {
+        return $this->hasOne(BridgeIntegration::class, 'integratable_id')
+            ->where('integratable_type', self::class);
+    }
+
     public function nteeCode()
     {
         return $this->belongsTo(NteeCode::class, 'ntee_code', 'ntee_codes');

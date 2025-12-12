@@ -149,7 +149,7 @@ export default function Navbar() {
       }
 
       try {
-        const statusResponse = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+        const statusResponse = await fetch(`/wallet/status?t=${Date.now()}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -167,7 +167,7 @@ export default function Navbar() {
 
             // Fetch balance
             try {
-              const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+              const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                 method: 'GET',
                 headers: {
                   'Accept': 'application/json',

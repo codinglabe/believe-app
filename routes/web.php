@@ -298,27 +298,44 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::get('/topics', [ChatController::class, 'getTopics'])->name('get-topics');
 
     Route::get('/user/topics', [DashboardController::class, 'getUserTopic']);
-
-    // Wallet Routes
-    Route::prefix('wallet')->name('wallet.')->group(function () {
-        Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
-        Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
-        Route::get('/status', [WalletController::class, 'status'])->name('status');
-        Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
-        Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
-        Route::post('/send', [WalletController::class, 'send'])->name('send');
-        Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
-
-        // User Rewards Routes
-        Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
-        Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
-        Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
-
-        // Token Balance Route
-        Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
-    });
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
+
+// Wallet Routes
+Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('wallet.')->group(function () {
+    Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
+    Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+    Route::get('/status', [WalletController::class, 'status'])->name('status');
+    Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
+    Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
+    Route::post('/send', [WalletController::class, 'send'])->name('send');
+    Route::post('/deposit', [WalletController::class, 'deposit'])->name('deposit');
+    Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
+
+    // Bridge Wallet Routes
+    Route::post('/bridge/initialize', [App\Http\Controllers\BridgeWalletController::class, 'initializeBridge'])->name('bridge.initialize');
+    Route::get('/bridge/status', [App\Http\Controllers\BridgeWalletController::class, 'checkBridgeStatus'])->name('bridge.status');
+    Route::get('/bridge/balance', [App\Http\Controllers\BridgeWalletController::class, 'getBridgeBalance'])->name('bridge.balance');
+    Route::post('/bridge/kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'createKYCLink'])->name('bridge.kyc-link');
+    Route::post('/bridge/deposit', [App\Http\Controllers\BridgeWalletController::class, 'deposit'])->name('bridge.deposit');
+    Route::post('/bridge/send', [App\Http\Controllers\BridgeWalletController::class, 'send'])->name('bridge.send');
+    
+    // Bridge Webhook Routes
+    Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
+    Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
+    
+    // User Rewards Routes
+    Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
+    Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
+    Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
+
+    // Token Balance Route
+    Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
+});
+
+// KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
+Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
+Route::get('/wallet/kyb-callback', [App\Http\Controllers\BridgeWalletController::class, 'kybCallback'])->name('bridge.kyb-callback');
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
 // Stop impersonation route (must be accessible to any authenticated user, including impersonated users)
@@ -983,9 +1000,18 @@ Route::post('/api/plaid/webhook', function () {
 // printify webhook
 Route::prefix('webhooks')->group(function () {
     Route::post('/printify/orders', [PrintifyWebhookController::class, 'handleOrderWebhook']);
+    // Bridge webhook (no auth required - signature verified)
+    Route::post('/bridge', [App\Http\Controllers\BridgeWebhookController::class, 'handle'])->name('webhooks.bridge');
 });
 
 Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|'])->group(function () {
+    // Wallet Fees Management
+    Route::prefix('wallet-fees')->name('admin.wallet-fees.')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\WalletFeeController::class, 'index'])->name('index');
+        Route::put('/{walletFee}', [App\Http\Controllers\Admin\WalletFeeController::class, 'update'])->name('update');
+        Route::post('/{walletFee}/toggle', [App\Http\Controllers\Admin\WalletFeeController::class, 'toggleActive'])->name('toggle');
+    });
+
     Route::get('/webhooks', [WebhookManagementController::class, 'index'])->name('admin.webhooks.index');
     Route::post('/webhooks/setup-printify', [WebhookManagementController::class, 'setupWebhooks'])->name('admin.webhooks.setup');
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');

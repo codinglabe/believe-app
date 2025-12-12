@@ -5,8 +5,10 @@ namespace App\Http\Controllers;
 use App\Http\Requests\Auth\EINLookupRequest;
 use App\Http\Requests\Auth\OrganizationRegistrationRequest;
 use App\Models\BoardMember;
+use App\Models\BridgeIntegration;
 use App\Models\Organization;
 use App\Models\User;
+use App\Services\BridgeService;
 use App\Services\EINLookupService;
 use App\Services\TaxComplianceService;
 use Illuminate\Auth\Events\Registered;
@@ -25,11 +27,16 @@ class OrganizationRegisterController extends Controller
 {
     protected EINLookupService $einLookupService;
     protected TaxComplianceService $taxComplianceService;
+    protected BridgeService $bridgeService;
 
-    public function __construct(EINLookupService $einLookupService, TaxComplianceService $taxComplianceService)
-    {
+    public function __construct(
+        EINLookupService $einLookupService, 
+        TaxComplianceService $taxComplianceService,
+        BridgeService $bridgeService
+    ) {
         $this->einLookupService = $einLookupService;
         $this->taxComplianceService = $taxComplianceService;
+        $this->bridgeService = $bridgeService;
     }
 
     public function create(Request $request)
@@ -257,6 +264,18 @@ class OrganizationRegisterController extends Controller
 
         Log::info('Organization Registration Success', ['organization_id' => $organization->id]);
 
+        // Create Bridge customer for the organization (non-blocking)
+        try {
+            $this->createBridgeCustomer($organization, $user);
+        } catch (\Exception $e) {
+            // Log error but don't fail registration
+            Log::error('Failed to create Bridge customer during organization registration', [
+                'organization_id' => $organization->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+
         event(new Registered($user));
 
         Auth::login($user);
@@ -308,5 +327,90 @@ class OrganizationRegisterController extends Controller
             $user->role = $targetRole;
             $user->save();
         }
+    }
+
+    /**
+     * Create Bridge customer for organization
+     */
+    private function createBridgeCustomer(Organization $organization, User $user): void
+    {
+        // Check if Bridge customer already exists
+        $existingIntegration = BridgeIntegration::where('integratable_id', $organization->id)
+            ->where('integratable_type', Organization::class)
+            ->first();
+
+        if ($existingIntegration && $existingIntegration->bridge_customer_id) {
+            Log::info('Bridge customer already exists for organization', [
+                'organization_id' => $organization->id,
+                'bridge_customer_id' => $existingIntegration->bridge_customer_id,
+            ]);
+            return;
+        }
+
+        // Prepare customer data
+        $email = trim($organization->email ?? $user->email ?? '');
+        $name = trim($organization->name ?? $user->name ?? '');
+
+        if (empty($email)) {
+            throw new \Exception('Email is required to create Bridge customer');
+        }
+
+        if (empty($name)) {
+            throw new \Exception('Organization name is required to create Bridge customer');
+        }
+
+        $customerData = [
+            'email' => $email,
+            'type' => 'business',
+            'business_name' => $name, // Bridge API expects business_name for business type
+            'accepted_terms' => true,
+            'terms_accepted' => true,
+            'has_accepted_terms' => true,
+        ];
+
+        // Add optional fields if available
+        if (!empty($organization->phone)) {
+            $customerData['phone'] = $organization->phone;
+        }
+        if (!empty($organization->website)) {
+            $customerData['website'] = $organization->website;
+        }
+
+        Log::info('Creating Bridge customer for organization', [
+            'organization_id' => $organization->id,
+            'customer_data' => $customerData,
+        ]);
+
+        // Create customer in Bridge
+        $customerResult = $this->bridgeService->createCustomer($customerData);
+
+        if (!$customerResult['success']) {
+            throw new \Exception($customerResult['error'] ?? 'Failed to create Bridge customer');
+        }
+
+        $bridgeCustomerId = $customerResult['data']['id'] ?? $customerResult['data']['customer_id'] ?? null;
+
+        if (!$bridgeCustomerId) {
+            throw new \Exception('Bridge customer ID not returned');
+        }
+
+        // Save Bridge integration
+        if (!$existingIntegration) {
+            $existingIntegration = new BridgeIntegration();
+            $existingIntegration->integratable_id = $organization->id;
+            $existingIntegration->integratable_type = Organization::class;
+        }
+
+        $existingIntegration->bridge_customer_id = $bridgeCustomerId;
+        $existingIntegration->bridge_metadata = [
+            'customer_data' => $customerResult['data'],
+            'created_at_registration' => true,
+        ];
+        $existingIntegration->save();
+
+        Log::info('Bridge customer created successfully for organization', [
+            'organization_id' => $organization->id,
+            'bridge_customer_id' => $bridgeCustomerId,
+        ]);
     }
 }

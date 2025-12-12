@@ -3,7 +3,6 @@
 import React from "react"
 import { useState, useEffect } from "react"
 import AppLayout from "@/layouts/app-layout"
-import { WalletConnectPopup } from "@/components/wallet-connect-popup"
 import type { BreadcrumbItem } from "@/types"
 import {
   Activity,
@@ -668,7 +667,7 @@ export default function Dashboard({
 
       try {
         // Add cache-busting parameter to ensure fresh check
-        const response = await fetch(`/chat/wallet/status?t=${Date.now()}`, {
+        const response = await fetch(`/wallet/status?t=${Date.now()}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -688,7 +687,7 @@ export default function Dashboard({
 
             // Fetch balance
             try {
-              const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+              const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
                 method: 'GET',
                 headers: {
                   'Accept': 'application/json',
@@ -709,25 +708,19 @@ export default function Dashboard({
               // Balance fetch failed, but wallet is connected
             }
           } else {
-            // Wallet NOT connected - SHOW POPUP (unless user dismissed it)
+            // Wallet NOT connected - Don't show popup
             setWalletConnected(false)
-            if (!userDismissedPopup) {
-              setShowWalletPopup(true)
-            }
+            setShowWalletPopup(false)
           }
         } else {
-          // Error checking status - show popup (assume not connected)
+          // Error checking status - Don't show popup
           setWalletConnected(false)
-          if (!userDismissedPopup) {
-            setShowWalletPopup(true)
-          }
+          setShowWalletPopup(false)
         }
       } catch (error) {
-        // Error - show popup (assume not connected)
+        // Error - Don't show popup
         setWalletConnected(false)
-        if (!userDismissedPopup) {
-          setShowWalletPopup(true)
-        }
+        setShowWalletPopup(false)
       } finally {
         setIsCheckingWallet(false)
       }
@@ -749,7 +742,7 @@ export default function Dashboard({
 
     try {
       // Fetch wallet balance with cache-busting
-      const balanceResponse = await fetch(`/chat/wallet/balance?t=${Date.now()}`, {
+      const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -1133,21 +1126,6 @@ export default function Dashboard({
             </p>
               </div>
 
-              {/* Wallet Balance Display */}
-              {isOrgUser && (isWalletConnected || walletBalance !== null) && (
-                <div className="flex items-center gap-3 bg-primary/10 border border-primary/20 rounded-lg px-4 py-3">
-                  <DollarSign className="w-5 h-5 text-primary" />
-                  <div>
-                    <p className="text-xs text-muted-foreground">Wallet Balance</p>
-                    <p className="text-xl font-bold text-primary">
-                      ${(walletBalance ?? auth.user?.balance ?? 0).toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}
-                    </p>
-              </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
@@ -1982,17 +1960,6 @@ export default function Dashboard({
         )}
       </div>
 
-      {/* Wallet Connect Popup - SHOW FOR ALL ORG USERS WHO DON'T HAVE WALLET CONNECTED */}
-      {isOrgUser && !isCheckingWallet && showWalletPopup && (
-        <WalletConnectPopup
-          isOpen={showWalletPopup}
-          onClose={handleCloseWalletPopup}
-          onConnect={handleWalletConnect}
-          isConnected={walletConnected}
-          walletAppName="Believe Wallet"
-          walletAppLogo="/logo.png" // You can change this to your wallet app logo path
-        />
-      )}
     </AppLayout>
   )
 }

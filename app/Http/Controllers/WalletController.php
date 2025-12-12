@@ -703,9 +703,9 @@ class WalletController extends Controller
                     ];
                 });
 
-            // Get transactions (transfers) for the organization's user
+            // Get transactions (transfers and deposits) for the organization's user
             $transactions = Transaction::where('user_id', $orgUser->id)
-                ->whereIn('type', ['transfer_out', 'transfer_in'])
+                ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                 ->where('status', 'completed')
                 ->orderBy('created_at', 'desc')
                 ->get();
@@ -719,6 +719,25 @@ class WalletController extends Controller
             $transactions = $transactions->map(function ($transaction) {
                     $meta = $transaction->meta ?? [];
                     $isOutgoing = $transaction->type === 'transfer_out';
+                    $isDeposit = $transaction->type === 'deposit';
+                    
+                    if ($isDeposit) {
+                        return [
+                            'id' => 'transaction_' . $transaction->id,
+                            'type' => 'deposit',
+                            'amount' => (float) $transaction->amount,
+                            'date' => $transaction->processed_at?->toIso8601String() ?? $transaction->created_at->toIso8601String(),
+                            'status' => $transaction->status,
+                            'donor_name' => $meta['deposited_by_name'] ?? $meta['organization_name'] ?? 'System',
+                            'donor_email' => null,
+                            'frequency' => 'one-time',
+                            'message' => 'Deposit to wallet',
+                            'transaction_id' => $transaction->transaction_id,
+                            'sort_date' => $transaction->processed_at ?? $transaction->created_at,
+                            'is_outgoing' => false,
+                            'recipient_type' => null,
+                        ];
+                    }
                     
                     return [
                         'id' => 'transaction_' . $transaction->id,
@@ -1061,6 +1080,101 @@ class WalletController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'An error occurred while processing the transfer. Please try again.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Deposit money to organization wallet
+     */
+    public function deposit(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            
+            // Validate request
+            $validated = $request->validate([
+                'amount' => 'required|numeric|min:0.01',
+            ]);
+
+            $amount = (float) $validated['amount'];
+            
+            // Check if user is an organization user
+            $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
+            
+            if (!$isOrgUser) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This feature is only available for organization users.',
+                ], 403);
+            }
+
+            // Get organization and user
+            $organization = $user->organization;
+            if (!$organization || !$organization->user) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Organization not found.',
+                ], 404);
+            }
+
+            $orgUser = $organization->user;
+
+            DB::beginTransaction();
+            
+            try {
+                // Add funds to organization user balance
+                $orgUser->increment('balance', $amount);
+                
+                // Record deposit transaction
+                $orgUser->recordTransaction([
+                    'type' => 'deposit',
+                    'amount' => $amount,
+                    'status' => 'completed',
+                    'payment_method' => 'wallet',
+                    'meta' => [
+                        'organization_id' => $organization->id,
+                        'organization_name' => $organization->name,
+                        'deposited_by' => $user->id,
+                        'deposited_by_name' => $user->name,
+                    ],
+                    'processed_at' => now(),
+                ]);
+
+                DB::commit();
+
+                // Get updated balance
+                $orgUser->refresh();
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Deposit successful! $' . number_format($amount, 2) . ' has been added to your wallet.',
+                    'data' => [
+                        'balance' => (float) $orgUser->balance,
+                        'amount' => $amount,
+                    ],
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                throw $e;
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Wallet deposit error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'error' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while processing the deposit. Please try again.',
             ], 500);
         }
     }

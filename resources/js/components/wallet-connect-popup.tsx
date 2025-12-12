@@ -97,7 +97,7 @@ export function WalletConnectPopup({
       }
       
       // Call backend API to connect wallet
-      const response = await fetch('/chat/wallet/connect', {
+      const response = await fetch('/wallet/connect', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -128,7 +128,7 @@ export function WalletConnectPopup({
 
       // Fetch wallet balance and user info after successful connection
       try {
-        const balanceResponse = await fetch('/chat/wallet/balance', {
+        const balanceResponse = await fetch('/wallet/balance', {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
