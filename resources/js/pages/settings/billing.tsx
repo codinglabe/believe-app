@@ -343,27 +343,27 @@ export default function Billing({ wallet: initialWallet, transactions: initialTr
                         </div>
                       </div>
                       <div className="flex-shrink-0 text-left sm:text-right">
-                        <p
+                          <p
                           className={`font-bold text-base sm:text-lg ${
-                            ['deposit', 'refund', 'donation'].includes(transaction.type)
-                              ? 'text-green-600 dark:text-green-400'
-                              : 'text-red-600 dark:text-red-400'
-                          }`}
-                        >
-                          {['deposit', 'refund', 'donation'].includes(transaction.type) ? '+' : '-'}
-                          {transaction.currency} {Number(transaction.amount).toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2,
-                          })}
-                        </p>
-                        {transaction.fee > 0 && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Fee: {transaction.currency} {Number(transaction.fee).toLocaleString('en-US', {
+                              ['deposit', 'refund', 'donation'].includes(transaction.type)
+                                ? 'text-green-600 dark:text-green-400'
+                                : 'text-red-600 dark:text-red-400'
+                            }`}
+                          >
+                            {['deposit', 'refund', 'donation'].includes(transaction.type) ? '+' : '-'}
+                            {transaction.currency} {Number(transaction.amount).toLocaleString('en-US', {
                               minimumFractionDigits: 2,
                               maximumFractionDigits: 2,
                             })}
                           </p>
-                        )}
+                          {transaction.fee > 0 && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                              Fee: {transaction.currency} {Number(transaction.fee).toLocaleString('en-US', {
+                                minimumFractionDigits: 2,
+                                maximumFractionDigits: 2,
+                              })}
+                            </p>
+                          )}
                       </div>
                     </div>
                   ))}

@@ -617,6 +617,18 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Mail,
                 role: "admin"
             },
+            {
+                title: 'KYB Verification',
+                href: '/admin/kyb-verification',
+                icon: Shield,
+                permission: "kyb.verification.read"
+            },
+            {
+                title: 'KYC Verification',
+                href: '/admin/kyc-verification',
+                icon: UserCheck,
+                permission: "kyc.verification.read"
+            },
         ]
         // Removed group permission - nav-main will show group if any child is visible
     },

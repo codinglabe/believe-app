@@ -26,6 +26,16 @@ class PaymentMethod extends Model
         'live_webhook_secret',
         'test_donation_product_id',
         'live_donation_product_id',
+        // Bridge fields
+        'sandbox_api_key',
+        'live_api_key',
+        'sandbox_webhook_id',
+        'sandbox_webhook_public_key',
+        'sandbox_webhook_url',
+        'sandbox_badge_url',
+        'live_webhook_id',
+        'live_webhook_public_key',
+        'live_badge_url',
     ];
 
     protected $casts = [
@@ -38,6 +48,11 @@ class PaymentMethod extends Model
         'live_secret_key' => 'encrypted', // Encrypt live secret key
         'live_webhook_secret' => 'encrypted', // Encrypt live webhook secret
         'additional_config' => 'array', // Cast JSON to array
+        // Bridge fields
+        'sandbox_api_key' => 'encrypted', // Encrypt sandbox API key
+        'live_api_key' => 'encrypted', // Encrypt live API key
+        'sandbox_webhook_public_key' => 'encrypted', // Encrypt sandbox webhook public key
+        'live_webhook_public_key' => 'encrypted', // Encrypt live webhook public key
     ];
 
     /**

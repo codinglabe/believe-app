@@ -5,7 +5,7 @@ import { Head, Link, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
-import { User, Lock, Shield, CreditCard, Globe } from "lucide-react"
+import { User, Lock, Shield, CreditCard, Globe, Webhook } from "lucide-react"
 import type { PropsWithChildren } from "react"
 import { route } from "ziggy-js"
 
@@ -99,17 +99,30 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                           <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Administration</h3>
                         </div>
                         {auth.user.role === "admin" && (
-                          <Link
-                            href="/settings/payment-methods"
-                            className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
-                              activeTab === "payment-methods"
-                                ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
-                                : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
-                            }`}
-                          >
-                            <CreditCard className="h-4 w-4" />
-                            Payment Methods
-                          </Link>
+                          <>
+                            <Link
+                              href="/settings/payment-methods"
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                                activeTab === "payment-methods"
+                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              }`}
+                            >
+                              <CreditCard className="h-4 w-4" />
+                              Payment Methods
+                            </Link>
+                            <Link
+                              href="/settings/bridge"
+                              className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                                activeTab === "bridge"
+                                  ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                              }`}
+                            >
+                              <Webhook className="h-4 w-4" />
+                              Bridge Wallet
+                            </Link>
+                          </>
                         )}
                         {auth.user.role !== "organization" && (
                           <Link

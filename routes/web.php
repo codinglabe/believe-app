@@ -301,41 +301,62 @@ Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.sele
     Route::delete('/user/topics/{topic}', [DashboardController::class, 'destroyUserTopic']);
 });
 
-// Wallet Routes
+    // Wallet Routes
 Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name('wallet.')->group(function () {
-    Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
-    Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
-    Route::get('/status', [WalletController::class, 'status'])->name('status');
-    Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
-    Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
-    Route::post('/send', [WalletController::class, 'send'])->name('send');
+        Route::post('/connect', [WalletController::class, 'connect'])->name('connect');
+        Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
+        Route::get('/status', [WalletController::class, 'status'])->name('status');
+        Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
+        Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
+        Route::post('/send', [WalletController::class, 'send'])->name('send');
     Route::post('/deposit', [WalletController::class, 'deposit'])->name('deposit');
-    Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
+        Route::post('/disconnect', [WalletController::class, 'disconnect'])->name('disconnect');
 
     // Bridge Wallet Routes
     Route::post('/bridge/initialize', [App\Http\Controllers\BridgeWalletController::class, 'initializeBridge'])->name('bridge.initialize');
+    Route::post('/bridge/create-wallet', [App\Http\Controllers\BridgeWalletController::class, 'createWalletAfterKYC'])->name('bridge.create-wallet');
     Route::get('/bridge/status', [App\Http\Controllers\BridgeWalletController::class, 'checkBridgeStatus'])->name('bridge.status');
     Route::get('/bridge/balance', [App\Http\Controllers\BridgeWalletController::class, 'getBridgeBalance'])->name('bridge.balance');
     Route::post('/bridge/kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'createKYCLink'])->name('bridge.kyc-link');
     Route::post('/bridge/deposit', [App\Http\Controllers\BridgeWalletController::class, 'deposit'])->name('bridge.deposit');
     Route::post('/bridge/send', [App\Http\Controllers\BridgeWalletController::class, 'send'])->name('bridge.send');
     
+    // Custom KYC Routes
+    Route::get('/bridge/tos-link', [App\Http\Controllers\BridgeWalletController::class, 'getTosLink'])->name('bridge.tos-link');
+    Route::get('/bridge/tos-status', [App\Http\Controllers\BridgeWalletController::class, 'checkTosStatus'])->name('bridge.tos-status');
+    Route::post('/bridge/sync-tos-status', [App\Http\Controllers\BridgeWalletController::class, 'syncTosStatus'])->name('bridge.sync-tos-status');
+    Route::post('/bridge/create-customer-kyc', [App\Http\Controllers\BridgeWalletController::class, 'createCustomerWithKyc'])->name('bridge.create-customer-kyc');
+    Route::post('/bridge/control-person-kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'getControlPersonKycLink'])->name('bridge.control-person-kyc-link');
+    Route::get('/bridge/business-details', [App\Http\Controllers\BridgeWalletController::class, 'getBusinessDetails'])->name('bridge.business-details');
+    
+    // Bridge Virtual Account & External Account Routes (for USD top-up)
+    Route::post('/bridge/virtual-account', [App\Http\Controllers\BridgeWalletController::class, 'createVirtualAccountForWallet'])->name('bridge.virtual-account.create');
+    Route::get('/bridge/virtual-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getVirtualAccounts'])->name('bridge.virtual-accounts');
+    Route::post('/bridge/external-account', [App\Http\Controllers\BridgeWalletController::class, 'createExternalAccount'])->name('bridge.external-account.create');
+    Route::get('/bridge/external-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
+    Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
+    Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
+    
     // Bridge Webhook Routes
     Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
     Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
-    
-    // User Rewards Routes
-    Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
-    Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
-    Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
 
-    // Token Balance Route
-    Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
-});
+        // User Rewards Routes
+        Route::get('/rewards/balance', [WalletController::class, 'getRewardBalance'])->name('rewards.balance');
+        Route::get('/rewards/history', [WalletController::class, 'getRewardTransactionHistory'])->name('rewards.history');
+        Route::post('/rewards/credit-hours', [WalletController::class, 'creditVolunteerHours'])->name('rewards.credit-hours');
+
+        // Token Balance Route
+        Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
+    });
 
 // KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
 Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
 Route::get('/wallet/kyb-callback', [App\Http\Controllers\BridgeWalletController::class, 'kybCallback'])->name('bridge.kyb-callback');
+// TOS callback - GET doesn't require auth (Bridge redirect), POST requires auth (from frontend)
+Route::get('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->name('bridge.tos-callback');
+Route::post('/wallet/tos-callback', [App\Http\Controllers\BridgeWalletController::class, 'tosCallback'])->middleware('auth')->name('bridge.tos-callback.post');
+
 
 // Raffle Payment Routes (must come before admin routes to avoid conflicts)
 // Stop impersonation route (must be accessible to any authenticated user, including impersonated users)
@@ -1001,6 +1022,10 @@ Route::post('/api/plaid/webhook', function () {
 Route::prefix('webhooks')->group(function () {
     Route::post('/printify/orders', [PrintifyWebhookController::class, 'handleOrderWebhook']);
     // Bridge webhook (no auth required - signature verified)
+    // Allow HEAD/GET for webhook endpoint verification, POST for actual webhooks
+    Route::match(['get', 'head'], '/bridge', function () {
+        return response()->json(['status' => 'ok', 'message' => 'Bridge webhook endpoint is active'], 200);
+    });
     Route::post('/bridge', [App\Http\Controllers\BridgeWebhookController::class, 'handle'])->name('webhooks.bridge');
 });
 
@@ -1016,6 +1041,30 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::post('/webhooks/setup-printify', [WebhookManagementController::class, 'setupWebhooks'])->name('admin.webhooks.setup');
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
+    
+    // KYB Verification Routes
+    Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'index'])->name('index');
+        Route::get('/{id}', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'show'])->name('show');
+        Route::post('/{id}/approve', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyb.verification.approve');
+        Route::post('/{id}/reject', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyb.verification.reject');
+        Route::post('/{id}/document/{documentType}/approve', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'approveDocument'])->name('document.approve')->middleware('permission:kyb.verification.approve');
+        Route::post('/{id}/document/{documentType}/reject', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'rejectDocument'])->name('document.reject')->middleware('permission:kyb.verification.reject');
+        Route::post('/{id}/request-refill', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'requestRefill'])->name('request-refill')->middleware('permission:kyb.verification.manage');
+        Route::post('/{id}/update-documents-to-send', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDocumentsToSend'])->name('update-documents-to-send')->middleware('permission:kyb.verification.manage');
+    });
+    
+    // KYB Settings Route
+    Route::post('/settings/direct-bridge-submission', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDirectBridgeSetting'])->name('admin.kyb-verification.settings.direct-bridge-submission')->middleware('permission:kyb.verification.manage');
+    
+    // KYC Verification Routes
+    Route::prefix('kyc-verification')->name('admin.kyc-verification.')->middleware('permission:kyc.verification.read')->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'index'])->name('index');
+        Route::get('/{id}', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'show'])->name('show');
+        Route::post('/{id}/approve', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'approve'])->name('approve')->middleware('permission:kyc.verification.approve');
+        Route::post('/{id}/reject', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'reject'])->name('reject')->middleware('permission:kyc.verification.reject');
+        Route::post('/request/{customerId}', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'request'])->name('request')->middleware('permission:kyc.verification.request');
+    });
 });
 
 // Livestock Management Routes (Admin Only)
@@ -1211,7 +1260,7 @@ Route::prefix('admin/plans')
         Route::get('/{plan}/edit', [App\Http\Controllers\Admin\PlanController::class, 'edit'])->name('edit');
         Route::put('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'update'])->name('update');
         Route::delete('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'destroy'])->name('destroy');
-
+        
         // Plan Features
         Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
         Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');

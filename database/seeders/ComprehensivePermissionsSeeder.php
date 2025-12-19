@@ -137,6 +137,10 @@ class ComprehensivePermissionsSeeder extends Seeder
 
             // Promotional Banner Management
             'promotional.banner' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
+            // KYB/KYC Verification Management
+            'kyb.verification' => ['read', 'view', 'approve', 'reject', 'manage'],
+            'kyc.verification' => ['read', 'view', 'approve', 'reject', 'request'],
         ];
 
         // Create all permissions

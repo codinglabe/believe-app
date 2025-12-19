@@ -30,26 +30,51 @@ class TestBridgeConnection extends Command
         $this->info('Testing Bridge API Connection...');
         $this->newLine();
 
-        // Check configuration
-        $apiKey = config('services.bridge.api_key');
-        $environment = config('services.bridge.environment', env('BRIDGE_ENVIRONMENT', 'production'));
+        // Load credentials from database first
+        $bridgeConfig = \App\Models\PaymentMethod::getConfig('bridge');
+        
+        $apiKey = null;
+        $environment = null;
+        $source = '';
+
+        if ($bridgeConfig) {
+            $environment = $bridgeConfig->mode_environment ?? 'sandbox';
+            
+            if ($environment === 'sandbox' && !empty($bridgeConfig->sandbox_api_key)) {
+                $apiKey = $bridgeConfig->sandbox_api_key;
+                $source = 'database (sandbox)';
+            } elseif ($environment === 'live' && !empty($bridgeConfig->live_api_key)) {
+                $apiKey = $bridgeConfig->live_api_key;
+                $source = 'database (live)';
+            }
+        }
+
+        // Fall back to env if database doesn't have credentials
+        if (empty($apiKey)) {
+            $apiKey = config('services.bridge.api_key', env('BRIDGE_API_KEY'));
+            $environment = config('services.bridge.environment', env('BRIDGE_ENVIRONMENT', 'production'));
+            $source = 'environment (.env)';
+        }
 
         if (empty($apiKey)) {
-            $this->error('❌ BRIDGE_API_KEY is not set in .env file');
-            $this->info('Please add: BRIDGE_API_KEY=your_api_key_here');
+            $this->error('❌ Bridge API key is not configured');
+            $this->info('Please configure Bridge credentials in: /settings/bridge');
+            $this->info('Or add BRIDGE_API_KEY to your .env file');
             return 1;
         }
 
         $maskedKey = substr($apiKey, 0, 8) . '...' . substr($apiKey, -4);
         $this->info("API Key: {$maskedKey} (length: " . strlen($apiKey) . ")");
         $this->info("Environment: {$environment}");
+        $this->info("Source: {$source}");
         $this->newLine();
 
         // Test API connection
         $this->info('Testing API connection...');
         
         try {
-            $bridgeService = new BridgeService();
+            // Create BridgeService with credentials from database or env
+            $bridgeService = new BridgeService($apiKey, $environment);
             
             // Get the actual base URL from the service (using reflection to access private property)
             $reflection = new \ReflectionClass($bridgeService);
@@ -97,15 +122,143 @@ class TestBridgeConnection extends Command
                         $this->line('Customer list:');
                         foreach (array_slice($customerList, 0, 10) as $index => $customer) {
                             $customerId = $customer['id'] ?? $customer['customer_id'] ?? 'N/A';
-                            $customerName = $customer['name'] ?? $customer['business_name'] ?? 'N/A';
+                            $customerName = $customer['first_name'] ?? $customer['business_legal_name'] ?? $customer['first_name'] ?? 'N/A';
                             $customerEmail = $customer['email'] ?? 'N/A';
                             $customerType = $customer['type'] ?? 'N/A';
+                            $customerStatus = $customer['status'] ?? 'N/A';
+                            $kycStatus = $customer['kyc_status'] ?? $customer['kyb_status'] ?? 'N/A';
                             
-                            $this->line("  " . ($index + 1) . ". ID: {$customerId} | Name: {$customerName} | Email: {$customerEmail} | Type: {$customerType}");
+                            $this->line("  " . ($index + 1) . ". ID: {$customerId} | Name: {$customerName} | Email: {$customerEmail} | Type: {$customerType} | Status: {$customerStatus} | KYC/KYB: {$kycStatus}");
                         }
                         
                         if ($customerCount > 10) {
                             $this->line("  ... and " . ($customerCount - 10) . " more customers");
+                        }
+                        
+                        // Display detailed customer information
+                        $this->newLine();
+                        $this->info('📊 Detailed Customer Information:');
+                        
+                        foreach (array_slice($customerList, 0, 5) as $index => $customer) {
+                            $customerId = $customer['id'] ?? 'N/A';
+                            
+                            // Fetch full customer details
+                            $this->line("  Fetching details for customer: {$customerId}...");
+                            $customerDetailsResult = $bridgeService->getCustomer($customerId);
+                            
+                            if ($customerDetailsResult['success']) {
+                                $customerDetails = $customerDetailsResult['data'];
+                                
+                                $this->newLine();
+                                $this->line("  ┌─ Customer #" . ($index + 1) . " Details ──────────────────────────────────────────");
+                                
+                                // Basic Info
+                                $this->line("  │ ID: " . ($customerDetails['id'] ?? 'N/A'));
+                                $this->line("  │ Type: " . ($customerDetails['type'] ?? 'N/A'));
+                                $this->line("  │ Email: " . ($customerDetails['email'] ?? 'N/A'));
+                                
+                                // Business-specific fields
+                                if (($customerDetails['type'] ?? '') === 'business') {
+                                    $businessName = $customerDetails['business_name'] ?? $customerDetails['business_legal_name'] ?? $customerDetails['first_name'] ?? 'N/A';
+                                    $this->line("  │ Business Name: {$businessName}");
+                                    $this->line("  │ Business Type: " . ($customerDetails['business_type'] ?? 'N/A'));
+                                    $this->line("  │ Business Industry: " . ($customerDetails['business_industry'] ?? 'N/A'));
+                                    $this->line("  │ Business Description: " . (isset($customerDetails['business_description']) ? substr($customerDetails['business_description'], 0, 50) . '...' : 'N/A'));
+                                    $this->line("  │ Primary Website: " . ($customerDetails['primary_website'] ?? $customerDetails['website'] ?? 'N/A'));
+                                } else {
+                                    $firstName = $customerDetails['first_name'] ?? 'N/A';
+                                    $lastName = $customerDetails['last_name'] ?? 'N/A';
+                                    $this->line("  │ First Name: {$firstName}");
+                                    $this->line("  │ Last Name: {$lastName}");
+                                }
+                                
+                                // Status
+                                $this->line("  │ Status: " . ($customerDetails['status'] ?? 'N/A'));
+                                $this->line("  │ KYC Status: " . ($customerDetails['kyc_status'] ?? 'N/A'));
+                                if (($customerDetails['type'] ?? '') === 'business') {
+                                    $this->line("  │ KYB Status: " . ($customerDetails['kyb_status'] ?? 'N/A'));
+                                }
+                                $this->line("  │ TOS Accepted: " . (isset($customerDetails['has_accepted_terms_of_service']) && $customerDetails['has_accepted_terms_of_service'] ? 'Yes' : 'No'));
+                                
+                                // Address
+                                $address = $customerDetails['registered_address'] ?? $customerDetails['business_address'] ?? $customerDetails['residential_address'] ?? null;
+                                if ($address) {
+                                    $addressStr = ($address['street_line_1'] ?? '') . ', ' . 
+                                                 ($address['city'] ?? '') . ', ' . 
+                                                 ($address['subdivision'] ?? $address['state'] ?? '') . ' ' . 
+                                                 ($address['postal_code'] ?? '') . ', ' . 
+                                                 ($address['country'] ?? '');
+                                    $this->line("  │ Address: " . trim($addressStr, ', '));
+                                } else {
+                                    $this->line("  │ Address: N/A");
+                                }
+                                
+                                // Endorsements
+                                $endorsements = $customerDetails['endorsements'] ?? [];
+                                if (!empty($endorsements)) {
+                                    $this->line("  │ Endorsements: " . count($endorsements) . " found");
+                                    foreach ($endorsements as $endorsement) {
+                                        $endorsementName = $endorsement['name'] ?? 'Unknown';
+                                        $endorsementStatus = $endorsement['status'] ?? 'N/A';
+                                        $this->line("  │   - {$endorsementName}: {$endorsementStatus}");
+                                    }
+                                } else {
+                                    $this->line("  │ Endorsements: None");
+                                }
+                                
+                                // Requirements Due
+                                $requirementsDue = $customerDetails['requirements_due'] ?? [];
+                                if (!empty($requirementsDue)) {
+                                    $this->line("  │ Requirements Due: " . implode(', ', array_slice($requirementsDue, 0, 5)));
+                                    if (count($requirementsDue) > 5) {
+                                        $this->line("  │   ... and " . (count($requirementsDue) - 5) . " more");
+                                    }
+                                } else {
+                                    $this->line("  │ Requirements Due: None");
+                                }
+                                
+                                // Associated Persons (for business)
+                                if (($customerDetails['type'] ?? '') === 'business') {
+                                    $associatedPersons = $customerDetails['associated_persons'] ?? [];
+                                    if (!empty($associatedPersons)) {
+                                        $this->line("  │ Associated Persons: " . count($associatedPersons) . " found");
+                                        foreach (array_slice($associatedPersons, 0, 3) as $person) {
+                                            $personName = ($person['first_name'] ?? '') . ' ' . ($person['last_name'] ?? '');
+                                            $personTitle = $person['title'] ?? 'N/A';
+                                            $personOwnership = $person['ownership_percentage'] ?? 'N/A';
+                                            $this->line("  │   - {$personName} ({$personTitle}) - {$personOwnership}% ownership");
+                                        }
+                                        if (count($associatedPersons) > 3) {
+                                            $this->line("  │   ... and " . (count($associatedPersons) - 3) . " more");
+                                        }
+                                    } else {
+                                        $this->line("  │ Associated Persons: None");
+                                    }
+                                }
+                                
+                                // Timestamps
+                                $this->line("  │ Created: " . ($customerDetails['created_at'] ?? 'N/A'));
+                                $this->line("  │ Updated: " . ($customerDetails['updated_at'] ?? 'N/A'));
+                                
+                                $this->line("  └─────────────────────────────────────────────────────────────────────");
+                                
+                                // Log full customer details
+                                Log::info('Bridge Test - Full Customer Details', [
+                                    'customer_id' => $customerId,
+                                    'customer_type' => $customerDetails['type'] ?? 'N/A',
+                                    'email' => $customerDetails['email'] ?? 'N/A',
+                                    'status' => $customerDetails['status'] ?? 'N/A',
+                                    'kyc_status' => $customerDetails['kyc_status'] ?? 'N/A',
+                                    'kyb_status' => $customerDetails['kyb_status'] ?? null,
+                                    'tos_accepted' => $customerDetails['has_accepted_terms_of_service'] ?? false,
+                                    'endorsements_count' => count($endorsements),
+                                    'requirements_due_count' => count($requirementsDue),
+                                    'associated_persons_count' => count($associatedPersons ?? []),
+                                    'full_customer_data' => $customerDetails,
+                                ]);
+                            } else {
+                                $this->warn("  ⚠️  Failed to fetch details for customer {$customerId}: " . ($customerDetailsResult['error'] ?? 'Unknown error'));
+                            }
                         }
                     } else {
                         $this->line('  No customers found.');

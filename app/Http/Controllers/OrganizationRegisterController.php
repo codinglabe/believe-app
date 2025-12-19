@@ -359,13 +359,34 @@ class OrganizationRegisterController extends Controller
             throw new \Exception('Organization name is required to create Bridge customer');
         }
 
+        // Build registered address from organization data
+        $registeredAddress = [
+            'street_line_1' => $organization->street ?? '',
+            'city' => $organization->city ?? '',
+            'subdivision' => $organization->state ?? '',
+            'postal_code' => $organization->zip ?? '',
+            'country' => 'USA', // Default to USA, can be made configurable
+        ];
+
+        // Build identifying information (EIN)
+        $identifyingInformation = [];
+        if (!empty($organization->ein)) {
+            $identifyingInformation[] = [
+                'type' => 'ein',
+                'issuing_country' => 'usa',
+                'number' => $organization->ein,
+            ];
+        }
+
+        // Build customer data with all required fields for Bridge business customer
         $customerData = [
-            'email' => $email,
             'type' => 'business',
-            'business_name' => $name, // Bridge API expects business_name for business type
-            'accepted_terms' => true,
-            'terms_accepted' => true,
-            'has_accepted_terms' => true,
+            'business_legal_name' => $name, // Bridge expects business_legal_name, not business_name
+            'email' => $email,
+            'registered_address' => $registeredAddress,
+            'physical_address' => $registeredAddress, // Use same as registered if physical not provided
+            'identifying_information' => $identifyingInformation,
+            'business_description' => $organization->description ?? $organization->mission ?? 'Business operations',
         ];
 
         // Add optional fields if available
@@ -373,24 +394,42 @@ class OrganizationRegisterController extends Controller
             $customerData['phone'] = $organization->phone;
         }
         if (!empty($organization->website)) {
-            $customerData['website'] = $organization->website;
+            $customerData['primary_website'] = $organization->website;
         }
+
+        // Add business type if available (default to corporation)
+        $customerData['business_type'] = $this->mapEntityTypeToBridgeType($organization->classification ?? 'corporation');
+        
+        // Add DAO status if available
+        $customerData['is_dao'] = false; // Default to false, can be updated later during KYB
+        
+        // Add attested ownership structure timestamp
+        $customerData['attested_ownership_structure_at'] = now()->toIso8601String();
 
         Log::info('Creating Bridge customer for organization', [
             'organization_id' => $organization->id,
             'customer_data' => $customerData,
         ]);
 
-        // Create customer in Bridge
-        $customerResult = $this->bridgeService->createCustomer($customerData);
+        // Create business customer in Bridge using createBusinessCustomer method
+        $customerResult = $this->bridgeService->createBusinessCustomer($customerData);
 
         if (!$customerResult['success']) {
+            Log::error('Failed to create Bridge customer', [
+                'organization_id' => $organization->id,
+                'error' => $customerResult['error'] ?? 'Unknown error',
+                'response' => $customerResult['response'] ?? null,
+            ]);
             throw new \Exception($customerResult['error'] ?? 'Failed to create Bridge customer');
         }
 
         $bridgeCustomerId = $customerResult['data']['id'] ?? $customerResult['data']['customer_id'] ?? null;
 
         if (!$bridgeCustomerId) {
+            Log::error('Bridge customer ID not returned', [
+                'organization_id' => $organization->id,
+                'response' => $customerResult['data'] ?? null,
+            ]);
             throw new \Exception('Bridge customer ID not returned');
         }
 
@@ -405,6 +444,12 @@ class OrganizationRegisterController extends Controller
         $existingIntegration->bridge_metadata = [
             'customer_data' => $customerResult['data'],
             'created_at_registration' => true,
+            'registration_data' => [
+                'name' => $name,
+                'email' => $email,
+                'ein' => $organization->ein,
+                'address' => $registeredAddress,
+            ],
         ];
         $existingIntegration->save();
 
@@ -412,5 +457,36 @@ class OrganizationRegisterController extends Controller
             'organization_id' => $organization->id,
             'bridge_customer_id' => $bridgeCustomerId,
         ]);
+    }
+
+    /**
+     * Map organization classification/entity type to Bridge business type
+     * 
+     * @param string|null $entityType
+     * @return string
+     */
+    private function mapEntityTypeToBridgeType(?string $entityType): string
+    {
+        if (empty($entityType)) {
+            return 'corporation';
+        }
+
+        $entityTypeLower = strtolower(trim($entityType));
+        
+        // Map common entity types to Bridge business types
+        $mapping = [
+            'llc' => 'llc',
+            'limited liability company' => 'llc',
+            'corporation' => 'corporation',
+            'corp' => 'corporation',
+            'inc' => 'corporation',
+            'partnership' => 'partnership',
+            'cooperative' => 'cooperative',
+            'trust' => 'trust',
+            'sole proprietorship' => 'sole_prop',
+            'sole_prop' => 'sole_prop',
+        ];
+
+        return $mapping[$entityTypeLower] ?? 'corporation';
     }
 }

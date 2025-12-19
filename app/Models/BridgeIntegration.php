@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BridgeIntegration extends Model
 {
@@ -18,11 +19,18 @@ class BridgeIntegration extends Model
         'kyb_status',
         'kyc_link_url',
         'kyb_link_url',
+        'tos_link_url',
+        'tos_status',
         'bridge_metadata',
     ];
 
     protected $casts = [
         'bridge_metadata' => 'array',
+    ];
+
+    protected $appends = [
+        'user',
+        'organization',
     ];
 
     /**
@@ -31,6 +39,28 @@ class BridgeIntegration extends Model
     public function integratable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Get the user if integratable is a User
+     */
+    public function getUserAttribute()
+    {
+        if ($this->integratable_type === User::class) {
+            return $this->integratable;
+        }
+        return null;
+    }
+
+    /**
+     * Get the organization if integratable is an Organization
+     */
+    public function getOrganizationAttribute()
+    {
+        if ($this->integratable_type === Organization::class) {
+            return $this->integratable;
+        }
+        return null;
     }
 
     /**
@@ -61,5 +91,37 @@ class BridgeIntegration extends Model
         
         // For users, need KYC approval
         return $this->isKYCApproved();
+    }
+
+    /**
+     * Get all KYC/KYB submissions for this integration
+     */
+    public function submissions(): HasMany
+    {
+        return $this->hasMany(BridgeKycKybSubmission::class);
+    }
+
+    /**
+     * Get the latest KYC/KYB submission
+     */
+    public function latestSubmission()
+    {
+        return $this->hasOne(BridgeKycKybSubmission::class)->latestOfMany();
+    }
+
+    /**
+     * Get all wallets for this integration
+     */
+    public function wallets(): HasMany
+    {
+        return $this->hasMany(BridgeWallet::class);
+    }
+
+    /**
+     * Get the primary wallet
+     */
+    public function primaryWallet()
+    {
+        return $this->hasOne(BridgeWallet::class)->where('is_primary', true);
     }
 }

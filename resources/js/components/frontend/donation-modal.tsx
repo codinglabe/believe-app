@@ -12,8 +12,9 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
-import { router, usePage } from "@inertiajs/react"
+import { router, usePage, route } from "@inertiajs/react"
 import { useNotification } from "./notification-provider"
+import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 
 interface DonationModalProps {
   isOpen: boolean
@@ -56,6 +57,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   })
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
   const handleAmountSelect = (amount: number) => {
     setSelectedAmount(amount)
@@ -78,6 +81,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
         type: "warning",
         message: typeof flash?.warning === "string" ? flash.warning : "Warning",
       })
+    }
+    // Check for subscription required flash message
+    if ((flash as any)?.subscription_required || (flash as any)?.errors?.subscription) {
+      setShowSubscriptionModal(true)
     }
   }, [flash, showNotification])
 
@@ -109,9 +116,19 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
           message: "",
         })
       },
-      onError: () => {
+      onError: (errors) => {
         setIsProcessing(false)
-        // Handle error (e.g., show notification)
+        // Check if subscription is required
+        if (errors.subscription || (flash as any)?.subscription_required) {
+          setShowSubscriptionModal(true)
+        } else {
+          // Handle other errors (e.g., show notification)
+          showNotification({
+            type: "error",
+            title: "Donation Failed",
+            message: errors.message || "Failed to process donation. Please try again.",
+          })
+        }
       }
     })
 
@@ -417,6 +434,14 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
           </div>
         </div>
       </DialogContent>
+      
+      {/* Subscription Required Modal - Supporter View */}
+      <SubscriptionRequiredModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        feature="donations"
+        isSupporterView={true}
+      />
     </Dialog>
   )
 }

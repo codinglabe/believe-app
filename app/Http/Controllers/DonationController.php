@@ -114,6 +114,13 @@ class DonationController extends Controller
             ]);
         }
         
+        // Check if organization has active subscription
+        if ($organization->user && $organization->user->current_plan_id === null) {
+            return redirect()->back()->withErrors([
+                'subscription' => 'This organization does not have an active subscription. Donations are not available at this time.'
+            ])->with('subscription_required', true);
+        }
+        
         $validated = $request->validate([
             'amount' => 'required|numeric|min:1',
             'frequency' => 'required|in:one-time,weekly,monthly',

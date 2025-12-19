@@ -441,6 +441,17 @@ class ProductController extends BaseController
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'product.create');
+        
+        // Check if organization has active subscription
+        $user = Auth::user();
+        if ($user->role === 'organization' || $user->role === 'organization_pending') {
+            $organization = Organization::where('user_id', $user->id)->first();
+            if ($organization && $organization->user && $organization->user->current_plan_id === null) {
+                return redirect()->back()->withErrors([
+                    'subscription' => 'An active subscription is required to create and sell products. Please subscribe to continue.'
+                ])->with('subscription_required', true);
+            }
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255|unique:products,name',

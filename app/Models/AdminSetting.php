@@ -27,10 +27,15 @@ class AdminSetting extends Model
 
     public static function set($key, $value, $type = 'string')
     {
+        // Convert boolean to string for storage
+        if ($type === 'boolean') {
+            $value = $value ? 'true' : 'false';
+        }
+        
         return self::updateOrCreate(
             ['key' => $key],
             [
-                'value' => is_array($value) ? json_encode($value) : $value,
+                'value' => is_array($value) ? json_encode($value) : (string) $value,
                 'type' => $type
             ]
         );

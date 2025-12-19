@@ -89,6 +89,7 @@ return [
         'environment' => env('BRIDGE_ENVIRONMENT', 'production'), // sandbox or production
         'base_url' => env('BRIDGE_BASE_URL'), // Will be set in BridgeService based on environment
         'webhook_secret' => env('BRIDGE_WEBHOOK_SECRET'),
+        'redirect_uri' => env('BRIDGE_REDIRECT_URI'), // Public URL for TOS callback (e.g., ngrok for local dev)
     ],
 
 ];

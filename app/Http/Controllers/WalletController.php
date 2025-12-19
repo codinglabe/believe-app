@@ -129,6 +129,9 @@ class WalletController extends Controller
                     $orgUser = $organization->user;
                     $balance = (float) ($orgUser->balance ?? 0);
                     
+                    // Check if organization has active subscription
+                    $hasSubscription = $orgUser->current_plan_id !== null;
+                    
                     // Generate wallet address from organization ID
                     $walletAddress = '0x' . str_pad(dechex($organization->id), 40, '0', STR_PAD_LEFT);
                     
@@ -143,6 +146,7 @@ class WalletController extends Controller
                         'organization_id' => $organization->id,
                         'organization_name' => $organization->name,
                         'address' => $walletAddress,
+                        'has_subscription' => $hasSubscription,
                     ]);
                 } else {
                     // Organization user but no organization or user found
@@ -155,91 +159,21 @@ class WalletController extends Controller
                         'connected' => true,
                         'source' => 'organization',
                         'note' => 'No organization or organization user found',
+                        'has_subscription' => false,
                     ]);
                 }
             }
 
-            // For regular users, check if wallet is connected
-            if (!$user->wallet_access_token) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Wallet not connected. Please connect your wallet first.',
-                    'connected' => false,
-                ], 400);
-            }
-
-            // Check if token is expired
-            if ($user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Wallet token expired. Please reconnect your wallet.',
-                    'connected' => false,
-                    'expired' => true,
-                ], 401);
-            }
-
-            // Call wallet API to get token balance
-            $response = Http::withHeaders([
-                'x-api-key' => self::WALLET_API_KEY,
-                'Abp.TenantId' => self::WALLET_TENANT_ID,
-                'Authorization' => 'Bearer ' . $user->wallet_access_token,
-                'Content-Type' => 'application/json',
-            ])->get(self::WALLET_API_URL . '/services/app/Customers/GetTokenBalance');
-
-            if (!$response->successful()) {
-                // Log the error for debugging
-                Log::warning('Wallet balance API call failed', [
-                    'user_id' => $user->id,
-                    'status' => $response->status(),
-                    'response' => $response->body(),
-                ]);
-
-                // If token is invalid, clear it
-                if ($response->status() === 401) {
-                    $user->update([
-                        'wallet_access_token' => null,
-                        'wallet_encrypted_token' => null,
-                        'wallet_token_expires_at' => null,
-                    ]);
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Wallet token expired. Please reconnect your wallet.',
-                        'connected' => false,
-                        'expired' => true,
-                    ], 401);
-                }
-
-                // If API call fails, return local balance instead of failing completely
-                return response()->json([
-                    'success' => true,
-                    'balance' => (float) ($user->balance ?? 0),
-                    'wallet_balance' => null,
-                    'local_balance' => (float) ($user->balance ?? 0),
-                    'currency' => 'USD',
-                    'connected' => true,
-                    'note' => 'Using local balance - API call failed',
-                ]);
-            }
-
-            $data = $response->json();
-
-            // Extract balance from response: { "result": 0.0, "success": true, ... }
-            $walletBalance = isset($data['result']) ? (float) $data['result'] : null;
-
-            // If balance is found in wallet API, optionally sync it to user's balance
-            if ($walletBalance !== null) {
-                // Uncomment this line if you want to sync wallet balance to user balance
-                // $user->update(['balance' => (float) $walletBalance]);
-            }
-
+            // For regular users, get balance directly from user table
+            $balance = (float) ($user->balance ?? 0);
+            
             return response()->json([
                 'success' => true,
-                'balance' => $walletBalance !== null ? (float) $walletBalance : (float) ($user->balance ?? 0),
-                'wallet_balance' => $walletBalance !== null ? (float) $walletBalance : null,
-                'local_balance' => (float) ($user->balance ?? 0),
+                'balance' => $balance,
+                'local_balance' => $balance,
                 'currency' => 'USD',
                 'connected' => true,
+                'source' => 'user',
             ]);
 
         } catch (\Exception $e) {

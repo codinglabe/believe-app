@@ -11,6 +11,7 @@ import { router, usePage } from "@inertiajs/react" // Using actual Inertia route
 import { RadioGroup, RadioGroupItem } from "@/components/frontend/ui/radio-group"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { useNotification } from "@/components/frontend/notification-provider"
+import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 
 // Define the expected props structure for an Inertia page
 interface Organization {
@@ -46,6 +47,14 @@ export default function DonatePage({
 }: DonatePageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
+  
+  // Check for subscription required flash message
+  useEffect(() => {
+    if ((flash as any)?.subscription_required || (flash as any)?.errors?.subscription) {
+      setShowSubscriptionModal(true)
+    }
+  }, [flash])
+  
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
@@ -55,6 +64,7 @@ export default function DonatePage({
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [submissionError, setSubmissionError] = useState<string | null>(null)
   const [isSearchingOrganizations, setIsSearchingOrganizations] = useState(false) // New state for search loading
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
   // State to hold the organizations currently displayed in the search results dropdown.
   // In a real Inertia app, this would typically be `organizations` prop itself,
@@ -214,7 +224,13 @@ export default function DonatePage({
 
       },
       onError: (errors) => {
-        setSubmissionError(errors.message || "Failed to process donation. Please try again.")
+        // Check if subscription is required
+        if (errors.subscription || (flash as any)?.subscription_required) {
+          setShowSubscriptionModal(true)
+          setSubmissionError(null)
+        } else {
+          setSubmissionError(errors.subscription || errors.message || "Failed to process donation. Please try again.")
+        }
         console.error("Donation submission errors:", errors)
       },
     })
@@ -552,7 +568,18 @@ export default function DonatePage({
                         className="min-h-[100px] bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
                       />
                     </div>
-                    {submissionError && <div className="text-red-500 text-sm text-center">{submissionError}</div>}
+                    {submissionError && (
+                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
+                        <div className="flex items-start gap-3">
+                          <X className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                          <div className="flex-1">
+                            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                              {submissionError}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                     {/* Payment Button */}
                     <Button
                       size="lg"
@@ -701,6 +728,14 @@ export default function DonatePage({
             </div>
           </div>
         </div>
+        
+        {/* Subscription Required Modal - Supporter View */}
+        <SubscriptionRequiredModal
+          isOpen={showSubscriptionModal}
+          onClose={() => setShowSubscriptionModal(false)}
+          feature="donations"
+          isSupporterView={true}
+        />
       </div>
     </FrontendLayout>
   )

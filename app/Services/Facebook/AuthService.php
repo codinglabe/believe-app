@@ -15,9 +15,9 @@ class AuthService
 
     public function __construct()
     {
-        $this->appId = config('services.facebook.app_id');
-        $this->appSecret = config('services.facebook.app_secret');
-        $this->redirectUri = config('services.facebook.redirect_uri');
+        $this->appId = config('services.facebook.app_id') ?? '';
+        $this->appSecret = config('services.facebook.app_secret') ?? '';
+        $this->redirectUri = config('services.facebook.redirect_uri') ?? '';
 
         if (!$this->appId || !$this->appSecret) {
             throw new Exception('Facebook app credentials not configured');

@@ -16,6 +16,12 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware) {
+        // Webhooks are called by external services and cannot include Laravel CSRF tokens.
+        // Security is handled in the webhook controller via signature verification.
+        $middleware->validateCsrfTokens(except: [
+            'webhooks/bridge',
+        ]);
+
         $middleware->encryptCookies(except: [
             'appearance',
             'sidebar_state'

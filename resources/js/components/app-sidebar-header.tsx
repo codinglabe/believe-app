@@ -12,6 +12,7 @@ import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
 import { WalletPopup } from './WalletPopup';
+import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth } = usePage<{ 
@@ -27,6 +28,8 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
     const [walletConnected, setWalletConnected] = useState(false);
     const [walletPopupOpen, setWalletPopupOpen] = useState(false);
+    const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+    const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
     
     const isOrgUser = auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending';
 
@@ -62,6 +65,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     if (balanceData.success) {
                         setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
                         setWalletConnected(true); // Always connected for organization users
+                        setHasSubscription(balanceData.has_subscription ?? null);
                     }
                 }
             } catch (error) {
@@ -123,13 +127,20 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 {/* Wallet Balance Display for Organization Users - Always visible */}
                 {isOrgUser && (
                     <button
-                        onClick={() => setWalletPopupOpen(true)}
+                        onClick={() => {
+                            // If no subscription, show subscription modal instead
+                            if (hasSubscription === false) {
+                                setShowSubscriptionModal(true);
+                            } else {
+                                setWalletPopupOpen(true);
+                            }
+                        }}
                         className={`flex items-center gap-1 sm:gap-1.5 text-xs sm:text-sm font-semibold rounded-md sm:rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 transition-colors ${
-                            walletConnected && walletBalance !== null
+                            walletConnected && walletBalance !== null && hasSubscription
                                 ? 'text-primary bg-primary/10 border border-primary/20 hover:bg-primary/20'
                                 : 'text-muted-foreground bg-muted border border-border hover:bg-muted/80'
                         }`}
-                        title="View wallet details"
+                        title={hasSubscription === false ? "Subscription required" : "View wallet details"}
                     >
                         <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span className="whitespace-nowrap">
@@ -150,12 +161,21 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     </button>
                 )}
                 
-                {/* Wallet Popup */}
-                {isOrgUser && (
+                {/* Wallet Popup - Only show if has subscription */}
+                {isOrgUser && hasSubscription && (
                     <WalletPopup
                         isOpen={walletPopupOpen}
                         onClose={() => setWalletPopupOpen(false)}
                         organizationName={(auth?.user as any)?.organization?.name || undefined}
+                    />
+                )}
+                
+                {/* Subscription Required Modal */}
+                {isOrgUser && (
+                    <SubscriptionRequiredModal
+                        isOpen={showSubscriptionModal}
+                        onClose={() => setShowSubscriptionModal(false)}
+                        feature="wallet"
                     />
                 )}
                 
