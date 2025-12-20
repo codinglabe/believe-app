@@ -735,33 +735,33 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
 
   return (
     <div className="max-w-3xl mx-auto space-y-4">
-      {/* Start a post - LinkedIn Style */}
-      <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm rounded-lg overflow-hidden">
-        <CardContent className="p-4">
-          <div className="flex items-start gap-3 mb-3">
-            <Avatar className="w-10 h-10 flex-shrink-0">
+      {/* Start a post - Modern Design */}
+      <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-200">
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4 mb-4">
+            <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
               <AvatarImage src={currentUser?.image} />
-              <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+              <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
                 {currentUser?.name?.charAt(0)?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
               <Input
-                placeholder="Start a post"
+                placeholder="What's on your mind?"
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 onClick={() => setShowPostForm(true)}
-                className="rounded-full bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:bg-white dark:hover:bg-gray-700 cursor-pointer transition-colors"
+                className="rounded-xl bg-gray-50 dark:bg-gray-700/50 border-2 border-gray-200 dark:border-gray-600 hover:border-primary/30 hover:bg-white dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 py-6 text-base font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
                 readOnly
               />
             </div>
           </div>
-          <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/20 rounded-lg flex-1"
+              className="text-gray-600 dark:text-gray-400 hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl flex-1 px-4 py-2.5 transition-all duration-200 font-medium"
               onClick={() => {
                 setShowPostForm(true)
                 fileInputRef.current?.click()
@@ -778,59 +778,89 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
       <AnimatePresence>
         {(showPostForm || postContent || postImages.length > 0) && (
           <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
+            initial={{ opacity: 0, y: -20, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -20, scale: 0.95 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm rounded-lg overflow-hidden">
-              <CardContent className="p-4">
-                <form onSubmit={handlePostSubmit} className="space-y-4">
-                  <div className="flex items-start gap-3">
-                    <Avatar className="w-10 h-10 flex-shrink-0">
+            <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl rounded-2xl overflow-hidden backdrop-blur-sm">
+              <CardContent className="p-6">
+                <form onSubmit={handlePostSubmit} className="space-y-5">
+                  <div className="flex items-start gap-4">
+                    <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
                       <AvatarImage src={currentUser?.image} />
-                      <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                      <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
                         {currentUser?.name?.charAt(0)?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <div className="flex-1 min-w-0">
                       <Textarea
                         ref={textareaRef}
-                        placeholder="What do you want to talk about?"
+                        placeholder="What's on your mind?"
                         value={postContent}
                         onChange={(e) => setPostContent(e.target.value)}
-                        className="min-h-[120px] resize-none border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500 text-base rounded-lg bg-white dark:bg-gray-700/50"
+                        className="min-h-[140px] resize-none border-2 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary text-base rounded-xl bg-gray-50 dark:bg-gray-700/30 transition-all duration-200 placeholder:text-gray-400 dark:placeholder:text-gray-500"
                         autoFocus
                       />
                       {postImages.length > 0 && (
-                        <div className="mt-3 grid grid-cols-2 gap-2">
-                          {postImages.map((file, idx) => (
-                            <div key={idx} className="relative group rounded-lg overflow-hidden">
-                              <img
-                                src={URL.createObjectURL(file)}
-                                alt={`Preview ${idx + 1}`}
-                                className="w-full h-32 object-cover rounded-lg"
-                              />
-                              <button
-                                type="button"
-                                onClick={() => removeImage(idx)}
-                                className="absolute top-2 right-2 bg-black/70 hover:bg-black/90 text-white rounded-full p-1.5 opacity-100 group-hover:opacity-100 transition-opacity z-10"
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          className="mt-4"
+                        >
+                          <div className={`grid gap-3 ${
+                            postImages.length === 1 ? 'grid-cols-1' :
+                            postImages.length === 2 ? 'grid-cols-2' :
+                            postImages.length >= 3 ? 'grid-cols-2' : 'grid-cols-2'
+                          }`}>
+                            {postImages.map((file, idx) => (
+                              <motion.div
+                                key={idx}
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={{ delay: idx * 0.05 }}
+                                className="relative group rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-lg transition-all duration-200"
                               >
-                                <X className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {postImages.length > 0 && (
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                          {postImages.length} photo{postImages.length > 1 ? 's' : ''} selected
-                          {postImages.length < 10 && ` • ${10 - postImages.length} more can be added`}
-                          {postImages.length >= 10 && ' • Maximum reached'}
-                        </p>
+                                <div className="aspect-video overflow-hidden bg-gray-100 dark:bg-gray-800">
+                                  <img
+                                    src={URL.createObjectURL(file)}
+                                    alt={`Preview ${idx + 1}`}
+                                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                                  />
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => removeImage(idx)}
+                                  className="absolute top-2 right-2 bg-red-500/90 hover:bg-red-600 text-white rounded-full p-2 shadow-lg opacity-0 group-hover:opacity-100 transition-all duration-200 z-10 hover:scale-110"
+                                >
+                                  <X className="w-4 h-4" />
+                                </button>
+                                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/60 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <p className="text-white text-xs font-medium truncate">{file.name}</p>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
+                          <div className="mt-3 flex items-center justify-between px-1">
+                            <p className="text-xs font-medium text-gray-600 dark:text-gray-400">
+                              <span className="text-primary font-semibold">{postImages.length}</span> photo{postImages.length > 1 ? 's' : ''} selected
+                            </p>
+                            {postImages.length < 10 && (
+                              <p className="text-xs text-gray-500 dark:text-gray-500">
+                                {10 - postImages.length} more can be added
+                              </p>
+                            )}
+                            {postImages.length >= 10 && (
+                              <p className="text-xs text-red-500 font-medium">
+                                Maximum reached
+                              </p>
+                            )}
+                          </div>
+                        </motion.div>
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                     <div className="flex items-center gap-2">
                       <input
                         ref={fileInputRefExpanded}
@@ -844,7 +874,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         type="button"
                         variant="ghost"
                         size="sm"
-                        className="text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-950/20 rounded-lg"
+                        className="text-gray-600 dark:text-gray-400 hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl px-4 py-2 transition-all duration-200 font-medium"
                         onClick={() => {
                           if (postImages.length < 10) {
                             fileInputRefExpanded.current?.click()
@@ -857,11 +887,13 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         disabled={postImages.length >= 10}
                       >
                         <ImageIcon className="w-5 h-5 mr-2" />
-                        {postImages.length > 0 ? 'Add More Photos' : 'Photo'}
-                        {postImages.length > 0 && postImages.length < 10 && ` (${10 - postImages.length} left)`}
+                        {postImages.length > 0 ? 'Add More' : 'Add Photo'}
+                        {postImages.length > 0 && postImages.length < 10 && (
+                          <span className="ml-1 text-xs">({10 - postImages.length})</span>
+                        )}
                       </Button>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <Button
                         type="button"
                         variant="ghost"
@@ -877,13 +909,14 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                             fileInputRefExpanded.current.value = ''
                           }
                         }}
+                        className="rounded-xl px-4 hover:bg-gray-100 dark:hover:bg-gray-700"
                       >
                         Cancel
                       </Button>
                       <Button
                         type="submit"
                         disabled={isPosting || (!postContent.trim() && postImages.length === 0)}
-                        className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-6 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white rounded-xl px-6 py-2 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 font-semibold"
                       >
                         {isPosting ? (
                           <>
@@ -891,7 +924,10 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                             Posting...
                           </>
                         ) : (
-                          'Post'
+                          <>
+                            <Send className="w-4 h-4 mr-2" />
+                            Post
+                          </>
                         )}
                       </Button>
                     </div>
@@ -920,25 +956,29 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-sm rounded-lg overflow-hidden hover:shadow-md transition-shadow">
-            <CardContent className="p-4">
+          <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-200">
+            <CardContent className="p-6">
               {/* Post Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-start gap-3 flex-1 min-w-0">
-                  <Avatar className="w-12 h-12 flex-shrink-0">
+              <div className="flex items-start justify-between mb-4">
+                <div className="flex items-start gap-4 flex-1 min-w-0">
+                  <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
                     <AvatarImage src={post.user.image} />
-                    <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                    <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
                       {post.user.name?.charAt(0)?.toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold text-base hover:underline cursor-pointer text-gray-900 dark:text-gray-100 mb-0.5">
+                    <h3 className="font-bold text-base hover:underline cursor-pointer text-gray-900 dark:text-gray-100 mb-1 transition-colors">
                       {post.user.name}
                     </h3>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                       <span>{formatTime(post.created_at)}</span>
-                      {post.is_edited && <span>·</span>}
-                      {post.is_edited && <span>Edited</span>}
+                      {post.is_edited && (
+                        <>
+                          <span>·</span>
+                          <span className="text-primary font-medium">Edited</span>
+                        </>
+                      )}
                       <span>·</span>
                       <Globe className="w-3 h-3" />
                     </div>
@@ -1101,25 +1141,39 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                 </div>
               ) : (
                 <>
-                  <p className="text-base mb-3 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
-                    {post.content}
-                  </p>
+                  {post.content && (
+                    <p className="text-base mb-4 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
+                      {post.content}
+                    </p>
+                  )}
                   {post.images && post.images.length > 0 && (
-                    <div className={`grid gap-2 mb-3 rounded-lg overflow-hidden ${
-                      post.images.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
+                    <div className={`grid gap-3 mb-4 rounded-xl overflow-hidden ${
+                      post.images.length === 1 ? 'grid-cols-1' :
+                      post.images.length === 2 ? 'grid-cols-2' :
+                      'grid-cols-2'
                     }`}>
                       {post.images.map((image, idx) => (
-                        <img
+                        <div
                           key={idx}
-                          src={image}
-                          alt={`Post image ${idx + 1}`}
+                          className="relative group rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer"
                           onClick={() => setImageViewer({ images: post.images || [], currentIndex: idx })}
-                          className="w-full object-cover cursor-pointer hover:opacity-95 transition-opacity rounded-lg"
-                          style={{
-                            maxHeight: (post.images?.length || 0) === 1 ? '500px' : '300px',
-                            minHeight: (post.images?.length || 0) === 1 ? '300px' : '200px'
-                          }}
-                        />
+                        >
+                          <img
+                            src={image}
+                            alt={`Post image ${idx + 1}`}
+                            className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            style={{
+                              maxHeight: (post.images?.length || 0) === 1 ? '500px' : '300px',
+                              minHeight: (post.images?.length || 0) === 1 ? '300px' : '200px'
+                            }}
+                          />
+                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
+                          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="bg-black/50 text-white px-2 py-1 rounded-lg text-xs font-medium">
+                              Click to view
+                            </div>
+                          </div>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -1160,7 +1214,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between pt-3 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
                 <div
                   className="relative flex-1"
                   onMouseEnter={() => setShowReactionPicker(post.id)}
@@ -1169,7 +1223,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`w-full justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors ${
+                    className={`w-full justify-center text-gray-600 dark:text-gray-400 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl transition-all duration-200 font-medium ${
                       post.user_reaction ? reactionConfig[post.user_reaction.type].color : ''
                     }`}
                     onClick={() => {
@@ -1183,7 +1237,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                     {post.user_reaction ? (
                       <>
                         <span className="text-lg mr-2">{reactionConfig[post.user_reaction.type].emoji}</span>
-                        <span className="capitalize">{post.user_reaction.type}</span>
+                        <span className="capitalize font-semibold">{post.user_reaction.type}</span>
                       </>
                     ) : (
                       <>
@@ -1226,7 +1280,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="flex-1 justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                  className="flex-1 justify-center text-gray-600 dark:text-gray-400 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl transition-all duration-200 font-medium"
                   onClick={() => setShowComments(prev => ({ ...prev, [post.id]: !prev[post.id] }))}
                 >
                   <MessageCircle className="w-5 h-5 mr-2" />

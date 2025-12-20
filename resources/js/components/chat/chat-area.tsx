@@ -58,52 +58,73 @@ export function ChatArea() {
   }
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between p-4 border-b">
+    <div className="flex h-full flex-col overflow-hidden bg-background">
+      <div className="flex items-center justify-between p-4 border-b border-border/50 bg-card/50 backdrop-blur-sm flex-shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
           <UserAvatar
             user={{ name: chatHeaderName, avatar: chatHeaderAvatar || "/placeholder.svg?height=32&width=32" }}
-            className="h-9 w-9"
+            className="h-10 w-10 ring-2 ring-background shadow-sm"
           />
           <div>
-            {/* <div className="text-xs text-muted-foreground mb-1">{getBreadcrumbText()}</div> */}
-            <h3 className="font-semibold text-lg">{chatHeaderName}</h3>
+            <h3 className="font-semibold text-base">{chatHeaderName}</h3>
             {activeRoom.type === "public" && (
-              <p className="text-sm text-muted-foreground">{activeRoom.members.length} members</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {activeRoom.members.length} {activeRoom.members.length === 1 ? 'member' : 'members'}
+              </p>
             )}
             {activeRoom.type === "private" && (
-              <p className="text-sm text-muted-foreground">Private Group ({activeRoom.members.length} members)</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Private Group • {activeRoom.members.length} {activeRoom.members.length === 1 ? 'member' : 'members'}
+              </p>
             )}
-            {activeRoom.type === "direct" && <p className="text-sm text-muted-foreground">Direct Message</p>}
+            {activeRoom.type === "direct" && (
+              <p className="text-xs text-muted-foreground mt-0.5">Direct Message</p>
+            )}
           </div>
         </div>
-              <div className="flex items-center gap-2">
-                  {activeRoom.type !== "direct" && (
-                      <Link href={getManageGroupsLink()}>
-    <Button variant="ghost" className="flex items-center gap-2 cursor-pointer" title="Manage Groups">
-      <SettingsIcon className="h-5 w-5" />
-      <span className="hidden sm:inline">Manage Groups</span>
-    </Button>
-  </Link>
-                  )}
-
-  <Button variant="ghost" size="icon" onClick={() => setIsDetailsPanelOpen(true)}>
-    <InfoIcon className="h-5 w-5" />
-  </Button>
-</div>
+        <div className="flex items-center gap-1">
+          {activeRoom.type !== "direct" && (
+            <Link href={getManageGroupsLink()}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="flex items-center gap-2 h-9 rounded-lg hover:bg-muted"
+                title="Manage Groups"
+              >
+                <SettingsIcon className="h-4 w-4" />
+                <span className="hidden sm:inline text-sm">Manage</span>
+              </Button>
+            </Link>
+          )}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-9 w-9 rounded-lg hover:bg-muted"
+            onClick={() => setIsDetailsPanelOpen(true)}
+          >
+            <InfoIcon className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
-      <MessageList />
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <MessageList />
+      </div>
 
-      <div className="p-4 border-t">
+      <div className="p-4 border-t border-border/50 bg-card/50 backdrop-blur-sm flex-shrink-0 safe-area-inset-bottom shadow-lg">
         {typingUsers.length > 0 && (
-          <div className="mb-2 text-sm text-muted-foreground">
+          <div className="mb-3 px-2">
             <TypingIndicator users={typingUsers} />
           </div>
         )}
         {!isMember && activeRoom.type === "public" ? (
           <div className="flex justify-center">
-            <Button onClick={() => joinRoom(activeRoom.id)}>Join Public Room</Button>
+            <Button
+              onClick={() => joinRoom(activeRoom.id)}
+              className="rounded-xl shadow-sm bg-primary hover:bg-primary/90"
+            >
+              Join Public Room
+            </Button>
           </div>
         ) : (
           <MessageInput />

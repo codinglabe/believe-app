@@ -696,26 +696,49 @@ class PrintifyService
     public function deleteWebhook(string $webhookId, string $webhookHost): array
     {
         try {
-            $response = $this->client->delete("v1/shops/{$this->shopId}/webhooks/{$webhookId}.json?host={$webhookHost}");
+            // URL encode the host parameter to handle special characters
+            $encodedHost = urlencode($webhookHost);
+            $response = $this->client->delete("v1/shops/{$this->shopId}/webhooks/{$webhookId}.json?host={$encodedHost}");
 
             return [
                 'success' => true
             ];
 
         } catch (RequestException $e) {
+            $response = $e->getResponse();
+            $responseBody = $response ? $response->getBody()->getContents() : null;
+
             Log::error('Error deleting Printify webhook', [
                 'webhook_id' => $webhookId,
-                'error' => $e->getMessage()
+                'webhook_host' => $webhookHost,
+                'http_code' => $response ? $response->getStatusCode() : null,
+                'error' => $e->getMessage(),
+                'response_body' => $responseBody,
             ]);
+
+            // Extract error message from response if available
+            $errorMessage = $e->getMessage();
+            if ($responseBody) {
+                $errorData = json_decode($responseBody, true);
+                if (isset($errorData['message'])) {
+                    $errorMessage = $errorData['message'];
+                } elseif (isset($errorData['errors'])) {
+                    $errorMessage = is_array($errorData['errors'])
+                        ? json_encode($errorData['errors'])
+                        : $errorData['errors'];
+                }
+            }
 
             return [
                 'success' => false,
-                'error' => $e->getMessage()
+                'error' => $errorMessage
             ];
         } catch (\Exception $e) {
             Log::error('Unexpected error deleting Printify webhook', [
                 'webhook_id' => $webhookId,
-                'error' => $e->getMessage()
+                'webhook_host' => $webhookHost,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
             return [

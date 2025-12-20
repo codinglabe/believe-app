@@ -37,6 +37,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->alias([
             'role' => \Spatie\Permission\Middleware\RoleMiddleware::class,
+            'role.simple' => \App\Http\Middleware\CheckRoleSimple::class, // Simple role check without guard issues
             'permission' => \Spatie\Permission\Middleware\PermissionMiddleware::class,
             'role_or_permission' => \Spatie\Permission\Middleware\RoleOrPermissionMiddleware::class,
             'topics.selected' => \App\Http\Middleware\CheckTopicsSelected::class,

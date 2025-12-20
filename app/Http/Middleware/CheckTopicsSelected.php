@@ -23,9 +23,13 @@ class CheckTopicsSelected
         }
 
         if ($request->user() && !$request->user()->interestedTopics()->exists()) {
-            if($request->user()->hasRole("organization")){
+            $user = $request->user();
+
+            // Use simple role property check instead of Spatie Permission to avoid guard issues
+            // This is more reliable and doesn't depend on guard configuration
+            if($user->role === 'organization' || $user->role === 'organization_pending'){
                 return redirect()->route('auth.topics.select');
-            }elseif($request->user()->hasRole("user")){
+            }elseif($user->role === 'user'){
                 return redirect()->route('user.topics.select');
             }
 

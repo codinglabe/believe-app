@@ -42,7 +42,7 @@ export function ChatLayout() {
   if (isMobile) {
     return (
       <Sheet>
-            <div className="h-screen flex flex-col">
+            <div className="h-[100dvh] flex flex-col overflow-hidden">
 
                 {activeRoom ? (
                     <>

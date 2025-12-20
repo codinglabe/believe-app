@@ -13,13 +13,10 @@ import {
 } from "@/components/frontend/ui/dropdown-menu"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import {
-  Heart,
   Menu,
   X,
   User,
-  Settings,
   LogOut,
-  Bell,
   LayoutGrid,
   Wallet,
   Plus,
@@ -29,6 +26,16 @@ import {
   Text,
   ShoppingBag,
   Gift,
+  ChevronDown,
+  Newspaper,
+  Calendar,
+  Briefcase,
+  GraduationCap,
+  Store,
+  Users,
+  MessageSquare,
+  Building2,
+  Mail,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -90,21 +97,35 @@ export default function Navbar() {
   // Form state for deposit (if needed, currently not integrated with backend)
   const [addFundsAmount, setAddFundsAmount] = useState("")
 
-  const navItems = [
+  // Core navigation items (always visible)
+  const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
-    { name: "News", href: "/nonprofit-news" },
-    { name: "Marketplace", href: "/marketplace" },
-    { name: "Event Calendar", href: "/all-events" },
-    { name: "Jobs", href: "/jobs" },
     { name: "Donate", href: "/donate" },
-    { name: "Courses & Events", href: route("course.index") },
+  ]
+
+  // Community dropdown items
+  const communityItems = [
+    { name: "News", href: "/nonprofit-news", icon: Newspaper },
     ...(isLoggedIn ? [
-      { name: "Social Feed", href: route("social-feed.index") },
-      { name: "Chat", href: route("chat.index") }
+      { name: "Social Feed", href: route("social-feed.index"), icon: Users },
+      { name: "Chat", href: route("chat.index"), icon: MessageSquare },
     ] : []),
-    { name: "Fractional Ownership", href: "/fractional" },
-    { name: "Contact", href: "/contact" },
+  ]
+
+  // Services dropdown items
+  const servicesItems = [
+    { name: "Marketplace", href: "/marketplace", icon: Store },
+    { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+    { name: "Jobs", href: "/jobs", icon: Briefcase },
+    { name: "Courses & Events", href: route("course.index"), icon: GraduationCap },
+    { name: "Event Calendar", href: "/all-events", icon: Calendar },
+  ]
+
+  // More dropdown items
+  const moreItems = [
+    { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
+    { name: "Contact", href: "/contact", icon: Mail },
   ]
 
   const cleanup = useMobileNavigation()
@@ -223,13 +244,76 @@ export default function Navbar() {
 
           {/* Desktop Navigation */}
           <div className="hidden xl:flex items-center space-x-1">
-            {navItems.map((item) => (
+            {/* Core items - always visible */}
+            {coreNavItems.map((item) => (
               <Link key={item.name} href={item.href}>
                 <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
                   {item.name}
                 </Button>
               </Link>
             ))}
+
+            {/* Community Dropdown */}
+            {communityItems.length > 0 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
+                    Community
+                    <ChevronDown className="ml-1 h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-48">
+                  {communityItems.map((item) => (
+                    <DropdownMenuItem key={item.name} asChild>
+                      <Link href={item.href} className="flex items-center cursor-pointer">
+                        {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                        <span>{item.name}</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+
+            {/* Services Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
+                  Services
+                  <ChevronDown className="ml-1 h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {servicesItems.map((item) => (
+                  <DropdownMenuItem key={item.name} asChild>
+                    <Link href={item.href} className="flex items-center cursor-pointer">
+                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                      <span>{item.name}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+
+            {/* More Dropdown */}
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
+                  More
+                  <ChevronDown className="ml-1 h-3 w-3" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-48">
+                {moreItems.map((item) => (
+                  <DropdownMenuItem key={item.name} asChild>
+                    <Link href={item.href} className="flex items-center cursor-pointer">
+                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                      <span>{item.name}</span>
+                    </Link>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           {/* Desktop Actions */}
@@ -421,16 +505,70 @@ export default function Navbar() {
               className="xl:hidden border-t"
             >
               <div className="py-4 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto">
-                {navItems.map((item) => (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className="block px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
-                    onClick={() => setIsOpen(false)}
-                  >
-                    {item.name}
-                  </Link>
-                ))}
+                {/* Core items */}
+                <div className="px-3 py-2">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Main</p>
+                  {coreNavItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className="block px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+
+                {/* Community section */}
+                {communityItems.length > 0 && (
+                  <div className="px-3 py-2 border-t">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Community</p>
+                    {communityItems.map((item) => (
+                      <Link
+                        key={item.name}
+                        href={item.href}
+                        className="flex items-center px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
+                        onClick={() => setIsOpen(false)}
+                      >
+                        {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                        {item.name}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+
+                {/* Services section */}
+                <div className="px-3 py-2 border-t">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Services</p>
+                  {servicesItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className="flex items-center px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
+
+                {/* More section */}
+                <div className="px-3 py-2 border-t">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">More</p>
+                  {moreItems.map((item) => (
+                    <Link
+                      key={item.name}
+                      href={item.href}
+                      className="flex items-center px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
+                      onClick={() => setIsOpen(false)}
+                    >
+                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                      {item.name}
+                    </Link>
+                  ))}
+                </div>
                 <div className="pt-4 border-t space-y-2">
                   {isLoggedIn ? (
                     <div className="space-y-2">

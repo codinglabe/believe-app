@@ -11,6 +11,7 @@ use App\Models\Donation;
 use App\Models\Event;
 use App\Models\Form990Filing;
 use App\Models\FractionalOrder;
+use App\Models\GiftCard;
 use App\Models\JobApplication;
 use App\Models\JobPost;
 use App\Models\PromotionalBanner;
@@ -82,17 +83,21 @@ class DashboardController extends Controller
 
 
 
-            // Payment Statistics - Include Fractional Ownership revenue
+            // Payment Statistics - Include Fractional Ownership revenue and Gift Card commissions
             $form1023Revenue = Form1023Application::where('payment_status', 'paid')->sum('amount');
             $complianceRevenue = ComplianceApplication::where('payment_status', 'paid')->sum('amount');
             $fractionalRevenue = FractionalOrder::where('status', 'paid')->sum('amount');
+            $giftCardPlatformCommission = GiftCard::whereNotNull('purchased_at')
+                ->whereNotNull('platform_commission')
+                ->sum('platform_commission');
 
             $paymentStats = [
-                'totalRevenue' => $form1023Revenue + $complianceRevenue + $fractionalRevenue,
+                'totalRevenue' => $form1023Revenue + $complianceRevenue + $fractionalRevenue + $giftCardPlatformCommission,
                 'pendingPayments' => Form1023Application::where('payment_status', 'pending')->sum('amount') +
                                     ComplianceApplication::where('payment_status', 'pending')->sum('amount'),
                 'paidApplications' => Form1023Application::where('payment_status', 'paid')->count() +
                                      ComplianceApplication::where('payment_status', 'paid')->count(),
+                'giftCardPlatformCommission' => $giftCardPlatformCommission,
             ];
 
             // Monthly Revenue Data (Last 6 months)
@@ -114,10 +119,15 @@ class DashboardController extends Controller
                     ->whereBetween('paid_at', [$startOfMonth, $endOfMonth])
                     ->sum('amount');
 
+                $monthGiftCardCommission = GiftCard::whereNotNull('purchased_at')
+                    ->whereNotNull('platform_commission')
+                    ->whereBetween('purchased_at', [$startOfMonth, $endOfMonth])
+                    ->sum('platform_commission');
+
                 $monthlyRevenue[] = [
                     'month' => $date->format('M Y'),
                     'monthShort' => $date->format('M'),
-                    'revenue' => $monthForm1023 + $monthCompliance + $monthFractional,
+                    'revenue' => $monthForm1023 + $monthCompliance + $monthFractional + $monthGiftCardCommission,
                 ];
             }
 

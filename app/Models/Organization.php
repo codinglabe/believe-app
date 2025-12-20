@@ -45,7 +45,9 @@ class Organization extends Model
         'tax_compliance_status',
         'tax_compliance_checked_at',
         'tax_compliance_meta',
-        'is_compliance_locked'
+        'is_compliance_locked',
+        'gift_card_terms_approved',
+        'gift_card_terms_approved_at',
     ];
 
     protected $casts = [
@@ -55,6 +57,8 @@ class Organization extends Model
         'tax_compliance_checked_at' => 'datetime',
         'tax_compliance_meta' => 'array',
         'is_compliance_locked' => 'boolean',
+        'gift_card_terms_approved' => 'boolean',
+        'gift_card_terms_approved_at' => 'datetime',
     ];
 
     public function user()
@@ -255,5 +259,10 @@ class Organization extends Model
     public function emailContacts()
     {
         return $this->hasMany(EmailContact::class);
+    }
+
+    public function giftCards()
+    {
+        return $this->hasMany(GiftCard::class);
     }
 }

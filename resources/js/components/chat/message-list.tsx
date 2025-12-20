@@ -116,15 +116,15 @@ const handleLoadMore = useCallback(async () => {
 
   return (
     <>
-      <ScrollArea className="h-full p-4" viewportRef={scrollAreaRef}>
+      <ScrollArea className="h-full p-4 sm:p-6 overflow-y-auto bg-gradient-to-b from-background to-muted/20" viewportRef={scrollAreaRef}>
         {hasMoreMessages && (
-          <div className="flex justify-center py-2">
+          <div className="flex justify-center py-3">
             <Button
               variant="ghost"
               size="sm"
               onClick={handleLoadMore}
               disabled={loadingMessages}
-              className="flex items-center gap-2"
+              className="flex items-center gap-2 rounded-full hover:bg-muted border border-border/50 shadow-sm"
             >
               {loadingMessages ? (
                 <>
@@ -141,7 +141,7 @@ const handleLoadMore = useCallback(async () => {
           </div>
         )}
 
-        <div className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3">
           {messages.map((message, index) => {
             const normalizedMessage = normalizeMessage(message)
             return (

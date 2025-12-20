@@ -237,8 +237,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-track,
 div[data-sidebar="content"]::-webkit-scrollbar-thumb,
 .sidebar-scrollbar::-webkit-scrollbar-thumb,
 [data-slot="sidebar-content"]::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-border) / 0.4) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-border) / 0.4) 0%,
     hsl(var(--sidebar-border) / 0.5) 50%,
     hsl(var(--sidebar-border) / 0.4) 100%) !important;
   border-radius: 10px !important;
@@ -251,8 +251,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-thumb,
 div[data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
 .sidebar-scrollbar::-webkit-scrollbar-thumb:hover,
 [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-foreground) / 0.15) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-foreground) / 0.15) 0%,
     hsl(var(--sidebar-foreground) / 0.25) 50%,
     hsl(var(--sidebar-foreground) / 0.15) 100%) !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1) !important;
@@ -262,8 +262,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
 div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
 .sidebar-scrollbar::-webkit-scrollbar-thumb:active,
 [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:active {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-foreground) / 0.25) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-foreground) / 0.25) 0%,
     hsl(var(--sidebar-foreground) / 0.35) 50%,
     hsl(var(--sidebar-foreground) / 0.25) 100%) !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15) !important;
@@ -280,8 +280,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
 .dark div[data-sidebar="content"]::-webkit-scrollbar-thumb,
 .dark .sidebar-scrollbar::-webkit-scrollbar-thumb,
 .dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-border) / 0.5) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-border) / 0.5) 0%,
     hsl(var(--sidebar-border) / 0.6) 50%,
     hsl(var(--sidebar-border) / 0.5) 100%) !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3) !important;
@@ -294,8 +294,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
 .dark div[data-sidebar="content"]::-webkit-scrollbar-thumb:hover,
 .dark .sidebar-scrollbar::-webkit-scrollbar-thumb:hover,
 .dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-foreground) / 0.2) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-foreground) / 0.2) 0%,
     hsl(var(--sidebar-foreground) / 0.3) 50%,
     hsl(var(--sidebar-foreground) / 0.2) 100%) !important;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.4) !important;
@@ -305,8 +305,8 @@ div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
 .dark div[data-sidebar="content"]::-webkit-scrollbar-thumb:active,
 .dark .sidebar-scrollbar::-webkit-scrollbar-thumb:active,
 .dark [data-slot="sidebar-content"]::-webkit-scrollbar-thumb:active {
-  background: linear-gradient(180deg, 
-    hsl(var(--sidebar-foreground) / 0.3) 0%, 
+  background: linear-gradient(180deg,
+    hsl(var(--sidebar-foreground) / 0.3) 0%,
     hsl(var(--sidebar-foreground) / 0.4) 50%,
     hsl(var(--sidebar-foreground) / 0.3) 100%) !important;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5) !important;
@@ -772,4 +772,15 @@ body.main-domain #nprogress .peg {
 body.main-domain #nprogress .spinner-icon {
   border-top-color: #7F03DB !important;
   border-left-color: #7F03DB !important;
+}
+
+/* Mobile Safe Area Insets for Chat */
+.safe-area-inset-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+@supports (padding: max(0px)) {
+  .safe-area-inset-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 16px);
+  }
 }

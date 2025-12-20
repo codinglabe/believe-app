@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Livestock\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Livestock\LoginRequest;
+use App\Models\UserPushToken;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -34,18 +35,18 @@ class LivestockAuthenticatedSessionController extends Controller
         $request->session()->regenerate();
 
         $user = $request->user('livestock');
-        
+
         // If user is a buyer (has buyer profile but no seller profile), redirect to home/marketplace
         if ($user->buyerProfile && !$user->sellerProfile) {
             return redirect()->intended(route('home'));
         }
-        
+
         // If user is a seller (has seller profile), redirect to seller dashboard
         if ($user->sellerProfile) {
             $route = Route::has('seller.dashboard') ? 'seller.dashboard' : 'home';
             return redirect()->intended(route($route));
         }
-        
+
         // Default to home
         return redirect()->intended(route('home'));
     }
@@ -55,6 +56,13 @@ class LivestockAuthenticatedSessionController extends Controller
      */
     public function destroy(Request $request): RedirectResponse
     {
+        $user = $request->user('livestock');
+
+        // Delete all push tokens for the user before logging out
+        if ($user) {
+            UserPushToken::where('user_id', $user->id)->delete();
+        }
+
         Auth::guard('livestock')->logout();
 
         $request->session()->invalidate();

@@ -19,23 +19,52 @@ return new class extends Migration
                 // Column is already nullable, skip migration
                 return;
             }
-            
-            Schema::table('fractional_listings', function (Blueprint $table) {
-                // Try to drop foreign key if it exists
-                try {
-                    $table->dropForeign(['fractional_listings_livestock_animal_id_foreign']);
-                } catch (\Exception $e) {
-                    // Foreign key might have a different name or not exist, try common names
+
+            // Find the actual foreign key constraint name
+            $foreignKeyName = null;
+            try {
+                $foreignKeys = DB::select("
+                    SELECT CONSTRAINT_NAME
+                    FROM information_schema.KEY_COLUMN_USAGE
+                    WHERE TABLE_SCHEMA = DATABASE()
+                    AND TABLE_NAME = 'fractional_listings'
+                    AND COLUMN_NAME = 'livestock_animal_id'
+                    AND REFERENCED_TABLE_NAME IS NOT NULL
+                ");
+
+                if (!empty($foreignKeys)) {
+                    $foreignKeyName = $foreignKeys[0]->CONSTRAINT_NAME;
+                }
+            } catch (\Exception $e) {
+                // If query fails, we'll try alternative methods
+            }
+
+            Schema::table('fractional_listings', function (Blueprint $table) use ($foreignKeyName) {
+                // Drop foreign key if it exists
+                if ($foreignKeyName) {
+                    try {
+                        // Use the actual constraint name as a string
+                        $table->dropForeign($foreignKeyName);
+                    } catch (\Exception $e) {
+                        // Try alternative method using column name
+                        try {
+                            $table->dropForeign(['livestock_animal_id']);
+                        } catch (\Exception $e2) {
+                            // Ignore if foreign key doesn't exist
+                        }
+                    }
+                } else {
+                    // Try dropping by column name if we couldn't find the constraint name
                     try {
                         $table->dropForeign(['livestock_animal_id']);
-                    } catch (\Exception $e2) {
+                    } catch (\Exception $e) {
                         // Ignore if foreign key doesn't exist
                     }
                 }
-                
+
                 // Make the column nullable
                 $table->unsignedBigInteger('livestock_animal_id')->nullable()->change();
-                
+
                 // Re-add the foreign key constraint (nullable)
                 $table->foreign('livestock_animal_id')
                     ->references('id')
@@ -53,10 +82,10 @@ return new class extends Migration
         Schema::table('fractional_listings', function (Blueprint $table) {
             // Drop the foreign key constraint
             $table->dropForeign(['livestock_animal_id']);
-            
+
             // Make the column NOT NULL again
             $table->unsignedBigInteger('livestock_animal_id')->nullable(false)->change();
-            
+
             // Re-add the foreign key constraint (NOT NULL)
             $table->foreign('livestock_animal_id')
                 ->references('id')

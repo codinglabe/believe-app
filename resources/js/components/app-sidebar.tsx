@@ -426,6 +426,19 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         role: "organization"
     },
 
+    // Gift Cards Section (Organization & Admin)
+    {
+        title: 'Gift Cards',
+        icon: Gift,
+        items: [
+            {
+                title: 'Purchased Cards',
+                href: route('gift-cards.created'),
+                icon: Gift,
+            },
+        ],
+    },
+
     {
         title: 'Group Chat',
         icon: MessageSquare,

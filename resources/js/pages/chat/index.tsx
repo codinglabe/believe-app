@@ -116,7 +116,7 @@ export default function ChatPage() {
                     },
                 }}
             />
-        <main className="h-screen w-full overflow-hidden">
+        <main className="h-screen h-[100dvh] w-full overflow-hidden">
           <ChatLayout />
         </main>
             </ChatProvider>

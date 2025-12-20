@@ -21,6 +21,19 @@ class User extends Authenticatable implements MustVerifyEmail
     use HasFactory, Notifiable, HasRoles, Billable;
 
     /**
+     * The guard name for Spatie Permission
+     */
+    protected $guard_name = 'web';
+
+    /**
+     * Get the guard name for Spatie Permission
+     */
+    public function getGuardName(): string
+    {
+        return $this->guard_name ?? 'web';
+    }
+
+    /**
      * The attributes that are mass assignable.
      *
      * @var list<string>
@@ -100,12 +113,26 @@ class User extends Authenticatable implements MustVerifyEmail
     protected static function boot()
     {
         parent::boot();
+
+        // Set default guard for Spatie Permission
         static::creating(function ($user) {
             if (empty($user->referral_code)) {
                 do {
                     $code = substr(bin2hex(random_bytes(8)), 0, 12);
                 } while (self::where('referral_code', $code)->exists());
                 $user->referral_code = $code;
+            }
+
+            // Ensure guard_name is set
+            if (empty($user->guard_name)) {
+                $user->guard_name = 'web';
+            }
+        });
+
+        // Set guard_name for existing models when retrieved
+        static::retrieved(function ($user) {
+            if (empty($user->guard_name)) {
+                $user->guard_name = 'web';
             }
         });
     }

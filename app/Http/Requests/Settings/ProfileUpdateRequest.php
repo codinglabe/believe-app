@@ -37,6 +37,7 @@ class ProfileUpdateRequest extends FormRequest
                 'website' => ['nullable', 'string', 'url'],
                 'description' => ['required', 'string'],
                 'mission' => ['required', 'string'],
+                'gift_card_terms_approved' => ['nullable', 'boolean'],
             ]);
         }
 

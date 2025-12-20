@@ -141,6 +141,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             // KYB/KYC Verification Management
             'kyb.verification' => ['read', 'view', 'approve', 'reject', 'manage'],
             'kyc.verification' => ['read', 'view', 'approve', 'reject', 'request'],
+
+            // Gift Card Management
+            // 'gift.card' => ['read', 'create', 'edit', 'update', 'delete', 'manage', 'purchase', 'view.purchases'],
         ];
 
         // Create all permissions
@@ -246,7 +249,10 @@ class ComprehensivePermissionsSeeder extends Seeder
 
 
             // organization followers
-            'organization.followers.read'
+            'organization.followers.read',
+
+            // Gift Card Management - Full access
+            // 'gift.card.read', 'gift.card.create', 'gift.card.edit', 'gift.card.update', 'gift.card.delete', 'gift.card.manage', 'gift.card.view.purchases',
         ];
 
         $role->syncPermissions($permissions);

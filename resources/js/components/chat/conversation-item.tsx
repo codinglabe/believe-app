@@ -26,35 +26,68 @@ const displayName = room.type === 'direct'
     ? formatDistanceToNowStrict(new Date(room.last_message.created_at), { addSuffix: true })
     : null;
 
+  // Helper function to truncate message text
+  const truncateMessage = (message: string | null | undefined, maxLength: number = 50): string => {
+    if (!message) return "No messages yet.";
+
+    // Check if message has attachments (safely check for attachments property)
+    const lastMessage = room.last_message as any;
+    if (lastMessage?.attachments && Array.isArray(lastMessage.attachments) && lastMessage.attachments.length > 0) {
+      const attachmentType = lastMessage.attachments[0]?.type?.startsWith('image/') ? 'Image' : 'Attachment';
+      return `[${attachmentType}]`;
+    }
+
+    // Truncate long messages
+    if (message.length > maxLength) {
+      return message.substring(0, maxLength).trim() + '...';
+    }
+
+    return message;
+  };
+
+  const lastMessageText = truncateMessage(room.last_message?.message);
+
   return (
     <div
       className={cn(
-        "flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors",
-        isActive ? "bg-gray-300 text-primary-foreground" : "hover:bg-accent",
+        "flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all duration-200",
+        "border border-transparent",
+        isActive
+          ? "bg-primary/10 border-primary/30 shadow-sm"
+          : "hover:bg-muted/50 hover:border-border/50 hover:shadow-sm",
       )}
       onClick={onClick}
     >
-      <UserAvatar user={{ name: displayName, avatar: displayAvatar || '/placeholder.svg?height=32&width=32' }} className="h-10 w-10" />
-      <div className="flex-1 overflow-hidden">
-        <div className="flex items-center justify-between">
-          <h3 className={cn("font-medium truncate", isActive ? "text-primary-foreground" : "text-foreground")}>
+      <UserAvatar user={{ name: displayName, avatar: displayAvatar || '/placeholder.svg?height=32&width=32' }} className="h-10 w-10 flex-shrink-0" />
+      <div className="flex-1 min-w-0 overflow-hidden">
+        <div className="flex items-center justify-between gap-2">
+          <h3 className={cn(
+            "font-semibold truncate flex-1",
+            isActive ? "text-primary font-semibold" : "text-foreground"
+          )}>
             {displayName}
           </h3>
           {lastMessageTime && (
-            <span className={cn("text-xs", isActive ? "text-primary-foreground/80" : "text-muted-foreground")}>
+            <span className={cn(
+              "text-xs whitespace-nowrap flex-shrink-0",
+              isActive ? "text-primary/70 font-medium" : "text-muted-foreground"
+            )}>
               {lastMessageTime}
             </span>
           )}
         </div>
-        <div className="flex items-center justify-between mt-1">
-          <p className={cn("text-sm truncate", isActive ? "text-primary-foreground/90" : "text-muted-foreground")}>
-            {room.last_message?.message || "No messages yet."}
+        <div className="flex items-center justify-between gap-2 mt-1">
+          <p className={cn(
+            "text-sm truncate flex-1 min-w-0",
+            isActive ? "text-foreground/80" : "text-muted-foreground"
+          )}>
+            {lastMessageText}
           </p>
           {room.unread_count > 0 && (
             <Badge
               className={cn(
-                "ml-2 px-2 py-0.5 rounded-full text-xs font-bold",
-                isActive ? "bg-primary-foreground text-primary" : "bg-blue-500 text-white",
+                "ml-2 px-2 py-0.5 rounded-full text-xs font-bold flex-shrink-0",
+                isActive ? "bg-primary text-primary-foreground" : "bg-blue-500 text-white",
               )}
             >
               {room.unread_count}

@@ -171,6 +171,8 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
+// Public route for products (plural) - redirects to show method for marketplace viewing
+Route::get('/products/{id}', [ProductController::class, 'show'])->name('products.show.public');
 
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
@@ -320,7 +322,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/bridge/kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'createKYCLink'])->name('bridge.kyc-link');
     Route::post('/bridge/deposit', [App\Http\Controllers\BridgeWalletController::class, 'deposit'])->name('bridge.deposit');
     Route::post('/bridge/send', [App\Http\Controllers\BridgeWalletController::class, 'send'])->name('bridge.send');
-    
+
     // Custom KYC Routes
     Route::get('/bridge/tos-link', [App\Http\Controllers\BridgeWalletController::class, 'getTosLink'])->name('bridge.tos-link');
     Route::get('/bridge/tos-status', [App\Http\Controllers\BridgeWalletController::class, 'checkTosStatus'])->name('bridge.tos-status');
@@ -328,7 +330,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/bridge/create-customer-kyc', [App\Http\Controllers\BridgeWalletController::class, 'createCustomerWithKyc'])->name('bridge.create-customer-kyc');
     Route::post('/bridge/control-person-kyc-link', [App\Http\Controllers\BridgeWalletController::class, 'getControlPersonKycLink'])->name('bridge.control-person-kyc-link');
     Route::get('/bridge/business-details', [App\Http\Controllers\BridgeWalletController::class, 'getBusinessDetails'])->name('bridge.business-details');
-    
+
     // Bridge Virtual Account & External Account Routes (for USD top-up)
     Route::post('/bridge/virtual-account', [App\Http\Controllers\BridgeWalletController::class, 'createVirtualAccountForWallet'])->name('bridge.virtual-account.create');
     Route::get('/bridge/virtual-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getVirtualAccounts'])->name('bridge.virtual-accounts');
@@ -336,7 +338,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::get('/bridge/external-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
     Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
     Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
-    
+
     // Bridge Webhook Routes
     Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
     Route::get('/bridge/webhooks/{webhookId}/events/{eventId}', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvent'])->name('bridge.webhooks.event');
@@ -652,6 +654,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'update' => 'permission:product.update',
         'destroy' => 'permission:product.delete'
     ]);
+
+    // Admin/Organization show route for managing their products (must come after public route)
+    // This route will only be used when user is authenticated and has permission
+    Route::get('/products/{id}/manage', [ProductController::class, 'show'])->name('products.show.manage')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
 
     // Printify Integration Routes
     Route::middleware(['auth', 'topics.selected', 'role:admin|organization'])->group(function () {
@@ -1027,6 +1033,8 @@ Route::prefix('webhooks')->group(function () {
         return response()->json(['status' => 'ok', 'message' => 'Bridge webhook endpoint is active'], 200);
     });
     Route::post('/bridge', [App\Http\Controllers\BridgeWebhookController::class, 'handle'])->name('webhooks.bridge');
+    // Phaze webhook (no auth required - API key verified in controller)
+    Route::post('/phaze', [App\Http\Controllers\PhazeWebhookController::class, 'handle'])->name('webhooks.phaze');
 });
 
 Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.selected', 'role:admin|'])->group(function () {
@@ -1041,7 +1049,7 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::post('/webhooks/setup-printify', [WebhookManagementController::class, 'setupWebhooks'])->name('admin.webhooks.setup');
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
-    
+
     // KYB Verification Routes
     Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'index'])->name('index');
@@ -1053,10 +1061,10 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
         Route::post('/{id}/request-refill', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'requestRefill'])->name('request-refill')->middleware('permission:kyb.verification.manage');
         Route::post('/{id}/update-documents-to-send', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDocumentsToSend'])->name('update-documents-to-send')->middleware('permission:kyb.verification.manage');
     });
-    
+
     // KYB Settings Route
     Route::post('/settings/direct-bridge-submission', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'updateDirectBridgeSetting'])->name('admin.kyb-verification.settings.direct-bridge-submission')->middleware('permission:kyb.verification.manage');
-    
+
     // KYC Verification Routes
     Route::prefix('kyc-verification')->name('admin.kyc-verification.')->middleware('permission:kyc.verification.read')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\AdminKycVerificationController::class, 'index'])->name('index');
@@ -1191,6 +1199,38 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/donations', [DonationController::class, 'organizationIndex'])->name('donations.index');
 });
 
+// Gift Cards routes
+// Public routes (browse brands - everyone can see)
+Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'index'])->name('gift-cards.index');
+Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
+
+// Organization routes (view purchased cards) - MUST come before parameterized routes
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role.simple:organization,admin'])->group(function () {
+    Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
+});
+
+// Authenticated user routes (purchase) - Must come after specific routes
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role.simple:user'])->group(function () {
+    Route::get('/gift-cards/purchase/{brand}', [App\Http\Controllers\GiftCardController::class, 'showPurchase'])->name('gift-cards.purchase')->where('brand', '.*');
+    Route::post('/gift-cards/purchase', [App\Http\Controllers\GiftCardController::class, 'purchase'])->name('gift-cards.purchase.store');
+    Route::get('/gift-cards/my-cards', [App\Http\Controllers\GiftCardController::class, 'myCards'])->name('gift-cards.my-cards');
+    Route::get('/gift-cards/payment/success', [App\Http\Controllers\GiftCardController::class, 'success'])->name('gift-cards.success');
+});
+
+// Public route for viewing brand details (before purchase) - must come before parameterized route
+Route::get('/gift-cards/show', [App\Http\Controllers\GiftCardController::class, 'show'])->name('gift-cards.show');
+// PDF download route - must come before parameterized route
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/gift-cards/{giftCard}/download-pdf', [App\Http\Controllers\GiftCardController::class, 'downloadPdf'])->name('gift-cards.download-pdf');
+    // Transaction lookup by order ID (for testing)
+    Route::get('/gift-cards/transaction/lookup/{orderId}', [App\Http\Controllers\GiftCardController::class, 'lookupTransaction'])->name('gift-cards.transaction.lookup');
+});
+// This parameterized route must come LAST to avoid catching specific routes - for viewing purchased cards
+// Requires authentication to view purchased gift cards
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::get('/gift-cards/{giftCard}', [App\Http\Controllers\GiftCardController::class, 'show'])->name('gift-cards.show.id');
+});
+
 // Plans route
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::get('/plans', [App\Http\Controllers\PlansController::class, 'index'])->name('plans.index');
@@ -1198,6 +1238,16 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::get('/plans/success', [App\Http\Controllers\PlansController::class, 'success'])->name('plans.success');
     Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
 });
+
+// Admin Phaze Webhook Management
+Route::prefix('admin/phaze-webhooks')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.phaze-webhooks.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'index'])->name('index');
+        Route::post('/', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'store'])->name('store');
+        Route::delete('/{id}', [App\Http\Controllers\Admin\PhazeWebhookManagementController::class, 'destroy'])->name('destroy');
+    });
 
 // Admin Email Packages Management
 Route::prefix('admin/email-packages')
@@ -1260,7 +1310,7 @@ Route::prefix('admin/plans')
         Route::get('/{plan}/edit', [App\Http\Controllers\Admin\PlanController::class, 'edit'])->name('edit');
         Route::put('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'update'])->name('update');
         Route::delete('/{plan}', [App\Http\Controllers\Admin\PlanController::class, 'destroy'])->name('destroy');
-        
+
         // Plan Features
         Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
         Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');

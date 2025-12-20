@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\PrintifyService;
+use App\Models\PhazeWebhook;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -24,10 +25,14 @@ class WebhookManagementController extends Controller
     public function index(): Response
     {
         $webhooksResult = $this->printifyService->getWebhooks();
-        $webhooks = $webhooksResult['success'] ? ($webhooksResult['data'] ?? []) : [];
+        $printifyWebhooks = $webhooksResult['success'] ? ($webhooksResult['data'] ?? []) : [];
+
+        // Get Phaze webhooks from database
+        $phazeWebhooks = PhazeWebhook::orderBy('created_at', 'desc')->get();
 
         return Inertia::render('settings/webhook-manage', [
-            'webhooks' => $webhooks,
+            'printifyWebhooks' => $printifyWebhooks,
+            'phazeWebhooks' => $phazeWebhooks,
         ]);
     }
 
@@ -108,23 +113,180 @@ class WebhookManagementController extends Controller
     /**
      * Delete webhook
      */
-    public function deleteWebhook(string $webhookId): JsonResponse
+    public function deleteWebhook(string $webhookId, Request $request): JsonResponse
     {
-        $webhookHost = config('app.host');
-        $result = $this->printifyService->deleteWebhook($webhookId, $webhookHost);
+        try {
+            // First, get all webhooks to find the exact webhook and its stored host
+            $webhooksResult = $this->printifyService->getWebhooks();
 
-        if ($result['success']) {
-            Log::info('Printify webhook deleted', ['webhook_id' => $webhookId]);
+            if (!$webhooksResult['success'] || !isset($webhooksResult['data'])) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to fetch webhook details: ' . ($webhooksResult['error'] ?? 'Unknown error')
+                ], 400);
+            }
+
+            // Find the specific webhook by ID
+            $webhook = collect($webhooksResult['data'])->firstWhere('id', $webhookId);
+
+            if (!$webhook) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Webhook not found'
+                ], 404);
+            }
+
+            // Extract host from the webhook's stored URL (this is the host Printify has)
+            $webhookUrl = $webhook['url'] ?? null;
+
+            if (!$webhookUrl) {
+                Log::error('Webhook URL not found in webhook data', [
+                    'webhook_id' => $webhookId,
+                    'webhook_data' => $webhook,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Webhook URL not found in webhook data'
+                ], 400);
+            }
+
+            // Parse the URL to extract host
+            $parsedUrl = parse_url($webhookUrl);
+            $webhookHost = $parsedUrl['host'] ?? null;
+
+            // Include port if present (important for localhost)
+            if (isset($parsedUrl['port'])) {
+                $webhookHost .= ':' . $parsedUrl['port'];
+            }
+
+            if (!$webhookHost) {
+                Log::error('Could not extract host from webhook URL', [
+                    'webhook_id' => $webhookId,
+                    'webhook_url' => $webhookUrl,
+                    'parsed_url' => $parsedUrl,
+                ]);
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not extract host from webhook URL'
+                ], 400);
+            }
+
+            Log::info('Attempting to delete Printify webhook', [
+                'webhook_id' => $webhookId,
+                'host' => $webhookHost,
+                'webhook_url' => $webhookUrl,
+            ]);
+
+            $result = $this->printifyService->deleteWebhook($webhookId, $webhookHost);
+
+            if ($result['success']) {
+                Log::info('Printify webhook deleted successfully', [
+                    'webhook_id' => $webhookId,
+                    'host' => $webhookHost,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Webhook deleted successfully'
+                ]);
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete webhook: ' . ($result['error'] ?? 'Unknown error')
+            ], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Exception deleting Printify webhook: ' . $e->getMessage(), [
+                'webhook_id' => $webhookId,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Error deleting webhook: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Get Phaze webhooks
+     */
+    public function getPhazeWebhooks(): JsonResponse
+    {
+        try {
+            $webhooks = PhazeWebhook::orderBy('created_at', 'desc')->get();
 
             return response()->json([
                 'success' => true,
-                'message' => 'Webhook deleted successfully'
+                'data' => $webhooks
             ]);
-        }
+        } catch (\Exception $e) {
+            Log::error('Error fetching Phaze webhooks: ' . $e->getMessage());
 
-        return response()->json([
-            'success' => false,
-            'message' => 'Failed to delete webhook: ' . ($result['error'] ?? 'Unknown error')
-        ], 400);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch webhooks: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Create Phaze webhook
+     */
+    public function createPhazeWebhook(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'url' => 'required|url',
+            'api_key' => 'nullable|string|min:16',
+            'authorization_header_name' => 'nullable|string|max:50',
+        ]);
+
+        try {
+            $giftCardService = app(\App\Services\GiftCardService::class);
+            $webhookController = new \App\Http\Controllers\Admin\PhazeWebhookManagementController($giftCardService);
+
+            $response = $webhookController->store($request);
+
+            return $response;
+
+        } catch (\Exception $e) {
+            Log::error('Error creating Phaze webhook: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create webhook: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete Phaze webhook
+     */
+    public function deletePhazeWebhook($id): JsonResponse
+    {
+        try {
+            $giftCardService = app(\App\Services\GiftCardService::class);
+            $webhookController = new \App\Http\Controllers\Admin\PhazeWebhookManagementController($giftCardService);
+
+            $response = $webhookController->destroy($id);
+
+            return $response;
+
+        } catch (\Exception $e) {
+            Log::error('Error deleting Phaze webhook: ' . $e->getMessage(), [
+                'webhook_id' => $id,
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete webhook: ' . $e->getMessage()
+            ], 500);
+        }
     }
 }

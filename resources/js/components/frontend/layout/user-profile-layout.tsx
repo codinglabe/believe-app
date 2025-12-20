@@ -30,6 +30,7 @@ import {
   GraduationCap,
   UserCheck, // Added MessageCircle icon
   PieChart,
+  Gift,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -136,6 +137,13 @@ const navigationItems = [
     icon: Award,
     description: "My raffle tickets",
     color: "from-yellow-500 to-orange-600",
+  },
+  {
+    name: "Gift Cards",
+    href: "/gift-cards/my-cards",
+    icon: Gift,
+    description: "My gift cards",
+    color: "from-pink-500 to-rose-600",
   },
   // {
   //   name: "Node Boss",

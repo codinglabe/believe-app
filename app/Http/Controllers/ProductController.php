@@ -94,8 +94,33 @@ class ProductController extends BaseController
         ]);
     }
 
-    public function show($id): Response
+    public function show(Request $request, $id): Response
     {
+        // Check if this is an admin/organization request (from products management)
+        $isAdminRequest = $request->user() && in_array($request->user()->role, ['admin', 'organization']);
+
+        if ($isAdminRequest) {
+            // Admin/Organization viewing their own product
+            $product = Product::with([
+                'organization',
+                'categories',
+                'variants'
+            ])->findOrFail($id);
+
+            // Check authorization
+            if ($request->user()->role === 'organization') {
+                $organization = Organization::where('user_id', $request->user()->id)->first();
+                if ($product->organization_id !== $organization->id) {
+                    abort(403, 'You can only view your own products.');
+                }
+            }
+
+            return Inertia::render('products/show', [
+                'product' => $product,
+            ]);
+        }
+
+        // Public marketplace view (original logic)
         $product = Product::with([
             'organization',
             'categories',

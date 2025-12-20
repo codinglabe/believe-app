@@ -3,7 +3,7 @@
 import React, { useState, useRef, useEffect } from "react"
 import { Input } from "@/components/chat/ui/input"
 import { Button } from "@/components/chat/ui/button"
-import { PaperclipIcon, SendIcon, XIcon } from 'lucide-react'
+import { PaperclipIcon, SendIcon, XIcon, ReplyIcon } from 'lucide-react'
 import { useChat } from "@/providers/chat-provider"
 import { Textarea } from "@/components/chat/ui/textarea"
 import { cn } from "@/lib/utils"
@@ -68,45 +68,61 @@ export function MessageInput() {
   }, [message]);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {replyingToMessage && (
-        <div className="flex items-center justify-between p-2 bg-muted rounded-md text-sm">
-          <div className="flex items-center gap-2">
-            <ReplyIcon className="h-4 w-4 text-muted-foreground" />
-            <span>
-              Replying to{" "}
-              <span className="font-semibold">{replyingToMessage.user.name}</span>:{" "}
-              <span className="text-muted-foreground line-clamp-1">
+        <div className="flex items-center justify-between p-3 bg-muted/50 border border-border/50 rounded-xl text-sm shadow-sm">
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="p-1.5 rounded-lg bg-primary/10 flex-shrink-0">
+              <ReplyIcon className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <span className="font-semibold text-foreground">
+                {replyingToMessage.user.name}
+              </span>
+              <span className="text-muted-foreground line-clamp-1 ml-1">
                 {replyingToMessage.message || "[Attachment]"}
               </span>
-            </span>
+            </div>
           </div>
-          <Button variant="ghost" size="icon" onClick={() => setReplyingToMessage(null)}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7 flex-shrink-0 hover:bg-muted"
+            onClick={() => setReplyingToMessage(null)}
+          >
             <XIcon className="h-4 w-4" />
           </Button>
         </div>
       )}
 
       {attachments.length > 0 && (
-        <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-background">
+        <div className="flex flex-wrap gap-2 p-3 border border-border/50 rounded-xl bg-muted/30">
           {attachments.map((file, index) => (
-            <div key={index} className="flex items-center gap-1 bg-secondary rounded-full px-3 py-1 text-xs">
-              <span>{file.name}</span>
+            <div
+              key={index}
+              className="flex items-center gap-2 bg-background border border-border/50 rounded-lg px-3 py-1.5 text-xs shadow-sm"
+            >
+              <span className="font-medium truncate max-w-[150px]">{file.name}</span>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-5 w-5"
+                className="h-5 w-5 hover:bg-destructive/10 hover:text-destructive"
                 onClick={() => removeAttachment(index)}
               >
-                <XIcon className="h-3 w-3" />
+                <XIcon className="h-3.5 w-3.5" />
               </Button>
             </div>
           ))}
         </div>
       )}
 
-      <div className="flex items-end gap-2">
-        <Button variant="ghost" size="icon" onClick={() => fileInputRef.current?.click()}>
+      <div className="flex items-end gap-2 bg-background border border-border/50 rounded-2xl p-2 shadow-sm focus-within:ring-2 focus-within:ring-primary/20 focus-within:border-primary/50 transition-all">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-9 w-9 flex-shrink-0 hover:bg-muted rounded-xl"
+          onClick={() => fileInputRef.current?.click()}
+        >
           <PaperclipIcon className="h-5 w-5" />
           <input
             type="file"
@@ -119,14 +135,19 @@ export function MessageInput() {
         <Textarea
           ref={textareaRef}
           placeholder="Type your message..."
-          className="flex-1 resize-none min-h-[40px] max-h-[120px] pr-10"
+          className="flex-1 resize-none min-h-[44px] max-h-[120px] border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0 px-2 py-2.5 text-sm"
           value={message}
           onChange={handleMessageChange}
           onKeyDown={handleKeyDown}
           rows={1}
         />
-        <Button size="icon" onClick={handleSendMessage} disabled={message.trim() === "" && attachments.length === 0}>
-          <SendIcon className="h-5 w-5" />
+        <Button
+          size="icon"
+          className="h-9 w-9 flex-shrink-0 rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+          onClick={handleSendMessage}
+          disabled={message.trim() === "" && attachments.length === 0}
+        >
+          <SendIcon className="h-4 w-4" />
         </Button>
       </div>
     </div>

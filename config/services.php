@@ -92,4 +92,14 @@ return [
         'redirect_uri' => env('BRIDGE_REDIRECT_URI'), // Public URL for TOS callback (e.g., ngrok for local dev)
     ],
 
+    'phaze' => [
+        'api_key' => env('PHAZE_API_KEY'),
+        'api_secret' => env('PHAZE_API_SECRET'),
+        'base_url' => env('PHAZE_BASE_URL', 'https://api.phaze.io'),
+        'environment' => env('PHAZE_ENVIRONMENT', 'sandbox'), // sandbox or production
+        'gift_card_platform_commission_percentage' => env('GIFT_CARD_PLATFORM_COMMISSION_PERCENTAGE', 8), // Platform commission percentage (8% default)
+        // Note: webhook_api_key is now stored in database (phaze_webhooks table)
+        // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
+    ],
+
 ];

@@ -12,7 +12,8 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
-import { router, usePage, route } from "@inertiajs/react"
+import { router, usePage } from "@inertiajs/react"
+import { route } from "ziggy-js"
 import { useNotification } from "./notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 
@@ -44,10 +45,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
-  
+
   // Get the correct organization ID - use registered_organization.id if available, otherwise organization.id
   const organizationId = (organization as any).registered_organization?.id || organization.id
-  
+
   const [donorInfo, setDonorInfo] = useState({
     organization_id: organizationId,
     name: user?.name || "",
@@ -57,7 +58,6 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   })
   const [isProcessing, setIsProcessing] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
   const handleAmountSelect = (amount: number) => {
@@ -434,7 +434,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
           </div>
         </div>
       </DialogContent>
-      
+
       {/* Subscription Required Modal - Supporter View */}
       <SubscriptionRequiredModal
         isOpen={showSubscriptionModal}

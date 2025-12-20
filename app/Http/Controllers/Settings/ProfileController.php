@@ -44,7 +44,7 @@ class ProfileController extends Controller
         ]);
 
         if ($request->user()->role === "organization") {
-            $request->user()->organization()->update([
+            $updateData = [
                 'contact_name' => $request->input('name'),
                 'contact_title' => $request->input('contact_title'),
                 'website' => $request->input('website') ?? null,
@@ -52,7 +52,20 @@ class ProfileController extends Controller
                 'mission' => $request->input('mission'),
                 'email' => $request->input('email'),
                 'phone' => $request->input('phone') ?? null,
-            ]);
+            ];
+
+            // Handle gift card terms approval
+            if ($request->has('gift_card_terms_approved')) {
+                $updateData['gift_card_terms_approved'] = (bool)$request->input('gift_card_terms_approved');
+                if ($updateData['gift_card_terms_approved'] && !$request->user()->organization->gift_card_terms_approved) {
+                    $updateData['gift_card_terms_approved_at'] = now();
+                }
+            }
+
+            $request->user()->organization()->update($updateData);
+
+            // Refresh the organization relationship to ensure updated data is available
+            $request->user()->load('organization');
         }
 
         return to_route('profile.edit');

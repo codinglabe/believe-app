@@ -125,6 +125,8 @@ class HandleInertiaRequests extends Middleware
                         'mission' => $user->organization->mission,
                         'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
                         'joined' => $user->created_at->format('F Y'),
+                        'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
+                        'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
                     ] : null,
                 ];
             }
