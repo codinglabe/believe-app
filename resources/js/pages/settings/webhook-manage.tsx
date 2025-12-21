@@ -60,9 +60,9 @@ export default function WebhookManagement({ printifyWebhooks: initialPrintifyWeb
   const fetchPhazeWebhooks = async () => {
     setIsLoadingPhaze(true);
     try {
-      const response = await axios.get('/admin/webhooks/phaze');
+      const response = await axios.get('/admin/phaze-webhooks');
       if (response.data.success) {
-        setPhazeWebhooks(response.data.data || []);
+        setPhazeWebhooks(response.data.webhooks || []);
       } else {
         showErrorToast(response.data.message || 'Failed to fetch Phaze webhooks');
       }
@@ -125,7 +125,7 @@ export default function WebhookManagement({ printifyWebhooks: initialPrintifyWeb
   const createPhazeWebhook = async () => {
     setIsCreatingPhaze(true);
     try {
-      const response = await axios.post('/admin/webhooks/phaze', phazeFormData);
+      const response = await axios.post('/admin/phaze-webhooks', phazeFormData);
 
       if (response.data.success) {
         showSuccessToast(response.data.message || 'Phaze webhook created successfully!');
@@ -152,16 +152,16 @@ export default function WebhookManagement({ printifyWebhooks: initialPrintifyWeb
     }
 
     try {
-      // If we have a database ID, use it; otherwise use Phaze webhook ID
-      const deleteUrl = webhook.id
-        ? `/admin/webhooks/phaze/${webhook.id}`
-        : `/admin/webhooks/phaze/${webhook.phaze_webhook_id}`;
+      // Use database ID if available, otherwise use Phaze webhook ID
+      // The backend controller can handle both cases
+      const deleteId = webhook.id || webhook.phaze_webhook_id;
 
-      const config = webhook.phaze_webhook_id && !webhook.id
-        ? { params: { phaze_webhook_id: webhook.phaze_webhook_id } }
-        : {};
+      if (!deleteId) {
+        showErrorToast('Cannot delete webhook: Missing webhook ID');
+        return;
+      }
 
-      const response = await axios.delete(deleteUrl, config);
+      const response = await axios.delete(`/admin/phaze-webhooks/${deleteId}`);
 
       if (response.data.success) {
         showSuccessToast('Phaze webhook deleted successfully!');
@@ -574,7 +574,7 @@ export default function WebhookManagement({ printifyWebhooks: initialPrintifyWeb
             ) : (
               <ul className="divide-y divide-gray-200 dark:divide-gray-700">
                 {phazeWebhooks.map((webhook) => (
-                  <li key={webhook.id}>
+                  <li key={webhook.id || webhook.phaze_webhook_id || `webhook-${webhook.url}`}>
                     <div className="px-4 py-4 sm:px-6">
                       <div className="flex items-center justify-between">
                         <div className="flex-1 min-w-0">

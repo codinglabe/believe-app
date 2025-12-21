@@ -15,13 +15,22 @@ interface CartItem {
   }
 }
 
+interface Step1CompleteData {
+  tempOrderId: string | number
+  shippingMethods: unknown[]
+  shippingCost: number
+  taxAmount: number
+  totalAmount: number
+  donationAmount: number
+}
+
 interface Step1Props {
   items: CartItem[]
   subtotal: number
   platform_fee_percentage: number
   platform_fee: number
   donation_percentage: number
-  onComplete: (data: any) => void
+  onComplete: (data: Step1CompleteData) => void
 }
 
 // Popup Component
@@ -64,7 +73,7 @@ function DonationReminderPopup({
                   />
                 </svg>
               </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Support Our Mission</h3>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Support Our Mission (Optional)</h3>
             </div>
             <button
               onClick={onClose}
@@ -80,7 +89,7 @@ function DonationReminderPopup({
         {/* Content */}
         <div className="p-6">
           <div className="mb-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-900/30 dark:to-purple-900/30 flex items-center justify-center">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
               <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                 <path
                   fillRule="evenodd"
@@ -89,27 +98,30 @@ function DonationReminderPopup({
                 />
               </svg>
             </div>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-lg mb-3">
-              "We don't mark up anything here."
+            <p className="text-gray-700 dark:text-gray-300 text-center text-base mb-2">
+              All items are offered at cost.
             </p>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-lg mb-2">
-              "All items are offered at cost."
+            <p className="text-gray-700 dark:text-gray-300 text-center text-base mb-2">
+              Your purchase price covers the product only.
             </p>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-lg font-medium">
-              "Your generosity keeps us going — please leave a donation to help us continue this mission."
+            <p className="text-gray-700 dark:text-gray-300 text-center text-base">
+              Would you like to make an optional donation to support our nonprofit mission?
             </p>
           </div>
 
           {/* Suggested Donation */}
           <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Suggested Donation</span>
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Suggested Donation (Optional)</span>
               <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
                 ${suggestedDonation.toFixed(2)}
               </span>
             </div>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              This helps cover our operational costs and supports our community work
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
+              Donations are voluntary and not required to complete your purchase.
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              No goods or services are provided in exchange for a donation.
             </p>
           </div>
         </div>
@@ -130,7 +142,7 @@ function DonationReminderPopup({
 
           <button
             onClick={onProceedWithoutDonation}
-            className="w-full py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl transition-colors border border-gray-300 dark:border-gray-600"
+            className="w-full py-3 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl transition-colors border border-gray-300 dark:border-gray-600"
           >
             <div className="flex items-center justify-center gap-2">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -138,14 +150,11 @@ function DonationReminderPopup({
               </svg>
               Continue Without Donation
             </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Your purchase still supports our mission
-            </p>
           </button>
 
           <button
             onClick={onClose}
-            className="w-full py-3 text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300 font-medium rounded-xl transition-colors"
+            className="w-full py-2 text-center text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300 font-medium rounded-xl transition-colors text-sm"
           >
             Go Back & Review
           </button>
@@ -193,7 +202,7 @@ export default function Step1({
     } else {
       setCustomDonationAmount(0)
     }
-  }, [isDonating, subtotal, platform_fee, donation_percentage])
+  }, [isDonating, defaultDonation])
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -276,8 +285,11 @@ export default function Step1({
           donationAmount: isDonating ? Number.parseFloat(customDonationAmount.toFixed(2)) : 0,
         })
       }
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.error || "Failed to submit shipping information"
+    } catch (error) {
+      let errorMessage = "Failed to submit shipping information"
+      if (axios.isAxiosError(error) && error.response?.data?.error) {
+        errorMessage = error.response.data.error
+      }
       setErrors({ submit: errorMessage })
       showErrorToast(errorMessage)
     } finally {

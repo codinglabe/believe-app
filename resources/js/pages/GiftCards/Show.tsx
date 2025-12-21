@@ -747,16 +747,6 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                             </div>
                                         </div>
                                     )}
-
-                                    {/* Raw JSON for debugging (collapsible) */}
-                                    <details className="mt-4">
-                                        <summary className="cursor-pointer text-sm font-medium text-muted-foreground hover:text-foreground">
-                                            View Raw JSON Data
-                                        </summary>
-                                        <pre className="mt-2 text-xs bg-muted p-4 rounded-lg overflow-auto dark:bg-gray-900 dark:text-gray-300 max-h-96">
-                                            {JSON.stringify({ phazePurchaseData, phazeDisbursementData }, null, 2)}
-                                        </pre>
-                                    </details>
                                 </CardContent>
                             </Card>
                         )}

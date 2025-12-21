@@ -2,13 +2,39 @@
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
-import { Heart, Plus, Star, Trash2, ExternalLink, MapPin, Building, Calendar } from "lucide-react"
+import { Heart, Plus, ExternalLink, Building, UserMinus } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
-import { usePage, useForm, router, Link } from "@inertiajs/react"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/frontend/ui/alert-dialog"
+import { usePage, router, Link } from "@inertiajs/react"
 import { toast } from "sonner"
 import DonationModal from "@/components/frontend/donation-modal"
+import { route } from "ziggy-js"
+
+type DonationModalOrganization = {
+  id: number
+  name: string
+  image: string
+  description: string
+  category: string
+  rating: number
+  user: {
+    image: string
+    name: string
+    email: string
+    phone: string
+  }
+}
 
 interface Organization {
   id: number
@@ -27,7 +53,7 @@ interface Organization {
   excel_data_id?: number
 }
 
-interface PageProps {
+interface PageProps extends Record<string, unknown> {
   favoriteOrganizations: Organization[]
 }
 
@@ -35,15 +61,39 @@ export default function ProfileFavorites() {
   const { favoriteOrganizations } = usePage<PageProps>().props
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false)
   const [selectedOrganization, setSelectedOrganization] = useState<Organization | null>(null)
+  const [isUnfollowDialogOpen, setIsUnfollowDialogOpen] = useState(false)
+  const [organizationToUnfollow, setOrganizationToUnfollow] = useState<Organization | null>(null)
+  const [isUnfollowing, setIsUnfollowing] = useState(false)
 
-  const removeFavoriteOrganization = (orgId: number) => {
-    router.delete(`/profile/favorites/${orgId}`, {
+  const handleUnfollowOrganization = (org: Organization) => {
+    setOrganizationToUnfollow(org)
+    setIsUnfollowDialogOpen(true)
+  }
+
+  const confirmUnfollow = () => {
+    if (!organizationToUnfollow?.id) {
+      toast.error("Unable to unfollow: Organization ID not found")
+      setIsUnfollowDialogOpen(false)
+      return
+    }
+
+    setIsUnfollowing(true)
+
+    // Use the removeFavorite route which directly deletes the favorite
+    router.delete(route("user.profile.favorites.remove", organizationToUnfollow.id), {
       preserveScroll: true,
       onSuccess: () => {
-        toast.success("Organization removed from favorites")
+        toast.success(`Unfollowed ${organizationToUnfollow.name}`)
+        setIsUnfollowDialogOpen(false)
+        setOrganizationToUnfollow(null)
+        router.reload({ only: ['favoriteOrganizations'] })
       },
       onError: () => {
-        toast.error("Failed to remove from favorites")
+        toast.error("Failed to unfollow organization")
+        setIsUnfollowing(false)
+      },
+      onFinish: () => {
+        setIsUnfollowing(false)
       },
     })
   }
@@ -67,21 +117,21 @@ export default function ProfileFavorites() {
       <div className="space-y-6">
         {/* Favorites List */}
         {favoriteOrganizations.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2 gap-4 sm:gap-6">
             {favoriteOrganizations.map((org) => (
               <Card
                 key={org.id}
                 className="border border-gray-200 dark:border-gray-700 hover:shadow-lg dark:bg-gray-900/50 transition-all duration-300 hover:border-blue-200 dark:hover:border-blue-800 group"
               >
-                <CardContent className="p-6">
-                  <div className="flex flex-col sm:flex-row gap-4">
+                <CardContent className="p-4 sm:p-6">
+                  <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                     {/* Organization Image */}
-                    <div className="flex-shrink-0">
+                    <div className="shrink-0 flex justify-center sm:justify-start">
                       <div className="relative">
                         <img
                           src={org.user?.image ? '/storage/' + org.user.image : "/placeholder.svg"}
                           alt={org.name}
-                          className="w-16 h-16 sm:w-20 sm:h-20 rounded-xl object-cover border-2 border-gray-200 dark:border-gray-600 group-hover:border-blue-300 transition-colors"
+                          className="w-20 h-20 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-xl object-cover border-2 border-gray-200 dark:border-gray-600 group-hover:border-blue-300 transition-colors"
                         />
                         <div className="absolute -top-2 -right-2">
                           <Badge variant="secondary" className="bg-red-500 text-white px-2 py-1 text-xs">
@@ -93,16 +143,16 @@ export default function ProfileFavorites() {
                     </div>
 
                     {/* Organization Details */}
-                    <div className="flex-1 min-w-0 space-y-3">
+                    <div className="flex-1 min-w-0 space-y-2 sm:space-y-3">
                       {/* Header */}
-                      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2">
+                      <div className="flex flex-col gap-2 sm:gap-3">
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-semibold text-lg text-gray-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          <h3 className="font-semibold text-base sm:text-lg text-gray-900 dark:text-white break-words group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                             {org.name}
                           </h3>
 
                           {/* Category and Location */}
-                          <div className="flex flex-wrap items-center gap-2 mt-1">
+                          <div className="flex flex-wrap items-center gap-2 mt-1.5 sm:mt-2">
                             {org.nteeCode && (
                               <Badge variant="outline" className="text-xs">
                                 <Building className="h-3 w-3 mr-1" />
@@ -112,39 +162,45 @@ export default function ProfileFavorites() {
                           </div>
                         </div>
 
-                        {/* Action Buttons */}
-                        <div className="flex gap-2 flex-shrink-0">
-                          <Button
-                            size="sm"
-                            onClick={() => handleDonateToFavorite(org)}
-                            className="bg-blue-600 hover:bg-blue-700 shadow-sm"
-                          >
-                            <Heart className="h-4 w-4 mr-2" />
-                            Donate
-                          </Button>
+                        {/* Description */}
+                        <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2 sm:line-clamp-3">
+                          {org.description || org.mission || "No description available."}
+                        </p>
+                      </div>
+
+                      {/* Action Buttons - Mobile: Full width, Desktop: Inline */}
+                      <div className="flex flex-col sm:flex-row gap-2 sm:gap-2 pt-2 sm:pt-0">
+                        <Button
+                          size="sm"
+                          onClick={() => handleDonateToFavorite(org)}
+                          className="bg-blue-600 hover:bg-blue-700 shadow-sm w-full sm:w-auto"
+                        >
+                          <Heart className="h-4 w-4 mr-2" />
+                          Donate
+                        </Button>
+                        <div className="flex gap-2">
                           <Button
                             size="sm"
                             variant="outline"
                             onClick={() => handleViewOrganization(org)}
-                            className="border-gray-300 dark:border-gray-600"
+                            className="border-gray-300 dark:border-gray-600 flex-1 sm:flex-initial"
+                            title="View Organization"
                           >
-                            <ExternalLink className="h-4 w-4" />
+                            <ExternalLink className="h-4 w-4 sm:mr-0" />
+                            <span className="sm:hidden ml-2">View</span>
                           </Button>
                           <Button
                             size="sm"
-                            variant="ghost"
-                            onClick={() => removeFavoriteOrganization(org.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50"
+                            variant="outline"
+                            onClick={() => handleUnfollowOrganization(org)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/50 border-red-200 dark:border-red-800 flex-1 sm:flex-initial"
                           >
-                            <Trash2 className="h-4 w-4" />
+                            <UserMinus className="h-4 w-4 mr-1" />
+                            <span className="hidden sm:inline">Unfollow</span>
+                            <span className="sm:hidden">Unfollow</span>
                           </Button>
                         </div>
                       </div>
-
-                      {/* Description */}
-                      <p className="text-sm text-gray-600 dark:text-gray-300 line-clamp-2">
-                        {org.description || org.mission || "No description available."}
-                      </p>
                     </div>
                   </div>
                 </CardContent>
@@ -193,9 +249,47 @@ export default function ProfileFavorites() {
             setIsDonationModalOpen(false)
             setSelectedOrganization(null)
           }}
-          organization={selectedOrganization}
+          organization={selectedOrganization as unknown as DonationModalOrganization}
         />
       )}
+
+      {/* Unfollow Confirmation Dialog */}
+      <AlertDialog open={isUnfollowDialogOpen} onOpenChange={setIsUnfollowDialogOpen}>
+        <AlertDialogContent className="bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-gray-900 dark:text-white">
+              <UserMinus className="h-5 w-5 text-red-600 dark:text-red-400" />
+              Unfollow Organization?
+            </AlertDialogTitle>
+            <AlertDialogDescription className="text-gray-600 dark:text-gray-300">
+              Are you sure you want to unfollow <strong className="text-gray-900 dark:text-white">{organizationToUnfollow?.name}</strong>?
+              You'll stop receiving updates from them.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel
+              disabled={isUnfollowing}
+              className="border-gray-300 dark:border-gray-600"
+            >
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmUnfollow}
+              disabled={isUnfollowing}
+              className="bg-red-600 hover:bg-red-700 text-white focus:ring-red-600"
+            >
+              {isUnfollowing ? (
+                <>
+                  <span className="animate-spin mr-2">⏳</span>
+                  Unfollowing...
+                </>
+              ) : (
+                "Yes, Unfollow"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </ProfileLayout>
   )
 }

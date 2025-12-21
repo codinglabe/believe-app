@@ -22,7 +22,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
         Route::middleware('role:admin')->group(function () {
             Route::get('/settings/payment-methods', [PaymentMethodSettingController::class, 'index'])->name('payment-methods.index');
             Route::post('/settings/payment-methods', [PaymentMethodSettingController::class, 'update'])->name('payment-methods.update');
-            
+
             // Bridge Settings - Admin Only
             Route::get('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'index'])->name('bridge.index');
             Route::post('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'update'])->name('bridge.update');
@@ -44,7 +44,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|admin'])->put('settings/password', [PasswordController::class, 'update'])->name('password.update');
 
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization'])->patch(
-    'settings/social-accounts',
-    [ProfileController::class, 'updateSocialAccounts']
-)->name('profile.social-accounts.update');
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization'])->group(function () {
+    Route::patch(
+        'settings/social-accounts',
+        [ProfileController::class, 'updateSocialAccounts']
+    )->name('profile.social-accounts.update');
+
+    Route::patch(
+        'settings/gift-card-terms',
+        [ProfileController::class, 'updateGiftCardTerms']
+    )->name('profile.gift-card-terms.update');
+});

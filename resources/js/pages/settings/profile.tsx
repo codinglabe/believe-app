@@ -918,52 +918,6 @@ const getCroppedImage = async (
 
                     )}
 
-                  {auth.user.role === "organization" && (
-          <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
-            <CardHeader className="pb-4">
-              <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
-                <Gift className="h-5 w-5 text-pink-500" />
-                Gift Card Program Terms
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
-                <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
-                  <strong>Important:</strong> Please review and approve the gift card program terms to enable gift card purchases for your organization.
-                </AlertDescription>
-              </Alert>
-
-              <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
-                <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Summary</h4>
-                <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
-                  Believe is not soliciting donations through gift card sales. Gift cards are sold at face value, and the gift card issuer pays a commission to Believe as the platform operator. Believe retains an 8% administrative and platform fee and distributes the remaining commission to participating nonprofits as earned fundraising revenue. Purchases are not tax-deductible, and all funds are reported as program-related income.
-                </p>
-              </div>
-
-              <div className="flex items-start space-x-3">
-                <input
-                  type="checkbox"
-                  id="gift_card_terms_approved"
-                  checked={data.gift_card_terms_approved || false}
-                  onChange={(e) => setData("gift_card_terms_approved", e.target.checked)}
-                  className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
-                />
-                <Label htmlFor="gift_card_terms_approved" className="text-gray-900 dark:text-white text-sm font-medium cursor-pointer">
-                  I understand and approve the gift card program terms as described above
-                </Label>
-              </div>
-              <InputError message={errors.gift_card_terms_approved} className="mt-1" />
-
-              {auth.user?.organization?.gift_card_terms_approved && auth.user?.organization?.gift_card_terms_approved_at && (
-                <div className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4" />
-                  Approved on {new Date(auth.user.organization.gift_card_terms_approved_at).toLocaleDateString()}
-                </div>
-              )}
-            </CardContent>
-          </Card>
-                    )}
 
           {/* Save Button */}
           <div className="flex justify-end">

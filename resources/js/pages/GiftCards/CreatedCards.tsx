@@ -1,21 +1,28 @@
 "use client"
 
-import { Head, usePage, router } from "@inertiajs/react"
+import { Head, usePage, router, useForm } from "@inertiajs/react"
 import { useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Label } from "@/components/ui/label"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
     Gift,
     Calendar,
     DollarSign,
     Eye,
     User,
-    Building2
+    Building2,
+    AlertCircle,
+    CheckCircle,
+    FileText
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { format } from "date-fns"
 import toast from "react-hot-toast"
+import InputError from "@/components/input-error"
+import { route } from "ziggy-js"
 
 interface GiftCard {
     id: number
@@ -53,6 +60,8 @@ interface CreatedCardsProps {
     organization: {
         id: number
         name: string
+        gift_card_terms_approved?: boolean
+        gift_card_terms_approved_at?: string
     } | null
     isAdmin?: boolean
 }
@@ -60,6 +69,12 @@ interface CreatedCardsProps {
 export default function CreatedCardsPage({ giftCards, organization, isAdmin = false }: CreatedCardsProps) {
     const page = usePage()
     const flash = (page.props as any).flash || {}
+    const { auth } = page.props as any
+
+    // Form for gift card terms approval
+    const { data, setData, patch, processing, errors } = useForm({
+        gift_card_terms_approved: organization?.gift_card_terms_approved || false,
+    })
 
     // Show success message if redirected from successful creation
     useEffect(() => {
@@ -70,6 +85,22 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
             toast.error(flash.error)
         }
     }, [flash.success, flash.error])
+
+    const handleTermsSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        patch(route('profile.gift-card-terms.update'), {
+            preserveScroll: true,
+            onSuccess: () => {
+                toast.success('Gift card terms updated successfully!')
+                // Refresh the page to get updated organization data
+                router.reload({ only: ['organization'] })
+            },
+            onError: (errors) => {
+                console.error('Errors:', errors)
+                toast.error('Failed to update gift card terms')
+            }
+        })
+    }
 
     const formatCurrency = (amount: number, currency: string = 'USD') => {
         return new Intl.NumberFormat('en-US', {
@@ -122,25 +153,28 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
             <Head title="Purchased Gift Cards" />
 
             <div className="flex h-full flex-1 flex-col gap-6 rounded-xl py-4 px-4 md:py-6 md:px-10">
-                {/* Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                    <div>
-                        <h1 className="text-3xl font-bold flex items-center gap-2">
-                            <Gift className="h-8 w-8" />
-                            Purchased Gift Cards
-                        </h1>
-                        <p className="text-muted-foreground mt-1">
-                            {isAdmin
-                                ? 'All gift cards purchased for all organizations'
-                                : organization
-                                    ? `Gift cards purchased for ${organization.name}`
-                                    : 'All gift cards purchased for organizations'}
-                        </p>
-                    </div>
-                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Main Content */}
+                    <div className="lg:col-span-2 space-y-6">
+                        {/* Header */}
+                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                            <div>
+                                <h1 className="text-3xl font-bold flex items-center gap-2">
+                                    <Gift className="h-8 w-8" />
+                                    Purchased Gift Cards
+                                </h1>
+                                <p className="text-muted-foreground mt-1">
+                                    {isAdmin
+                                        ? 'All gift cards purchased for all organizations'
+                                        : organization
+                                            ? `Gift cards purchased for ${organization.name}`
+                                            : 'All gift cards purchased for organizations'}
+                                </p>
+                            </div>
+                        </div>
 
-                {/* Stats */}
-                <div className={`grid grid-cols-1 sm:grid-cols-${isAdmin ? '4' : '3'} gap-4`}>
+                        {/* Stats */}
+                        <div className={`grid grid-cols-1 sm:grid-cols-${isAdmin ? '4' : '3'} gap-4`}>
                     <Card>
                         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                             <CardTitle className="text-sm font-medium">Total Purchased</CardTitle>
@@ -241,8 +275,8 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                     </Card>
                 </div>
 
-                {/* Gift Cards List */}
-                <Card>
+                        {/* Gift Cards List */}
+                        <Card>
                     <CardHeader>
                         <CardTitle>Purchased Gift Cards ({giftCards.total})</CardTitle>
                         <CardDescription>
@@ -362,6 +396,78 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                         )}
                     </CardContent>
                 </Card>
+                    </div>
+
+                    {/* Sidebar - Gift Card Terms (Organization Only) */}
+                    {!isAdmin && auth?.user?.role === "organization" && (
+                        <div className="lg:col-span-1 space-y-6 lg:sticky lg:top-4 lg:self-start lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+                            <Card className="bg-white dark:bg-transparent border-gray-200 dark:border-gray-800 shadow-sm">
+                                <CardHeader className="pb-4">
+                                    <CardTitle className="text-gray-900 dark:text-white flex items-center gap-2">
+                                        <Gift className="h-5 w-5 text-pink-500" />
+                                        Gift Card Program Terms
+                                    </CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-6">
+                                    <Alert className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800">
+                                        <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                        <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+                                            <strong>Important:</strong> Please review and approve the gift card program terms to enable gift card purchases for your organization.
+                                        </AlertDescription>
+                                    </Alert>
+
+                                    <div className="bg-gray-50 dark:bg-gray-900/50 p-4 rounded-lg border border-gray-200 dark:border-gray-700">
+                                        <h4 className="font-semibold text-gray-900 dark:text-white mb-3">Summary</h4>
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed mb-4">
+                                            Believe is not soliciting donations through gift card sales. Gift cards are sold at face value, and the gift card issuer pays a commission to Believe as the platform operator. Believe retains an 8% administrative and platform fee and distributes the remaining commission to participating nonprofits as earned fundraising revenue. Purchases are not tax-deductible, and all funds are reported as program-related income.
+                                        </p>
+                                    </div>
+
+                                    <form onSubmit={handleTermsSubmit}>
+                                        <div className="flex items-start space-x-3">
+                                            <input
+                                                type="checkbox"
+                                                id="gift_card_terms_approved"
+                                                checked={data.gift_card_terms_approved || false}
+                                                onChange={(e) => setData("gift_card_terms_approved", e.target.checked)}
+                                                className="mt-1 h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                                            />
+                                            <Label htmlFor="gift_card_terms_approved" className="text-gray-900 dark:text-white text-sm font-medium cursor-pointer">
+                                                I understand and approve the gift card program terms as described above
+                                            </Label>
+                                        </div>
+                                        <InputError message={errors.gift_card_terms_approved} className="mt-1" />
+
+                                        {organization?.gift_card_terms_approved && organization?.gift_card_terms_approved_at && (
+                                            <div className="text-sm text-green-600 dark:text-green-400 flex items-center gap-2 mt-3">
+                                                <CheckCircle className="h-4 w-4" />
+                                                Approved on {new Date(organization.gift_card_terms_approved_at).toLocaleDateString()}
+                                            </div>
+                                        )}
+
+                                        <Button
+                                            type="submit"
+                                            disabled={processing}
+                                            className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white"
+                                        >
+                                            {processing ? (
+                                                <>
+                                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                                    Saving...
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <FileText className="h-4 w-4 mr-2" />
+                                                    Save Terms Approval
+                                                </>
+                                            )}
+                                        </Button>
+                                    </form>
+                                </CardContent>
+                            </Card>
+                        </div>
+                    )}
+                </div>
             </div>
 
         </AppSidebarLayout>

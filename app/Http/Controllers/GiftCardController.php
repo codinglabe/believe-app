@@ -1292,6 +1292,8 @@ class GiftCardController extends Controller
             'organization' => $user->organization ? [
                 'id' => $user->organization->id,
                 'name' => $user->organization->name,
+                'gift_card_terms_approved' => $user->organization->gift_card_terms_approved,
+                'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at?->toIso8601String(),
             ] : null,
             'isAdmin' => $user->role === 'admin',
         ]);

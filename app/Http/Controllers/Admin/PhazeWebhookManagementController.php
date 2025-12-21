@@ -217,28 +217,71 @@ class PhazeWebhookManagementController extends Controller
     /**
      * Delete a Phaze webhook
      * Only admin can access this
+     * Can delete by database ID or Phaze webhook ID
      */
-    public function destroy($id)
+    public function destroy($id, Request $request)
     {
         try {
-            $webhook = PhazeWebhook::findOrFail($id);
+            // First, try to find by database ID
+            $webhook = PhazeWebhook::find($id);
 
-            // Delete from Phaze API if we have the webhook ID
-            if ($webhook->phaze_webhook_id) {
-                $this->deletePhazeWebhook($webhook->phaze_webhook_id);
+            $phazeWebhookId = null;
+
+            if ($webhook) {
+                // Found in database - use its Phaze webhook ID
+                $phazeWebhookId = $webhook->phaze_webhook_id;
+            } else {
+                // Not found in database - check if this is a Phaze webhook ID
+                // Try to find by phaze_webhook_id
+                $webhook = PhazeWebhook::where('phaze_webhook_id', $id)->first();
+
+                if ($webhook) {
+                    $phazeWebhookId = $webhook->phaze_webhook_id;
+                } else {
+                    // Not in database at all - assume the ID is a Phaze webhook ID
+                    // This handles webhooks that exist only in Phaze API
+                    $phazeWebhookId = is_numeric($id) ? (int) $id : null;
+                }
             }
 
-            // Delete from database
-            $webhook->delete();
+            // Always delete from Phaze API if we have the webhook ID
+            $phazeApiDeleted = false;
+            if ($phazeWebhookId) {
+                $phazeApiDeleted = $this->deletePhazeWebhook($phazeWebhookId);
+
+                if (!$phazeApiDeleted) {
+                    Log::warning('Failed to delete webhook from Phaze API, but continuing with database deletion', [
+                        'webhook_id' => $id,
+                        'phaze_webhook_id' => $phazeWebhookId,
+                    ]);
+                }
+            } else {
+                Log::warning('No Phaze webhook ID found, cannot delete from Phaze API', [
+                    'webhook_id' => $id,
+                ]);
+            }
+
+            // Delete from database if it exists
+            if ($webhook) {
+                $webhook->delete();
+            }
 
             Log::info('Phaze webhook deleted successfully', [
                 'webhook_id' => $id,
-                'phaze_webhook_id' => $webhook->phaze_webhook_id,
+                'phaze_webhook_id' => $phazeWebhookId,
+                'was_in_database' => $webhook !== null,
+                'phaze_api_deleted' => $phazeApiDeleted,
             ]);
+
+            $message = 'Webhook deleted successfully';
+            if ($phazeWebhookId && !$phazeApiDeleted) {
+                $message = 'Webhook deleted from database, but failed to delete from Phaze API. Please check logs.';
+            }
 
             return response()->json([
                 'success' => true,
-                'message' => 'Webhook deleted successfully',
+                'message' => $message,
+                'phaze_api_deleted' => $phazeApiDeleted,
             ]);
 
         } catch (\Exception $e) {
@@ -280,7 +323,7 @@ class PhazeWebhookManagementController extends Controller
             ];
 
             if ($signature) {
-                $headers['signature'] = $signature;
+                $headers['Signature'] = $signature;
             }
 
             $ch = curl_init();
@@ -357,7 +400,7 @@ class PhazeWebhookManagementController extends Controller
             ];
 
             if ($signature) {
-                $headers['signature'] = $signature;
+                $headers['Signature'] = $signature;
             }
 
             $ch = curl_init();
@@ -410,6 +453,8 @@ class PhazeWebhookManagementController extends Controller
 
     /**
      * Delete webhook via Phaze API
+     * DELETE {{baseUrl}}/webhooks/:id
+     * Headers: API-Key (required), Signature (required)
      */
     private function deletePhazeWebhook(int $webhookId): bool
     {
@@ -424,7 +469,13 @@ class PhazeWebhookManagementController extends Controller
                 return false;
             }
 
-            // Generate signature
+            if (empty($apiSecret)) {
+                Log::error('Phaze API secret not configured - signature required for DELETE');
+                return false;
+            }
+
+            // Generate signature for DELETE request
+            // For DELETE: METHOD + PATH + SECRET + "" (empty body)
             $signature = $this->generateSignature('DELETE', $endpoint, null, $apiSecret);
 
             $headers = [
@@ -433,13 +484,23 @@ class PhazeWebhookManagementController extends Controller
                 'Accept' => 'application/json',
             ];
 
+            // Add signature header (use 'Signature' with capital S to match GiftCardService)
             if ($signature) {
-                $headers['signature'] = $signature;
+                $headers['Signature'] = $signature;
             }
+
+            $fullUrl = $baseUrl . $endpoint;
+
+            Log::info('Deleting Phaze webhook via API', [
+                'url' => $fullUrl,
+                'webhook_id' => $webhookId,
+                'has_signature' => !empty($signature),
+                'endpoint' => $endpoint,
+            ]);
 
             $ch = curl_init();
             curl_setopt_array($ch, [
-                CURLOPT_URL => $baseUrl . $endpoint,
+                CURLOPT_URL => $fullUrl,
                 CURLOPT_RETURNTRANSFER => true,
                 CURLOPT_CUSTOMREQUEST => 'DELETE',
                 CURLOPT_HTTPHEADER => array_map(function ($key, $value) {
@@ -455,22 +516,41 @@ class PhazeWebhookManagementController extends Controller
             curl_close($ch);
 
             if ($error) {
-                Log::error('cURL error deleting Phaze webhook', ['error' => $error]);
-                return false;
-            }
-
-            if ($httpCode >= 200 && $httpCode < 300) {
-                return true;
-            } else {
-                Log::warning('Phaze webhook deletion failed', [
-                    'http_code' => $httpCode,
-                    'response' => $response,
+                Log::error('cURL error deleting Phaze webhook', [
+                    'error' => $error,
+                    'webhook_id' => $webhookId,
+                    'url' => $fullUrl,
                 ]);
                 return false;
             }
 
+            // Phaze API returns 200 OK with no response body on successful deletion
+            if ($httpCode === 200) {
+                Log::info('Phaze webhook deleted successfully via API', [
+                    'webhook_id' => $webhookId,
+                    'http_code' => $httpCode,
+                ]);
+                return true;
+            }
+
+            // If we get here, deletion failed - log detailed info for debugging
+            $responseData = json_decode($response, true);
+            Log::warning('Phaze webhook deletion failed', [
+                'webhook_id' => $webhookId,
+                'http_code' => $httpCode,
+                'response' => $response,
+                'response_data' => $responseData,
+                'url' => $fullUrl,
+                'endpoint' => $endpoint,
+                'signature_sent' => !empty($signature),
+            ]);
+            return false;
+
         } catch (\Exception $e) {
-            Log::error('Error deleting Phaze webhook via API: ' . $e->getMessage());
+            Log::error('Error deleting Phaze webhook via API: ' . $e->getMessage(), [
+                'webhook_id' => $webhookId,
+                'trace' => $e->getTraceAsString(),
+            ]);
             return false;
         }
     }

@@ -116,4 +116,36 @@ class ProfileController extends Controller
 
         return response()->json(['success' => true]);
     }
+
+    /**
+     * Update gift card terms approval for organization
+     */
+    public function updateGiftCardTerms(Request $request): RedirectResponse
+    {
+        $request->validate([
+            'gift_card_terms_approved' => ['required', 'boolean'],
+        ]);
+
+        $user = $request->user();
+
+        if ($user->role !== 'organization' || !$user->organization) {
+            abort(403, 'Only organizations can update gift card terms.');
+        }
+
+        $updateData = [
+            'gift_card_terms_approved' => (bool)$request->input('gift_card_terms_approved'),
+        ];
+
+        // Set approval timestamp if approving for the first time
+        if ($updateData['gift_card_terms_approved'] && !$user->organization->gift_card_terms_approved) {
+            $updateData['gift_card_terms_approved_at'] = now();
+        }
+
+        $user->organization()->update($updateData);
+
+        // Refresh the organization relationship
+        $user->load('organization');
+
+        return redirect()->back()->with('success', 'Gift card terms updated successfully!');
+    }
 }
