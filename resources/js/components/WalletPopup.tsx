@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Settings, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage } from 'lucide-react'
+import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
@@ -9,6 +9,24 @@ import { TermsOfService } from './TermsOfService'
 import { ImageUploadDropzone } from './ImageUploadDropzone'
 import { DocumentUploadDropzone } from './DocumentUploadDropzone'
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
+import { usePage } from '@inertiajs/react'
+import { 
+    SuccessMessage, 
+    BalanceDisplay, 
+    SwapView, 
+    ReceiveMoney, 
+    AddMoney, 
+    SendMoney, 
+    WalletScreen, 
+    ActivityList, 
+    ConnectWallet, 
+    CreateWallet, 
+    ExternalAccounts, 
+    TransferFromExternal,
+    KYCForm,
+    getCsrfToken as getWalletCsrfToken,
+    formatAddress as formatWalletAddress
+} from './wallet'
 
 interface WalletPopupProps {
     isOpen: boolean
@@ -16,23 +34,21 @@ interface WalletPopupProps {
     organizationName?: string
 }
 
-// Helper function to get CSRF token with multiple fallbacks
-const getCsrfToken = (): string => {
-    // Method 1: From meta tag (most common)
-    const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-    if (metaToken) return metaToken
-    
-    // Method 2: From cookie (XSRF-TOKEN)
-    const cookieToken = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('XSRF-TOKEN='))
-        ?.split('=')[1]
-    if (cookieToken) return decodeURIComponent(cookieToken)
-    
-    return ''
+// Use the getCsrfToken from wallet utils
+const getCsrfToken = getWalletCsrfToken
+
+interface SharedData {
+    auth: {
+        user: {
+            id: number
+            name: string
+            email: string
+        } | null
+    }
 }
 
 export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupProps) {
+    const { auth } = usePage<SharedData>().props
     const [walletBalance, setWalletBalance] = useState<number | null>(null)
     const [walletAddress, setWalletAddress] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(false)
@@ -102,6 +118,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     } | null>(null)
     const [isLoadingDepositInstructions, setIsLoadingDepositInstructions] = useState(false)
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<'ach' | 'wire'>('ach')
+    const [qrCodeUrl, setQrCodeUrl] = useState<string | null>(null)
+    const [receiveDepositInstructions, setReceiveDepositInstructions] = useState<{
+        bank_name?: string;
+        bank_address?: string;
+        bank_routing_number?: string;
+        bank_account_number?: string;
+        bank_beneficiary_name?: string;
+        bank_beneficiary_address?: string;
+        payment_rail?: string;
+        payment_rails?: string[];
+        currency?: string;
+    } | null>(null)
+    const [isLoadingReceiveData, setIsLoadingReceiveData] = useState(false)
     // Bridge KYC/KYB Link statuses: not_started, incomplete, under_review, awaiting_questionnaire, awaiting_ubo, approved, rejected, paused, offboarded
     const [kycStatus, setKycStatus] = useState<'not_started' | 'incomplete' | 'under_review' | 'awaiting_questionnaire' | 'awaiting_ubo' | 'approved' | 'rejected' | 'paused' | 'offboarded'>('not_started')
     const [kybStatus, setKybStatus] = useState<'not_started' | 'incomplete' | 'under_review' | 'awaiting_questionnaire' | 'awaiting_ubo' | 'approved' | 'rejected' | 'paused' | 'offboarded'>('not_started')
@@ -233,6 +262,29 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         return shouldShow
     }
 
+    // Pre-fill KYC form with user data when popup opens (only if fields are empty)
+    useEffect(() => {
+        if (isOpen && auth?.user) {
+            const userName = auth.user.name || ''
+            const userEmail = auth.user.email || ''
+            
+            // Only populate if fields are currently empty
+            if (!kycFormData.first_name && !kycFormData.email && userName && userEmail) {
+                // Split name into first_name and last_name
+                const nameParts = userName.trim().split(/\s+/)
+                const firstName = nameParts[0] || ''
+                const lastName = nameParts.slice(1).join(' ') || ''
+                
+                setKycFormData(prev => ({
+                    ...prev,
+                    first_name: firstName,
+                    last_name: lastName,
+                    email: userEmail,
+                }))
+            }
+        }
+    }, [isOpen, auth?.user])
+
     // Auto-switch to correct KYB step when business-related fields are requested
     useEffect(() => {
         if (!requestedFields || requestedFields.length === 0) {
@@ -320,7 +372,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
-                    cache: 'no-cache',
+                    cache: 'no-store',
                 })
 
                 const statusData = await statusResponse.json()
@@ -532,19 +584,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     
                     // Always fetch balance from user/organization table, not Bridge wallet
                     const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': getCsrfToken(),
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        credentials: 'include',
-                        cache: 'no-cache',
-                    })
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-store',
+                })
 
-                    if (balanceResponse.ok) {
-                        const balanceData = await balanceResponse.json()
-                        if (balanceData.success) {
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json()
+                    if (balanceData.success) {
                             // Use balance from user/organization table
                             setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
                             setHasSubscription(balanceData.has_subscription ?? null)
@@ -571,7 +623,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'include',
-                        cache: 'no-cache',
+                        cache: 'no-store',
                     })
                     
                     if (fallbackResponse.ok) {
@@ -601,7 +653,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'include',
-                        cache: 'no-cache',
+                        cache: 'no-store',
                     })
                     if (fallbackResponse.ok) {
                         const fallbackData = await fallbackResponse.json()
@@ -654,21 +706,69 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 // Submit the signed agreement ID to backend first
                 const submitTosAcceptance = async () => {
                     try {
+                        // Get fresh CSRF token before making the request
+                        let csrfToken = getCsrfToken()
+                        
+                        // If token is missing, try to refresh it by making a GET request first
+                        if (!csrfToken) {
+                            try {
+                                const tokenResponse = await fetch('/wallet/bridge/status', {
+                                    method: 'GET',
+                                    headers: {
+                                        'Accept': 'application/json',
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    credentials: 'include',
+                                    cache: 'no-store',
+                                })
+                                // After the request, try to get token again
+                                csrfToken = getCsrfToken()
+                            } catch (e) {
+                                console.warn('Failed to refresh CSRF token:', e)
+                            }
+                        }
+                        
+                        if (!csrfToken) {
+                            showErrorToast('CSRF token not found. Please refresh the page and try again.')
+                            // Refresh page to get new CSRF token
+                            setTimeout(() => {
+                                window.location.reload()
+                            }, 2000)
+                            return
+                        }
+                        
                         const response = await fetch('/wallet/tos-callback', {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
                                 'Accept': 'application/json',
-                                'X-CSRF-TOKEN': getCsrfToken(),
+                                'X-CSRF-TOKEN': csrfToken,
                                 'X-Requested-With': 'XMLHttpRequest',
                             },
                             credentials: 'include',
+                            cache: 'no-store',
                             body: JSON.stringify({ signed_agreement_id: agreementId }),
                         })
                         
+                        // Handle CSRF token mismatch
+                        if (response.status === 419 || response.status === 403) {
+                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
+                            showErrorToast('Session expired. Refreshing page...')
+                            setTimeout(() => {
+                                window.location.reload()
+                            }, 2000)
+                            return
+                        }
+                        
+                        if (!response.ok) {
+                            const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
+                            showErrorToast(errorData.message || 'Failed to accept Terms of Service')
+                            return
+                        }
+                        
                         const data = await response.json()
                         
-                        if (response.ok && data.success) {
+                        if (data.success) {
                             // Hide TOS iframe immediately when accepted
                             setTosIframeUrl(null)
                             
@@ -734,7 +834,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     'X-Requested-With': 'XMLHttpRequest',
                                 },
                                 credentials: 'include',
-                                cache: 'no-cache',
+                                cache: 'no-store',
                             })
                             
                             if (statusResponse.ok) {
@@ -793,7 +893,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
-                    cache: 'no-cache',
+                    cache: 'no-store',
                 })
 
                 if (response.ok) {
@@ -843,7 +943,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'include',
-                        cache: 'no-cache',
+                        cache: 'no-store',
                     })
 
                     if (response.ok) {
@@ -887,6 +987,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
             })
 
             const data = await response.json()
@@ -921,6 +1022,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     account_data: accountData,
                 }),
@@ -968,6 +1070,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
+                    cache: 'no-store',
                 })
                 
                 if (statusResponse.ok) {
@@ -992,6 +1095,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     external_account_id: selectedExternalAccount,
                     wallet_id: walletId,
@@ -1031,6 +1135,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     chain: 'solana', // Default chain
                 }),
@@ -1110,6 +1215,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
             })
 
             // Handle CSRF token mismatch (419 error)
@@ -1151,7 +1257,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
-                cache: 'no-cache',
+                cache: 'no-store',
             })
             
             // Handle CSRF token mismatch for status request
@@ -1220,19 +1326,19 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 
                 // Always fetch balance from user/organization table, not Bridge wallet
                 const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': getCsrfToken(),
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-cache',
-                })
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': getCsrfToken(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-store',
+                    })
 
-                if (balanceResponse.ok) {
-                    const balanceData = await balanceResponse.json()
-                    if (balanceData.success) {
+                    if (balanceResponse.ok) {
+                        const balanceData = await balanceResponse.json()
+                        if (balanceData.success) {
                         // Use balance from user/organization table
                         setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
                         setHasSubscription(balanceData.has_subscription ?? null)
@@ -1309,16 +1415,69 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const handleAcceptTos = async () => {
         try {
             setIsLoading(true)
+            
+            // Get CSRF token with validation - try multiple times if needed
+            let csrfToken = getCsrfToken()
+            
+            // If token is missing, try to get it from a fresh request
+            if (!csrfToken) {
+                try {
+                    // Make a simple GET request to refresh the session and get CSRF token
+                    await fetch('/wallet/bridge/status', {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-store',
+                    })
+                    // Try to get token again after the request
+                    csrfToken = getCsrfToken()
+                } catch (e) {
+                    console.warn('Failed to refresh CSRF token:', e)
+                }
+            }
+            
+            if (!csrfToken) {
+                showErrorToast('CSRF token not found. Please refresh the page and try again.')
+                setIsLoading(false)
+                setTimeout(() => {
+                    window.location.reload()
+                }, 2000)
+                return
+            }
+            
             // Always get a fresh TOS link from Bridge (refresh=1 ensures new link is fetched and saved to database)
             const response = await fetch('/wallet/bridge/tos-link?refresh=1', {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
-                credentials: 'include',
+                credentials: 'include', // Important: Include cookies for session/CSRF
+                cache: 'no-store',
             })
+
+            // Check if response is OK - handle CSRF token mismatch
+            if (!response.ok) {
+                // If CSRF token mismatch (419) or forbidden (403), refresh page
+                if (response.status === 419 || response.status === 403) {
+                    const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
+                    showErrorToast('Session expired. Refreshing page...')
+                    setIsLoading(false)
+                    // Refresh the page after a short delay to get a new CSRF token
+                    setTimeout(() => {
+                        window.location.reload()
+                    }, 1500)
+                    return
+                }
+                const errorData = await response.json().catch(() => ({ message: 'Request failed' }))
+                showErrorToast(errorData.message || 'Failed to load Terms of Service')
+                setIsLoading(false)
+                return
+            }
 
             const data = await response.json()
 
@@ -1455,6 +1614,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     signed_agreement_id: signedAgreementId,
                     step: 'control_person', // Indicate this is step 1
@@ -1613,6 +1773,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     step: 'business_documents', // Indicate this is step 2
                     business_formation_document: kybFormData.business_formation_document,
@@ -1773,6 +1934,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     control_person_email: kybFormData.control_person.email,
                 }),
@@ -1837,8 +1999,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 return
             } else {
                 // Individual KYC submission
-                if (!kycFormData.id_front_image || !kycFormData.id_back_image) {
-                    showErrorToast('Please upload both front and back images of your ID')
+                // Validate based on ID type
+                if (!kycFormData.id_front_image) {
+                    const idTypeLabel = kycFormData.id_type === 'passport' ? 'passport' : 'ID front'
+                    showErrorToast(`Please upload ${idTypeLabel} image`)
+                    setIsLoading(false)
+                    return
+                }
+
+                // For driver's license and state ID, require back image
+                if (kycFormData.id_type !== 'passport' && !kycFormData.id_back_image) {
+                    showErrorToast('Please upload ID back image')
+                    setIsLoading(false)
                     return
                 }
 
@@ -1846,9 +2018,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 const idFrontBase64 = typeof kycFormData.id_front_image === 'string' 
                     ? kycFormData.id_front_image 
                     : await convertImageToBase64(kycFormData.id_front_image as File)
-                const idBackBase64 = typeof kycFormData.id_back_image === 'string'
-                    ? kycFormData.id_back_image
-                    : await convertImageToBase64(kycFormData.id_back_image as File)
+                const idBackBase64 = kycFormData.id_type !== 'passport' && kycFormData.id_back_image
+                    ? (typeof kycFormData.id_back_image === 'string'
+                        ? kycFormData.id_back_image
+                        : await convertImageToBase64(kycFormData.id_back_image as File))
+                    : null
 
                 const response = await fetch('/wallet/bridge/create-customer-kyc', {
                     method: 'POST',
@@ -1859,6 +2033,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
+                    cache: 'no-store',
                     body: JSON.stringify({
                         signed_agreement_id: signedAgreementId,
                         first_name: kycFormData.first_name,
@@ -1896,7 +2071,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 'X-Requested-With': 'XMLHttpRequest',
                             },
                             credentials: 'include',
-                            cache: 'no-cache',
+                            cache: 'no-store',
                         })
                         .then(res => res.json())
                         .then(statusData => {
@@ -1934,7 +2109,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
-                cache: 'no-cache',
+                cache: 'no-store',
             })
 
             if (balanceResponse.ok) {
@@ -1953,10 +2128,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    const formatAddress = (address: string | null) => {
-        if (!address) return ''
-        return `${address.slice(0, 6)}...${address.slice(-4)}`
-    }
+    // Use formatAddress from wallet utils (imported as formatWalletAddress)
+    const formatAddress = formatWalletAddress
 
     // Debounced search function
     useEffect(() => {
@@ -1977,6 +2150,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
+                    cache: 'no-store',
                 })
 
                 if (response.ok) {
@@ -2033,21 +2207,100 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [actionView])
 
-    // Fetch deposit instructions when addMoney view is shown
+    // Fetch deposit instructions and QR code when receive view is shown
     useEffect(() => {
-        if (actionView === 'addMoney' && !depositInstructions) {
-            const fetchDepositInstructions = async () => {
-                setIsLoadingDepositInstructions(true)
+        if (actionView === 'receive') {
+            const fetchReceiveData = async () => {
+                setIsLoadingReceiveData(true)
                 try {
-                    const response = await fetch('/wallet/bridge/deposit-instructions', {
+                    // Fetch deposit instructions
+                    const timestamp = Date.now()
+                    const instructionsResponse = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
                         method: 'GET',
                         headers: {
                             'Accept': 'application/json',
                             'X-CSRF-TOKEN': getCsrfToken(),
                             'X-Requested-With': 'XMLHttpRequest',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0',
                         },
                         credentials: 'include',
-                        cache: 'no-cache',
+                        cache: 'no-store',
+                    })
+
+                    if (instructionsResponse.ok) {
+                        const data = await instructionsResponse.json()
+                        if (data.success && data.data?.deposit_instructions) {
+                            const instructions = data.data.deposit_instructions
+                            setReceiveDepositInstructions(instructions)
+                            
+                            // Fetch QR code as blob and convert to data URL
+                            try {
+                                const qrTimestamp = Date.now()
+                                const qrResponse = await fetch(`/wallet/bridge/deposit-qr-code?t=${qrTimestamp}`, {
+                                    method: 'GET',
+                                    headers: {
+                                        'Accept': 'image/svg+xml, image/png, image/*',
+                                        'X-CSRF-TOKEN': getCsrfToken(),
+                                        'X-Requested-With': 'XMLHttpRequest',
+                                    },
+                                    credentials: 'include',
+                                    cache: 'no-store',
+                                })
+                                
+                                if (qrResponse.ok) {
+                                    const blob = await qrResponse.blob()
+                                    const reader = new FileReader()
+                                    reader.onloadend = () => {
+                                        setQrCodeUrl(reader.result as string)
+                                    }
+                                    reader.readAsDataURL(blob)
+                                } else {
+                                    console.error('Failed to fetch QR code:', qrResponse.status, qrResponse.statusText)
+                                    setQrCodeUrl(null)
+                                }
+                            } catch (qrError) {
+                                console.error('Error fetching QR code:', qrError)
+                                setQrCodeUrl(null)
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch receive data:', error)
+                } finally {
+                    setIsLoadingReceiveData(false)
+                }
+            }
+
+            fetchReceiveData()
+        } else if (actionView !== 'receive') {
+            // Clear receive data when leaving receive view
+            setReceiveDepositInstructions(null)
+            setQrCodeUrl(null)
+        }
+    }, [actionView])
+
+    // Fetch deposit instructions when addMoney view is shown - always fetch fresh (no cache)
+    useEffect(() => {
+        if (actionView === 'addMoney') {
+            const fetchDepositInstructions = async () => {
+                setIsLoadingDepositInstructions(true)
+                try {
+                    // Add timestamp to URL to prevent any caching
+                    const timestamp = Date.now()
+                    const response = await fetch(`/wallet/bridge/deposit-instructions?t=${timestamp}`, {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': getCsrfToken(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0',
+                        },
+                        credentials: 'include',
+                        cache: 'no-store', // Use no-store instead of no-cache for stricter no-cache behavior
                     })
 
                     if (response.ok) {
@@ -2082,8 +2335,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
 
             fetchDepositInstructions()
+        } else if (actionView !== 'addMoney') {
+            // Clear deposit instructions when leaving addMoney view to ensure fresh fetch next time
+            setDepositInstructions(null)
         }
-    }, [actionView, depositInstructions])
+    }, [actionView])
 
     const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
         setSelectedRecipient(recipient)
@@ -2121,6 +2377,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     amount: amount,
                     recipient_id: selectedRecipient.id,
@@ -2156,7 +2413,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         'X-Requested-With': 'XMLHttpRequest',
                     },
                     credentials: 'include',
-                    cache: 'no-cache',
+                    cache: 'no-store',
                 })
 
                 if (balanceResponse.ok) {
@@ -2183,7 +2440,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             'X-Requested-With': 'XMLHttpRequest',
                         },
                         credentials: 'include',
-                        cache: 'no-cache',
+                        cache: 'no-store',
                     })
 
                     if (activityResponse.ok) {
@@ -2270,6 +2527,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
                 body: JSON.stringify({
                     amount: amount,
                 }),
@@ -2301,7 +2559,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 'X-Requested-With': 'XMLHttpRequest',
                             },
                             credentials: 'include',
-                            cache: 'no-cache',
+                            cache: 'no-store',
                         })
 
                         if (balanceResponse.ok) {
@@ -2327,7 +2585,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 'X-Requested-With': 'XMLHttpRequest',
                             },
                             credentials: 'include',
-                            cache: 'no-cache',
+                            cache: 'no-store',
                         })
 
                         if (activityResponse.ok) {
@@ -2487,8 +2745,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             damping: 25,
                                         }}
                                         className="flex items-center justify-center gap-1.5"
-                                    >
-                                        Account
+                                >
+                                    Account
                                     </motion.span>
                                 </motion.button>
                                 
@@ -2512,9 +2770,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             damping: 25,
                                         }}
                                         className="flex items-center justify-center gap-1.5"
-                                    >
+                                >
                                         <Activity className="h-4 w-4" />
-                                        Activity
+                                    Activity
                                     </motion.span>
                                 </motion.button>
                             </div>
@@ -2524,683 +2782,88 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                             {/* Success Animation Overlay */}
                             <AnimatePresence>
-                                {showSuccess && (
-                                    <motion.div
-                                        initial={{ opacity: 0, scale: 0.8 }}
-                                        animate={{ opacity: 1, scale: 1 }}
-                                        exit={{ opacity: 0, scale: 0.8 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="absolute inset-0 z-50 flex items-center justify-center bg-background/95 backdrop-blur-sm rounded-b-xl"
-                                    >
-                                        <div className="text-center space-y-4 p-6">
-                                            <motion.div
-                                                initial={{ scale: 0 }}
-                                                animate={{ scale: 1 }}
-                                                transition={{ delay: 0.1, type: "spring", stiffness: 200, damping: 15 }}
-                                                className="mx-auto w-20 h-20 rounded-full bg-gradient-to-r from-green-500 to-emerald-500 flex items-center justify-center shadow-lg"
-                                            >
-                                                <CheckCircle2 className="h-12 w-12 text-white" />
-                                            </motion.div>
-                                            <motion.div
-                                                initial={{ opacity: 0, y: 10 }}
-                                                animate={{ opacity: 1, y: 0 }}
-                                                transition={{ delay: 0.2 }}
-                                                className="space-y-2"
-                                            >
-                                                <h3 className="text-xl font-bold">
-                                                    {successType === 'send' && 'Transaction Sent!'}
-                                                    {successType === 'receive' && 'Address Copied!'}
-                                                    {successType === 'swap' && 'Swap Completed!'}
-                                                    {successType === 'addMoney' && 'Money Added!'}
-                                                </h3>
-                                                <p className="text-sm text-muted-foreground">{successMessage}</p>
-                                            </motion.div>
-                                            <motion.div
-                                                initial={{ opacity: 0 }}
-                                                animate={{ opacity: 1 }}
-                                                transition={{ delay: 0.4 }}
-                                            >
-                                                <div className="w-12 h-1 bg-primary/20 rounded-full mx-auto overflow-hidden">
-                                                    <motion.div
-                                                        initial={{ width: 0 }}
-                                                        animate={{ width: '100%' }}
-                                                        transition={{ duration: 3, ease: 'linear' }}
-                                                        className="h-full bg-gradient-to-r from-purple-600 to-blue-600"
-                                                    />
-                                                </div>
-                                            </motion.div>
-                                        </div>
-                                    </motion.div>
-                                )}
+                                <SuccessMessage 
+                                    show={showSuccess} 
+                                    successType={successType} 
+                                    message={successMessage} 
+                                />
                             </AnimatePresence>
 
                             {/* Balance Display - Show at top for all action views */}
                             {(actionView === 'send' || actionView === 'receive' || actionView === 'swap' || actionView === 'addMoney' || actionView === 'transfer_from_external') && !showSuccess && (
-                                <motion.div
-                                    initial={{ opacity: 0, y: -10 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 pb-2 border-b border-border"
-                                >
-                                    <div className="text-center py-4">
-                                        <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
-                                        <div className="flex items-center justify-center gap-2">
-                                            <motion.span
-                                                key={walletBalance}
-                                                initial={{ scale: 1.2 }}
-                                                animate={{ scale: 1 }}
-                                                transition={{ duration: 0.3 }}
-                                                className="text-3xl font-bold"
-                                            >
-                                                ${walletBalance !== null 
-                                                    ? walletBalance.toLocaleString('en-US', { 
-                                                        minimumFractionDigits: 2, 
-                                                        maximumFractionDigits: 2 
-                                                    })
-                                                    : '0.00'
-                                                }
-                                            </motion.span>
-                                            <button
-                                                onClick={handleRefresh}
-                                                className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                                                disabled={isLoading}
-                                                title="Refresh balance"
-                                            >
-                                                <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </motion.div>
+                                <BalanceDisplay 
+                                    balance={walletBalance} 
+                                    isLoading={isLoading} 
+                                    onRefresh={handleRefresh} 
+                                />
                             )}
 
                             {!showSuccess && actionView === 'send' ? (
-                                /* Send View */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">Send Amount</label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0"
-                                                    max={walletBalance || undefined}
-                                                    value={sendAmount}
-                                                    onChange={(e) => setSendAmount(e.target.value)}
-                                                    placeholder="0.00"
-                                                    className="w-full pl-8 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                                                />
-                                            </div>
-                                            {walletBalance !== null && (
-                                                <p className="text-xs text-muted-foreground mt-1">
-                                                    Available: ${walletBalance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                                </p>
-                                            )}
-                                        </div>
-                                        <div className="relative">
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">Send To</label>
-                                            <div className="relative">
-                                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                                <input
-                                                    ref={searchInputRef}
-                                                    type="text"
-                                                    value={recipientSearch}
-                                                    onChange={(e) => {
-                                                        setRecipientSearch(e.target.value)
-                                                        setShowDropdown(true)
-                                                        if (!e.target.value) {
-                                                            setSelectedRecipient(null)
-                                                            setSendAddress('')
-                                                        }
-                                                    }}
-                                                    onFocus={() => {
-                                                        if (searchResults.length > 0) {
-                                                            setShowDropdown(true)
-                                                        }
-                                                    }}
-                                                    placeholder="Search by name or email..."
-                                                    className="w-full pl-10 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 text-sm"
-                                                />
-                                                {isLoadingSearch && (
-                                                    <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-                                                        <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
-                                                    </div>
-                                                )}
-                                            </div>
-                                            
-                                            {/* Dropdown Results */}
-                                            <AnimatePresence>
-                                                {showDropdown && searchResults.length > 0 && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, y: -10 }}
-                                                        animate={{ opacity: 1, y: 0 }}
-                                                        exit={{ opacity: 0, y: -10 }}
-                                                        transition={{ duration: 0.2 }}
-                                                        ref={dropdownRef}
-                                                        className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg max-h-64 overflow-y-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
-                                                        style={{
-                                                            scrollbarWidth: 'none',
-                                                            msOverflowStyle: 'none',
-                                                        }}
-                                                    >
-                                                        {searchResults.map((result) => (
-                                                            <button
-                                                                key={result.id}
-                                                                type="button"
-                                                                onClick={() => handleSelectRecipient(result)}
-                                                                className={`w-full px-4 py-3 flex items-center gap-3 hover:bg-muted transition-colors text-left border-b border-border last:border-b-0 ${
-                                                                    selectedRecipient?.id === result.id ? 'bg-purple-50 dark:bg-purple-900/20' : ''
-                                                                }`}
-                                                            >
-                                                                <div className={`p-2 rounded-lg ${
-                                                                    result.type === 'organization' 
-                                                                        ? 'bg-blue-500/10 text-blue-500' 
-                                                                        : 'bg-green-500/10 text-green-500'
-                                                                }`}>
-                                                                    {result.type === 'organization' ? (
-                                                                        <Building2 className="h-4 w-4" />
-                                                                    ) : (
-                                                                        <User className="h-4 w-4" />
-                                                                    )}
-                                                                </div>
-                                                                <div className="flex-1 min-w-0">
-                                                                    <p className="text-sm font-medium truncate">{result.name}</p>
-                                                                    {result.email && (
-                                                                        <p className="text-xs text-muted-foreground truncate">{result.email}</p>
-                                                                    )}
-                                                                </div>
-                                                                <span className={`text-xs px-2 py-1 rounded ${
-                                                                    result.type === 'organization'
-                                                                        ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
-                                                                        : 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                                                                }`}>
-                                                                    {result.type === 'organization' ? 'Organization' : 'User'}
-                                                                </span>
-                                                            </button>
-                                                        ))}
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>
-                                            
-                                            {selectedRecipient && (
-                                                <div className="mt-2 p-2 sm:p-2.5 bg-muted/50 rounded-lg flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                        <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                                                        <span className="text-muted-foreground flex-shrink-0">Selected:</span>
-                                                        <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
-                                                    </div>
-                                                    <span className="text-muted-foreground font-mono text-[10px] sm:ml-auto flex-shrink-0">
-                                                        {formatAddress(selectedRecipient.address)}
-                                                    </span>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-                                    <Button
-                                        onClick={handleSend}
-                                        disabled={isLoading || !sendAmount || (!selectedRecipient && !sendAddress)}
-                                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                                    >
-                                        {isLoading ? (
-                                            <>
-                                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                                Sending...
-                                            </>
-                                        ) : (
-                                            'Send'
-                                        )}
-                                    </Button>
-                                </motion.div>
+                                <SendMoney
+                                    sendAmount={sendAmount}
+                                    walletBalance={walletBalance}
+                                    recipientSearch={recipientSearch}
+                                    searchResults={searchResults}
+                                    selectedRecipient={selectedRecipient}
+                                    sendAddress={sendAddress}
+                                    isLoading={isLoading}
+                                    isLoadingSearch={isLoadingSearch}
+                                    showDropdown={showDropdown}
+                                    searchInputRef={searchInputRef}
+                                    dropdownRef={dropdownRef}
+                                    onAmountChange={setSendAmount}
+                                    onSearchChange={(value) => {
+                                        setRecipientSearch(value)
+                                        setShowDropdown(true)
+                                        if (!value) {
+                                            setSelectedRecipient(null)
+                                            setSendAddress('')
+                                        }
+                                    }}
+                                    onSearchFocus={() => {
+                                        if (searchResults.length > 0) {
+                                            setShowDropdown(true)
+                                        }
+                                    }}
+                                    onSelectRecipient={handleSelectRecipient}
+                                    onSend={handleSend}
+                                />
                             ) : !showSuccess && actionView === 'external_accounts' ? (
-                                /* External Accounts View */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    <div className="space-y-3">
-                                        <div className="flex items-center justify-between">
-                                            <h3 className="text-sm font-semibold">Linked Bank Accounts</h3>
-                                            <Button
-                                                onClick={fetchExternalAccounts}
-                                                disabled={isLoadingExternalAccounts}
-                                                size="sm"
-                                                variant="outline"
-                                            >
-                                                <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingExternalAccounts ? 'animate-spin' : ''}`} />
-                                                Refresh
-                                            </Button>
-                                        </div>
-
-                                        {isLoadingExternalAccounts ? (
-                                            <div className="text-center py-8">
-                                                <RefreshCw className="h-6 w-6 text-muted-foreground mx-auto mb-3 animate-spin" />
-                                                <p className="text-xs text-muted-foreground">Loading accounts...</p>
-                                            </div>
-                                        ) : externalAccounts.length === 0 ? (
-                                            <div className="text-center py-8 border border-dashed border-border rounded-lg">
-                                                <Building2 className="h-8 w-8 text-muted-foreground mx-auto mb-3" />
-                                                <p className="text-sm font-medium mb-1">No bank accounts linked</p>
-                                                <p className="text-xs text-muted-foreground mb-4">Link a bank account to start transferring funds</p>
-                                                <Button
-                                                    onClick={() => {
-                                                        const routingNumber = prompt('Enter routing number:')
-                                                        const accountNumber = prompt('Enter account number:')
-                                                        const accountType = prompt('Account type (checking/savings):') as 'checking' | 'savings'
-                                                        const accountHolderName = prompt('Account holder name:')
-                                                        
-                                                        if (routingNumber && accountNumber && accountType && accountHolderName) {
-                                                            handleLinkExternalAccount({
-                                                                routing_number: routingNumber,
-                                                                account_number: accountNumber,
-                                                                account_type: accountType,
-                                                                account_holder_name: accountHolderName,
-                                                            })
-                                                        }
-                                                    }}
-                                                    size="sm"
-                                                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                                                >
-                                                    <Plus className="h-3 w-3 mr-1" />
-                                                    Link Bank Account
-                                                </Button>
-                                            </div>
-                                        ) : (
-                                            <div className="space-y-2">
-                                                {externalAccounts.map((account) => (
-                                                    <div
-                                                        key={account.id}
-                                                        className="p-3 bg-muted rounded-lg border border-border"
-                                                    >
-                                                        <div className="flex items-center justify-between">
-                                                            <div className="flex-1">
-                                                                <p className="text-sm font-medium">{account.account_holder_name}</p>
-                                                                <p className="text-xs text-muted-foreground">
-                                                                    {account.account_type.charAt(0).toUpperCase() + account.account_type.slice(1)} • 
-                                                                    ••••{account.account_number.slice(-4)}
-                                                                </p>
-                                                            </div>
-                                                            <span className={`text-xs px-2 py-1 rounded ${
-                                                                account.status === 'verified' 
-                                                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
-                                                                    : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-                                                            }`}>
-                                                                {account.status}
-                                                            </span>
-                                                        </div>
-                                                    </div>
-                                                ))}
-                                                <Button
-                                                    onClick={() => {
-                                                        const routingNumber = prompt('Enter routing number:')
-                                                        const accountNumber = prompt('Enter account number:')
-                                                        const accountType = prompt('Account type (checking/savings):') as 'checking' | 'savings'
-                                                        const accountHolderName = prompt('Account holder name:')
-                                                        
-                                                        if (routingNumber && accountNumber && accountType && accountHolderName) {
-                                                            handleLinkExternalAccount({
-                                                                routing_number: routingNumber,
-                                                                account_number: accountNumber,
-                                                                account_type: accountType,
-                                                                account_holder_name: accountHolderName,
-                                                            })
-                                                        }
-                                                    }}
-                                                    size="sm"
-                                                    variant="outline"
-                                                    className="w-full"
-                                                >
-                                                    <Plus className="h-3 w-3 mr-1" />
-                                                    Link Another Account
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
+                                <ExternalAccounts
+                                    externalAccounts={externalAccounts}
+                                    isLoading={isLoadingExternalAccounts}
+                                    onRefresh={fetchExternalAccounts}
+                                    onLinkAccount={handleLinkExternalAccount}
+                                />
                             ) : !showSuccess && actionView === 'transfer_from_external' ? (
-                                /* Transfer from External Account View */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    <div className="space-y-3">
-                                        <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">Select Bank Account</label>
-                                            <select
-                                                value={selectedExternalAccount}
-                                                onChange={(e) => setSelectedExternalAccount(e.target.value)}
-                                                className="w-full px-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                                            >
-                                                <option value="">Select an account...</option>
-                                                {externalAccounts
-                                                    .filter(acc => acc.status === 'verified')
-                                                    .map((account) => (
-                                                        <option key={account.id} value={account.id}>
-                                                            {account.account_holder_name} • ••••{account.account_number.slice(-4)}
-                                                        </option>
-                                                    ))}
-                                            </select>
-                                        </div>
-
-                                        <div>
-                                            <label className="text-xs text-muted-foreground mb-1.5 block">Amount</label>
-                                            <div className="relative">
-                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground z-10">$</span>
-                                                <input
-                                                    type="number"
-                                                    step="0.01"
-                                                    min="0.01"
-                                                    value={transferAmount}
-                                                    onChange={(e) => setTransferAmount(e.target.value)}
-                                                    placeholder="0.00"
-                                                    className="w-full pl-8 pr-4 py-2.5 bg-muted border border-border rounded-lg focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                                                />
-                                            </div>
-                                        </div>
-
-                                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                            <p className="text-xs text-blue-900 dark:text-blue-100">
-                                                <strong>Note:</strong> Transfers from external accounts may take 1-3 business days to process.
-                                            </p>
-                                        </div>
-                                    </div>
-
-                                    <Button
-                                        onClick={handleTransferFromExternal}
-                                        disabled={isLoading || !selectedExternalAccount || !transferAmount || parseFloat(transferAmount) <= 0}
-                                        className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
-                                    >
-                                        {isLoading ? (
-                                            <>
-                                                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                                Processing...
-                                            </>
-                                        ) : (
-                                            'Initiate Transfer'
-                                        )}
-                                    </Button>
-                                </motion.div>
+                                <TransferFromExternal
+                                    externalAccounts={externalAccounts}
+                                    selectedExternalAccount={selectedExternalAccount}
+                                    transferAmount={transferAmount}
+                                    isLoading={isLoading}
+                                    onAccountChange={setSelectedExternalAccount}
+                                    onAmountChange={setTransferAmount}
+                                    onTransfer={handleTransferFromExternal}
+                                />
                             ) : !showSuccess && actionView === 'receive' ? (
-                                /* Receive View */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    <div className="text-center py-4">
-                                        <div className="inline-block p-4 bg-muted rounded-xl mb-4">
-                                            <QrCode className="h-16 w-16 text-muted-foreground" />
-                                        </div>
-                                        <p className="text-sm text-muted-foreground mb-4">Share this address to receive funds</p>
-                                        {walletAddress && (
-                                            <div className="space-y-3">
-                                                <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
-                                                    <code className="text-sm font-mono flex-1 text-left break-all">
-                                                        {walletAddress}
-                                                    </code>
-                                                    <button
-                                                        onClick={handleCopyReceiveAddress}
-                                                        className="p-2 rounded-lg hover:bg-background transition-colors flex-shrink-0 ml-2"
-                                                        title="Copy address"
-                                                    >
-                                                        {copied ? (
-                                                            <Check className="h-4 w-4 text-green-500" />
-                                                        ) : (
-                                                            <Copy className="h-4 w-4 text-muted-foreground" />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                                <Button
-                                                    onClick={handleCopyReceiveAddress}
-                                                    variant="outline"
-                                                    className="w-full"
-                                                >
-                                                    <Copy className="h-4 w-4 mr-2" />
-                                                    Copy Address
-                                                </Button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </motion.div>
+                                <ReceiveMoney
+                                    isLoading={isLoadingReceiveData}
+                                    qrCodeUrl={qrCodeUrl}
+                                    depositInstructions={receiveDepositInstructions}
+                                    walletAddress={walletAddress}
+                                    copied={copied}
+                                    onCopyAddress={handleCopyReceiveAddress}
+                                />
                             ) : !showSuccess && actionView === 'swap' ? (
-                                /* Swap View - Coming Soon */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    <div className="flex flex-col items-center justify-center py-12 space-y-4">
-                                        <div className="p-4 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full">
-                                            <ArrowRightLeft className="h-8 w-8 text-white" />
-                                        </div>
-                                        <div className="text-center">
-                                            <h3 className="text-xl font-bold mb-2">Coming Soon</h3>
-                                            <p className="text-sm text-muted-foreground">
-                                                The swap feature is under development and will be available soon.
-                                            </p>
-                                        </div>
-                                    </div>
-                                </motion.div>
+                                <SwapView />
                             ) : !showSuccess && actionView === 'addMoney' ? (
-                                /* Add Money View */
-                                <motion.div
-                                    initial={{ opacity: 0, x: 20 }}
-                                    animate={{ opacity: 1, x: 0 }}
-                                    exit={{ opacity: 0, x: -20 }}
-                                    transition={{ duration: 0.3 }}
-                                    className="p-4 space-y-4"
-                                >
-                                    {isLoadingDepositInstructions ? (
-                                        <div className="flex items-center justify-center py-8">
-                                            <RefreshCw className="h-5 w-5 animate-spin text-muted-foreground" />
-                                        </div>
-                                    ) : depositInstructions ? (
-                                        <div className="space-y-4">
-                                            {/* Payment Method Tabs - Only show if multiple payment methods available */}
-                                            {(() => {
-                                                const hasAch = (depositInstructions.payment_rails && depositInstructions.payment_rails.includes('ach_push')) || depositInstructions.payment_rail === 'ach_push'
-                                                const hasWire = (depositInstructions.payment_rails && depositInstructions.payment_rails.includes('wire')) || depositInstructions.payment_rail === 'wire'
-                                                const hasMultiple = (hasAch && hasWire) || (depositInstructions.payment_rails && depositInstructions.payment_rails.length > 1)
-                                                
-                                                return hasMultiple ? (
-                                                    <div className="relative flex gap-2 p-1 bg-muted rounded-lg">
-                                                        {/* Animated background indicator */}
-                                                        <motion.div
-                                                            className="absolute inset-y-1 rounded-md bg-gradient-to-r from-purple-600 to-blue-600 shadow-md"
-                                                            initial={false}
-                                                            animate={{
-                                                                x: selectedPaymentMethod === 'ach' ? 0 : '100%',
-                                                            }}
-                                                            transition={{
-                                                                type: 'spring',
-                                                                stiffness: 300,
-                                                                damping: 30,
-                                                            }}
-                                                            style={{
-                                                                width: 'calc(50% - 0.25rem)',
-                                                            }}
-                                                        />
-                                                        
-                                                        {hasAch && (
-                                                            <motion.button
-                                                                onClick={() => setSelectedPaymentMethod('ach')}
-                                                                className={`relative flex-1 px-4 py-2 text-sm font-medium rounded-md z-10 ${
-                                                                    selectedPaymentMethod === 'ach'
-                                                                        ? 'text-white'
-                                                                        : 'text-muted-foreground hover:text-foreground'
-                                                                }`}
-                                                                whileHover={{ scale: 1.02 }}
-                                                                whileTap={{ scale: 0.98 }}
-                                                            >
-                                                                <motion.span
-                                                                    animate={{
-                                                                        scale: selectedPaymentMethod === 'ach' ? 1.05 : 1,
-                                                                    }}
-                                                                    transition={{
-                                                                        type: 'spring',
-                                                                        stiffness: 400,
-                                                                        damping: 25,
-                                                                    }}
-                                                                >
-                                                                    ACH
-                                                                </motion.span>
-                                                            </motion.button>
-                                                        )}
-                                                        {hasWire && (
-                                                            <motion.button
-                                                                onClick={() => setSelectedPaymentMethod('wire')}
-                                                                className={`relative flex-1 px-4 py-2 text-sm font-medium rounded-md z-10 ${
-                                                                    selectedPaymentMethod === 'wire'
-                                                                        ? 'text-white'
-                                                                        : 'text-muted-foreground hover:text-foreground'
-                                                                }`}
-                                                                whileHover={{ scale: 1.02 }}
-                                                                whileTap={{ scale: 0.98 }}
-                                                            >
-                                                                <motion.span
-                                                                    animate={{
-                                                                        scale: selectedPaymentMethod === 'wire' ? 1.05 : 1,
-                                                                    }}
-                                                                    transition={{
-                                                                        type: 'spring',
-                                                                        stiffness: 400,
-                                                                        damping: 25,
-                                                                    }}
-                                                                >
-                                                                    WIRE
-                                                                </motion.span>
-                                                            </motion.button>
-                                                        )}
-                                                    </div>
-                                                ) : null
-                                            })()}
-
-                                            {/* Bank Details Section */}
-                                            <div className="p-4 bg-gradient-to-br from-purple-600/10 via-blue-600/10 to-purple-600/10 dark:from-purple-900/30 dark:via-blue-900/30 dark:to-purple-900/30 rounded-xl border border-purple-200/50 dark:border-purple-800/50 backdrop-blur-sm">
-                                                <div className="flex items-center gap-2 mb-4 pb-3 border-b border-purple-200/30 dark:border-purple-700/30">
-                                                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg">
-                                                        <Building2 className="h-4 w-4 text-white" />
-                                                    </div>
-                                                    <h3 className="text-base font-bold text-foreground">
-                                                        {selectedPaymentMethod === 'ach' ? 'ACH Deposit Details' : 'Wire Transfer Details'}
-                                                    </h3>
-                                                </div>
-                                                
-                                                <div className="space-y-3.5">
-                                                    {depositInstructions.bank_name && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bank Name</p>
-                                                            <p className="text-sm font-semibold text-foreground">{depositInstructions.bank_name}</p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {depositInstructions.bank_address && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Bank Address</p>
-                                                            <p className="text-sm text-foreground break-words">{depositInstructions.bank_address}</p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {depositInstructions.bank_routing_number && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Routing Number</p>
-                                                            <div className="flex items-center gap-2">
-                                                                <code className="flex-1 px-3 py-2 bg-background/50 dark:bg-background/30 border border-border rounded-lg font-mono text-sm font-semibold text-foreground">
-                                                                    {depositInstructions.bank_routing_number}
-                                                                </code>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        navigator.clipboard.writeText(depositInstructions.bank_routing_number || '')
-                                                                        showSuccessToast('Routing number copied!')
-                                                                    }}
-                                                                    className="p-2 hover:bg-background/50 rounded-lg border border-border transition-colors"
-                                                                    title="Copy routing number"
-                                                                >
-                                                                    <Copy className="h-4 w-4 text-muted-foreground" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {depositInstructions.bank_account_number && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Account Number</p>
-                                                            <div className="flex items-center gap-2">
-                                                                <code className="flex-1 px-3 py-2 bg-background/50 dark:bg-background/30 border border-border rounded-lg font-mono text-sm font-semibold text-foreground">
-                                                                    {depositInstructions.bank_account_number}
-                                                                </code>
-                                                                <button
-                                                                    onClick={() => {
-                                                                        navigator.clipboard.writeText(depositInstructions.bank_account_number || '')
-                                                                        showSuccessToast('Account number copied!')
-                                                                    }}
-                                                                    className="p-2 hover:bg-background/50 rounded-lg border border-border transition-colors"
-                                                                    title="Copy account number"
-                                                                >
-                                                                    <Copy className="h-4 w-4 text-muted-foreground" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {depositInstructions.bank_beneficiary_name && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Beneficiary Name</p>
-                                                            <p className="text-sm font-semibold text-foreground break-words">{depositInstructions.bank_beneficiary_name}</p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                    {depositInstructions.bank_beneficiary_address && (
-                                                        <div className="space-y-1">
-                                                            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Beneficiary Address</p>
-                                                            <p className="text-sm text-foreground break-words">{depositInstructions.bank_beneficiary_address}</p>
-                                                        </div>
-                                                    )}
-                                                    
-                                                </div>
-                                            </div>
-
-                                            {/* Instructions Card */}
-                                            <div className="p-3.5 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">
-                                                <div className="flex items-start gap-2.5">
-                                                    <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                                                    <div className="flex-1 min-w-0">
-                                                        <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1.5">
-                                                            How to Deposit via {selectedPaymentMethod === 'ach' ? 'ACH' : 'Wire Transfer'}
-                                                        </p>
-                                                        <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-                                                            {selectedPaymentMethod === 'ach' 
-                                                                ? 'Use the bank details above to make an ACH deposit. ACH transfers typically take 1-3 business days to process. Funds will be credited to your wallet once the transfer is processed.'
-                                                                : 'Use the bank details above to make a wire transfer. Wire transfers are typically processed same-day or within 1 business day. Funds will be credited to your wallet once the transfer is processed.'}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="text-center py-8">
-                                            <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                                            <p className="text-sm text-muted-foreground">No deposit instructions available</p>
-                                        </div>
-                                    )}
-                                </motion.div>
-                            ) : isLoading ? (
+                                <AddMoney
+                                    isLoading={isLoadingDepositInstructions}
+                                    depositInstructions={depositInstructions}
+                                    selectedPaymentMethod={selectedPaymentMethod}
+                                    onPaymentMethodChange={setSelectedPaymentMethod}
+                                />
+                            ) : !showSuccess && actionView === 'external_accounts' ? (
                                 <div className="flex items-center justify-center py-12">
                                     <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
                                 </div>
@@ -3231,111 +2894,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     
                                     return 'other' // Continue to other checks
                                 })() === 'wallet_screen' ? (
-                                    /* Wallet Screen - Show when wallet/virtual account exists */
-                                    <div className="p-4 space-y-4">
-                                        {/* Balance - Prominent display */}
-                                        <div className="text-center py-4">
-                                            <p className="text-xs text-muted-foreground mb-2 uppercase tracking-wide">Balance</p>
-                                            <div className="flex items-center justify-center gap-2">
-                                                <span className="text-3xl font-bold">
-                                                    ${walletBalance !== null 
-                                                        ? walletBalance.toLocaleString('en-US', { 
-                                                            minimumFractionDigits: 2, 
-                                                            maximumFractionDigits: 2 
-                                                        })
-                                                        : '0.00'
-                                                    }
-                                                </span>
-                                                <button
-                                                    onClick={handleRefresh}
-                                                    className="p-1.5 rounded-lg hover:bg-muted transition-colors"
-                                                    disabled={isLoading}
-                                                    title="Refresh balance"
-                                                >
-                                                    <RefreshCw className={`h-4 w-4 text-muted-foreground ${isLoading ? 'animate-spin' : ''}`} />
-                                                </button>
-                                            </div>
-                                        </div>
-
-                                        {/* Transfer/Deposit Actions - MetaMask style */}
-                                        <div className="grid grid-cols-4 gap-2 pb-4 border-b border-border">
-                                            <button
-                                                onClick={() => setActionView('addMoney')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <Plus className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Deposit</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('send')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowUpRight className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Send</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('receive')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowDownLeft className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Receive</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('swap')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowRightLeft className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Swap</span>
-                                            </button>
-                                        </div>
-
-                                        {/* Wallet Address - MetaMask style */}
-                                        {walletAddress && (
-                                            <div className="space-y-2">
-                                                <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border hover:border-primary/50 transition-colors cursor-pointer">
-                                                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                        <div className="h-8 w-8 rounded-full bg-gradient-to-r from-purple-600 to-blue-600 flex items-center justify-center flex-shrink-0">
-                                                            <Wallet className="h-4 w-4 text-white" />
-                                                        </div>
-                                                        <code className="text-sm font-mono truncate">
-                                                            {formatAddress(walletAddress)}
-                                                        </code>
-                                                    </div>
-                                                    <button
-                                                        onClick={(e) => {
-                                                            e.stopPropagation()
-                                                            handleCopyAddress()
-                                                        }}
-                                                        className="p-1.5 rounded-lg hover:bg-background transition-colors flex-shrink-0 ml-2"
-                                                        title="Copy address"
-                                                    >
-                                                        {copied ? (
-                                                            <Check className="h-4 w-4 text-green-500" />
-                                                        ) : (
-                                                            <Copy className="h-4 w-4 text-muted-foreground" />
-                                                        )}
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Network/Status */}
-                                        <div className="flex items-center justify-between p-2 text-xs">
-                                            <span className="text-muted-foreground">Network</span>
-                                            <div className="flex items-center gap-1.5">
-                                                <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                                                <span className="font-medium">{isSandbox ? 'Sandbox Virtual Account' : 'Organization Wallet'}</span>
-                                            </div>
-                                        </div>
-                                    </div>
+                                    <WalletScreen
+                                        walletBalance={walletBalance}
+                                        walletAddress={walletAddress}
+                                        isLoading={isLoading}
+                                        copied={copied}
+                                        isSandbox={isSandbox}
+                                        onRefresh={handleRefresh}
+                                        onCopyAddress={handleCopyAddress}
+                                        onActionViewChange={setActionView}
+                                    />
                                 ) : (() => {
                                     // PRIORITY 1: Check if account is approved but wallet doesn't exist
                                     const isApproved = verificationType && (
@@ -3354,99 +2922,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     
                                     return 'other' // Continue to other checks
                                 })() === 'create_wallet' ? (
-                                    /* Approved but No Wallet Screen */
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -20 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 relative z-10"
-                                    >
-                                        <div className="text-center space-y-4 w-full">
-                                            {/* Success Icon */}
-                                            <motion.div
-                                                initial={{ scale: 0.8 }}
-                                                animate={{ scale: 1 }}
-                                                transition={{ duration: 0.3, delay: 0.1 }}
-                                                className="mx-auto w-20 h-20 bg-gradient-to-br from-green-500 to-emerald-600 rounded-full flex items-center justify-center shadow-xl relative"
-                                            >
-                                                <CheckCircle2 className="h-12 w-12 text-white" />
-                                                <motion.div
-                                                    animate={{ 
-                                                        scale: [1, 1.2, 1],
-                                                        opacity: [0.5, 0.8, 0.5]
-                                                    }}
-                                                    transition={{ 
-                                                        duration: 2,
-                                                        repeat: Infinity,
-                                                        ease: "easeInOut"
-                                                    }}
-                                                    className="absolute inset-0 rounded-full bg-green-400/30"
-                                                />
-                                            </motion.div>
-
-                                            {/* Title and Description */}
-                                            <div className="space-y-2">
-                                                <h3 className="text-2xl font-bold">Account Approved!</h3>
-                                                <p className="text-sm text-muted-foreground max-w-sm mx-auto">
-                                                    Your {verificationType === 'kyb' ? 'business verification (KYB)' : 'identity verification (KYC)'} has been approved.
-                                                </p>
-                                            </div>
-
-                                            {/* Create Wallet Button - Works in both sandbox and production */}
-                                            <div className="w-full max-w-sm mx-auto space-y-4 relative z-10">
-                                                <Button
-                                                    onClick={(e) => {
-                                                        e.preventDefault()
-                                                        e.stopPropagation()
-                                                        if (!isLoading) {
-                                                            handleCreateWallet()
-                                                        }
-                                                    }}
-                                                    disabled={isLoading}
-                                                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed relative z-10"
-                                                    size="lg"
-                                                    type="button"
-                                                >
-                                                    {isLoading ? (
-                                                        <>
-                                                            <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                                            {isSandbox ? 'Creating Virtual Account...' : 'Creating Wallet...'}
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <Wallet className="h-4 w-4 mr-2" />
-                                                            {isSandbox ? 'Create Virtual Account' : 'Create Wallet'}
-                                                        </>
-                                                    )}
-                                                </Button>
-
-                                                {/* Sandbox Info */}
-                                                {isSandbox && (
-                                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                                        <div className="flex items-start gap-2">
-                                                            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                                                            <div className="text-left">
-                                                                <p className="text-xs font-medium text-blue-900 dark:text-blue-100">
-                                                                    Sandbox Mode
-                                                                </p>
-                                                                <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                                                                    In sandbox mode, a virtual account will be created instead of a wallet. This allows you to test deposits and transfers.
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                )}
-
-                                                {/* Info */}
-                                                {!isSandbox && (
-                                                    <p className="text-xs text-muted-foreground">
-                                                        Your wallet and virtual account will be created automatically
-                                                    </p>
-                                                )}
-                                            </div>
-                                        </div>
-                                    </motion.div>
+                                    <CreateWallet
+                                        isLoading={isLoading}
+                                        isSandbox={isSandbox}
+                                        verificationType={verificationType}
+                                        onCreateWallet={handleCreateWallet}
+                                    />
                                 ) : (() => {
                                     // Check if we should show Connect Wallet
                                     if (!bridgeInitialized && !isLoading) {
@@ -3454,58 +2935,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     }
                                     return 'other'
                                 })() === 'connect_wallet' ? (
-                                    /* Connect Wallet View */
-                                    <motion.div
-                                        initial={{ opacity: 0, y: 20 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, y: -20 }}
-                                        transition={{ duration: 0.3 }}
-                                        className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 relative z-10"
-                                    >
-                                        <div className="text-center space-y-4 w-full">
-                                            <div className="mx-auto w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
-                                                <Wallet className="h-10 w-10 text-white" />
-                                            </div>
-                                            <div>
-                                                <h3 className="text-xl font-bold mb-2">Connect Your Wallet</h3>
-                                                <p className="text-sm text-muted-foreground max-w-sm">
-                                                    Connect your wallet to Bridge to start managing your funds, making transactions, and accessing all wallet features.
-                                                </p>
-                                            </div>
-                                            {organizationName && (
-                                                <div className="p-4 bg-muted rounded-lg border border-border">
-                                                    <div className="flex items-center gap-3">
-                                                        <Building2 className="h-5 w-5 text-primary" />
-                                                        <div className="text-left">
-                                                            <p className="text-xs text-muted-foreground mb-1">Organization</p>
-                                                            <p className="text-sm font-medium">{organizationName}</p>
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            )}
-                                            <Button
-                                                onClick={handleConnectWallet}
-                                                disabled={isLoading}
-                                                className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                                                size="lg"
-                                            >
-                                                {isLoading ? (
-                                                    <>
-                                                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                                                        Connecting...
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <Wallet className="h-4 w-4 mr-2" />
-                                                        Connect Wallet
-                                                    </>
-                                                )}
-                                            </Button>
-                                            <p className="text-xs text-muted-foreground">
-                                                Your organization information will be used to create your Bridge account
-                                            </p>
-                                        </div>
-                                    </motion.div>
+                                    <ConnectWallet
+                                        isLoading={isLoading}
+                                        organizationName={organizationName}
+                                        onConnect={handleConnectWallet}
+                                    />
                                 ) : (() => {
                                     // PRIORITY: If status is approved, ALWAYS show wallet screen (return false)
                                     if (bridgeInitialized && verificationType) {
@@ -3693,8 +3127,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                     {tosStatus === 'accepted' && (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' && (
                                                         // For KYB multi-step flow, always show form (user is completing steps)
                                                         verificationType === 'kyb' ||
-                                                        // For regular KYC, hide if status is in progress (not not_started, approved, or rejected)
-                                                        (verificationType === 'kyc' && kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected')
+                                                        // For regular KYC, show form when status is not_started, rejected, or in progress (but not approved)
+                                                        (verificationType === 'kyc' && kycStatus !== 'approved')
                                                     ) && (
                                                         <div className="space-y-2 sm:space-y-3 w-full mt-3">
                                                                     {/* Toggle between custom form and iframe */}
@@ -3728,7 +3162,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                     {useCustomKyc ? (
                                                                         /* Custom KYC/KYB Form */
                                                                         <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full -mx-0">
-                                                                            {verificationType === 'kyb' ? (
+                                                                            {verificationType === 'kyc' ? (
+                                                                                <KYCForm
+                                                                                    formData={kycFormData}
+                                                                                    isLoading={isLoading}
+                                                                                    onFormDataChange={setKycFormData}
+                                                                                    onSubmit={handleSubmitCustomKyc}
+                                                                                />
+                                                                            ) : verificationType === 'kyb' ? (
                                                                                 /* Business KYB Multi-Step Form */
                                                                                 <>
                                                                                     {/* Step Indicator with Labels */}
@@ -5151,156 +4592,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                     )}
                                                                                 </>
                                                                             ) : (
-                                                                                /* Individual KYC Form */
-                                                                                <>
-                                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block">First Name *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.first_name}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, first_name: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="John"
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block">Last Name *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.last_name}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, last_name: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="Doe"
-                                                                                            />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block text-left">Email *</label>
-                                                                                        <input
-                                                                                            type="email"
-                                                                                            value={kycFormData.email}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, email: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                            placeholder="john@example.com"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block">Date of Birth *</label>
-                                                                                        <input
-                                                                                            type="date"
-                                                                                            value={kycFormData.birth_date}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, birth_date: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block text-left">Street Address *</label>
-                                                                                        <input
-                                                                                            type="text"
-                                                                                            value={kycFormData.street_line_1}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, street_line_1: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                            placeholder="123 Main St"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block text-left">City *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.city}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, city: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="New York"
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block text-left">State *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.subdivision}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, subdivision: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="NY"
-                                                                                            />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div className="grid grid-cols-2 gap-2">
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block text-left">ZIP Code *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.postal_code}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, postal_code: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="10001"
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div>
-                                                                                            <label className="text-xs font-medium mb-1 block text-left">Country *</label>
-                                                                                            <input
-                                                                                                type="text"
-                                                                                                value={kycFormData.country}
-                                                                                                onChange={(e) => setKycFormData({...kycFormData, country: e.target.value})}
-                                                                                                className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                                placeholder="USA"
-                                                                                            />
-                                                                                        </div>
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block">SSN *</label>
-                                                                                        <input
-                                                                                            type="text"
-                                                                                            value={kycFormData.ssn}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, ssn: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                            placeholder="xxx-xx-xxxx"
-                                                                                        />
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block">ID Type *</label>
-                                                                                <select
-                                                                                            value={kycFormData.id_type}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, id_type: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                        >
-                                                                                            <option value="drivers_license">Driver's License</option>
-                                                                                            <option value="passport">Passport</option>
-                                                                                            <option value="state_id">State ID</option>
-                                                                                </select>
-                                                                                    </div>
-                                                                                    <div>
-                                                                                        <label className="text-xs font-medium mb-1 block">ID Number *</label>
-                                                                                <input
-                                                                                    type="text"
-                                                                                            value={kycFormData.id_number}
-                                                                                            onChange={(e) => setKycFormData({...kycFormData, id_number: e.target.value})}
-                                                                                            className="w-full px-3 py-2 text-sm bg-background dark:bg-gray-800 border border-border dark:border-gray-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500 text-foreground placeholder:text-muted-foreground"
-                                                                                            placeholder="DL123456"
+                                                                                <KYCForm
+                                                                                    formData={kycFormData}
+                                                                                    isLoading={isLoading}
+                                                                                    onFormDataChange={setKycFormData}
+                                                                                    onSubmit={handleSubmitCustomKyc}
                                                                                 />
-                                                                            </div>
-                                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                                                                        <div>
-                                                                                            <ImageUploadDropzone
-                                                                                                label="ID Front Image"
-                                                                                                value={typeof kycFormData.id_front_image === 'string' ? kycFormData.id_front_image : ''}
-                                                                                                onChange={(base64) => setKycFormData({...kycFormData, id_front_image: base64 as any})}
-                                                                                                required={true}
-                                                                                                maxSizeMB={5}
-                                                                                            />
-                                                                                        </div>
-                                                                                        <div>
-                                                                                            <ImageUploadDropzone
-                                                                                                label="ID Back Image"
-                                                                                                value={typeof kycFormData.id_back_image === 'string' ? kycFormData.id_back_image : ''}
-                                                                                                onChange={(base64) => setKycFormData({...kycFormData, id_back_image: base64 as any})}
-                                                                                                required={true}
-                                                                                                maxSizeMB={5}
-                                                                                            />
-                                    </div>
-                                                                                    </div>
-                                                                                </>
                                                                             )}
                                     {/* Hide button when the Step 2 waiting screen is shown, BUT always show it if admin requested refill */}
                                     {((requestedFields && requestedFields.length > 0) || 
@@ -5382,6 +4679,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                 'X-Requested-With': 'XMLHttpRequest',
                                                                                             },
                                                                                             credentials: 'include',
+                                                                                            cache: 'no-store',
                                                                                         })
                                                                                         if (response.ok) {
                                                                                             const data = await response.json()
@@ -5490,44 +4788,44 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                     {/* Transfer/Deposit Actions - MetaMask style */}
                                     {hasWallet && (
-                                        <div className="grid grid-cols-4 gap-2 pb-4 border-b border-border">
-                                            <button
-                                                onClick={() => setActionView('addMoney')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <Plus className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Deposit</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('send')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowUpRight className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Send</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('receive')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowDownLeft className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Receive</span>
-                                            </button>
-                                            <button
-                                                onClick={() => setActionView('swap')}
-                                                className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
-                                            >
-                                                <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
-                                                    <ArrowRightLeft className="h-4 w-4 text-white" />
-                                                </div>
-                                                <span className="text-xs font-medium">Swap</span>
-                                            </button>
-                                        </div>
+                                    <div className="grid grid-cols-4 gap-2 pb-4 border-b border-border">
+                                        <button
+                                            onClick={() => setActionView('addMoney')}
+                                            className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                                        >
+                                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                                <Plus className="h-4 w-4 text-white" />
+                                            </div>
+                                            <span className="text-xs font-medium">Deposit</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setActionView('send')}
+                                            className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                                        >
+                                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                                <ArrowUpRight className="h-4 w-4 text-white" />
+                                            </div>
+                                            <span className="text-xs font-medium">Send</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setActionView('receive')}
+                                            className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                                        >
+                                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                                <ArrowDownLeft className="h-4 w-4 text-white" />
+                                            </div>
+                                            <span className="text-xs font-medium">Receive</span>
+                                        </button>
+                                        <button
+                                            onClick={() => setActionView('swap')}
+                                            className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                                        >
+                                            <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                                                <ArrowRightLeft className="h-4 w-4 text-white" />
+                                            </div>
+                                            <span className="text-xs font-medium">Swap</span>
+                                        </button>
+                                    </div>
                                     )}
 
                                     {/* Wallet Address - MetaMask style */}
@@ -5571,134 +4869,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 </div>
                                 )
                             ) : (
-                                /* Activity Tab */
-                                <div 
-                                    className="flex-1 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[350px] sm:max-h-[350px] sm:min-h-[350px]"
+                                <ActivityList
+                                    activities={activities}
+                                    isLoading={isLoadingActivities}
+                                    hasMore={hasMoreActivities}
+                                    isLoadingMore={isLoadingMore}
                                     onScroll={handleActivityScroll}
-                                >
-                                    {isLoadingActivities ? (
-                                        <div className="text-center py-8">
-                                            <RefreshCw className="h-6 w-6 text-muted-foreground mx-auto mb-3 animate-spin" />
-                                            <p className="text-sm text-muted-foreground">Loading activity...</p>
-                                        </div>
-                                    ) : activities.length === 0 ? (
-                                        <div className="text-center py-12">
-                                            <Activity className="h-12 w-12 text-muted-foreground mx-auto mb-3 opacity-50" />
-                                            <p className="text-sm text-muted-foreground">No transactions yet</p>
-                                        </div>
-                                    ) : (
-                                        <>
-                                            <div className="space-y-2">
-                                                {activities.map((activity) => {
-                                                    const isTransferSent = activity.type === 'transfer_sent'
-                                                    const isTransferReceived = activity.type === 'transfer_received'
-                                                    const isDonation = activity.type === 'donation'
-                                                    const isDeposit = activity.type === 'deposit'
-                                                    
-                                                    return (
-                                                        <motion.div
-                                                            key={activity.id}
-                                                            initial={{ opacity: 0, y: 10 }}
-                                                            animate={{ opacity: 1, y: 0 }}
-                                                            className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                                                        >
-                                                            <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
-                                                                <div className={`p-2 rounded-lg flex-shrink-0 ${
-                                                                    isTransferSent 
-                                                                        ? 'bg-red-500/10' 
-                                                                        : isTransferReceived 
-                                                                        ? 'bg-blue-500/10'
-                                                                        : isDeposit
-                                                                        ? 'bg-emerald-500/10'
-                                                                        : 'bg-green-500/10'
-                                                                }`}>
-                                                                    {isTransferSent ? (
-                                                                        <ArrowUpRight className="h-4 w-4 text-red-500" />
-                                                                    ) : isTransferReceived ? (
-                                                                        <ArrowDownLeft className="h-4 w-4 text-blue-500" />
-                                                                    ) : isDeposit ? (
-                                                                        <Plus className="h-4 w-4 text-emerald-500" />
-                                                                    ) : (
-                                                                        <ArrowDownLeft className="h-4 w-4 text-green-500" />
-                                                                    )}
-                                                                </div>
-                                                                <div className="flex-1 min-w-0 w-full sm:w-auto">
-                                                                    <p className="text-sm font-medium break-words sm:truncate">
-                                                                        {isTransferSent 
-                                                                            ? `Sent to ${activity.donor_name}`
-                                                                            : isTransferReceived
-                                                                            ? `Received from ${activity.donor_name}`
-                                                                            : isDeposit
-                                                                            ? `Deposit - ${activity.donor_name}`
-                                                                            : `Donation from ${activity.donor_name}`
-                                                                        }
-                                                                    </p>
-                                                                    <p className="text-xs text-muted-foreground mt-1">
-                                                                        {new Date(activity.date).toLocaleDateString('en-US', {
-                                                                            month: 'short',
-                                                                            day: 'numeric',
-                                                                            year: 'numeric',
-                                                                            hour: '2-digit',
-                                                                            minute: '2-digit'
-                                                                        })}
-                                                                    </p>
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center justify-between w-full sm:w-auto sm:justify-end sm:flex-col sm:items-end gap-2 sm:ml-3 sm:text-right">
-                                                                <p className={`text-base sm:text-sm font-semibold ${
-                                                                    isTransferSent 
-                                                                        ? 'text-red-600'
-                                                                        : isTransferReceived || isDeposit
-                                                                        ? 'text-green-600'
-                                                                        : 'text-green-600'
-                                                                }`}>
-                                                                    {isTransferSent ? '-' : '+'}${activity.amount.toLocaleString('en-US', {
-                                                                        minimumFractionDigits: 2,
-                                                                        maximumFractionDigits: 2
-                                                                    })}
-                                                                </p>
-                                                                <div className="flex flex-col items-end sm:items-end gap-1">
-                                                                {isDonation && activity.frequency !== 'one-time' && (
-                                                                    <p className="text-xs text-muted-foreground capitalize">
-                                                                        {activity.frequency}
-                                                                    </p>
-                                                                )}
-                                                                {isTransferSent && activity.recipient_type && (
-                                                                    <p className="text-xs text-muted-foreground capitalize">
-                                                                        {activity.recipient_type}
-                                                                    </p>
-                                                                )}
-                                                                </div>
-                                                            </div>
-                                                        </motion.div>
-                                                    )
-                                                })}
-                                            </div>
-                                            {isLoadingMore && (
-                                                <div className="text-center py-4">
-                                                    <RefreshCw className="h-5 w-5 text-muted-foreground mx-auto animate-spin" />
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                </div>
+                                />
                             )}
                         </div>
 
-                        {/* Footer Actions - MetaMask style */}
+                        {/* Footer Actions */}
                         <div className="border-t border-border p-3 bg-muted/30">
-                            <Button
-                                variant="ghost"
-                                className="w-full justify-start text-sm"
-                                onClick={() => {
-                                    // Open settings or wallet options
-                                    window.location.href = '/chat'
-                                }}
-                            >
-                                <Settings className="h-4 w-4 mr-2" />
-                                Wallet Settings
-                            </Button>
+                            <div className="text-xs text-muted-foreground text-center">
+                                Secure wallet powered by Believe In Unity
+                            </div>
                         </div>
+
                     </motion.div>
                 </>
             )}

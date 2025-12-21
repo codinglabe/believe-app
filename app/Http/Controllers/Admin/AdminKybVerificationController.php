@@ -1289,7 +1289,7 @@ class AdminKybVerificationController extends Controller
                     ]);
                 } else {
                     // Bridge returned other status - move into review
-                    $submission->submission_status = 'under_review';
+                $submission->submission_status = 'under_review';
                     $integration->kyb_status = $this->normalizeStatus($bridgeKybStatus) ?: 'under_review';
                     
                     Log::info('KYB submission sent to Bridge - status under review', [
@@ -1332,7 +1332,7 @@ class AdminKybVerificationController extends Controller
                             $submission->submission_status = 'approved';
                             $integration->kyb_status = 'approved';
                             $submission->save();
-                            $integration->save();
+                $integration->save();
                             
                             Log::info('KYB status changed to approved after document approval - updating integration and submission', [
                                 'customer_id' => $integration->bridge_customer_id,
@@ -1418,9 +1418,9 @@ class AdminKybVerificationController extends Controller
                         } else {
                             $submission->submission_status = 'under_review';
                             $integration->kyb_status = $this->normalizeStatus($bridgeKybStatus) ?: 'under_review';
-                            
-                            Log::info('KYB submission in_review (already sent to Bridge)', [
-                                'submission_id' => $submission->id,
+
+                Log::info('KYB submission in_review (already sent to Bridge)', [
+                    'submission_id' => $submission->id,
                                 'customer_id' => $integration->bridge_customer_id,
                                 'bridge_kyb_status' => $bridgeKybStatus,
                                 'bridge_customer_status' => $bridgeCustomerStatus,

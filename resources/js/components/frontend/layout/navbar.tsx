@@ -19,8 +19,6 @@ import {
   LogOut,
   LayoutGrid,
   Wallet,
-  Plus,
-  Minus,
   Eye,
   EyeOff,
   Text,
@@ -39,13 +37,13 @@ import {
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
-import { Link, router, usePage, useForm } from "@inertiajs/react" // Added useForm
+import { Link, router, usePage } from "@inertiajs/react"
 import { useMobileNavigation } from "@/hooks/use-mobile-navigation"
-import { Input } from "@/components/frontend/ui/input"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/frontend/ui/dialog"
 import { showSuccessToast, showErrorToast } from "@/lib/toast" // Import toast utilities
 import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
+import { WalletPopup } from "@/components/WalletPopup"
+import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
 
 // Extending SharedData interface to include wallet_balance
 interface SharedData {
@@ -76,26 +74,10 @@ export default function Navbar() {
 
   // Wallet specific states
   const [showBalance, setShowBalance] = useState(false)
-  const [isAddFundsOpen, setIsAddFundsOpen] = useState(false)
-  const [isWithdrawOpen, setIsWithdrawOpen] = useState(false)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
-  const [walletConnected, setWalletConnected] = useState(false)
-
-  // Form state for withdrawal using Inertia's useForm
-  const {
-    data: withdrawFormData,
-    setData: setWithdrawFormData,
-    post: postWithdrawal,
-    processing: isWithdrawProcessing,
-    errors: withdrawErrors,
-    reset: resetWithdrawForm,
-  } = useForm({
-    amount: "",
-    paypal_email: "",
-  })
-
-  // Form state for deposit (if needed, currently not integrated with backend)
-  const [addFundsAmount, setAddFundsAmount] = useState("")
+  const [showWalletPopup, setShowWalletPopup] = useState(false)
+  const [hasSubscription, setHasSubscription] = useState<boolean | null>(null)
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
 
   // Core navigation items (always visible)
   const coreNavItems = [
@@ -136,41 +118,17 @@ export default function Navbar() {
     router.flushAll()
   }
 
-  const handleDeposit = () => {
-    // This is a client-side simulation. For a real application,
-    // you would integrate with a payment gateway here.
-    showSuccessToast(`Successfully deposited $${addFundsAmount}`)
-    setAddFundsAmount("")
-    setIsAddFundsOpen(false)
-  }
 
-  const handleWithdraw = (e: React.FormEvent) => {
-    e.preventDefault() // Prevent default form submission
-    postWithdrawal(route("withdrawl.request"), {
-      onSuccess: () => {
-        showSuccessToast("Withdrawal request submitted successfully!")
-        resetWithdrawForm() // Reset form fields
-        setIsWithdrawOpen(false) // Close the modal
-        router.reload({ only: ["auth"] }) // Reload auth prop to update balance
-      },
-      onError: (errors) => {
-        showErrorToast("Failed to submit withdrawal request. Please check the form.")
-        console.error("Withdrawal errors:", errors)
-      },
-    })
-  }
-
-  // Check wallet connection status and fetch balance
+  // Fetch balance on mount and when dependencies change
   useEffect(() => {
-    const checkWalletStatus = async () => {
+    const fetchBalance = async () => {
       if (!isLoggedIn) {
-        setWalletConnected(false)
         setWalletBalance(null)
         return
       }
 
       try {
-        const statusResponse = await fetch(`/wallet/status?t=${Date.now()}`, {
+        const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
           method: 'GET',
           headers: {
             'Accept': 'application/json',
@@ -181,59 +139,103 @@ export default function Navbar() {
           cache: 'no-cache',
         })
 
-        if (statusResponse.ok) {
-          const statusData = await statusResponse.json()
-          if (statusData.success && statusData.connected) {
-            setWalletConnected(true)
-
-            // Fetch balance
-            try {
-              const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                method: 'GET',
-                headers: {
-                  'Accept': 'application/json',
-                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                  'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-cache',
-              })
-
-              if (balanceResponse.ok) {
-                const balanceData = await balanceResponse.json()
-                if (balanceData.success) {
-                  setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
-                }
-              }
-            } catch (error) {
-              console.error('Failed to fetch wallet balance:', error)
+        if (balanceResponse.ok) {
+          const balanceData = await balanceResponse.json()
+          if (balanceData.success) {
+            setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+            // Set subscription status (for regular users/supporters)
+            if (balanceData.has_subscription !== undefined) {
+              setHasSubscription(balanceData.has_subscription)
             }
-          } else {
-            setWalletConnected(false)
-            setWalletBalance(null)
           }
         }
       } catch (error) {
-        console.error('Failed to check wallet status:', error)
-        setWalletConnected(false)
-        setWalletBalance(null)
+        console.error('Failed to fetch wallet balance:', error)
+        // Fallback to user balance from auth
+        if (auth?.user?.balance) {
+          setWalletBalance(parseFloat(auth.user.balance.toString()))
+        }
       }
     }
 
-    checkWalletStatus()
+    fetchBalance()
 
     // Refresh balance every 30 seconds
-    const interval = setInterval(() => {
-      if (walletConnected) {
-        checkWalletStatus()
-      }
-    }, 30000)
+    const interval = setInterval(fetchBalance, 30000)
 
     return () => clearInterval(interval)
-  }, [isLoggedIn, walletConnected])
+  }, [isLoggedIn, auth?.user?.balance])
 
-  // Use connected wallet balance if available, otherwise fall back to user balance
-  const userBalance = walletConnected && walletBalance !== null ? walletBalance : (auth?.user?.balance ? parseFloat(auth.user.balance.toString()) : 0)
+  // Fetch balance function for manual refresh
+  const fetchBalance = async () => {
+    if (!isLoggedIn) {
+      setWalletBalance(null)
+      return
+    }
+
+    try {
+      const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        cache: 'no-cache',
+      })
+
+      if (balanceResponse.ok) {
+        const balanceData = await balanceResponse.json()
+        if (balanceData.success) {
+          setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
+          // Set subscription status (for regular users/supporters)
+          if (balanceData.has_subscription !== undefined) {
+            setHasSubscription(balanceData.has_subscription)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Failed to fetch wallet balance:', error)
+      // Fallback to user balance from auth
+      if (auth?.user?.balance) {
+        setWalletBalance(parseFloat(auth.user.balance.toString()))
+      }
+    }
+  }
+
+  // Handle wallet button click - check subscription first
+  const handleWalletClick = () => {
+    // Check if user is a regular user (supporter)
+    const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+    
+    if (isRegularUser) {
+      // For regular users, check subscription status
+      // If hasSubscription is null, we're still loading - allow access for now
+      // If hasSubscription is false, show subscription modal
+      if (hasSubscription === false) {
+        // No subscription, show subscription modal
+        setShowSubscriptionModal(true)
+        return
+      }
+      // If hasSubscription is true or null, proceed to wallet popup
+    }
+    
+    // Has subscription or is organization user, show wallet popup
+    setShowWalletPopup(true)
+  }
+
+  // Refresh balance when wallet popup closes
+  const handleWalletPopupClose = () => {
+    setShowWalletPopup(false)
+    // Refresh balance after a short delay to allow backend operations to complete
+    setTimeout(() => {
+      fetchBalance()
+    }, 1000)
+  }
+
+  // Use wallet balance if available, otherwise fall back to user balance
+  const userBalance = walletBalance !== null ? walletBalance : (auth?.user?.balance ? parseFloat(auth.user.balance.toString()) : 0)
 
   return (
     <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -326,76 +328,33 @@ export default function Navbar() {
                               </Button> */}
                 <NotificationBell userId={auth.user.id} />
 
-                {/* Wallet Dropdown - Only show if wallet is connected */}
-                {walletConnected && walletBalance !== null && (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                {/* Wallet Balance Button - Always show */}
+                {isLoggedIn && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleWalletClick}
+                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                  >
+                    <Wallet className="h-4 w-4 text-green-600" />
+                    <span className="font-medium text-sm">
+                      {showBalance ? `$${userBalance.toLocaleString('en-US', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      })}` : "••••••"}
+                    </span>
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setShowBalance(!showBalance)
+                      }}
+                      className="p-0 h-auto"
                     >
-                      <Wallet className="h-4 w-4 text-green-600" />
-                      <span className="font-medium text-sm">
-                          {showBalance ? `$${userBalance.toLocaleString('en-US', {
-                            minimumFractionDigits: 2,
-                            maximumFractionDigits: 2
-                          })}` : "••••••"}
-                      </span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation() // Prevent dropdown from closing
-                          setShowBalance(!showBalance)
-                        }}
-                        className="p-0 h-auto"
-                      >
-                        {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                      </Button>
+                      {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-64" align="end" forceMount>
-                    <div className="p-2 space-y-3">
-                      {/* Wallet Balance */}
-                      <div>
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="font-medium">Wallet Balance</p>
-                          <Button variant="ghost" size="sm" onClick={() => setShowBalance(!showBalance)} className="p-1">
-                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                        <div className="flex items-center text-center gap-2">
-                          <Wallet className="h-6 w-6 text-green-600" />
-                          <p className="text-xl font-bold text-green-600 dark:text-green-400">
-                            {showBalance ? `$${userBalance.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2
-                            })}` : "••••••"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Reward Points */}
-                      {auth?.user?.reward_points !== undefined && (
-                        <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                          <div className="flex items-center justify-between mb-2">
-                            <p className="font-medium">Reward Points</p>
-                          </div>
-                          <div className="flex items-center text-center gap-2">
-                            <Gift className="h-6 w-6 text-purple-600 dark:text-purple-400" />
-                            <p className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                              {(auth.user.reward_points || 0).toLocaleString('en-US', {
-                                minimumFractionDigits: 0,
-                                maximumFractionDigits: 2
-                              })}
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                  </Button>
                 )}
 
                 <DropdownMenu>
@@ -584,30 +543,39 @@ export default function Navbar() {
                           <p className="text-xs text-muted-foreground">{auth?.user?.email ?? "john@example.com"}</p>
                         </div>
                       </div>
-                      {/* Wallet section for mobile - Only show if wallet is connected */}
-                      {walletConnected && walletBalance !== null && (
-                      <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
-                            <Wallet className="h-4 w-4 text-green-600" />
-                            <span className="font-medium text-sm">Wallet Balance</span>
+                      {/* Wallet section for mobile - Always show */}
+                      {isLoggedIn && (
+                        <Button
+                          variant="ghost"
+                          className="w-full justify-start bg-gray-50 dark:bg-gray-800 rounded-md"
+                          onClick={handleWalletClick}
+                        >
+                          <div className="flex items-center justify-between w-full">
+                            <div className="flex items-center gap-2">
+                              <Wallet className="h-4 w-4 text-green-600" />
+                              <span className="font-medium text-sm">Wallet Balance</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                                {showBalance ? `$${userBalance.toLocaleString('en-US', {
+                                  minimumFractionDigits: 2,
+                                  maximumFractionDigits: 2
+                                })}` : "••••••"}
+                              </span>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  setShowBalance(!showBalance)
+                                }}
+                                className="p-1"
+                              >
+                                {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                              </Button>
+                            </div>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setShowBalance(!showBalance)}
-                            className="p-1"
-                          >
-                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
-                        </div>
-                        <div className="text-xl font-bold text-green-600 dark:text-green-400">
-                            {showBalance ? `$${userBalance.toLocaleString('en-US', {
-                              minimumFractionDigits: 2,
-                              maximumFractionDigits: 2
-                            })}` : "••••••"}
-                        </div>
-                      </div>
+                        </Button>
                       )}
 
                       {/* Reward Points section for mobile */}
@@ -626,105 +594,6 @@ export default function Navbar() {
                       </div>
                       )}
 
-                      {walletConnected && walletBalance !== null && (
-                        <div className="flex gap-2 px-3">
-                          {/* Deposit Funds Dialog Trigger (Mobile) */}
-                          <Dialog open={isAddFundsOpen} onOpenChange={setIsAddFundsOpen}>
-                            <DialogTrigger asChild>
-                              <Button size="sm" className="flex-1 bg-green-600 hover:bg-green-700">
-                                <Plus className="h-4 w-4 mr-1" />
-                                Deposit
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Deposit Funds</DialogTitle>
-                              </DialogHeader>
-                              <div className="space-y-4">
-                                <div>
-                                  <label className="text-sm font-medium">Amount</label>
-                                  <Input
-                                    type="number"
-                                    placeholder="Enter amount"
-                                    value={addFundsAmount}
-                                    onChange={(e) => setAddFundsAmount(e.target.value)}
-                                  />
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button onClick={handleDeposit} className="flex-1">
-                                    Deposit
-                                  </Button>
-                                  <Button variant="outline" onClick={() => setIsAddFundsOpen(false)}>
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </div>
-                            </DialogContent>
-                          </Dialog>
-
-                          {/* Withdraw Funds Dialog Trigger (Mobile) */}
-                          <Dialog open={isWithdrawOpen} onOpenChange={setIsWithdrawOpen}>
-                            <DialogTrigger asChild>
-                              <Button size="sm" variant="outline" className="flex-1 bg-transparent">
-                                <Minus className="h-4 w-4 mr-1" />
-                                Withdraw
-                              </Button>
-                            </DialogTrigger>
-                            <DialogContent>
-                              <DialogHeader>
-                                <DialogTitle>Withdraw Funds (PayPal Only)</DialogTitle>
-                              </DialogHeader>
-                              <form onSubmit={handleWithdraw} className="space-y-4">
-                                <div>
-                                  <label className="text-sm font-medium">Amount</label>
-                                  <Input
-                                    type="number"
-                                    placeholder="Enter amount"
-                                    value={withdrawFormData.amount}
-                                    onChange={(e) => setWithdrawFormData("amount", e.target.value)}
-                                    max={userBalance}
-                                    step="0.01"
-                                    min="1"
-                                  />
-                                  {withdrawErrors.amount && (
-                                    <p className="text-red-500 text-xs mt-1">{withdrawErrors.amount}</p>
-                                  )}
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    Available balance: ${userBalance.toLocaleString('en-US', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2
-                                    })}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="text-sm font-medium">PayPal Email</label>
-                                  <Input
-                                    type="email"
-                                    placeholder="Enter PayPal email"
-                                    value={withdrawFormData.paypal_email}
-                                    onChange={(e) => setWithdrawFormData("paypal_email", e.target.value)}
-                                  />
-                                  {withdrawErrors.paypal_email && (
-                                    <p className="text-red-500 text-xs mt-1">{withdrawErrors.paypal_email}</p>
-                                  )}
-                                </div>
-                                <div className="flex gap-2">
-                                  <Button type="submit" className="flex-1" disabled={isWithdrawProcessing}>
-                                    {isWithdrawProcessing ? "Submitting..." : "Withdraw"}
-                                  </Button>
-                                  <Button
-                                    variant="outline"
-                                    onClick={() => setIsWithdrawOpen(false)}
-                                    disabled={isWithdrawProcessing}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </div>
-                              </form>
-                            </DialogContent>
-                          </Dialog>
-                        </div>
-                      )}
                                           {/* cart mobile button */}
                                           <Link href={route("cart.index")}>
                                               <Button variant="ghost" className="w-full justify-start">
@@ -787,6 +656,55 @@ export default function Navbar() {
           )}
         </AnimatePresence>
       </div>
+
+      {/* Wallet Popup */}
+      {showWalletPopup && (
+        <WalletPopup
+          isOpen={showWalletPopup}
+          onClose={handleWalletPopupClose}
+        />
+      )}
+
+      {/* User Wallet Subscription Modal - For supporters without subscription */}
+      {showSubscriptionModal && (
+        <UserWalletSubscriptionModal
+          isOpen={showSubscriptionModal}
+          onClose={() => setShowSubscriptionModal(false)}
+        />
+      )}
     </nav>
+  )
+}
+
+// Render modals outside nav to avoid z-index issues
+export function NavbarModals({ 
+  showWalletPopup, 
+  showSubscriptionModal, 
+  onWalletClose, 
+  onSubscriptionClose 
+}: {
+  showWalletPopup: boolean
+  showSubscriptionModal: boolean
+  onWalletClose: () => void
+  onSubscriptionClose: () => void
+}) {
+  return (
+    <>
+      {/* Wallet Popup */}
+      {showWalletPopup && (
+        <WalletPopup
+          isOpen={showWalletPopup}
+          onClose={onWalletClose}
+        />
+      )}
+
+      {/* User Wallet Subscription Modal - For supporters without subscription */}
+      {showSubscriptionModal && (
+        <UserWalletSubscriptionModal
+          isOpen={showSubscriptionModal}
+          onClose={onSubscriptionClose}
+        />
+      )}
+    </>
   )
 }

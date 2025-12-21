@@ -586,12 +586,23 @@ class BridgeService
     /**
      * Create a virtual account for deposits
      * 
+     * Per Bridge.xyz documentation:
+     * 
+     * SANDBOX MODE:
+     * - Uses dummy data with Ethereum payment rail
+     * - Auto-generates Ethereum address if not provided
+     * - Uses USDC currency for Ethereum payment rail
+     * - bridge_wallet_id is not used (removed automatically)
+     * 
+     * PRODUCTION MODE:
+     * - Requires valid wallet address you control (if using address-based payment rails)
+     * - Can use bridge_wallet payment rail with bridge_wallet_id
+     * - Uses actual currency (USD/USDB)
+     * 
      * IMPORTANT NOTES:
      * - Virtual accounts don't hold balances. To track funds:
      *   * Use getVirtualAccountHistory() to check transaction history
      *   * Set up webhooks for real-time notifications
-     * - In sandbox: Address can be auto-generated
-     * - In production: Address must be a real wallet address you control
      * 
      * @param string $customerId Bridge customer ID
      * @param array $source Source deposit instructions (e.g., ['currency' => 'usd'])
@@ -601,35 +612,38 @@ class BridgeService
      */
     public function createVirtualAccount(string $customerId, array $source, array $destination, ?string $developerFeePercent = null): array
     {
-        // In sandbox mode, always use Ethereum payment rail with generated address
+        // Sandbox mode: Use dummy data per Bridge.xyz documentation
         if ($this->isSandbox()) {
-            // For sandbox, use Ethereum payment rail with generated address
-            // Override bridge_wallet payment rail to ethereum
+            // Override bridge_wallet payment rail to ethereum (sandbox requirement)
             if (!isset($destination['payment_rail']) || $destination['payment_rail'] === 'bridge_wallet') {
                 $destination['payment_rail'] = 'ethereum';
             }
             
-            // Generate unique Ethereum address for sandbox if not provided
-            // NOTE: In production, this should be a real wallet address you control
+            // Auto-generate Ethereum address for sandbox if not provided
+            // Per Bridge.xyz docs: Sandbox uses dummy data with auto-generated addresses
             if (!isset($destination['address'])) {
                 $destination['address'] = $this->generateEthereumAddress();
             }
             
-            // Set currency to usdc for Ethereum in sandbox
+            // Set currency to usdc for Ethereum in sandbox (per Bridge.xyz docs)
             if (!isset($destination['currency']) || $destination['currency'] === 'usdb') {
                 $destination['currency'] = 'usdc';
             }
             
-            // Remove bridge_wallet_id in sandbox as we're using address instead
+            // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
-            // Production mode: ensure address is provided and is a real wallet address
-            if (!isset($destination['address']) || empty($destination['address'])) {
-                return [
-                    'success' => false,
-                    'error' => 'Destination address is required in production mode. Please provide a valid wallet address you control.',
-                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
-                ];
+            // Production mode: Validate requirements based on payment rail
+            // For address-based payment rails, address is required
+            // For bridge_wallet payment rail, bridge_wallet_id is required
+            if (!isset($destination['payment_rail']) || $destination['payment_rail'] !== 'bridge_wallet') {
+                if (!isset($destination['address']) || empty($destination['address'])) {
+                    return [
+                        'success' => false,
+                        'error' => 'Destination address is required in production mode for address-based payment rails. Please provide a valid wallet address you control.',
+                        'error_code' => 'MISSING_DESTINATION_ADDRESS',
+                    ];
+                }
             }
         }
 
@@ -685,6 +699,45 @@ class BridgeService
         return $this->makeRequest('GET', "/customers/{$customerId}/virtual_accounts/{$virtualAccountId}/history");
     }
 
+    // ==================== CARD ACCOUNTS ====================
+
+    /**
+     * Create a card account for a customer
+     * 
+     * @param string $customerId Bridge customer ID
+     * @param array $cardData Card account data (optional, Bridge may auto-create)
+     * @return array Response with card account data or error
+     */
+    public function createCardAccount(string $customerId, array $cardData = []): array
+    {
+        // Correct endpoint: /customers/{customerId}/card_accounts
+        // Bridge API may auto-create card accounts, but we can explicitly create them
+        return $this->makeRequest('POST', "/customers/{$customerId}/card_accounts", $cardData);
+    }
+
+    /**
+     * Get card accounts for a customer
+     * 
+     * @param string $customerId Bridge customer ID
+     * @return array Response with card accounts list
+     */
+    public function getCardAccounts(string $customerId): array
+    {
+        return $this->makeRequest('GET', "/customers/{$customerId}/card_accounts");
+    }
+
+    /**
+     * Get card account by ID
+     * 
+     * @param string $customerId Bridge customer ID
+     * @param string $cardAccountId Card account ID
+     * @return array Response with card account data
+     */
+    public function getCardAccount(string $customerId, string $cardAccountId): array
+    {
+        return $this->makeRequest('GET', "/customers/{$customerId}/card_accounts/{$cardAccountId}");
+    }
+
     // ==================== EXTERNAL ACCOUNTS ====================
 
     /**
@@ -716,10 +769,71 @@ class BridgeService
 
     /**
      * Create a transfer
+     * 
+     * Per Bridge.xyz API documentation, transfer format:
+     * {
+     *   "amount": "100.00",
+     *   "on_behalf_of": "customer_id",
+     *   "source": {
+     *     "payment_rail": "bridge_wallet",
+     *     "currency": "usdb",
+     *     "bridge_wallet_id": "wallet_id"
+     *   },
+     *   "destination": {
+     *     "payment_rail": "bridge_wallet",
+     *     "currency": "usdb",
+     *     "bridge_wallet_id": "wallet_id"
+     *   }
+     * }
+     * 
+     * @param array $transferData Transfer data with source and destination
+     * @return array Response with transfer data or error
      */
     public function createTransfer(array $transferData): array
     {
         return $this->makeRequest('POST', '/transfers', $transferData);
+    }
+
+    /**
+     * Create a transfer between two Bridge wallets
+     * 
+     * Per Bridge.xyz API documentation for wallet-to-wallet transfers
+     * 
+     * @param string $fromCustomerId Source customer ID
+     * @param string $fromWalletId Source wallet ID
+     * @param string $toCustomerId Destination customer ID (on_behalf_of)
+     * @param string $toWalletId Destination wallet ID
+     * @param float $amount Transfer amount
+     * @param string $currency Currency (default: USD, converted to USDB for bridge_wallet)
+     * @return array Response with transfer data or error
+     */
+    public function createWalletToWalletTransfer(
+        string $fromCustomerId,
+        string $fromWalletId,
+        string $toCustomerId,
+        string $toWalletId,
+        float $amount,
+        string $currency = 'USD'
+    ): array {
+        // Convert USD to USDB for bridge_wallet payment rail
+        $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency);
+        
+        $transferData = [
+            'amount' => number_format($amount, 2, '.', ''),
+            'on_behalf_of' => $toCustomerId, // Customer receiving the transfer
+            'source' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $fromWalletId,
+            ],
+            'destination' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $toWalletId,
+            ],
+        ];
+
+        return $this->createTransfer($transferData);
     }
 
     /**
@@ -771,8 +885,12 @@ class BridgeService
     /**
      * Create a virtual account for USD deposits to Bridge wallet
      * 
+     * Per Bridge.xyz docs:
+     * - Sandbox: Uses dummy data with Ethereum payment rail and auto-generated address
+     * - Production: Uses bridge_wallet payment rail with actual wallet ID
+     * 
      * @param string $customerId Bridge customer ID
-     * @param string $walletId Bridge wallet ID
+     * @param string $walletId Bridge wallet ID (not used in sandbox)
      * @param string $currency Currency (default: USD)
      * @return array
      */
@@ -782,14 +900,16 @@ class BridgeService
             'currency' => strtolower($currency),
         ];
 
-        // In sandbox mode, use Ethereum payment rail with generated address
+        // In sandbox mode: Use dummy data per Bridge.xyz documentation
+        // Sandbox uses Ethereum payment rail with auto-generated address and USDC currency
         if ($this->isSandbox()) {
             $destination = [
                 'payment_rail' => 'ethereum',
-                'currency' => 'usdc',
-                'address' => $this->generateEthereumAddress(),
+                'currency' => 'usdc', // Sandbox uses USDC for Ethereum
+                'address' => $this->generateEthereumAddress(), // Auto-generated dummy address
             ];
         } else {
+            // Production mode: Use actual bridge_wallet with wallet ID
             $destination = [
                 'payment_rail' => 'bridge_wallet',
                 'currency' => strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency),

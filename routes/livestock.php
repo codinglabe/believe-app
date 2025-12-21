@@ -43,7 +43,7 @@ Route::prefix('marketplace')->name('marketplace.')->group(function () {
 // Home/Index Route - Landing Page
 Route::get('/', function () {
     return Inertia::render('Livestock/Landing');
-})->name('home');
+})->name('livestock.home');
 
 // Authenticated Routes
 Route::middleware(['auth:livestock', 'EnsureEmailIsVerified'])->group(function () {

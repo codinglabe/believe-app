@@ -8,7 +8,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class AssociatedPerson extends Model
 {
     protected $table = 'associated_persons';
-    
+
     protected $fillable = [
         'bridge_kyc_kyb_submission_id',
         'first_name',
@@ -67,5 +67,13 @@ class AssociatedPerson extends Model
             ?->verificationDocuments()
             ->where('document_type', 'id_back')
             ->first();
+    }
+
+
+    public function setBirthDateAttribute($value)
+    {
+        $this->attributes['birth_date'] = $value
+            ? \Carbon\Carbon::parse($value)->format('Y-m-d')
+            : null;
     }
 }

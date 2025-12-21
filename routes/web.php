@@ -338,6 +338,12 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::get('/bridge/external-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
     Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
     Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
+    Route::get('/bridge/deposit-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getDepositQrCode'])->name('bridge.deposit-qr-code');
+    
+    // Liquidation Address Routes (for crypto deposits)
+    Route::post('/bridge/liquidation-address', [App\Http\Controllers\BridgeWalletController::class, 'createLiquidationAddress'])->name('bridge.liquidation-address.create');
+    Route::get('/bridge/liquidation-addresses', [App\Http\Controllers\BridgeWalletController::class, 'getLiquidationAddresses'])->name('bridge.liquidation-addresses');
+    Route::get('/bridge/liquidation-address-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getLiquidationAddressQrCode'])->name('bridge.liquidation-address-qr-code');
 
     // Bridge Webhook Routes
     Route::get('/bridge/webhooks/{webhookId}/events', [App\Http\Controllers\BridgeWalletController::class, 'getWebhookEvents'])->name('bridge.webhooks.events');
@@ -1237,6 +1243,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/plans/{plan}/subscribe', [App\Http\Controllers\PlansController::class, 'subscribe'])->name('plans.subscribe');
     Route::get('/plans/success', [App\Http\Controllers\PlansController::class, 'success'])->name('plans.success');
     Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
+    
+    // Wallet subscription routes
+    Route::get('/wallet/plans', [App\Http\Controllers\PlansController::class, 'getWalletPlans'])->name('wallet.plans');
+    Route::post('/wallet/subscribe/{walletPlan}', [App\Http\Controllers\PlansController::class, 'subscribeWallet'])->name('wallet.subscribe');
+    Route::get('/wallet/subscription/success', [App\Http\Controllers\PlansController::class, 'walletSubscriptionSuccess'])->name('wallet.subscription.success');
+    Route::get('/wallet/subscription/cancel', [App\Http\Controllers\PlansController::class, 'walletSubscriptionCancel'])->name('wallet.subscription.cancel');
 });
 
 // Admin Phaze Webhook Management
@@ -1315,6 +1327,19 @@ Route::prefix('admin/plans')
         Route::post('/{plan}/features', [App\Http\Controllers\Admin\PlanController::class, 'storeFeature'])->name('features.store');
         Route::put('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'updateFeature'])->name('features.update');
         Route::delete('/{plan}/features/{feature}', [App\Http\Controllers\Admin\PlanController::class, 'destroyFeature'])->name('features.destroy');
+    });
+
+// Admin Wallet Plans Management
+Route::prefix('admin/wallet-plans')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])
+    ->name('admin.wallet-plans.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\WalletPlanController::class, 'index'])->middleware('permission:wallet.plan.read')->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\WalletPlanController::class, 'create'])->middleware('permission:wallet.plan.create')->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\WalletPlanController::class, 'store'])->middleware('permission:wallet.plan.create')->name('store');
+        Route::get('/{walletPlan}/edit', [App\Http\Controllers\Admin\WalletPlanController::class, 'edit'])->middleware('permission:wallet.plan.edit')->name('edit');
+        Route::put('/{walletPlan}', [App\Http\Controllers\Admin\WalletPlanController::class, 'update'])->middleware('permission:wallet.plan.update')->name('update');
+        Route::delete('/{walletPlan}', [App\Http\Controllers\Admin\WalletPlanController::class, 'destroy'])->middleware('permission:wallet.plan.delete')->name('destroy');
     });
 
 // IRS BMF Management Routes

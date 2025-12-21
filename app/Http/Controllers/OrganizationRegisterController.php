@@ -30,7 +30,7 @@ class OrganizationRegisterController extends Controller
     protected BridgeService $bridgeService;
 
     public function __construct(
-        EINLookupService $einLookupService, 
+        EINLookupService $einLookupService,
         TaxComplianceService $taxComplianceService,
         BridgeService $bridgeService
     ) {
@@ -54,8 +54,7 @@ class OrganizationRegisterController extends Controller
                 'referralCode' => $user->referral_code,
             ]);
         }
-        return Inertia::render('frontend/register/organization', [
-        ]);
+        return Inertia::render('frontend/register/organization', []);
     }
 
     public function lookupEIN(Request $request)
@@ -113,7 +112,6 @@ class OrganizationRegisterController extends Controller
                 'success' => true,
                 'data' => $orgData
             ]);
-
         } catch (\Exception $e) {
             Log::error('EIN Lookup Error', [
                 'message' => $e->getMessage(),
@@ -128,120 +126,120 @@ class OrganizationRegisterController extends Controller
     }
 
     public function register(Request $request)
-{
-    try {
+    {
+        try {
 
-        // dd($request->all());
-        // Manual validation
-        $validator = Validator::make($request->all(), [
-            'ein' => 'required|string|size:9|unique:organizations,ein',
-            'name' => 'nullable|string|max:255',
-            'ico' => 'nullable|string|max:255',
-            'street' => 'nullable|string|max:255',
-            'city' => 'nullable|string|max:255',
-            'state' => 'nullable|string|max:255',
-            'zip' => 'nullable|string|max:255',
-            'classification' => 'nullable|string|max:255',
-            'ruling' => 'nullable|string|max:255',
-            'deductibility' => 'nullable|string|max:255',
-            'organization' => 'nullable|string|max:255',
-            'status' => 'nullable|string|max:255',
-            'tax_period' => 'nullable|string|max:255',
-            'filing_req' => 'nullable|string|max:255',
-            'ntee_code' => 'nullable|string|max:255',
-            'email' => 'required|email|max:255|unique:users,email',
-            'phone' => 'required|string|max:255',
-            'contact_name' => 'required|string|max:255',
-            'contact_title' => 'required|string|max:255',
-            'password' => 'required|string|confirmed|min:8',
-            'password_confirmation' => 'required|string',
-            'website' => 'nullable|url|max:255',
-            'description' => 'required|string|max:2000',
-            'mission' => 'required|string|max:2000',
-            'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
-            'agree_to_terms' => 'required|accepted',
-            // 'has_edited_irs_data' => 'boolean'
-        ]);
+            // dd($request->all());
+            // Manual validation
+            $validator = Validator::make($request->all(), [
+                'ein' => 'required|string|size:9|unique:organizations,ein',
+                'name' => 'nullable|string|max:255',
+                'ico' => 'nullable|string|max:255',
+                'street' => 'nullable|string|max:255',
+                'city' => 'nullable|string|max:255',
+                'state' => 'nullable|string|max:255',
+                'zip' => 'nullable|string|max:255',
+                'classification' => 'nullable|string|max:255',
+                'ruling' => 'nullable|string|max:255',
+                'deductibility' => 'nullable|string|max:255',
+                'organization' => 'nullable|string|max:255',
+                'status' => 'nullable|string|max:255',
+                'tax_period' => 'nullable|string|max:255',
+                'filing_req' => 'nullable|string|max:255',
+                'ntee_code' => 'nullable|string|max:255',
+                'email' => 'required|email|max:255|unique:users,email',
+                'phone' => 'required|string|max:255',
+                'contact_name' => 'required|string|max:255',
+                'contact_title' => 'required|string|max:255',
+                'password' => 'required|string|confirmed|min:8',
+                'password_confirmation' => 'required|string',
+                'website' => 'nullable|url|max:255',
+                'description' => 'required|string|max:2000',
+                'mission' => 'required|string|max:2000',
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
+                'agree_to_terms' => 'required|accepted',
+                // 'has_edited_irs_data' => 'boolean'
+            ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Validation failed.',
-                'errors' => $validator->errors(),
-            ], 422);
-        }
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed.',
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
 
-        $validated = $validator->validated();
+            $validated = $validator->validated();
 
-        $taxEvaluation = $this->taxComplianceService->evaluate($validated['tax_period'] ?? null, $validated['ein']);
+            $taxEvaluation = $this->taxComplianceService->evaluate($validated['tax_period'] ?? null, $validated['ein']);
 
-        DB::beginTransaction();
+            DB::beginTransaction();
 
-        // Check if IRS data was edited
-        $hasEditedIRS = $request->boolean('has_edited_irs_data', false);
-        $initialRole = ($hasEditedIRS || $taxEvaluation['should_lock']) ? 'organization_pending' : 'organization';
+            // Check if IRS data was edited
+            $hasEditedIRS = $request->boolean('has_edited_irs_data', false);
+            $initialRole = ($hasEditedIRS || $taxEvaluation['should_lock']) ? 'organization_pending' : 'organization';
 
-        // Store original IRS data if edited
-        $originalIRSData = null;
-        if ($hasEditedIRS) {
-            $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
-        }
+            // Store original IRS data if edited
+            $originalIRSData = null;
+            if ($hasEditedIRS) {
+                $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
+            }
 
-        $user = User::create([
-            "name" => $validated['contact_name'],
-            "slug" => Str::slug($validated['contact_name']) . '-' . Str::random(5),
-            "email" => $validated['email'],
-            "contact_number" => $validated['phone'],
-            "password" => Hash::make($validated['password']),
-            "role" => $initialRole,
-            "organization_role" => 'admin',
-            "referred_by" => null,
-        ]);
+            $user = User::create([
+                "name" => $validated['contact_name'],
+                "slug" => Str::slug($validated['contact_name']) . '-' . Str::random(5),
+                "email" => $validated['email'],
+                "contact_number" => $validated['phone'],
+                "password" => Hash::make($validated['password']),
+                "role" => $initialRole,
+                "organization_role" => 'admin',
+                "referred_by" => null,
+            ]);
 
-        // Handle image upload
-        $imagePath = null;
-        if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('organizations', 'public');
+            // Handle image upload
+            $imagePath = null;
+            if ($request->hasFile('image')) {
+                $imagePath = $request->file('image')->store('organizations', 'public');
 
-            $user->registered_user_image = $imagePath;
-            $user->save();
-        }
+                $user->registered_user_image = $imagePath;
+                $user->save();
+            }
 
-        $organization = Organization::create([
-            'user_id' => $user->id,
-            'ein' => $validated['ein'],
-            'name' => $validated['name'],
-            'ico' => $validated['ico'] ?? null,
-            'street' => $validated['street'],
-            'city' => $validated['city'],
-            'state' => $validated['state'],
-            'zip' => $validated['zip'],
-            'classification' => $validated['classification'] ?? null,
-            'ruling' => $validated['ruling'] ?? null,
-            'deductibility' => $validated['deductibility'] ?? null,
-            'organization' => $validated['organization'] ?? null,
-            'status' => $taxEvaluation['should_lock'] ? 'Inactive' : ($validated['status'] ?? 'Active'),
-            'tax_period' => $validated['tax_period'] ?? null,
-            'filing_req' => $validated['filing_req'] ?? null,
-            'ntee_code' => $validated['ntee_code'] ?? null,
-            'email' => $validated['email'],
-            'phone' => $validated['phone'],
-            'contact_name' => $validated['contact_name'],
-            'contact_title' => $validated['contact_title'],
-            'website' => $validated['website'] ?? null,
-            'description' => $validated['description'],
-            'mission' => $validated['mission'],
-            'registered_user_image' => $imagePath,
-            'registration_status' => $hasEditedIRS ? 'pending' : ($taxEvaluation['should_lock'] ? 'pending' : 'approved'),
-            'has_edited_irs_data' => $hasEditedIRS,
-            'original_irs_data' => $originalIRSData,
-            'tax_compliance_status' => $taxEvaluation['status'],
-            'tax_compliance_checked_at' => $taxEvaluation['checked_at'],
-            'tax_compliance_meta' => $taxEvaluation['meta'],
-            'is_compliance_locked' => $taxEvaluation['should_lock'],
-        ]);
+            $organization = Organization::create([
+                'user_id' => $user->id,
+                'ein' => $validated['ein'],
+                'name' => $validated['name'],
+                'ico' => $validated['ico'] ?? null,
+                'street' => $validated['street'],
+                'city' => $validated['city'],
+                'state' => $validated['state'],
+                'zip' => $validated['zip'],
+                'classification' => $validated['classification'] ?? null,
+                'ruling' => $validated['ruling'] ?? null,
+                'deductibility' => $validated['deductibility'] ?? null,
+                'organization' => $validated['organization'] ?? null,
+                'status' => $taxEvaluation['should_lock'] ? 'Inactive' : ($validated['status'] ?? 'Active'),
+                'tax_period' => $validated['tax_period'] ?? null,
+                'filing_req' => $validated['filing_req'] ?? null,
+                'ntee_code' => $validated['ntee_code'] ?? null,
+                'email' => $validated['email'],
+                'phone' => $validated['phone'],
+                'contact_name' => $validated['contact_name'],
+                'contact_title' => $validated['contact_title'],
+                'website' => $validated['website'] ?? null,
+                'description' => $validated['description'],
+                'mission' => $validated['mission'],
+                'registered_user_image' => $imagePath,
+                'registration_status' => $hasEditedIRS ? 'pending' : ($taxEvaluation['should_lock'] ? 'pending' : 'approved'),
+                'has_edited_irs_data' => $hasEditedIRS,
+                'original_irs_data' => $originalIRSData,
+                'tax_compliance_status' => $taxEvaluation['status'],
+                'tax_compliance_checked_at' => $taxEvaluation['checked_at'],
+                'tax_compliance_meta' => $taxEvaluation['meta'],
+                'is_compliance_locked' => $taxEvaluation['should_lock'],
+            ]);
 
-        $this->syncOrganizationUserRole($user, $organization);
+            $this->syncOrganizationUserRole($user, $organization);
 
 
             // Create board member record
@@ -260,50 +258,49 @@ class OrganizationRegisterController extends Controller
             ]);
 
 
-        DB::commit();
+            DB::commit();
 
-        Log::info('Organization Registration Success', ['organization_id' => $organization->id]);
+            Log::info('Organization Registration Success', ['organization_id' => $organization->id]);
 
-        // Create Bridge customer for the organization (non-blocking)
-        try {
-            $this->createBridgeCustomer($organization, $user);
-        } catch (\Exception $e) {
-            // Log error but don't fail registration
-            Log::error('Failed to create Bridge customer during organization registration', [
-                'organization_id' => $organization->id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
+            // Create Bridge customer for the organization (non-blocking)
+            try {
+                $this->createBridgeCustomer($organization, $user);
+            } catch (\Exception $e) {
+                // Log error but don't fail registration
+                Log::error('Failed to create Bridge customer during organization registration', [
+                    'organization_id' => $organization->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+
+            event(new Registered($user));
+
+            Auth::login($user);
+
+            // Return success response
+            return response()->json([
+                'success' => true,
+                'message' => $hasEditedIRS
+                    ? 'Application submitted successfully! We will review it within 3-5 business days.'
+                    : 'Organization registered successfully!',
+                'organization' => $organization
             ]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+
+            Log::error('Organization Registration Error', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Registration failed. Please try again.',
+                'error' => $e->getMessage()
+            ], 500);
         }
-
-        event(new Registered($user));
-
-        Auth::login($user);
-
-        // Return success response
-        return response()->json([
-            'success' => true,
-            'message' => $hasEditedIRS
-                ? 'Application submitted successfully! We will review it within 3-5 business days.'
-                : 'Organization registered successfully!',
-            'organization' => $organization
-        ]);
-
-    } catch (\Exception $e) {
-        DB::rollBack();
-
-        Log::error('Organization Registration Error', [
-            'message' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-
-        return response()->json([
-            'success' => false,
-            'message' => 'Registration failed. Please try again.',
-            'error' => $e->getMessage()
-        ], 500);
     }
-}
 
     private function syncOrganizationUserRole(User $user, Organization $organization): void
     {
@@ -399,10 +396,10 @@ class OrganizationRegisterController extends Controller
 
         // Add business type if available (default to corporation)
         $customerData['business_type'] = $this->mapEntityTypeToBridgeType($organization->classification ?? 'corporation');
-        
+
         // Add DAO status if available
         $customerData['is_dao'] = false; // Default to false, can be updated later during KYB
-        
+
         // Add attested ownership structure timestamp
         $customerData['attested_ownership_structure_at'] = now()->toIso8601String();
 
@@ -472,7 +469,7 @@ class OrganizationRegisterController extends Controller
         }
 
         $entityTypeLower = strtolower(trim($entityType));
-        
+
         // Map common entity types to Bridge business types
         $mapping = [
             'llc' => 'llc',

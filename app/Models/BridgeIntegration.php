@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class BridgeIntegration extends Model
 {
@@ -39,6 +40,22 @@ class BridgeIntegration extends Model
     public function integratable(): MorphTo
     {
         return $this->morphTo();
+    }
+
+    /**
+     * Get the card wallets for this integration
+     */
+    public function cardWallets(): HasMany
+    {
+        return $this->hasMany(CardWallet::class);
+    }
+
+    /**
+     * Get the primary card wallet
+     */
+    public function primaryCardWallet()
+    {
+        return $this->hasOne(CardWallet::class)->where('is_primary', true);
     }
 
     /**
@@ -123,5 +140,13 @@ class BridgeIntegration extends Model
     public function primaryWallet()
     {
         return $this->hasOne(BridgeWallet::class)->where('is_primary', true);
+    }
+
+    /**
+     * Get all liquidation addresses for this integration
+     */
+    public function liquidationAddresses(): HasMany
+    {
+        return $this->hasMany(LiquidationAddress::class);
     }
 }

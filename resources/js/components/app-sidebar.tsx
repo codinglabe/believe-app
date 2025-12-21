@@ -50,7 +50,8 @@ import {
     Facebook,
     Link as LinkIcon,
     Newspaper,
-    Megaphone
+    Megaphone,
+    Wallet
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -604,6 +605,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/admin/plans',
                 icon: Sparkles,
                 role: "admin"
+            },
+            {
+                title: 'Wallet Plans Management',
+                href: '/admin/wallet-plans',
+                icon: Wallet,
+                permission: "wallet.plan.read"
             },
             {
                 title: 'Email Packages',

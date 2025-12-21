@@ -167,6 +167,9 @@ class WalletController extends Controller
             // For regular users, get balance directly from user table
             $balance = (float) ($user->balance ?? 0);
             
+            // Check if user has active subscription
+            $hasSubscription = $user->current_plan_id !== null;
+            
             return response()->json([
                 'success' => true,
                 'balance' => $balance,
@@ -174,6 +177,7 @@ class WalletController extends Controller
                 'currency' => 'USD',
                 'connected' => true,
                 'source' => 'user',
+                'has_subscription' => $hasSubscription,
             ]);
 
         } catch (\Exception $e) {

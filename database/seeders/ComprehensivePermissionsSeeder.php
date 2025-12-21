@@ -142,6 +142,9 @@ class ComprehensivePermissionsSeeder extends Seeder
             'kyb.verification' => ['read', 'view', 'approve', 'reject', 'manage'],
             'kyc.verification' => ['read', 'view', 'approve', 'reject', 'request'],
 
+            // Wallet Plan Management
+            'wallet.plan' => ['read', 'create', 'edit', 'update', 'delete', 'manage'],
+
             // Gift Card Management
             // 'gift.card' => ['read', 'create', 'edit', 'update', 'delete', 'manage', 'purchase', 'view.purchases'],
         ];

@@ -11,12 +11,14 @@ use App\Models\VerificationDocument;
 use App\Models\AdminSetting;
 use App\Models\WalletFee;
 use App\Models\Transaction;
+use App\Models\LiquidationAddress;
 use App\Services\BridgeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use SimpleSoftwareIO\QrCode\Facades\QrCode;
 
 class BridgeWalletController extends Controller
 {
@@ -557,17 +559,17 @@ class BridgeWalletController extends Controller
                 }
 
                 // Also check integration's bridge_wallet_id for backward compatibility
-                if ($integration->bridge_wallet_id) {
-                    return response()->json([
-                        'success' => true,
-                        'message' => 'Wallet already exists',
+            if ($integration->bridge_wallet_id) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Wallet already exists',
                         'data' => [
                             'wallet_id' => $integration->bridge_wallet_id,
                             'bridge_wallet_id' => $integration->bridge_wallet_id,
                             'address' => $integration->wallet_address,
                         ],
-                    ]);
-                }
+                ]);
+            }
             }
 
             // No existing wallet/virtual account found, create new one
@@ -3544,6 +3546,10 @@ class BridgeWalletController extends Controller
                     }
                 } else {
                     // Individual customer (KYC)
+                    // Make id_back_image conditional based on id_type
+                    $idType = $request->input('id_type');
+                    $idBackImageRule = ($idType === 'passport') ? 'nullable|string' : 'required|string';
+                    
                     $validated = $request->validate([
                         'first_name' => 'required|string|max:255',
                         'last_name' => 'required|string|max:255',
@@ -3559,11 +3565,12 @@ class BridgeWalletController extends Controller
                         'id_type' => 'required|in:drivers_license,passport,state_id',
                         'id_number' => 'required|string',
                         'id_front_image' => 'required|string', // Base64 encoded
-                        'id_back_image' => 'required|string', // Base64 encoded
+                        'id_back_image' => $idBackImageRule, // Base64 encoded - required except for passport
                     ]);
 
                     // Save images to storage first (store file paths, not base64)
                     $fileIdentifier = $integration->bridge_customer_id ?? ('integration_' . $integration->id);
+                    $idBackImagePath = null; // Initialize to null
                     
                     if (!empty($validated['id_front_image'])) {
                         $idFrontImagePath = $this->saveBase64Image(
@@ -3582,7 +3589,27 @@ class BridgeWalletController extends Controller
 
                     // Convert saved file paths to base64 for Bridge API
                     $idFrontBase64 = $this->filePathToBase64($idFrontImagePath);
-                    $idBackBase64 = $this->filePathToBase64($idBackImagePath);
+                    $idBackBase64 = !empty($idBackImagePath) ? $this->filePathToBase64($idBackImagePath) : null;
+
+                    // Build identifying information array
+                    $identifyingInfo = [
+                        [
+                            'type' => 'ssn',
+                            'issuing_country' => 'usa',
+                            'number' => $validated['ssn'],
+                        ],
+                        [
+                            'type' => $validated['id_type'],
+                            'issuing_country' => 'usa',
+                            'number' => $validated['id_number'],
+                            'image_front' => $idFrontBase64,
+                        ],
+                    ];
+                    
+                    // Only include image_back if it exists (not for passport)
+                    if ($idBackBase64) {
+                        $identifyingInfo[1]['image_back'] = $idBackBase64;
+                    }
 
                     $customerData = [
                         'type' => 'individual',
@@ -3591,20 +3618,7 @@ class BridgeWalletController extends Controller
                         'email' => $validated['email'],
                         'birth_date' => $validated['birth_date'],
                         'residential_address' => $validated['residential_address'],
-                        'identifying_information' => [
-                            [
-                                'type' => 'ssn',
-                                'issuing_country' => 'usa',
-                                'number' => $validated['ssn'],
-                            ],
-                            [
-                                'type' => $validated['id_type'],
-                                'issuing_country' => 'usa',
-                                'number' => $validated['id_number'],
-                                'image_front' => $idFrontBase64,
-                                'image_back' => $idBackBase64,
-                            ],
-                        ],
+                        'identifying_information' => $identifyingInfo,
                     ];
                     
                     // Only include signed_agreement_id if we have a valid one
@@ -4359,24 +4373,45 @@ class BridgeWalletController extends Controller
             DB::beginTransaction();
 
             try {
-                // Create Bridge transfer if recipient has Bridge wallet
+                // Create Bridge transfer if both sender and recipient have Bridge wallets
+                // Per Bridge.xyz API: Use source/destination with payment_rail format
                 $bridgeTransferId = null;
-                if ($recipientIntegration && $recipientIntegration->bridge_wallet_id) {
-                    $transferData = [
-                        'from_wallet_id' => $senderIntegration->bridge_wallet_id,
-                        'to_wallet_id' => $recipientIntegration->bridge_wallet_id,
-                        'amount' => $amount,
-                        'currency' => 'USD',
-                    ];
+                if ($senderIntegration->bridge_wallet_id && $recipientIntegration && $recipientIntegration->bridge_wallet_id) {
+                    try {
+                        $transferResult = $this->bridgeService->createWalletToWalletTransfer(
+                            $senderIntegration->bridge_customer_id,
+                            $senderIntegration->bridge_wallet_id,
+                            $recipientIntegration->bridge_customer_id,
+                            $recipientIntegration->bridge_wallet_id,
+                            $amount,
+                            'USD'
+                        );
 
-                    $transferResult = $this->bridgeService->createTransfer($transferData);
-
-                    if ($transferResult['success']) {
-                        $bridgeTransferId = $transferResult['data']['id'] ?? $transferResult['data']['transfer_id'] ?? null;
+                        if ($transferResult['success'] && isset($transferResult['data'])) {
+                            $bridgeTransferId = $transferResult['data']['id'] ?? $transferResult['data']['transfer_id'] ?? null;
+                            
+                            Log::info('Bridge transfer created for send money', [
+                                'transfer_id' => $bridgeTransferId,
+                                'sender_customer_id' => $senderIntegration->bridge_customer_id,
+                                'recipient_customer_id' => $recipientIntegration->bridge_customer_id,
+                                'amount' => $amount,
+                            ]);
+                        } else {
+                            Log::warning('Failed to create Bridge transfer', [
+                                'error' => $transferResult['error'] ?? 'Unknown error',
+                                'response' => $transferResult,
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Exception creating Bridge transfer', [
+                            'error' => $e->getMessage(),
+                            'trace' => $e->getTraceAsString(),
+                        ]);
+                        // Continue with local transaction even if Bridge transfer fails
                     }
                 }
 
-                // Deduct from sender
+                // Deduct from sender immediately
                 $senderUser->decrement('balance', $totalAmount);
 
                 // Record sender transaction
@@ -4390,20 +4425,25 @@ class BridgeWalletController extends Controller
                     'related_type' => $recipientType === 'user' ? User::class : Organization::class,
                     'meta' => [
                         'bridge_wallet_id' => $senderIntegration->bridge_wallet_id,
+                        'bridge_customer_id' => $senderIntegration->bridge_customer_id,
                         'bridge_transfer_id' => $bridgeTransferId,
                         'recipient_name' => $recipientType === 'user' ? $recipient->name : $recipient->name,
                         'recipient_type' => $recipientType,
                         'recipient_bridge_wallet_id' => $recipientIntegration->bridge_wallet_id ?? null,
+                        'recipient_bridge_customer_id' => $recipientIntegration->bridge_customer_id ?? null,
                     ],
                     'processed_at' => $bridgeTransferId ? null : now(), // Set when Bridge confirms
                 ]);
 
-                // Add to recipient (if not using Bridge transfer, or after Bridge confirms)
+                // Handle recipient balance and transaction
+                // If using Bridge transfer, recipient balance will be added when webhook confirms
+                // If not using Bridge transfer (recipient has no Bridge wallet), add balance immediately
                 if (!$bridgeTransferId) {
+                    // Recipient doesn't have Bridge wallet - add balance immediately (local transfer)
                     $recipientUser->increment('balance', $amount);
                 }
 
-                // Record recipient transaction
+                // Record recipient transaction (always create, even if pending)
                 $recipientTransaction = $recipientUser->recordTransaction([
                     'type' => 'transfer_in',
                     'amount' => $amount,
@@ -4413,12 +4453,15 @@ class BridgeWalletController extends Controller
                     'related_type' => Organization::class,
                     'meta' => [
                         'bridge_wallet_id' => $recipientIntegration->bridge_wallet_id ?? null,
+                        'bridge_customer_id' => $recipientIntegration->bridge_customer_id ?? null,
                         'bridge_transfer_id' => $bridgeTransferId,
                         'sender_organization_id' => $organization->id,
                         'sender_organization_name' => $organization->name,
+                        'sender_bridge_wallet_id' => $senderIntegration->bridge_wallet_id,
+                        'sender_bridge_customer_id' => $senderIntegration->bridge_customer_id,
                         'recipient_type' => $recipientType,
                     ],
-                    'processed_at' => $bridgeTransferId ? null : now(), // Set when Bridge confirms
+                    'processed_at' => $bridgeTransferId ? null : now(), // Set when Bridge confirms via webhook
                 ]);
 
                 DB::commit();
@@ -5747,6 +5790,577 @@ class BridgeWalletController extends Controller
                 'success' => false,
                 'message' => 'Failed to get deposit instructions: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Generate QR code for deposit instructions (receive money)
+     * 
+     * Creates a QR code containing bank account details for easy sharing
+     * Works for both sandbox and live environments
+     */
+    public function getDepositQrCode(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            // Get integration
+            $integration = BridgeIntegration::where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                // Return error QR code image instead of JSON (using SVG format - no imagick required)
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Bridge integration not found');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Get primary wallet
+            $primaryWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                ->where('is_primary', true)
+                ->first();
+            
+            if (!$primaryWallet || !$primaryWallet->virtual_account_id) {
+                // Return error QR code image instead of JSON (using SVG format - no imagick required)
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: No virtual account found');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Get virtual account details
+            $virtualAccountDetails = $primaryWallet->virtual_account_details;
+            
+            if (is_string($virtualAccountDetails)) {
+                $virtualAccountDetails = json_decode($virtualAccountDetails, true) ?? [];
+            }
+            
+            if (!$virtualAccountDetails || !is_array($virtualAccountDetails) || empty($virtualAccountDetails)) {
+                // Fetch from Bridge API if not stored
+                if ($primaryWallet->virtual_account_id) {
+                    $virtualAccountResult = $this->bridgeService->getVirtualAccount(
+                        $integration->bridge_customer_id,
+                        $primaryWallet->virtual_account_id
+                    );
+                    
+                    if ($virtualAccountResult['success'] && isset($virtualAccountResult['data'])) {
+                        $virtualAccountDetails = $virtualAccountResult['data'];
+                        $primaryWallet->virtual_account_details = $virtualAccountDetails;
+                        $primaryWallet->save();
+                    } else {
+                        // Return error QR code image instead of JSON (using SVG format - no imagick required)
+                        $errorQr = QrCode::format('svg')
+                            ->size(300)
+                            ->margin(2)
+                            ->generate('Error: Failed to fetch virtual account details');
+                        return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+                    }
+                } else {
+                    // Return error QR code image instead of JSON (using SVG format - no imagick required)
+                    $errorQr = QrCode::format('svg')
+                        ->size(300)
+                        ->margin(2)
+                        ->generate('Error: No virtual account found');
+                    return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+                }
+            }
+
+            // Extract deposit instructions
+            $depositInstructions = $virtualAccountDetails['source_deposit_instructions'] ?? null;
+            
+            if (!$depositInstructions) {
+                // Return error QR code image instead of JSON (using SVG format - no imagick required)
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Deposit instructions not available');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Build QR code data
+            // Format: Bank account details in a structured format
+            // For ACH/Wire transfers, we'll create a JSON structure with bank details
+            $qrData = [
+                'type' => 'bank_transfer',
+                'bank_name' => $depositInstructions['bank_name'] ?? '',
+                'routing_number' => $depositInstructions['bank_routing_number'] ?? '',
+                'account_number' => $depositInstructions['bank_account_number'] ?? '',
+                'account_holder' => $depositInstructions['bank_beneficiary_name'] ?? '',
+                'currency' => $depositInstructions['currency'] ?? 'USD',
+                'payment_rail' => $depositInstructions['payment_rail'] ?? ($depositInstructions['payment_rails'][0] ?? 'ach_push'),
+            ];
+
+            // Also create a human-readable string format for compatibility
+            $qrString = json_encode($qrData);
+
+            // Generate QR code as SVG (no imagick required)
+            $qrCode = QrCode::format('svg')
+                ->size(300)
+                ->margin(2)
+                ->errorCorrection('M')
+                ->generate($qrString);
+
+            return response($qrCode, 200, [
+                'Content-Type' => 'image/svg+xml',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Generate deposit QR code error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+            ]);
+            
+            // Return a simple error QR code or empty response (using SVG format - no imagick required)
+            try {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Unable to generate QR code');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            } catch (\Exception $e2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to generate QR code: ' . $e->getMessage(),
+                ], 500);
+            }
+        }
+    }
+
+    /**
+     * Create a liquidation address for crypto deposits
+     */
+    public function createLiquidationAddress(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            // Get integration
+            $integration = BridgeIntegration::where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge integration not found',
+                ], 404);
+            }
+
+            // Check if we're in sandbox mode
+            $isSandbox = $this->bridgeService->isSandbox();
+
+            // Get primary wallet (for production) or virtual account (for sandbox)
+            $primaryWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                ->where('is_primary', true)
+                ->first();
+
+            $destinationAddress = null;
+            $destinationPaymentRail = null;
+            $destinationCurrency = null;
+
+            if ($isSandbox) {
+                // Sandbox: Use virtual account address (wallets don't exist in sandbox)
+                $virtualAccountsResult = $this->bridgeService->getVirtualAccounts($integration->bridge_customer_id);
+                if ($virtualAccountsResult['success'] && isset($virtualAccountsResult['data']['data'])) {
+                    $virtualAccounts = $virtualAccountsResult['data']['data'];
+                    if (count($virtualAccounts) > 0) {
+                        $virtualAccount = $virtualAccounts[0];
+                        $destinationAddress = $virtualAccount['destination']['address'] ?? null;
+                        $destinationPaymentRail = $virtualAccount['destination']['payment_rail'] ?? 'ethereum';
+                        $destinationCurrency = $virtualAccount['destination']['currency'] ?? 'usdc';
+                    }
+                }
+
+                if (!$destinationAddress) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No virtual account found. Please create a virtual account first.',
+                    ], 404);
+                }
+            } else {
+                // Production: Use wallet address
+                if (!$primaryWallet || !$primaryWallet->wallet_address) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'No wallet found',
+                    ], 404);
+                }
+
+                $destinationAddress = $primaryWallet->wallet_address;
+                $destinationPaymentRail = $primaryWallet->chain ?? 'solana';
+                $destinationCurrency = 'usdb'; // Production uses USDB for Bridge wallets
+            }
+
+            // Validate request
+            $validated = $request->validate([
+                'chain' => 'required|string|in:solana,ethereum,base,polygon',
+                'currency' => 'required|string|in:usdc,usdt',
+                'destination_payment_rail' => 'required|string',
+                'destination_currency' => 'required|string|in:usdb,usdc',
+            ]);
+
+            // Validate chain/currency combinations
+            // USDT is not supported on Solana (per Bridge.xyz API)
+            if ($validated['chain'] === 'solana' && $validated['currency'] === 'usdt') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'USDT is not supported on Solana. Please use USDC for Solana.',
+                ], 400);
+            }
+
+            // Override destination currency and payment rail based on environment
+            // In sandbox, use the virtual account's destination settings (Ethereum + USDC)
+            // In production, use the validated values (can be Solana/Ethereum + USDB)
+            if ($isSandbox) {
+                // Sandbox: Always use Ethereum payment rail and USDC currency (per Bridge.xyz docs)
+                // Also, in sandbox, only Ethereum chain is supported
+                if ($validated['chain'] !== 'ethereum') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'In sandbox mode, only Ethereum chain is supported for liquidation addresses.',
+                    ], 400);
+                }
+                if ($validated['currency'] !== 'usdc') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'In sandbox mode, only USDC currency is supported for liquidation addresses.',
+                    ], 400);
+                }
+                $destinationPaymentRail = 'ethereum';
+                $destinationCurrency = 'usdc';
+            } else {
+                // Production: Use validated values
+                $destinationPaymentRail = $validated['destination_payment_rail'];
+                $destinationCurrency = $validated['destination_currency'];
+            }
+
+            // Prepare liquidation address data
+            $liquidationData = [
+                'chain' => $validated['chain'],
+                'currency' => $validated['currency'],
+                'destination_payment_rail' => $destinationPaymentRail,
+                'destination_currency' => $destinationCurrency,
+                'destination_address' => $destinationAddress,
+            ];
+
+            // Create liquidation address via Bridge API
+            $result = $this->bridgeService->createLiquidationAddress(
+                $integration->bridge_customer_id,
+                $liquidationData
+            );
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['error'] ?? 'Failed to create liquidation address',
+                ], 500);
+            }
+
+            // Store liquidation address in database
+            if (isset($result['data'])) {
+                $bridgeLiquidationData = $result['data'];
+                
+                $liquidationAddress = LiquidationAddress::updateOrCreate(
+                    [
+                        'bridge_integration_id' => $integration->id,
+                        'chain' => $validated['chain'],
+                        'currency' => $validated['currency'],
+                    ],
+                    [
+                        'bridge_customer_id' => $integration->bridge_customer_id,
+                        'bridge_liquidation_address_id' => $bridgeLiquidationData['id'] ?? null,
+                        'address' => $bridgeLiquidationData['address'] ?? null,
+                        'destination_payment_rail' => $destinationPaymentRail,
+                        'destination_currency' => $destinationCurrency,
+                        'destination_address' => $destinationAddress,
+                        'return_address' => $bridgeLiquidationData['return_address'] ?? null,
+                        'state' => $bridgeLiquidationData['state'] ?? 'active',
+                        'liquidation_metadata' => $bridgeLiquidationData,
+                        'last_sync_at' => now(),
+                    ]
+                );
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $bridgeLiquidationData,
+                ]);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $result['data'],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Create liquidation address error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create liquidation address: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Get liquidation addresses for the user
+     */
+    public function getLiquidationAddresses(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            // Get integration
+            $integration = BridgeIntegration::where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge integration not found',
+                ], 404);
+            }
+
+            // First, try to get liquidation addresses from database
+            $liquidationAddresses = LiquidationAddress::where('bridge_integration_id', $integration->id)
+                ->active()
+                ->get();
+
+            // If we have addresses in database, return them
+            if ($liquidationAddresses->count() > 0) {
+                $formattedAddresses = $liquidationAddresses->map(function ($address) {
+                    return [
+                        'id' => $address->bridge_liquidation_address_id,
+                        'chain' => $address->chain,
+                        'currency' => $address->currency,
+                        'address' => $address->address,
+                        'destination_payment_rail' => $address->destination_payment_rail,
+                        'destination_currency' => $address->destination_currency,
+                        'destination_address' => $address->destination_address,
+                        'return_address' => $address->return_address,
+                        'state' => $address->state,
+                    ];
+                });
+
+                return response()->json([
+                    'success' => true,
+                    'data' => $formattedAddresses->toArray(),
+                ]);
+            }
+
+            // If no addresses in database, fetch from Bridge API and store them
+            $result = $this->bridgeService->getLiquidationAddresses($integration->bridge_customer_id);
+
+            if (!$result['success']) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $result['error'] ?? 'Failed to fetch liquidation addresses',
+                ], 500);
+            }
+
+            // Parse Bridge API response
+            $bridgeAddresses = [];
+            if (isset($result['data'])) {
+                $data = $result['data'];
+                $bridgeAddresses = is_array($data) && isset($data['data']) 
+                    ? $data['data'] 
+                    : (is_array($data) ? $data : []);
+            }
+
+            // Store addresses in database
+            foreach ($bridgeAddresses as $bridgeAddress) {
+                LiquidationAddress::updateOrCreate(
+                    [
+                        'bridge_integration_id' => $integration->id,
+                        'bridge_liquidation_address_id' => $bridgeAddress['id'] ?? null,
+                    ],
+                    [
+                        'bridge_customer_id' => $integration->bridge_customer_id,
+                        'chain' => $bridgeAddress['chain'] ?? null,
+                        'currency' => $bridgeAddress['currency'] ?? null,
+                        'address' => $bridgeAddress['address'] ?? null,
+                        'destination_payment_rail' => $bridgeAddress['destination_payment_rail'] ?? null,
+                        'destination_currency' => $bridgeAddress['destination_currency'] ?? null,
+                        'destination_address' => $bridgeAddress['destination_address'] ?? null,
+                        'return_address' => $bridgeAddress['return_address'] ?? null,
+                        'state' => $bridgeAddress['state'] ?? 'active',
+                        'liquidation_metadata' => $bridgeAddress,
+                        'last_sync_at' => now(),
+                    ]
+                );
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $bridgeAddresses,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Get liquidation addresses error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch liquidation addresses: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Generate QR code for a liquidation address
+     */
+    public function getLiquidationAddressQrCode(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            // Get integration
+            $integration = BridgeIntegration::where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Bridge integration not found');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Get liquidation address ID from request
+            $liquidationAddressId = $request->query('id');
+            if (!$liquidationAddressId) {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Liquidation address ID required');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Try to get liquidation address from database first
+            $liquidationAddress = LiquidationAddress::where('bridge_integration_id', $integration->id)
+                ->where(function ($query) use ($liquidationAddressId) {
+                    $query->where('bridge_liquidation_address_id', $liquidationAddressId)
+                          ->orWhere('id', $liquidationAddressId);
+                })
+                ->first();
+
+            // If not in database, fetch from Bridge API
+            if (!$liquidationAddress) {
+                $result = $this->bridgeService->getLiquidationAddresses($integration->bridge_customer_id);
+
+                if (!$result['success']) {
+                    $errorQr = QrCode::format('svg')
+                        ->size(300)
+                        ->margin(2)
+                        ->generate('Error: Failed to fetch liquidation addresses');
+                    return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+                }
+
+                // Parse Bridge API response
+                $liquidationAddresses = [];
+                if (isset($result['data'])) {
+                    $data = $result['data'];
+                    $liquidationAddresses = is_array($data) && isset($data['data']) 
+                        ? $data['data'] 
+                        : (is_array($data) ? $data : []);
+                }
+
+                // Find the specific liquidation address
+                $bridgeAddress = collect($liquidationAddresses)->firstWhere('id', $liquidationAddressId);
+
+                if ($bridgeAddress) {
+                    // Store in database for future use
+                    $liquidationAddress = LiquidationAddress::updateOrCreate(
+                        [
+                            'bridge_integration_id' => $integration->id,
+                            'bridge_liquidation_address_id' => $bridgeAddress['id'] ?? null,
+                        ],
+                        [
+                            'bridge_customer_id' => $integration->bridge_customer_id,
+                            'chain' => $bridgeAddress['chain'] ?? null,
+                            'currency' => $bridgeAddress['currency'] ?? null,
+                            'address' => $bridgeAddress['address'] ?? null,
+                            'destination_payment_rail' => $bridgeAddress['destination_payment_rail'] ?? null,
+                            'destination_currency' => $bridgeAddress['destination_currency'] ?? null,
+                            'destination_address' => $bridgeAddress['destination_address'] ?? null,
+                            'return_address' => $bridgeAddress['return_address'] ?? null,
+                            'state' => $bridgeAddress['state'] ?? 'active',
+                            'liquidation_metadata' => $bridgeAddress,
+                            'last_sync_at' => now(),
+                        ]
+                    );
+                }
+            }
+
+            if (!$liquidationAddress || !$liquidationAddress->address) {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Liquidation address not found');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            }
+
+            // Generate QR code for the liquidation address
+            $qrCode = QrCode::format('svg')
+                ->size(300)
+                ->margin(2)
+                ->errorCorrection('M')
+                ->generate($liquidationAddress->address);
+
+            return response($qrCode, 200, [
+                'Content-Type' => 'image/svg+xml',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Generate liquidation address QR code error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => Auth::id(),
+            ]);
+
+            try {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Unable to generate QR code');
+                return response($errorQr, 200, ['Content-Type' => 'image/svg+xml']);
+            } catch (\Exception $e2) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to generate QR code: ' . $e->getMessage(),
+                ], 500);
+            }
         }
     }
 }

@@ -26,6 +26,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
             // Bridge Settings - Admin Only
             Route::get('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'index'])->name('bridge.index');
             Route::post('/settings/bridge', [\App\Http\Controllers\BridgeSettingsController::class, 'update'])->name('bridge.update');
+            
+            // Application Settings - Admin Only
+            Route::get('/settings/application', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'index'])->name('application.index');
+            Route::post('/settings/application/optimize', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'optimize'])->name('application.optimize');
+            Route::post('/settings/application/clear', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'clear'])->name('application.clear');
         });
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');

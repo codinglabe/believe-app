@@ -60,6 +60,7 @@ class DatabaseSeeder extends Seeder
         $this->call(EventTypesTableSeeder::class);
         $this->call(ChatRoomsSeeder::class);
         $this->call(PlanSeeder::class);
+        $this->call(WalletPlanSeeder::class);
         $this->call(ContactPageContentSeeder::class);
         $this->call(PromotionalBannerSeeder::class);
 

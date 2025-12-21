@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\BridgeIntegration;
 use App\Models\BridgeWallet;
+use App\Models\CardWallet;
+use App\Models\LiquidationAddress;
 use App\Models\User;
 use App\Models\Organization;
 use App\Models\Transaction;
@@ -114,10 +116,19 @@ class BridgeWebhookController extends Controller
                     $this->handleLiquidationAddressDrain($eventType, $eventObject, $eventObjectStatus);
                     break;
 
+                case 'static_memo.activity':
+                    $this->handleStaticMemoActivity($eventType, $eventObject, $eventObjectStatus);
+                    break;
+
+                case 'wallet':
+                    $this->handleWalletEvent($eventType, $eventObject, $eventObjectStatus, $eventObjectChanges);
+                    break;
+
                 default:
                     Log::warning('Unhandled Bridge webhook event category', [
                         'event_category' => $eventCategory,
                         'event_type' => $eventType,
+                        'event_object' => $eventObject,
                     ]);
             }
 
@@ -471,75 +482,8 @@ class BridgeWebhookController extends Controller
             }
 
             if ($isApproved && $integration->bridge_customer_id) {
-                // Check if wallet already exists
-                $existingWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
-                    ->where('is_primary', true)
-                    ->first();
-
-                if (!$existingWallet) {
-                    try {
-                        // Create primary wallet (default: Solana)
-                        $chain = 'solana'; // Default chain, can be made configurable
-                        $walletResult = $this->bridgeService->createWallet(
-                            $integration->bridge_customer_id,
-                            $chain
-                        );
-
-                        if ($walletResult['success'] && isset($walletResult['data'])) {
-                            $walletData = $walletResult['data'];
-                            
-                            // Create wallet record in database
-                            $wallet = BridgeWallet::create([
-                                'bridge_integration_id' => $integration->id,
-                                'bridge_customer_id' => $integration->bridge_customer_id,
-                                'bridge_wallet_id' => $walletData['id'] ?? null,
-                                'wallet_address' => $walletData['address'] ?? null,
-                                'chain' => $chain,
-                                'status' => 'active',
-                                'balance' => 0,
-                                'currency' => 'USD',
-                                'wallet_metadata' => $walletData,
-                                'is_primary' => true,
-                                'last_balance_sync' => now(),
-                            ]);
-
-                            // Update integration with primary wallet info (for backward compatibility)
-                            if (!$integration->bridge_wallet_id) {
-                                $integration->bridge_wallet_id = $wallet->bridge_wallet_id;
-                                $integration->wallet_address = $wallet->wallet_address;
-                                $integration->wallet_chain = $chain;
-                                $integration->save();
-                            }
-
-                            Log::info('Bridge wallet auto-created on account approval', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                                'wallet_id' => $wallet->bridge_wallet_id,
-                                'chain' => $chain,
-                                'address' => $wallet->wallet_address,
-                            ]);
-                        } else {
-                            Log::warning('Failed to auto-create Bridge wallet on approval', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                                'error' => $walletResult['error'] ?? 'Unknown error',
-                            ]);
-                        }
-                    } catch (\Exception $e) {
-                        Log::error('Exception while auto-creating Bridge wallet on approval', [
-                            'integration_id' => $integration->id,
-                            'customer_id' => $customerId,
-                            'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString(),
-                        ]);
-                    }
-                } else {
-                    Log::info('Bridge wallet already exists, skipping auto-creation', [
-                        'integration_id' => $integration->id,
-                        'customer_id' => $customerId,
-                        'existing_wallet_id' => $existingWallet->bridge_wallet_id,
-                    ]);
-                }
+                // Auto-create wallet, virtual account, and card account when approved
+                $this->createWalletVirtualAccountAndCardAccount($integration, $customerId);
             }
 
             Log::info('Bridge customer event processed', [
@@ -750,72 +694,8 @@ class BridgeWebhookController extends Controller
             }
 
             if ($isApproved && $integration->bridge_customer_id) {
-                // Check if wallet already exists
-                $existingWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
-                    ->where('is_primary', true)
-                    ->first();
-
-                if (!$existingWallet) {
-                    try {
-                        // Create primary wallet (default: Solana)
-                        $chain = 'solana'; // Default chain, can be made configurable
-                        $walletResult = $this->bridgeService->createWallet(
-                            $integration->bridge_customer_id,
-                            $chain
-                        );
-
-                        if ($walletResult['success'] && isset($walletResult['data'])) {
-                            $walletData = $walletResult['data'];
-                            
-                            // Create wallet record in database
-                            $wallet = BridgeWallet::create([
-                                'bridge_integration_id' => $integration->id,
-                                'bridge_customer_id' => $integration->bridge_customer_id,
-                                'bridge_wallet_id' => $walletData['id'] ?? null,
-                                'wallet_address' => $walletData['address'] ?? null,
-                                'chain' => $chain,
-                                'status' => 'active',
-                                'balance' => 0,
-                                'currency' => 'USD',
-                                'wallet_metadata' => $walletData,
-                                'is_primary' => true,
-                                'last_balance_sync' => now(),
-                            ]);
-
-                            // Update integration with primary wallet info (for backward compatibility)
-                            if (!$integration->bridge_wallet_id) {
-                                $integration->bridge_wallet_id = $wallet->bridge_wallet_id;
-                                $integration->wallet_address = $wallet->wallet_address;
-                                $integration->wallet_chain = $chain;
-                                $integration->save();
-                            }
-
-                            Log::info('Bridge wallet auto-created on KYC link approval', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                                'link_id' => $linkId,
-                                'wallet_id' => $wallet->bridge_wallet_id,
-                                'chain' => $chain,
-                                'address' => $wallet->wallet_address,
-                            ]);
-                        } else {
-                            Log::warning('Failed to auto-create Bridge wallet on KYC link approval', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                                'link_id' => $linkId,
-                                'error' => $walletResult['error'] ?? 'Unknown error',
-                            ]);
-                        }
-                    } catch (\Exception $e) {
-                        Log::error('Exception while auto-creating Bridge wallet on KYC link approval', [
-                            'integration_id' => $integration->id,
-                            'customer_id' => $customerId,
-                            'link_id' => $linkId,
-                            'error' => $e->getMessage(),
-                            'trace' => $e->getTraceAsString(),
-                        ]);
-                    }
-                }
+                // Auto-create wallet, virtual account, and card account when approved
+                $this->createWalletVirtualAccountAndCardAccount($integration, $customerId, $linkId);
             }
 
             Log::info('Bridge KYC link event processed', [
@@ -832,16 +712,26 @@ class BridgeWebhookController extends Controller
 
     /**
      * Handle transfer events
+     * 
+     * Per Bridge.xyz docs: Transfer events track the state of money transfers
+     * States: payment_submitted, payment_processed, failed, etc.
      */
     private function handleTransferEvent(string $eventType, array $eventObject, ?string $status, array $changes)
     {
         $transferId = $eventObject['id'] ?? null;
-        $state = $eventObject['state'] ?? $status;
+        $state = $eventObject['state'] ?? $status ?? $eventObject['status'] ?? null;
 
         if (!$transferId) {
             Log::warning('Bridge transfer event missing transfer id', ['event_object' => $eventObject]);
             return;
         }
+
+        Log::info('Bridge transfer event received', [
+            'transfer_id' => $transferId,
+            'state' => $state,
+            'event_type' => $eventType,
+            'event_object_status' => $status,
+        ]);
 
         // Find transactions by Bridge transfer ID
         $transactions = Transaction::where(function($query) use ($transferId) {
@@ -850,18 +740,41 @@ class BridgeWebhookController extends Controller
         })->get();
 
         if ($transactions->isEmpty()) {
-            Log::warning('Bridge transfer event: Transactions not found', ['transfer_id' => $transferId]);
-            return;
+            // Try to find by source/destination wallet IDs from transfer object
+            $sourceWalletId = $eventObject['source']['bridge_wallet_id'] ?? null;
+            $destinationWalletId = $eventObject['destination']['bridge_wallet_id'] ?? null;
+            
+            if ($sourceWalletId || $destinationWalletId) {
+                // Try to find transactions by wallet IDs
+                $transactions = Transaction::where(function($query) use ($sourceWalletId, $destinationWalletId) {
+                    if ($sourceWalletId) {
+                        $query->whereJsonContains('meta->bridge_wallet_id', $sourceWalletId);
+                    }
+                    if ($destinationWalletId) {
+                        $query->orWhereJsonContains('meta->bridge_wallet_id', $destinationWalletId);
+                    }
+                })->where('created_at', '>=', now()->subHours(24)) // Within last 24 hours
+                  ->get();
+            }
+
+            if ($transactions->isEmpty()) {
+                Log::warning('Bridge transfer event: Transactions not found', [
+                    'transfer_id' => $transferId,
+                    'source_wallet_id' => $sourceWalletId,
+                    'destination_wallet_id' => $destinationWalletId,
+                ]);
+                return;
+            }
         }
 
         $mappedStatus = $this->mapBridgeTransferStateToStatus($state);
 
-        DB::transaction(function () use ($transactions, $mappedStatus, $state, $transferId, $eventObject, $changes) {
+        DB::transaction(function () use ($transactions, $mappedStatus, $state, $transferId, $eventObject, $changes, $eventType) {
             foreach ($transactions as $transaction) {
                 $oldStatus = $transaction->status;
                 $transaction->status = $mappedStatus;
 
-                // Handle completed transfers
+                // Handle completed transfers - add balance to recipient
                 if ($mappedStatus === 'completed' && $oldStatus !== 'completed') {
                     $transaction->processed_at = now();
 
@@ -869,38 +782,83 @@ class BridgeWebhookController extends Controller
                     $amount = (float) $transaction->amount;
 
                     if ($transaction->type === 'transfer_in') {
-                        $user->increment('balance', $amount);
-                        Log::info('Bridge transfer completed: Balance added to recipient', [
+                        // Only add balance if not already added (check if processed_at was null)
+                        if (!$transaction->getOriginal('processed_at')) {
+                            $user->increment('balance', $amount);
+                            Log::info('Bridge transfer completed: Balance added to recipient', [
+                                'user_id' => $user->id,
+                                'amount' => $amount,
+                                'transaction_id' => $transaction->id,
+                                'transfer_id' => $transferId,
+                            ]);
+                        }
+                    } elseif ($transaction->type === 'transfer_out') {
+                        // Mark sender transaction as completed
+                        Log::info('Bridge transfer completed: Sender transaction confirmed', [
                             'user_id' => $user->id,
                             'amount' => $amount,
                             'transaction_id' => $transaction->id,
+                            'transfer_id' => $transferId,
                         ]);
                     }
                 }
 
-                // Handle failed transfers - refund sender
-                if ($mappedStatus === 'failed' && $oldStatus !== 'failed') {
+                // Handle failed/cancelled transfers - refund sender
+                if (in_array($mappedStatus, ['failed', 'cancelled']) && !in_array($oldStatus, ['failed', 'cancelled'])) {
                     if ($transaction->type === 'transfer_out') {
                         $user = $transaction->user;
                         $amount = (float) $transaction->amount;
-                        $user->increment('balance', $amount + ($transaction->fee ?? 0));
-                        Log::info('Bridge transfer failed: Balance refunded to sender', [
+                        $fee = (float) ($transaction->fee ?? 0);
+                        
+                        // Refund amount + fee to sender
+                        $user->increment('balance', $amount + $fee);
+                        
+                        Log::info('Bridge transfer failed/cancelled: Balance refunded to sender', [
                             'user_id' => $user->id,
                             'amount' => $amount,
+                            'fee' => $fee,
+                            'total_refund' => $amount + $fee,
                             'transaction_id' => $transaction->id,
+                            'transfer_id' => $transferId,
+                            'state' => $state,
                         ]);
+                    } elseif ($transaction->type === 'transfer_in') {
+                        // Remove balance from recipient if transfer failed
+                        $user = $transaction->user;
+                        $amount = (float) $transaction->amount;
+                        
+                        // Only deduct if balance was previously added
+                        if ($transaction->getOriginal('processed_at')) {
+                            $user->decrement('balance', $amount);
+                            Log::info('Bridge transfer failed: Balance removed from recipient', [
+                                'user_id' => $user->id,
+                                'amount' => $amount,
+                                'transaction_id' => $transaction->id,
+                                'transfer_id' => $transferId,
+                            ]);
+                        }
                     }
                 }
 
-                // Update metadata
+                // Update metadata with latest Bridge transfer information
                 $meta = $transaction->meta ?? [];
                 $meta['bridge_state'] = $state;
+                $meta['bridge_status'] = $state; // Alias for compatibility
                 $meta['bridge_update_at'] = now()->toIso8601String();
                 $meta['bridge_changes'] = $changes;
+                $meta['bridge_event_type'] = $eventType;
                 
                 // Store receipt if available
                 if (isset($eventObject['receipt'])) {
                     $meta['bridge_receipt'] = $eventObject['receipt'];
+                }
+
+                // Store source and destination info
+                if (isset($eventObject['source'])) {
+                    $meta['bridge_source'] = $eventObject['source'];
+                }
+                if (isset($eventObject['destination'])) {
+                    $meta['bridge_destination'] = $eventObject['destination'];
                 }
 
                 $transaction->meta = $meta;
@@ -912,48 +870,215 @@ class BridgeWebhookController extends Controller
                 'state' => $state,
                 'mapped_status' => $mappedStatus,
                 'transaction_count' => $transactions->count(),
+                'event_type' => $eventType,
             ]);
         });
     }
 
     /**
      * Handle virtual account activity events
+     * 
+     * Per Bridge.xyz docs: Virtual account activity includes deposits and other events
+     * Event types: payment_submitted, payment_processed, etc.
      */
     private function handleVirtualAccountActivity(string $eventType, array $eventObject)
     {
         $activityId = $eventObject['id'] ?? null;
         $virtualAccountId = $eventObject['virtual_account_id'] ?? null;
         $customerId = $eventObject['customer_id'] ?? null;
-        $type = $eventObject['type'] ?? null; // e.g., 'payment_submitted'
+        $type = $eventObject['type'] ?? null; // e.g., 'payment_submitted', 'payment_processed'
         $amount = $eventObject['amount'] ?? null;
+        $state = $eventObject['state'] ?? null;
 
         Log::info('Bridge virtual account activity', [
             'activity_id' => $activityId,
             'virtual_account_id' => $virtualAccountId,
             'customer_id' => $customerId,
             'type' => $type,
+            'state' => $state,
             'amount' => $amount,
+            'event_type' => $eventType,
         ]);
 
-        // Implement your virtual account activity handling logic here
+        // Find integration by customer ID
+        if (!$customerId) {
+            Log::warning('Bridge virtual account activity missing customer_id', [
+                'activity_id' => $activityId,
+                'virtual_account_id' => $virtualAccountId,
+            ]);
+            return;
+        }
+
+        $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+        if (!$integration) {
+            Log::warning('Bridge integration not found for virtual account activity', [
+                'customer_id' => $customerId,
+                'virtual_account_id' => $virtualAccountId,
+            ]);
+            return;
+        }
+
+        // Handle payment_processed - deposit completed
+        if ($type === 'payment_processed' || $state === 'payment_processed') {
+            try {
+                $user = $integration->integratable;
+                if (!$user) {
+                    Log::warning('User/Organization not found for virtual account deposit', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                    ]);
+                    return;
+                }
+
+                // Get the user model (for organizations, get the associated user)
+                if ($integration->integratable_type === Organization::class) {
+                    $user = $user->user ?? null;
+                }
+
+                if (!$user) {
+                    Log::warning('User not found for virtual account deposit', [
+                        'integration_id' => $integration->id,
+                    ]);
+                    return;
+                }
+
+                $depositAmount = (float) ($amount ?? 0);
+                if ($depositAmount > 0) {
+                    // Check if transaction already exists
+                    $existingTransaction = Transaction::where('user_id', $user->id)
+                        ->where('type', 'deposit')
+                        ->whereJsonContains('meta->virtual_account_id', $virtualAccountId)
+                        ->whereJsonContains('meta->activity_id', $activityId)
+                        ->first();
+
+                    if (!$existingTransaction) {
+                        // Add balance to user
+                        $user->increment('balance', $depositAmount);
+
+                        // Record deposit transaction
+                        $user->recordTransaction([
+                            'type' => 'deposit',
+                            'amount' => $depositAmount,
+                            'status' => 'completed',
+                            'payment_method' => 'bridge',
+                            'meta' => [
+                                'virtual_account_id' => $virtualAccountId,
+                                'activity_id' => $activityId,
+                                'customer_id' => $customerId,
+                                'bridge_event_type' => $eventType,
+                                'bridge_state' => $state,
+                            ],
+                            'processed_at' => now(),
+                        ]);
+
+                        Log::info('Bridge virtual account deposit processed', [
+                            'user_id' => $user->id,
+                            'integration_id' => $integration->id,
+                            'amount' => $depositAmount,
+                            'virtual_account_id' => $virtualAccountId,
+                            'activity_id' => $activityId,
+                        ]);
+                    } else {
+                        Log::info('Bridge virtual account deposit already processed', [
+                            'transaction_id' => $existingTransaction->id,
+                            'activity_id' => $activityId,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception processing virtual account deposit', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        }
     }
 
     /**
      * Handle card account events
+     * 
+     * Per Bridge.xyz docs: Card account events track card account status changes
+     * Event types: card_account.created, card_account.updated, card_account.status_transitioned
      */
     private function handleCardAccountEvent(string $eventType, array $eventObject, ?string $status)
     {
         $cardAccountId = $eventObject['id'] ?? null;
         $customerId = $eventObject['customer_id'] ?? null;
+        $cardStatus = $eventObject['status'] ?? $status;
 
         Log::info('Bridge card account event', [
             'card_account_id' => $cardAccountId,
             'customer_id' => $customerId,
-            'status' => $status,
+            'status' => $cardStatus,
             'event_type' => $eventType,
         ]);
 
-        // Implement your card account handling logic here
+        // Update card wallet in database if exists
+        if ($cardAccountId && $customerId) {
+            try {
+                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+                
+                if ($integration) {
+                    $cardWallet = CardWallet::where('bridge_integration_id', $integration->id)
+                        ->where('bridge_card_account_id', $cardAccountId)
+                        ->first();
+
+                    if ($cardWallet) {
+                        // Update card wallet with latest data from Bridge
+                        $cardWallet->update([
+                            'status' => $cardStatus ?? $cardWallet->status,
+                            'card_number' => $eventObject['card_number'] ?? $eventObject['last_four'] ?? $cardWallet->card_number,
+                            'card_type' => $eventObject['type'] ?? $eventObject['card_type'] ?? $cardWallet->card_type,
+                            'card_brand' => $eventObject['brand'] ?? $eventObject['card_brand'] ?? $cardWallet->card_brand,
+                            'expiry_month' => $eventObject['expiry_month'] ?? $eventObject['exp_month'] ?? $cardWallet->expiry_month,
+                            'expiry_year' => $eventObject['expiry_year'] ?? $eventObject['exp_year'] ?? $cardWallet->expiry_year,
+                            'balance' => $eventObject['balance'] ?? $eventObject['available_balance'] ?? $cardWallet->balance,
+                            'currency' => $eventObject['currency'] ?? $cardWallet->currency,
+                            'card_metadata' => $eventObject, // Store full response
+                            'last_balance_sync' => now(),
+                        ]);
+
+                        Log::info('Bridge card account updated in database', [
+                            'card_wallet_id' => $cardWallet->id,
+                            'card_account_id' => $cardAccountId,
+                            'status' => $cardStatus,
+                        ]);
+                    } else {
+                        // Card wallet doesn't exist, create it
+                        $cardWallet = CardWallet::create([
+                            'bridge_integration_id' => $integration->id,
+                            'bridge_customer_id' => $customerId,
+                            'bridge_card_account_id' => $cardAccountId,
+                            'card_number' => $eventObject['card_number'] ?? $eventObject['last_four'] ?? null,
+                            'card_type' => $eventObject['type'] ?? $eventObject['card_type'] ?? null,
+                            'card_brand' => $eventObject['brand'] ?? $eventObject['card_brand'] ?? null,
+                            'expiry_month' => $eventObject['expiry_month'] ?? $eventObject['exp_month'] ?? null,
+                            'expiry_year' => $eventObject['expiry_year'] ?? $eventObject['exp_year'] ?? null,
+                            'status' => $cardStatus ?? 'active',
+                            'balance' => $eventObject['balance'] ?? $eventObject['available_balance'] ?? 0,
+                            'currency' => $eventObject['currency'] ?? 'USD',
+                            'card_metadata' => $eventObject,
+                            'is_primary' => true,
+                            'last_balance_sync' => now(),
+                        ]);
+
+                        Log::info('Bridge card account created in database from webhook', [
+                            'card_wallet_id' => $cardWallet->id,
+                            'card_account_id' => $cardAccountId,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception handling card account event', [
+                    'card_account_id' => $cardAccountId,
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        }
     }
 
     /**
@@ -980,22 +1105,59 @@ class BridgeWebhookController extends Controller
 
     /**
      * Handle posted card account transaction events
+     * 
+     * Per Bridge.xyz docs: Posted transactions are finalized card transactions
      */
     private function handlePostedCardTransaction(string $eventType, array $eventObject)
     {
         $transactionId = $eventObject['id'] ?? null;
         $cardAccountId = $eventObject['card_account_id'] ?? null;
+        $customerId = $eventObject['customer_id'] ?? null;
         $amount = $eventObject['amount'] ?? null;
         $status = $eventObject['status'] ?? null;
 
         Log::info('Bridge posted card transaction event', [
             'transaction_id' => $transactionId,
             'card_account_id' => $cardAccountId,
+            'customer_id' => $customerId,
             'amount' => $amount,
             'status' => $status,
+            'event_type' => $eventType,
         ]);
 
-        // Implement your posted transaction handling logic here
+        // Update card wallet balance when transaction is posted
+        if ($cardAccountId && $customerId) {
+            try {
+                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+                
+                if ($integration) {
+                    $cardWallet = CardWallet::where('bridge_integration_id', $integration->id)
+                        ->where('bridge_card_account_id', $cardAccountId)
+                        ->first();
+
+                    if ($cardWallet) {
+                        // Update balance from posted transaction
+                        if (isset($eventObject['available_balance']) || isset($eventObject['balance'])) {
+                            $newBalance = $eventObject['available_balance'] ?? $eventObject['balance'] ?? $cardWallet->balance;
+                            $cardWallet->update([
+                                'balance' => $newBalance,
+                                'last_balance_sync' => now(),
+                            ]);
+                        }
+
+                        Log::info('Bridge card wallet balance updated from posted transaction', [
+                            'card_wallet_id' => $cardWallet->id,
+                            'transaction_id' => $transactionId,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception handling posted card transaction', [
+                    'transaction_id' => $transactionId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**
@@ -1014,16 +1176,162 @@ class BridgeWebhookController extends Controller
 
     /**
      * Handle liquidation address drain events
+     * 
+     * Per Bridge.xyz docs: Liquidation address drain events track funds moved from liquidation addresses
      */
     private function handleLiquidationAddressDrain(string $eventType, array $eventObject, ?string $status)
     {
+        $drainId = $eventObject['id'] ?? null;
+        $liquidationAddressId = $eventObject['liquidation_address_id'] ?? null;
+        $customerId = $eventObject['customer_id'] ?? null;
+        $amount = $eventObject['amount'] ?? null;
+
         Log::info('Bridge liquidation address drain event', [
             'event_type' => $eventType,
+            'drain_id' => $drainId,
+            'liquidation_address_id' => $liquidationAddressId,
+            'customer_id' => $customerId,
+            'amount' => $amount,
             'status' => $status,
-            'event_object' => $eventObject,
         ]);
 
-        // Implement your liquidation address handling logic here
+        // Implement liquidation address drain handling if needed
+        // This typically involves updating balances or recording transactions
+    }
+
+    /**
+     * Handle static memo activity events
+     * 
+     * Per Bridge.xyz docs: Static memo activity tracks deposits to static memo addresses
+     */
+    private function handleStaticMemoActivity(string $eventType, array $eventObject, ?string $status)
+    {
+        $activityId = $eventObject['id'] ?? null;
+        $staticMemoId = $eventObject['static_memo_id'] ?? null;
+        $customerId = $eventObject['customer_id'] ?? null;
+        $amount = $eventObject['amount'] ?? null;
+        $type = $eventObject['type'] ?? null;
+
+        Log::info('Bridge static memo activity event', [
+            'activity_id' => $activityId,
+            'static_memo_id' => $staticMemoId,
+            'customer_id' => $customerId,
+            'amount' => $amount,
+            'type' => $type,
+            'status' => $status,
+            'event_type' => $eventType,
+        ]);
+
+        // Handle static memo deposits similar to virtual account deposits
+        if ($type === 'payment_processed' && $customerId && $amount) {
+            try {
+                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+                
+                if ($integration) {
+                    $user = $integration->integratable;
+                    if ($user && $integration->integratable_type === Organization::class) {
+                        $user = $user->user ?? null;
+                    }
+
+                    if ($user) {
+                        $depositAmount = (float) $amount;
+                        
+                        // Check if transaction already exists
+                        $existingTransaction = Transaction::where('user_id', $user->id)
+                            ->where('type', 'deposit')
+                            ->whereJsonContains('meta->static_memo_id', $staticMemoId)
+                            ->whereJsonContains('meta->activity_id', $activityId)
+                            ->first();
+
+                        if (!$existingTransaction) {
+                            $user->increment('balance', $depositAmount);
+
+                            $user->recordTransaction([
+                                'type' => 'deposit',
+                                'amount' => $depositAmount,
+                                'status' => 'completed',
+                                'payment_method' => 'bridge',
+                                'meta' => [
+                                    'static_memo_id' => $staticMemoId,
+                                    'activity_id' => $activityId,
+                                    'customer_id' => $customerId,
+                                    'bridge_event_type' => $eventType,
+                                ],
+                                'processed_at' => now(),
+                            ]);
+
+                            Log::info('Bridge static memo deposit processed', [
+                                'user_id' => $user->id,
+                                'amount' => $depositAmount,
+                                'static_memo_id' => $staticMemoId,
+                            ]);
+                        }
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception processing static memo deposit', [
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+    }
+
+    /**
+     * Handle wallet events
+     * 
+     * Per Bridge.xyz docs: Wallet events track wallet status changes
+     */
+    private function handleWalletEvent(string $eventType, array $eventObject, ?string $status, array $changes)
+    {
+        $walletId = $eventObject['id'] ?? null;
+        $customerId = $eventObject['customer_id'] ?? null;
+        $walletStatus = $eventObject['status'] ?? $status;
+        $address = $eventObject['address'] ?? null;
+        $chain = $eventObject['chain'] ?? null;
+
+        Log::info('Bridge wallet event', [
+            'wallet_id' => $walletId,
+            'customer_id' => $customerId,
+            'status' => $walletStatus,
+            'address' => $address,
+            'chain' => $chain,
+            'event_type' => $eventType,
+        ]);
+
+        // Update wallet in database if exists
+        if ($walletId && $customerId) {
+            try {
+                $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
+                
+                if ($integration) {
+                    $wallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                        ->where('bridge_wallet_id', $walletId)
+                        ->first();
+
+                    if ($wallet) {
+                        $wallet->update([
+                            'status' => $walletStatus ?? $wallet->status,
+                            'wallet_address' => $address ?? $wallet->wallet_address,
+                            'chain' => $chain ?? $wallet->chain,
+                            'wallet_metadata' => $eventObject,
+                            'last_balance_sync' => now(),
+                        ]);
+
+                        Log::info('Bridge wallet updated in database', [
+                            'wallet_id' => $wallet->id,
+                            'bridge_wallet_id' => $walletId,
+                            'status' => $walletStatus,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception handling wallet event', [
+                    'wallet_id' => $walletId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
     }
 
     /**
@@ -1159,5 +1467,463 @@ class BridgeWebhookController extends Controller
         ];
 
         return $stateMap[$state] ?? 'pending';
+    }
+
+    /**
+     * Create wallet, virtual account, and card account when customer is approved
+     * 
+     * This follows Bridge.xyz API documentation exactly for both sandbox and live environments:
+     * 
+     * SANDBOX MODE (per Bridge.xyz docs):
+     * - Wallets: NOT available in sandbox (skipped with info log)
+     * - Virtual Accounts: Created with dummy data using Ethereum payment rail, USDC currency, and auto-generated address
+     * - Card Accounts: Can be created normally (may be auto-created by Bridge)
+     * 
+     * PRODUCTION MODE:
+     * - Wallets: Created on Solana chain (default)
+     * - Virtual Accounts: Created linked to wallet (bridge_wallet) or ACH push if no wallet
+     * - Card Accounts: Created normally
+     * 
+     * @param BridgeIntegration $integration The Bridge integration
+     * @param string $customerId The Bridge customer ID
+     * @param string|null $linkId Optional KYC link ID for logging
+     * @return void
+     */
+    private function createWalletVirtualAccountAndCardAccount(BridgeIntegration $integration, string $customerId, ?string $linkId = null): void
+    {
+        $customerId = $integration->bridge_customer_id;
+        
+        if (!$customerId) {
+            Log::warning('Cannot create wallet/virtual account/card account: missing customer ID', [
+                'integration_id' => $integration->id,
+            ]);
+            return;
+        }
+
+        // 1. Create Wallet (only in production, not available in sandbox)
+        $existingWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+            ->where('is_primary', true)
+            ->first();
+
+        $walletId = null;
+        if (!$existingWallet) {
+            try {
+                // Create primary wallet (default: Solana)
+                // Note: Wallets are not available in sandbox mode per Bridge.xyz docs
+                $chain = 'solana';
+                $walletResult = $this->bridgeService->createWallet($customerId, $chain);
+
+                if ($walletResult['success'] && isset($walletResult['data'])) {
+                    $walletData = $walletResult['data'];
+                    $walletId = $walletData['id'] ?? null;
+                    
+                    // Create wallet record in database
+                    $wallet = BridgeWallet::create([
+                        'bridge_integration_id' => $integration->id,
+                        'bridge_customer_id' => $customerId,
+                        'bridge_wallet_id' => $walletId,
+                        'wallet_address' => $walletData['address'] ?? null,
+                        'chain' => $chain,
+                        'status' => 'active',
+                        'balance' => 0,
+                        'currency' => 'USD',
+                        'wallet_metadata' => $walletData,
+                        'is_primary' => true,
+                        'last_balance_sync' => now(),
+                    ]);
+
+                    // Update integration with primary wallet info (for backward compatibility)
+                    if (!$integration->bridge_wallet_id) {
+                        $integration->bridge_wallet_id = $wallet->bridge_wallet_id;
+                        $integration->wallet_address = $wallet->wallet_address;
+                        $integration->wallet_chain = $chain;
+                        $integration->save();
+                    }
+
+                    Log::info('Bridge wallet auto-created on approval', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'link_id' => $linkId,
+                        'wallet_id' => $walletId,
+                        'chain' => $chain,
+                        'address' => $wallet->wallet_address,
+                    ]);
+                } else {
+                    // In sandbox, wallet creation will fail - this is expected per Bridge.xyz docs
+                    if ($this->bridgeService->isSandbox()) {
+                        Log::info('Wallet creation skipped in sandbox mode (not available per Bridge.xyz docs)', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                        ]);
+                    } else {
+                        Log::warning('Failed to auto-create Bridge wallet on approval', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'error' => $walletResult['error'] ?? 'Unknown error',
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Exception while auto-creating Bridge wallet on approval', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+            }
+        } else {
+            $walletId = $existingWallet->bridge_wallet_id;
+            Log::info('Bridge wallet already exists, skipping creation', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'existing_wallet_id' => $walletId,
+            ]);
+        }
+
+        // 2. Create Virtual Account (works in both sandbox and production)
+        // Per Bridge.xyz docs: Virtual accounts in sandbox use dummy data
+        try {
+            // Check if virtual account already exists
+            $virtualAccountsResult = $this->bridgeService->getVirtualAccounts($customerId);
+            $hasVirtualAccount = false;
+            
+            if ($virtualAccountsResult['success'] && isset($virtualAccountsResult['data']['data'])) {
+                $hasVirtualAccount = count($virtualAccountsResult['data']['data']) > 0;
+            }
+
+            if (!$hasVirtualAccount) {
+                if ($this->bridgeService->isSandbox()) {
+                    // Sandbox mode: Create virtual account with dummy data per Bridge.xyz docs
+                    // Uses Ethereum payment rail with auto-generated address and USDC currency
+                    $source = ['currency' => 'usd'];
+                    $destination = [
+                        'payment_rail' => 'ethereum',
+                        'currency' => 'usdc',
+                        'address' => $this->bridgeService->generateEthereumAddress(), // Auto-generated dummy address
+                    ];
+                    
+                    $virtualAccountResult = $this->bridgeService->createVirtualAccount($customerId, $source, $destination);
+                } elseif ($walletId) {
+                    // Production mode with wallet: Create virtual account linked to wallet
+                    $virtualAccountResult = $this->bridgeService->createVirtualAccountForWallet(
+                        $customerId,
+                        $walletId,
+                        'USD'
+                    );
+                } else {
+                    // Production mode without wallet: Create virtual account with ACH push
+                    $source = ['currency' => 'usd'];
+                    $destination = [
+                        'payment_rail' => 'ach_push',
+                        'currency' => 'usd',
+                    ];
+                    
+                    $virtualAccountResult = $this->bridgeService->createVirtualAccount($customerId, $source, $destination);
+                }
+
+                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data'])) {
+                    Log::info('Bridge virtual account auto-created on approval', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'link_id' => $linkId,
+                        'virtual_account_id' => $virtualAccountResult['data']['id'] ?? null,
+                        'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
+                    ]);
+                } else {
+                    Log::warning('Failed to auto-create Bridge virtual account on approval', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'error' => $virtualAccountResult['error'] ?? 'Unknown error',
+                    ]);
+                }
+            } else {
+                Log::info('Bridge virtual account already exists, skipping creation', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while auto-creating Bridge virtual account on approval', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
+
+        // 3. Create Card Account (works in both sandbox and production)
+        try {
+            // Check if card account already exists in Bridge
+            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+            $existingCardAccount = null;
+            $cardAccountData = null;
+            
+            if ($cardAccountsResult['success'] && isset($cardAccountsResult['data']['data'])) {
+                $cardAccounts = $cardAccountsResult['data']['data'];
+                if (count($cardAccounts) > 0) {
+                    // Use the first card account (or primary if available)
+                    $existingCardAccount = $cardAccounts[0];
+                    $cardAccountData = $existingCardAccount;
+                }
+            }
+
+            // Check if card wallet already exists in database
+            $existingCardWallet = CardWallet::where('bridge_integration_id', $integration->id)
+                ->where('is_primary', true)
+                ->first();
+
+            if (!$existingCardAccount) {
+                // Create card account - Bridge.xyz API may auto-create, but we explicitly create it
+                // POST /customers/{customerId}/card_accounts
+                $cardAccountResult = $this->bridgeService->createCardAccount($customerId);
+
+                if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
+                    $cardAccountData = $cardAccountResult['data'];
+                } else {
+                    // Card account creation may fail if not available or already exists
+                    // This is acceptable per Bridge.xyz docs
+                    Log::info('Card account creation result (may be auto-created by Bridge)', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'success' => $cardAccountResult['success'] ?? false,
+                        'message' => $cardAccountResult['error'] ?? $cardAccountResult['message'] ?? 'Card account may be auto-created',
+                    ]);
+                    
+                    // Try to fetch card accounts again in case Bridge auto-created it
+                    $retryResult = $this->bridgeService->getCardAccounts($customerId);
+                    if ($retryResult['success'] && isset($retryResult['data']['data']) && count($retryResult['data']['data']) > 0) {
+                        $cardAccountData = $retryResult['data']['data'][0];
+                    }
+                }
+            }
+
+            // Store card account data in card_wallets table if we have data and it doesn't exist
+            if ($cardAccountData && !$existingCardWallet) {
+                $cardAccountId = $cardAccountData['id'] ?? null;
+                
+                if ($cardAccountId) {
+                    // Extract card information from Bridge response
+                    $cardNumber = $cardAccountData['card_number'] ?? $cardAccountData['last_four'] ?? null;
+                    $cardType = $cardAccountData['type'] ?? $cardAccountData['card_type'] ?? null;
+                    $cardBrand = $cardAccountData['brand'] ?? $cardAccountData['card_brand'] ?? null;
+                    $expiryMonth = $cardAccountData['expiry_month'] ?? $cardAccountData['exp_month'] ?? null;
+                    $expiryYear = $cardAccountData['expiry_year'] ?? $cardAccountData['exp_year'] ?? null;
+                    $status = $cardAccountData['status'] ?? 'active';
+                    $balance = $cardAccountData['balance'] ?? $cardAccountData['available_balance'] ?? 0;
+                    $currency = $cardAccountData['currency'] ?? 'USD';
+
+                    // Create card wallet record in database
+                    $cardWallet = CardWallet::create([
+                        'bridge_integration_id' => $integration->id,
+                        'bridge_customer_id' => $customerId,
+                        'bridge_card_account_id' => $cardAccountId,
+                        'card_number' => $cardNumber,
+                        'card_type' => $cardType,
+                        'card_brand' => $cardBrand,
+                        'expiry_month' => $expiryMonth,
+                        'expiry_year' => $expiryYear,
+                        'status' => $status,
+                        'balance' => $balance,
+                        'currency' => $currency,
+                        'card_metadata' => $cardAccountData, // Store full response for reference
+                        'is_primary' => true,
+                        'last_balance_sync' => now(),
+                    ]);
+
+                    Log::info('Bridge card account stored in card_wallets table', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'link_id' => $linkId,
+                        'card_wallet_id' => $cardWallet->id,
+                        'card_account_id' => $cardAccountId,
+                        'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
+                    ]);
+                }
+            } elseif ($existingCardWallet) {
+                // Update existing card wallet if we have new data
+                if ($cardAccountData) {
+                    $cardAccountId = $cardAccountData['id'] ?? null;
+                    
+                    // Only update if we have the same card account ID or if it's missing
+                    if (!$existingCardWallet->bridge_card_account_id || $existingCardWallet->bridge_card_account_id === $cardAccountId) {
+                        $existingCardWallet->update([
+                            'bridge_card_account_id' => $cardAccountId ?? $existingCardWallet->bridge_card_account_id,
+                            'card_number' => $cardAccountData['card_number'] ?? $cardAccountData['last_four'] ?? $existingCardWallet->card_number,
+                            'card_type' => $cardAccountData['type'] ?? $cardAccountData['card_type'] ?? $existingCardWallet->card_type,
+                            'card_brand' => $cardAccountData['brand'] ?? $cardAccountData['card_brand'] ?? $existingCardWallet->card_brand,
+                            'expiry_month' => $cardAccountData['expiry_month'] ?? $cardAccountData['exp_month'] ?? $existingCardWallet->expiry_month,
+                            'expiry_year' => $cardAccountData['expiry_year'] ?? $cardAccountData['exp_year'] ?? $existingCardWallet->expiry_year,
+                            'status' => $cardAccountData['status'] ?? $existingCardWallet->status,
+                            'balance' => $cardAccountData['balance'] ?? $cardAccountData['available_balance'] ?? $existingCardWallet->balance,
+                            'currency' => $cardAccountData['currency'] ?? $existingCardWallet->currency,
+                            'card_metadata' => $cardAccountData,
+                            'last_balance_sync' => now(),
+                        ]);
+
+                        Log::info('Bridge card account updated in card_wallets table', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'card_wallet_id' => $existingCardWallet->id,
+                            'card_account_id' => $cardAccountId,
+                        ]);
+                    }
+                }
+
+                Log::info('Bridge card account already exists in database, skipping creation', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'card_wallet_id' => $existingCardWallet->id,
+                ]);
+            }
+        } catch (\Exception $e) {
+                    Log::error('Exception while auto-creating Bridge card account on approval', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                }
+
+        // 4. Create Liquidation Addresses for crypto deposits (works in both sandbox and production)
+        // Create common liquidation addresses: USDC on Solana and Ethereum
+        try {
+            // Get primary wallet address (for production) or use virtual account address (for sandbox)
+            $destinationAddress = null;
+            $destinationPaymentRail = null;
+            
+            if ($existingWallet && $existingWallet->wallet_address) {
+                // Production: Use wallet address
+                $destinationAddress = $existingWallet->wallet_address;
+                $destinationPaymentRail = $existingWallet->chain ?? 'solana';
+            } else {
+                // Sandbox: Get virtual account address if available
+                $virtualAccountsResult = $this->bridgeService->getVirtualAccounts($customerId);
+                if ($virtualAccountsResult['success'] && isset($virtualAccountsResult['data']['data'])) {
+                    $virtualAccounts = $virtualAccountsResult['data']['data'];
+                    if (count($virtualAccounts) > 0) {
+                        $virtualAccount = $virtualAccounts[0];
+                        $destinationAddress = $virtualAccount['destination']['address'] ?? null;
+                        $destinationPaymentRail = $virtualAccount['destination']['payment_rail'] ?? 'ethereum';
+                    }
+                }
+            }
+
+            if ($destinationAddress) {
+                // Check existing liquidation addresses in database first
+                $existingAddresses = LiquidationAddress::where('bridge_integration_id', $integration->id)
+                    ->get()
+                    ->toArray();
+
+                // Determine liquidation address configurations based on environment
+                $isSandbox = $this->bridgeService->isSandbox();
+                
+                if ($isSandbox) {
+                    // Sandbox: Only create Ethereum liquidation addresses (per Bridge.xyz docs)
+                    // Sandbox uses Ethereum payment rail with USDC currency
+                    $liquidationConfigs = [
+                        ['chain' => 'ethereum', 'currency' => 'usdc', 'destination_payment_rail' => 'ethereum', 'destination_currency' => 'usdc'],
+                    ];
+                } else {
+                    // Production: Create liquidation addresses for common chains
+                    $liquidationConfigs = [
+                        ['chain' => 'solana', 'currency' => 'usdc', 'destination_payment_rail' => 'solana', 'destination_currency' => 'usdb'],
+                        ['chain' => 'ethereum', 'currency' => 'usdc', 'destination_payment_rail' => 'ethereum', 'destination_currency' => 'usdb'],
+                    ];
+                }
+
+                foreach ($liquidationConfigs as $config) {
+                    // Check if liquidation address already exists for this chain/currency
+                    $exists = LiquidationAddress::where('bridge_integration_id', $integration->id)
+                        ->where('chain', $config['chain'])
+                        ->where('currency', $config['currency'])
+                        ->exists();
+
+                    if (!$exists) {
+                        try {
+                            $liquidationData = [
+                                'chain' => $config['chain'],
+                                'currency' => $config['currency'],
+                                'destination_payment_rail' => $config['destination_payment_rail'],
+                                'destination_currency' => $config['destination_currency'],
+                                'destination_address' => $destinationAddress,
+                            ];
+
+                            $liquidationResult = $this->bridgeService->createLiquidationAddress($customerId, $liquidationData);
+
+                            if ($liquidationResult['success'] && isset($liquidationResult['data'])) {
+                                $liquidationData = $liquidationResult['data'];
+                                
+                                // Store liquidation address in database
+                                LiquidationAddress::updateOrCreate(
+                                    [
+                                        'bridge_integration_id' => $integration->id,
+                                        'chain' => $config['chain'],
+                                        'currency' => $config['currency'],
+                                    ],
+                                    [
+                                        'bridge_customer_id' => $customerId,
+                                        'bridge_liquidation_address_id' => $liquidationData['id'] ?? null,
+                                        'address' => $liquidationData['address'] ?? null,
+                                        'destination_payment_rail' => $config['destination_payment_rail'],
+                                        'destination_currency' => $config['destination_currency'],
+                                        'destination_address' => $destinationAddress,
+                                        'return_address' => $liquidationData['return_address'] ?? null,
+                                        'state' => $liquidationData['state'] ?? 'active',
+                                        'liquidation_metadata' => $liquidationData,
+                                        'last_sync_at' => now(),
+                                    ]
+                                );
+
+                                Log::info('Bridge liquidation address auto-created on approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'chain' => $config['chain'],
+                                    'currency' => $config['currency'],
+                                    'liquidation_address_id' => $liquidationData['id'] ?? null,
+                                    'liquidation_address' => $liquidationData['address'] ?? null,
+                                ]);
+                            } else {
+                                Log::warning('Failed to auto-create Bridge liquidation address on approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'chain' => $config['chain'],
+                                    'currency' => $config['currency'],
+                                    'error' => $liquidationResult['error'] ?? 'Unknown error',
+                                ]);
+                            }
+                        } catch (\Exception $e) {
+                            Log::error('Exception while auto-creating Bridge liquidation address on approval', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'chain' => $config['chain'],
+                                'currency' => $config['currency'],
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
+                    } else {
+                        Log::info('Bridge liquidation address already exists, skipping creation', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'chain' => $config['chain'],
+                            'currency' => $config['currency'],
+                        ]);
+                    }
+                }
+            } else {
+                Log::info('Skipping liquidation address creation: no destination address available', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'has_wallet' => $existingWallet !== null,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception while auto-creating Bridge liquidation addresses on approval', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
     }
 }

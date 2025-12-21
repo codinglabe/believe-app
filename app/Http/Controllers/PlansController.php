@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Plan;
+use App\Models\WalletPlan;
 use App\Models\User;
 use App\Models\Transaction;
 use Illuminate\Http\Request;
@@ -49,6 +50,14 @@ class PlansController extends Controller
                     }),
                 ];
             });
+
+        // If API request, return JSON
+        if ($request->wantsJson() || $request->expectsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+            return response()->json([
+                'success' => true,
+                'plans' => $plans,
+            ]);
+        }
 
         // Static add-ons (can be moved to database later)
         $addOns = [
@@ -227,6 +236,313 @@ class PlansController extends Controller
                 'message' => 'Failed to create checkout session. Please try again.',
             ]);
         }
+    }
+
+    /**
+     * Get wallet plans for API
+     */
+    public function getWalletPlans(Request $request)
+    {
+        $plans = WalletPlan::active()
+            ->ordered()
+            ->get()
+            ->map(function ($plan) {
+                return [
+                    'id' => $plan->id,
+                    'name' => $plan->name,
+                    'price' => (float) $plan->price,
+                    'frequency' => $plan->frequency,
+                    'description' => $plan->description,
+                    'trial_days' => (int) ($plan->trial_days ?? 0),
+                ];
+            });
+
+        return response()->json([
+            'success' => true,
+            'plans' => $plans,
+        ]);
+    }
+
+    /**
+     * Handle wallet subscription payment
+     */
+    public function subscribeWallet(Request $request, WalletPlan $walletPlan)
+    {
+        $user = $request->user();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Unauthorized. Please login first.',
+            ], 401);
+        }
+
+        try {
+            // Check if user already has an active subscription
+            if ($user->current_plan_id && $user->subscribed()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You already have an active subscription.',
+                ], 400);
+            }
+
+            // Create Stripe product and price if they don't exist
+            if (!$walletPlan->stripe_price_id) {
+                try {
+                    $stripe = Cashier::stripe();
+                    
+                    // Create product if not exists
+                    if (!$walletPlan->stripe_product_id) {
+                        $product = $stripe->products->create([
+                            'name' => $walletPlan->name . ' Wallet Plan',
+                            'description' => $walletPlan->description ?? 'Wallet Subscription Plan',
+                        ]);
+                        $walletPlan->stripe_product_id = $product->id;
+                    }
+
+                    // Create price
+                    $interval = $walletPlan->frequency === 'annually' ? 'year' : 'month';
+                    
+                    $price = $stripe->prices->create([
+                        'product' => $walletPlan->stripe_product_id,
+                        'unit_amount' => (int)($walletPlan->price * 100), // Convert to cents
+                        'currency' => 'usd',
+                        'recurring' => [
+                            'interval' => $interval,
+                        ],
+                    ]);
+                    $walletPlan->stripe_price_id = $price->id;
+                    $walletPlan->save();
+
+                    Log::info('Auto-created Stripe product and price for wallet plan', [
+                        'wallet_plan_id' => $walletPlan->id,
+                        'stripe_product_id' => $walletPlan->stripe_product_id,
+                        'stripe_price_id' => $walletPlan->stripe_price_id,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to create Stripe product/price for wallet plan', [
+                        'wallet_plan_id' => $walletPlan->id,
+                        'error' => $e->getMessage(),
+                        'trace' => $e->getTraceAsString(),
+                    ]);
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Payment configuration error. Please contact support.',
+                    ], 500);
+                }
+            }
+
+            // Check if user has already paid KYC fee
+            $kycFeeAmount = 2.00; // One-time KYC verification fee
+            $hasPaidKycFee = Transaction::where('user_id', $user->id)
+                ->where('type', 'kyc_fee')
+                ->where('status', 'completed')
+                ->exists();
+
+            // Create Stripe checkout session for wallet subscription
+            $stripe = Cashier::stripe();
+            
+            $lineItems = [
+                [
+                    'price' => $walletPlan->stripe_price_id,
+                    'quantity' => 1,
+                ]
+            ];
+
+            // Add one-time KYC fee if user hasn't paid it yet
+            if (!$hasPaidKycFee) {
+                $lineItems[] = [
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => 'KYC Verification Fee',
+                            'description' => 'One-time KYC verification fee for wallet access',
+                        ],
+                        'unit_amount' => (int)($kycFeeAmount * 100), // $2.00 in cents
+                    ],
+                    'quantity' => 1,
+                ];
+            }
+
+            $checkoutSessionData = [
+                'payment_method_types' => ['card'],
+                'mode' => 'subscription',
+                'line_items' => $lineItems,
+                'subscription_data' => [
+                    'metadata' => [
+                        'wallet_plan_id' => $walletPlan->id,
+                        'user_id' => $user->id,
+                        'subscription_type' => 'wallet_access',
+                    ],
+                ],
+                'success_url' => route('wallet.subscription.success') . '?session_id={CHECKOUT_SESSION_ID}&wallet_plan_id=' . $walletPlan->id,
+                'cancel_url' => route('wallet.subscription.cancel'),
+                'metadata' => [
+                    'user_id' => $user->id,
+                    'wallet_plan_id' => $walletPlan->id,
+                    'type' => 'wallet_subscription',
+                    'subscription_type' => 'wallet_access',
+                    'kyc_fee_included' => !$hasPaidKycFee ? 'true' : 'false',
+                    'kyc_fee_amount' => !$hasPaidKycFee ? (string)$kycFeeAmount : '0',
+                ],
+                'allow_promotion_codes' => true,
+            ];
+
+            // Add trial period if configured
+            if ($walletPlan->trial_days && $walletPlan->trial_days > 0) {
+                $checkoutSessionData['subscription_data']['trial_period_days'] = $walletPlan->trial_days;
+            }
+
+            // Set customer or customer_email
+            if ($user->stripe_id) {
+                $checkoutSessionData['customer'] = $user->stripe_id;
+            } else {
+                $checkoutSessionData['customer_email'] = $user->email;
+            }
+
+            $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
+
+            Log::info('Wallet subscription checkout created', [
+                'user_id' => $user->id,
+                'wallet_plan_id' => $walletPlan->id,
+                'session_id' => $checkoutSession->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'url' => $checkoutSession->url,
+                'session_id' => $checkoutSession->id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Wallet subscription error', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'user_id' => $user->id ?? null,
+                'wallet_plan_id' => $walletPlan->id ?? null,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create checkout session. Please try again.',
+                'error' => config('app.debug') ? $e->getMessage() : null,
+            ], 500);
+        }
+    }
+
+    /**
+     * Handle successful wallet subscription
+     */
+    public function walletSubscriptionSuccess(Request $request)
+    {
+        try {
+            $sessionId = $request->query('session_id');
+            $walletPlanId = $request->query('wallet_plan_id');
+            $user = $request->user();
+
+            if (!$sessionId || !$walletPlanId || !$user) {
+                return redirect()->route('plans.index')->withErrors([
+                    'message' => 'Invalid session. Please try subscribing again.',
+                ]);
+            }
+
+            $stripe = Cashier::stripe();
+            $session = $stripe->checkout->sessions->retrieve($sessionId);
+
+            if ($session->payment_status === 'paid' || $session->payment_status === 'no_payment_required') {
+                $walletPlan = WalletPlan::findOrFail($walletPlanId);
+                
+                // Check if KYC fee was included in the payment
+                $kycFeeAmount = 2.00;
+                $hasPaidKycFee = Transaction::where('user_id', $user->id)
+                    ->where('type', 'kyc_fee')
+                    ->where('status', 'completed')
+                    ->exists();
+
+                // Record KYC fee transaction if it was paid and not already recorded
+                $kycFeeAmount = 2.00;
+                $hasPaidKycFee = Transaction::where('user_id', $user->id)
+                    ->where('type', 'kyc_fee')
+                    ->where('status', 'completed')
+                    ->exists();
+
+                // Check if KYC fee was included in the payment (from metadata or line items)
+                $kycFeeIncluded = $session->metadata->kyc_fee_included ?? 'false';
+                if (!$hasPaidKycFee && $kycFeeIncluded === 'true') {
+                    // Record KYC fee transaction
+                    Transaction::create([
+                        'user_id' => $user->id,
+                        'type' => 'kyc_fee',
+                        'status' => 'completed',
+                        'amount' => $kycFeeAmount,
+                        'currency' => 'USD',
+                        'payment_method' => 'stripe',
+                        'transaction_id' => $session->payment_intent ?? $sessionId,
+                        'meta' => [
+                            'stripe_session_id' => $sessionId,
+                            'wallet_plan_id' => $walletPlan->id,
+                            'description' => 'One-time KYC verification fee',
+                        ],
+                        'processed_at' => now(),
+                    ]);
+                }
+                
+                // Find or create a corresponding Plan record for the user's current_plan_id
+                // This maintains compatibility with existing plan system
+                $plan = Plan::where('stripe_price_id', $walletPlan->stripe_price_id)->first();
+                
+                if (!$plan) {
+                    // Create a temporary plan record for compatibility
+                    $plan = Plan::create([
+                        'name' => $walletPlan->name,
+                        'frequency' => $walletPlan->frequency,
+                        'price' => $walletPlan->price,
+                        'stripe_price_id' => $walletPlan->stripe_price_id,
+                        'stripe_product_id' => $walletPlan->stripe_product_id,
+                        'description' => $walletPlan->description,
+                        'trial_days' => $walletPlan->trial_days,
+                        'is_active' => true,
+                    ]);
+                }
+                
+                // Update user's current plan
+                $user->current_plan_id = $plan->id;
+                $user->save();
+
+                Log::info('Wallet subscription successful', [
+                    'user_id' => $user->id,
+                    'wallet_plan_id' => $walletPlan->id,
+                    'plan_id' => $plan->id,
+                    'session_id' => $sessionId,
+                    'kyc_fee_paid' => !$hasPaidKycFee,
+                ]);
+
+                return redirect()->back()->with('success', 'Wallet subscription activated successfully! You can now access your digital wallet.');
+            }
+
+            return redirect()->back()->withErrors([
+                'message' => 'Payment was not completed. Please try again.',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Wallet subscription success handler error', [
+                'error' => $e->getMessage(),
+                'session_id' => $request->query('session_id'),
+            ]);
+
+            return redirect()->back()->withErrors([
+                'message' => 'An error occurred while processing your subscription. Please contact support.',
+            ]);
+        }
+    }
+
+    /**
+     * Handle cancelled wallet subscription
+     */
+    public function walletSubscriptionCancel(Request $request)
+    {
+        return redirect()->back()->with('info', 'Subscription cancelled. You can subscribe anytime to access your wallet.');
     }
 
     /**
