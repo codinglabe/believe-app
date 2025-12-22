@@ -127,8 +127,10 @@ class AdminKycVerificationController extends Controller
 
         DB::beginTransaction();
         try {
-            // If submission hasn't been sent to Bridge yet, send it now
-            if (!$submission->bridge_customer_id || empty($submission->bridge_response)) {
+            // If submission hasn't been sent to Bridge yet, or was rejected/needs refill, send it now
+            // Only check bridge_response if status is approved (don't store until approved)
+            $hasBeenSent = !empty($submission->bridge_response) && $submission->submission_status === 'approved';
+            if (!$submission->bridge_customer_id || !$hasBeenSent) {
                 Log::info('Sending KYC submission to Bridge upon approval', [
                     'submission_id' => $submission->id,
                     'has_customer_id' => !empty($submission->bridge_customer_id),
@@ -248,8 +250,69 @@ class AdminKycVerificationController extends Controller
 
                 // Update submission with Bridge response
                 $submission->bridge_customer_id = $integration->bridge_customer_id;
-                $submission->bridge_response = $result['data'];
-                $submission->submission_status = 'approved';
+                
+                // Check Bridge response status - if "active" or "approved", set to approved immediately
+                // Only store bridge_response when status is approved
+                $bridgeKycStatus = $result['data']['kyc_status'] ?? null;
+                $bridgeCustomerStatus = $result['data']['status'] ?? null;
+                
+                // Bridge Customer statuses: not_started, active, under_review, rejected
+                // Bridge KYC statuses: not_started, incomplete, under_review, awaiting_questionnaire, approved, rejected, paused, offboarded
+                // "active" customer status means approved, so map it to "approved"
+                $isApproved = false;
+                if ($bridgeKycStatus) {
+                    $normalizedStatus = $this->normalizeStatus($bridgeKycStatus);
+                    $isApproved = ($normalizedStatus === 'approved');
+                } elseif ($bridgeCustomerStatus) {
+                    // For customer status, "active" means approved
+                    $isApproved = (strtolower($bridgeCustomerStatus) === 'active');
+                }
+                
+                if ($isApproved) {
+                    $submission->submission_status = 'approved';
+                    $integration->kyc_status = 'approved';
+                    
+                    // NOW store bridge_response since it's approved
+                    $submission->bridge_response = $result['data'];
+                    
+                    Log::info('KYC submission approved immediately from Bridge response', [
+                        'submission_id' => $submission->id,
+                        'customer_id' => $integration->bridge_customer_id,
+                        'bridge_kyc_status' => $bridgeKycStatus,
+                        'bridge_customer_status' => $bridgeCustomerStatus,
+                    ]);
+                    
+                    // Auto-create wallet, virtual account, and card account when approved instantly
+                    if ($integration->bridge_customer_id) {
+                        try {
+                            $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                            $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                            
+                            Log::info('Wallet, virtual account, and card account created for instant KYC approval', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $integration->bridge_customer_id,
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('Failed to create wallet/virtual account/card account on instant KYC approval', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $integration->bridge_customer_id,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
+                    }
+                } else {
+                    // Bridge returned other status - move into review
+                    $submission->submission_status = 'under_review';
+                    $integration->kyc_status = $this->normalizeStatus($bridgeKycStatus) ?: 'under_review';
+                    
+                    Log::info('KYC submission sent to Bridge - status under review', [
+                        'submission_id' => $submission->id,
+                        'customer_id' => $integration->bridge_customer_id,
+                        'bridge_kyc_status' => $bridgeKycStatus,
+                        'bridge_customer_status' => $bridgeCustomerStatus,
+                    ]);
+                }
                 
                 // Store approval notes if provided
                 $submissionData = $submission->submission_data ?? [];
@@ -261,9 +324,6 @@ class AdminKycVerificationController extends Controller
                 $submission->submission_data = $submissionData;
                 
                 $submission->save();
-
-                // Update integration status
-                $integration->kyc_status = $result['data']['kyc_status'] ?? 'approved';
                 $integration->save();
 
                 Log::info('KYC submission sent to Bridge and approved', [
@@ -272,8 +332,76 @@ class AdminKycVerificationController extends Controller
                     'admin_id' => $request->user()->id,
                 ]);
             } else {
-                // Already sent to Bridge, just update status
-                $submission->submission_status = 'approved';
+                // Already sent to Bridge, check current status and update
+                $integration = $submission->bridgeIntegration;
+                if ($integration && $integration->bridge_customer_id) {
+                    // Fetch latest customer status from Bridge
+                    try {
+                        $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+                        if ($customerResult['success'] && isset($customerResult['data'])) {
+                            $latestCustomerData = $customerResult['data'];
+                            $latestKycStatus = $latestCustomerData['kyc_status'] ?? null;
+                            $latestCustomerStatus = $latestCustomerData['status'] ?? null;
+                            
+                            // Check if status is active/approved
+                            $isApproved = false;
+                            if ($latestKycStatus) {
+                                $normalizedStatus = $this->normalizeStatus($latestKycStatus);
+                                $isApproved = ($normalizedStatus === 'approved');
+                            } elseif ($latestCustomerStatus) {
+                                $isApproved = (strtolower($latestCustomerStatus) === 'active');
+                            }
+                            
+                            if ($isApproved) {
+                                $submission->submission_status = 'approved';
+                                $integration->kyc_status = 'approved';
+                                
+                                // Auto-create wallet, virtual account, and card account when approved
+                                try {
+                                    $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                                    $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                                    
+                                    Log::info('Wallet, virtual account, and card account created for KYC approval (already sent to Bridge)', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $integration->bridge_customer_id,
+                                    ]);
+                                } catch (\Exception $e) {
+                                    Log::error('Failed to create wallet/virtual account/card account on KYC approval (already sent to Bridge)', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $integration->bridge_customer_id,
+                                        'error' => $e->getMessage(),
+                                    ]);
+                                }
+                            } else {
+                                $submission->submission_status = 'approved'; // Admin approved
+                                $integration->kyc_status = $this->normalizeStatus($latestKycStatus) ?: 'approved';
+                            }
+                        } else {
+                            // Couldn't fetch status, just mark as approved by admin
+                            $submission->submission_status = 'approved';
+                            if ($integration) {
+                                $integration->kyc_status = 'approved';
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('Failed to fetch latest customer status from Bridge', [
+                            'customer_id' => $integration->bridge_customer_id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        // Fallback: mark as approved by admin
+                        $submission->submission_status = 'approved';
+                        if ($integration) {
+                            $integration->kyc_status = 'approved';
+                        }
+                    }
+                } else {
+                    // No integration or customer ID, just mark as approved by admin
+                    $submission->submission_status = 'approved';
+                    if ($submission->bridgeIntegration) {
+                        $submission->bridgeIntegration->kyc_status = 'approved';
+                        $submission->bridgeIntegration->save();
+                    }
+                }
                 
                 // Store approval notes if provided
                 $submissionData = $submission->submission_data ?? [];
@@ -285,10 +413,8 @@ class AdminKycVerificationController extends Controller
                 $submission->submission_data = $submissionData;
                 
                 $submission->save();
-
-                if ($submission->bridgeIntegration) {
-                    $submission->bridgeIntegration->kyc_status = 'approved';
-                    $submission->bridgeIntegration->save();
+                if ($integration) {
+                    $integration->save();
                 }
 
                 Log::info('KYC submission approved (already sent to Bridge)', [
@@ -426,6 +552,46 @@ class AdminKycVerificationController extends Controller
 
             return redirect()->back()->with('error', 'Failed to request KYC verification.');
         }
+    }
+
+    /**
+     * Normalize KYC/KYB status values to Bridge's documented statuses
+     */
+    private function normalizeStatus(?string $status): string
+    {
+        if (!$status) {
+            return 'not_started';
+        }
+
+        $status = strtolower(trim($status));
+
+        $validStatuses = [
+            'not_started',
+            'incomplete',
+            'under_review',
+            'awaiting_questionnaire',
+            'awaiting_ubo',
+            'approved',
+            'rejected',
+            'paused',
+            'offboarded',
+            'active', // Customer status
+        ];
+
+        if (in_array($status, $validStatuses)) {
+            // Map 'active' to 'approved' for consistency
+            return $status === 'active' ? 'approved' : $status;
+        }
+
+        $legacyStatusMap = [
+            'verified' => 'approved',
+            'pending' => 'under_review',
+            'manual_review' => 'under_review',
+            'in_review' => 'under_review',
+            'submitted' => 'under_review',
+        ];
+
+        return $legacyStatusMap[$status] ?? 'not_started';
     }
 }
 

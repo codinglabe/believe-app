@@ -71,6 +71,44 @@ class AdminKybVerificationController extends Controller
 
         $submissions = $query->paginate(15);
 
+        // Add business_name and business_email from organization to each submission
+        $submissions->getCollection()->transform(function ($submission) {
+            // First, check if submission already has business_name and business_email
+            $businessName = $submission->business_name;
+            $businessEmail = $submission->business_email;
+            
+            // If not set, try to get from submission_data JSON
+            if (!$businessName && $submission->submission_data) {
+                $businessName = $submission->submission_data['business_name'] ?? null;
+            }
+            if (!$businessEmail && $submission->submission_data) {
+                $businessEmail = $submission->submission_data['business_email'] ?? null;
+            }
+            
+            // If still not set, get from organization via bridge_integration
+            if (!$businessName || !$businessEmail) {
+                $integration = $submission->bridgeIntegration;
+                if ($integration && $integration->integratable) {
+                    $organization = $integration->integratable;
+                    if ($organization instanceof \App\Models\Organization) {
+                        // Use organization data as fallback
+                        if (!$businessName) {
+                            $businessName = $organization->name;
+                        }
+                        if (!$businessEmail) {
+                            $businessEmail = $organization->email;
+                        }
+                    }
+                }
+            }
+            
+            // Set the values on the submission
+            $submission->business_name = $businessName;
+            $submission->business_email = $businessEmail;
+            
+            return $submission;
+        });
+
         // Calculate stats
         $stats = [
             'total' => BridgeKycKybSubmission::where('type', 'kyb')->count(),
@@ -205,8 +243,10 @@ class AdminKybVerificationController extends Controller
                 return redirect()->back()->with('error', 'Please approve all required documents before approving the submission. Missing: ' . implode(', ', $missingDocs));
             }
 
-            // If submission hasn't been sent to Bridge yet, send it now
-            if (!$submission->bridge_customer_id || empty($submission->bridge_response)) {
+            // If submission hasn't been sent to Bridge yet, or was rejected/needs refill, send it now
+            // Only check bridge_response if status is approved (don't store until approved)
+            $hasBeenSent = !empty($submission->bridge_response) && $submission->submission_status === 'approved';
+            if (!$submission->bridge_customer_id || !$hasBeenSent) {
                 Log::info('Sending KYB submission to Bridge upon approval', [
                     'submission_id' => $submission->id,
                     'has_customer_id' => !empty($submission->bridge_customer_id),
@@ -833,8 +873,12 @@ class AdminKybVerificationController extends Controller
                                     $existingBridgeResponse['associated_persons'][] = $personResponseData;
                                 }
                                 
-                                $submission->bridge_response = $existingBridgeResponse;
-                                $submission->save();
+                                // Only store bridge_response if submission is approved
+                                // Don't store until approved to allow re-sending after reject/refill
+                                if ($submission->submission_status === 'approved') {
+                                    $submission->bridge_response = $existingBridgeResponse;
+                                    $submission->save();
+                                }
                                 
                                 Log::info('Associated person created successfully in Bridge', [
                                     'customer_id' => $integration->bridge_customer_id,
@@ -1107,8 +1151,12 @@ class AdminKybVerificationController extends Controller
                                         $existingBridgeResponse['associated_persons'][] = $personResponseData;
                                     }
                                     
-                                    $submission->bridge_response = $existingBridgeResponse;
-                                    $submission->save();
+                                    // Only store bridge_response if submission is approved
+                                    // Don't store until approved to allow re-sending after reject/refill
+                                    if ($submission->submission_status === 'approved') {
+                                        $submission->bridge_response = $existingBridgeResponse;
+                                        $submission->save();
+                                    }
                                     
                                     Log::info('Associated person created successfully in Bridge', [
                                         'customer_id' => $integration->bridge_customer_id,
@@ -1247,20 +1295,8 @@ class AdminKybVerificationController extends Controller
                 // Update submission with Bridge response
                 $submission->bridge_customer_id = $integration->bridge_customer_id;
                 
-                // Preserve associated persons responses if they exist
-                $existingBridgeResponse = $submission->bridge_response ?? [];
-                if (is_array($existingBridgeResponse) && isset($existingBridgeResponse['associated_persons'])) {
-                    // Merge customer response with existing associated persons responses
-                    $submission->bridge_response = array_merge(
-                        ['customer' => $result['data']],
-                        ['associated_persons' => $existingBridgeResponse['associated_persons']]
-                    );
-                } else {
-                    // No associated persons yet, just save customer response
-                    $submission->bridge_response = $result['data'];
-                }
-                
                 // Check Bridge response status - if "active" or "approved", set to approved immediately
+                // Only store bridge_response when status is approved
                 $bridgeKybStatus = $result['data']['kyb_status'] ?? null;
                 $bridgeCustomerStatus = $result['data']['status'] ?? null;
                 
@@ -1281,12 +1317,46 @@ class AdminKybVerificationController extends Controller
                     $submission->submission_status = 'approved';
                     $integration->kyb_status = 'approved';
                     
+                    // NOW store bridge_response since it's approved
+                    // Preserve associated persons responses if they exist
+                    $existingBridgeResponse = $submission->bridge_response ?? [];
+                    if (is_array($existingBridgeResponse) && isset($existingBridgeResponse['associated_persons'])) {
+                        // Merge customer response with existing associated persons responses
+                        $submission->bridge_response = array_merge(
+                            ['customer' => $result['data']],
+                            ['associated_persons' => $existingBridgeResponse['associated_persons']]
+                        );
+                    } else {
+                        // No associated persons yet, just save customer response
+                        $submission->bridge_response = $result['data'];
+                    }
+                    
                     Log::info('KYB submission approved immediately from Bridge response', [
                         'submission_id' => $submission->id,
                         'customer_id' => $integration->bridge_customer_id,
                         'bridge_kyb_status' => $bridgeKybStatus,
                         'bridge_customer_status' => $bridgeCustomerStatus,
                     ]);
+                    
+                    // Auto-create wallet, virtual account, and card account when approved instantly
+                    if ($integration->bridge_customer_id) {
+                        try {
+                            $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                            $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                            
+                            Log::info('Wallet, virtual account, and card account created for instant approval', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $integration->bridge_customer_id,
+                            ]);
+                        } catch (\Exception $e) {
+                            Log::error('Failed to create wallet/virtual account/card account on instant approval', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $integration->bridge_customer_id,
+                                'error' => $e->getMessage(),
+                                'trace' => $e->getTraceAsString(),
+                            ]);
+                        }
+                    }
                 } else {
                     // Bridge returned other status - move into review
                 $submission->submission_status = 'under_review';
@@ -1341,6 +1411,26 @@ class AdminKybVerificationController extends Controller
                                 'bridge_kyb_status' => $latestKybStatus,
                                 'bridge_customer_status' => $latestCustomerStatus,
                             ]);
+                            
+                            // Auto-create wallet, virtual account, and card account when approved instantly
+                            if ($integration->bridge_customer_id) {
+                                try {
+                                    $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                                    $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                                    
+                                    Log::info('Wallet, virtual account, and card account created for instant approval (after status fetch)', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $integration->bridge_customer_id,
+                                    ]);
+                                } catch (\Exception $e) {
+                                    Log::error('Failed to create wallet/virtual account/card account on instant approval (after status fetch)', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $integration->bridge_customer_id,
+                                        'error' => $e->getMessage(),
+                                        'trace' => $e->getTraceAsString(),
+                                    ]);
+                                }
+                            }
                         } elseif ($latestKybStatus && $latestKybStatus !== $integration->kyb_status) {
                             // Status changed but not to approved
                             $integration->kyb_status = $normalizedStatus ?: $this->normalizeStatus($latestKybStatus);
@@ -1510,6 +1600,9 @@ class AdminKybVerificationController extends Controller
         DB::beginTransaction();
         try {
             $submission->submission_status = 'rejected';
+            
+            // Clear bridge_response when rejecting so it can be sent again after refill
+            $submission->bridge_response = null;
             
             // Store rejection reason in submission_data
             $submissionData = $submission->submission_data ?? [];
@@ -1725,6 +1818,10 @@ class AdminKybVerificationController extends Controller
             
             // Update submission status to needs_more_info
             $submission->submission_status = 'needs_more_info';
+            
+            // Clear bridge_response when requesting refill so it can be sent again
+            $submission->bridge_response = null;
+            
             $submission->submission_data = $submissionData;
             $submission->save();
 
