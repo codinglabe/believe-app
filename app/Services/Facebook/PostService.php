@@ -244,7 +244,23 @@ class PostService
             return $this->handleResponse($response);
         }
 
-        throw new Exception('Invalid video format');
+        // Handle file path (string)
+        if (is_string($video) && file_exists($video)) {
+            $response = Http::timeout(120) // Videos can take longer
+                ->attach(
+                    'source',
+                    fopen($video, 'r'),
+                    basename($video)
+                )->post($url, [
+                    'title' => $message,
+                    'description' => $description ?? $message,
+                    'access_token' => $account->page_access_token,
+                ]);
+
+            return $this->handleResponse($response);
+        }
+
+        throw new Exception('Invalid video format. Expected UploadedFile or valid file path.');
     }
 
     /**

@@ -26,6 +26,12 @@ Schedule::command('drops:dispatch-due')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Process scheduled Facebook posts
+Schedule::command('facebook:process-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean up old send jobs (optional)
 Schedule::command('sendJobs:cleanup')
     ->daily()

@@ -8,8 +8,6 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/frontend/ui/switch';
 import { RadioGroup, RadioGroupItem } from '@/components/frontend/ui/radio-group';
-import { Calendar } from '@/components/frontend/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/frontend/ui/popover';
 import { cn } from '@/lib/utils';
 import { format } from 'date-fns';
 import {
@@ -174,6 +172,35 @@ export default function Create({ facebookConnected, accounts,
         if (!form.facebook_account_id) {
             toast.error('Please select a Facebook page');
             return;
+        }
+
+        // Validate schedule fields if scheduling for later
+        if (form.schedule_type === 'later') {
+            if (!form.scheduled_date) {
+                toast.error('Please select a date for scheduling');
+                return;
+            }
+            if (!form.scheduled_time) {
+                toast.error('Please select a time for scheduling');
+                return;
+            }
+
+            // Check if scheduled date/time is in the future
+            const [hours, minutes] = form.scheduled_time.split(':').map(Number);
+            const scheduledDateTime = new Date(
+                form.scheduled_date.getFullYear(),
+                form.scheduled_date.getMonth(),
+                form.scheduled_date.getDate(),
+                hours,
+                minutes,
+                0
+            );
+
+            const now = new Date();
+            if (scheduledDateTime <= now) {
+                toast.error('Scheduled date and time must be in the future');
+                return;
+            }
         }
 
         setLoading(true);
@@ -513,7 +540,7 @@ export default function Create({ facebookConnected, accounts,
                                                 </Label>
                                             </div>
 
-                                            {/* <div className="flex items-center space-x-2">
+                                            <div className="flex items-center space-x-2">
                                                 <RadioGroupItem value="later" id="later" />
                                                 <Label htmlFor="later" className="cursor-pointer">
                                                     <div className="flex items-center gap-2">
@@ -521,53 +548,54 @@ export default function Create({ facebookConnected, accounts,
                                                         <span>Schedule for Later</span>
                                                     </div>
                                                 </Label>
-                                            </div> */}
+                                            </div>
                                         </RadioGroup>
 
                                         {form.schedule_type === 'later' && (
                                             <div className="space-y-4 pt-2">
                                                 <div className="space-y-2">
-                                                    <Label>Date</Label>
-                                                    <Popover>
-                                                        <PopoverTrigger asChild>
-                                                            <Button
-                                                                variant="outline"
-                                                                className={cn(
-                                                                    "w-full justify-start text-left font-normal",
-                                                                    !form.scheduled_date && "text-muted-foreground"
-                                                                )}
-                                                            >
-                                                                <CalendarIcon className="mr-2 h-4 w-4" />
-                                                                {form.scheduled_date ? (
-                                                                    format(form.scheduled_date, "PPP")
-                                                                ) : (
-                                                                    <span>Pick a date</span>
-                                                                )}
-                                                            </Button>
-                                                        </PopoverTrigger>
-                                                        <PopoverContent className="w-auto p-0">
-                                                            <Calendar
-                                                                mode="single"
-                                                                selected={form.scheduled_date || undefined}
-                                                                onSelect={(date) =>
-                                                                    setForm(prev => ({ ...prev, scheduled_date: date }))
+                                                    <Label htmlFor="scheduled_date">Date *</Label>
+                                                    <div className="relative">
+                                                        <CalendarIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none z-10" />
+                                                        <Input
+                                                            id="scheduled_date"
+                                                            type="date"
+                                                            value={form.scheduled_date ? format(form.scheduled_date, 'yyyy-MM-dd') : ''}
+                                                            onChange={(e) => {
+                                                                const dateValue = e.target.value;
+                                                                if (dateValue) {
+                                                                    const date = new Date(dateValue + 'T00:00:00');
+                                                                    setForm(prev => ({ ...prev, scheduled_date: date }));
+                                                                } else {
+                                                                    setForm(prev => ({ ...prev, scheduled_date: null }));
                                                                 }
-                                                                initialFocus
-                                                                disabled={(date) => date < new Date()}
-                                                            />
-                                                        </PopoverContent>
-                                                    </Popover>
+                                                            }}
+                                                            min={format(new Date(), 'yyyy-MM-dd')}
+                                                            className="pl-10"
+                                                            required={form.schedule_type === 'later'}
+                                                        />
+                                                    </div>
+                                                    {form.scheduled_date && (
+                                                        <p className="text-sm text-muted-foreground">
+                                                            Selected: {format(form.scheduled_date, "EEEE, MMMM d, yyyy")}
+                                                        </p>
+                                                    )}
                                                 </div>
 
                                                 <div className="space-y-2">
-                                                    <Label>Time</Label>
+                                                    <Label htmlFor="scheduled_time">Time *</Label>
                                                     <Input
+                                                        id="scheduled_time"
                                                         type="time"
                                                         value={form.scheduled_time}
                                                         onChange={(e) =>
                                                             setForm(prev => ({ ...prev, scheduled_time: e.target.value }))
                                                         }
                                                         required={form.schedule_type === 'later'}
+                                                        min={form.scheduled_date &&
+                                                            new Date(form.scheduled_date).toDateString() === new Date().toDateString()
+                                                            ? new Date().toTimeString().slice(0, 5)
+                                                            : undefined}
                                                     />
                                                 </div>
 

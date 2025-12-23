@@ -171,8 +171,7 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
-// Public route for products (plural) - redirects to show method for marketplace viewing
-Route::get('/products/{id}', [ProductController::class, 'show'])->name('products.show.public');
+// Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
@@ -227,6 +226,14 @@ Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('vi
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
 Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
+Route::get('/organizations/{slug}/products', [OrganizationController::class, 'products'])->name('organizations.products');
+Route::get('/organizations/{slug}/jobs', [OrganizationController::class, 'jobs'])->name('organizations.jobs');
+Route::get('/organizations/{slug}/events', [OrganizationController::class, 'events'])->name('organizations.events');
+Route::get('/organizations/{slug}/social-media', [OrganizationController::class, 'socialMedia'])->name('organizations.social-media');
+Route::get('/organizations/{slug}/about', [OrganizationController::class, 'about'])->name('organizations.about');
+Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impact'])->name('organizations.impact');
+Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
+Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
 Route::post('/organizations/{id}/generate-mission', [OrganizationController::class, 'generateMission'])->name('organizations.generate-mission'); // id is ExcelData ID
 
@@ -339,7 +346,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
     Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
     Route::get('/bridge/deposit-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getDepositQrCode'])->name('bridge.deposit-qr-code');
-    
+
     // Liquidation Address Routes (for crypto deposits)
     Route::post('/bridge/liquidation-address', [App\Http\Controllers\BridgeWalletController::class, 'createLiquidationAddress'])->name('bridge.liquidation-address.create');
     Route::get('/bridge/liquidation-addresses', [App\Http\Controllers\BridgeWalletController::class, 'getLiquidationAddresses'])->name('bridge.liquidation-addresses');
@@ -664,6 +671,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     // Admin/Organization show route for managing their products (must come after public route)
     // This route will only be used when user is authenticated and has permission
     Route::get('/products/{id}/manage', [ProductController::class, 'show'])->name('products.show.manage')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
+});
+
+// Public route for products (plural) - must come AFTER resource routes to avoid conflict with /products/create
+// This route is for marketplace viewing (no auth required)
+Route::get('/products/{id}', [ProductController::class, 'show'])->name('products.show.public');
 
     // Printify Integration Routes
     Route::middleware(['auth', 'topics.selected', 'role:admin|organization'])->group(function () {
@@ -940,7 +952,6 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::delete('/{id}', [NewsletterController::class, 'destroy'])->name('destroy');
         Route::post('/{id}/send', [NewsletterController::class, 'send'])->name('send');
     });
-});
 
 
 // Public Newsletter Routes
@@ -1243,7 +1254,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     Route::post('/plans/{plan}/subscribe', [App\Http\Controllers\PlansController::class, 'subscribe'])->name('plans.subscribe');
     Route::get('/plans/success', [App\Http\Controllers\PlansController::class, 'success'])->name('plans.success');
     Route::post('/plans/cancel', [App\Http\Controllers\PlansController::class, 'cancel'])->name('plans.cancel');
-    
+
     // Wallet subscription routes
     Route::get('/wallet/plans', [App\Http\Controllers\PlansController::class, 'getWalletPlans'])->name('wallet.plans');
     Route::post('/wallet/subscribe/{walletPlan}', [App\Http\Controllers\PlansController::class, 'subscribeWallet'])->name('wallet.subscribe');

@@ -360,7 +360,7 @@ class OrganizationController extends BaseController
         $registeredOrg = Organization::where('ein', $organization->ein)
             ->where('registration_status', 'approved')
             ->first();
-        
+
         // Also check for any Organization record (even pending) to get mission if it exists
         $anyOrgRecord = Organization::where('ein', $organization->ein)->first();
 
@@ -408,8 +408,8 @@ class OrganizationController extends BaseController
                 ] : null,
             ] : null,
             'description' => $registeredOrg ? $registeredOrg->description : ($anyOrgRecord ? $anyOrgRecord->description : 'This organization is listed in our database but has not yet registered for additional features.'),
-            'mission' => $anyOrgRecord && $anyOrgRecord->mission && trim($anyOrgRecord->mission) !== '' 
-                ? $anyOrgRecord->mission 
+            'mission' => $anyOrgRecord && $anyOrgRecord->mission && trim($anyOrgRecord->mission) !== ''
+                ? $anyOrgRecord->mission
                 : 'Mission statement not available for unregistered organizations.',
             'website' => $registeredOrg && $registeredOrg->website ? $registeredOrg->website : ($anyOrgRecord && $anyOrgRecord->website ? $anyOrgRecord->website : null),
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A', // Ruling year from excel data
@@ -730,7 +730,7 @@ class OrganizationController extends BaseController
 
             if ($organization) {
                 // Check if description already exists and is not empty
-                if ($organization->description && trim($organization->description) !== '' && 
+                if ($organization->description && trim($organization->description) !== '' &&
                     $organization->description !== 'This organization is listed in our database but has not yet registered for additional features.') {
                     return response()->json([
                         'error' => 'Organization description already exists'
@@ -770,7 +770,7 @@ class OrganizationController extends BaseController
             // Include Name, City, and State to avoid confusion when multiple organizations have the same name
             $prompt = "Write a comprehensive and engaging 'About Us' description for a nonprofit organization. ";
             $prompt .= "Organization Name: \"{$orgName}\". ";
-            
+
             if ($orgCity && trim($orgCity) !== '') {
                 $prompt .= "Location: {$orgCity}";
                 if ($orgState && trim($orgState) !== '') {
@@ -838,5 +838,256 @@ class OrganizationController extends BaseController
                 'error' => 'Failed to generate mission statement. Please try again later.'
             ], 500);
         }
+    }
+
+    /**
+     * Get full organization data for tab pages
+     */
+    private function getOrganizationData(string $id): array
+    {
+        $organization = ExcelData::where('id', $id)
+            ->where('status', 'complete')
+            ->whereNotIn('id', function ($subQuery) {
+                $subQuery->select(DB::raw('MIN(id)'))
+                    ->from('excel_data')
+                    ->where('status', 'complete')
+                    ->groupBy('file_id');
+            })
+            ->firstOrFail();
+
+        $rowData = $organization->row_data;
+        $transformedData = ExcelDataTransformer::transform($rowData);
+
+        $registeredOrg = Organization::where('ein', $organization->ein)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        $anyOrgRecord = Organization::where('ein', $organization->ein)->first();
+
+        $isFav = false;
+        $notificationsEnabled = false;
+        if ($registeredOrg && Auth::check()) {
+            $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
+                ->where('organization_id', $registeredOrg->id)
+                ->first();
+
+            if ($favorite) {
+                $isFav = true;
+                $notificationsEnabled = $favorite->notifications;
+            }
+        }
+
+        if ($registeredOrg) {
+            $registeredOrg->load('user:id,slug,name,email,image,cover_img');
+        }
+
+        return [
+            'id' => $organization->id,
+            'ein' => $organization->ein,
+            'name' => $transformedData[1] ?? $rowData[1] ?? '',
+            'ico' => $transformedData[2] ?? $rowData[2] ?? '',
+            'street' => $transformedData[3] ?? $rowData[3] ?? '',
+            'city' => $transformedData[4] ?? $rowData[4] ?? '',
+            'state' => $transformedData[5] ?? $rowData[5] ?? '',
+            'zip' => $transformedData[6] ?? $rowData[6] ?? '',
+            'classification' => $transformedData[10] ?? $rowData[10] ?? '',
+            'ntee_code' => $transformedData[26] ?? $rowData[26] ?? '',
+            'created_at' => $organization->created_at,
+            'is_registered' => (bool) $registeredOrg,
+            'is_favorited' => $isFav,
+            'notifications_enabled' => $notificationsEnabled,
+            'registered_organization' => $registeredOrg ? [
+                'id' => $registeredOrg->id,
+                'name' => $registeredOrg->name,
+                'user' => $registeredOrg->user ? [
+                    'id' => $registeredOrg->user->id,
+                    'slug' => $registeredOrg->user->slug,
+                    'name' => $registeredOrg->user->name,
+                    'email' => $registeredOrg->user->email,
+                    'image' => $registeredOrg->user->image,
+                    'cover_img' => $registeredOrg->user->cover_img,
+                ] : null,
+            ] : null,
+            'description' => $registeredOrg ? $registeredOrg->description : ($anyOrgRecord ? $anyOrgRecord->description : 'This organization is listed in our database but has not yet registered for additional features.'),
+            'mission' => $anyOrgRecord && $anyOrgRecord->mission && trim($anyOrgRecord->mission) !== ''
+                ? $anyOrgRecord->mission
+                : 'Mission statement not available for unregistered organizations.',
+            'website' => $registeredOrg && $registeredOrg->website ? $registeredOrg->website : ($anyOrgRecord && $anyOrgRecord->website ? $anyOrgRecord->website : null),
+            'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A',
+            'phone' => $registeredOrg ? $registeredOrg->phone : ($anyOrgRecord ? $anyOrgRecord->phone : null),
+            'email' => $registeredOrg ? $registeredOrg->email : ($anyOrgRecord ? $anyOrgRecord->email : null),
+            'contact_name' => $registeredOrg ? $registeredOrg->contact_name : ($anyOrgRecord ? $anyOrgRecord->contact_name : null),
+            'contact_title' => $registeredOrg ? $registeredOrg->contact_title : ($anyOrgRecord ? $anyOrgRecord->contact_title : null),
+            'social_accounts' => $registeredOrg ? $registeredOrg->social_accounts : ($anyOrgRecord ? $anyOrgRecord->social_accounts : []),
+        ];
+    }
+
+    /**
+     * Show organization products tab
+     */
+    public function products(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+        $registeredOrg = Organization::where('ein', $organizationData['ein'])
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$registeredOrg) {
+            abort(404, 'Organization not found');
+        }
+
+        $products = \App\Models\Product::where('organization_id', $registeredOrg->id)
+            ->where('publish_status', 'published')
+            ->with(['categories', 'variants'])
+            ->latest()
+            ->paginate(12);
+
+        return Inertia::render('frontend/organization/tabs/Products', [
+            'organization' => $organizationData,
+            'products' => $products,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization jobs tab
+     */
+    public function jobs(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+        $registeredOrg = Organization::where('ein', $organizationData['ein'])
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$registeredOrg) {
+            abort(404, 'Organization not found');
+        }
+
+        $jobs = \App\Models\JobPost::where('organization_id', $registeredOrg->id)
+            ->with(['position', 'organization'])
+            ->latest()
+            ->paginate(12);
+
+        return Inertia::render('frontend/organization/tabs/Jobs', [
+            'organization' => $organizationData,
+            'jobs' => $jobs,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization events tab
+     */
+    public function events(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+        $registeredOrg = Organization::where('ein', $organizationData['ein'])
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$registeredOrg) {
+            abort(404, 'Organization not found');
+        }
+
+        $events = \App\Models\Event::where('organization_id', $registeredOrg->id)
+            ->with(['eventType', 'organization'])
+            ->latest()
+            ->paginate(12);
+
+        return Inertia::render('frontend/organization/tabs/Events', [
+            'organization' => $organizationData,
+            'events' => $events,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization social media tab
+     */
+    public function socialMedia(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+        $registeredOrg = Organization::where('ein', $organizationData['ein'])
+            ->where('registration_status', 'approved')
+            ->first();
+
+        if (!$registeredOrg) {
+            abort(404, 'Organization not found');
+        }
+
+        // Get Facebook posts
+        $facebookPosts = \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+            ->where('status', 'published')
+            ->with('facebookAccount')
+            ->latest()
+            ->paginate(12);
+
+        return Inertia::render('frontend/organization/tabs/SocialMedia', [
+            'organization' => $organizationData,
+            'facebookPosts' => $facebookPosts,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization about tab
+     */
+    public function about(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+
+        return Inertia::render('frontend/organization/tabs/About', [
+            'organization' => $organizationData,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization impact tab
+     */
+    public function impact(Request $request, string $id)
+    {
+        $organization = ExcelData::findOrFail($id);
+        $registeredOrg = Organization::where('ein', $organization->ein)
+            ->where('registration_status', 'approved')
+            ->first();
+
+        // Get impact data
+        $impactScore = $this->impactScoreService->calculateImpactScore($organization->ein);
+
+        return Inertia::render('frontend/organization/tabs/Impact', [
+            'organization' => [
+                'id' => $organization->id,
+                'name' => $registeredOrg ? $registeredOrg->name : '',
+                'ein' => $organization->ein,
+            ],
+            'impactScore' => $impactScore,
+        ]);
+    }
+
+    /**
+     * Show organization details tab
+     */
+    public function details(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+
+        return Inertia::render('frontend/organization/tabs/Details', [
+            'organization' => $organizationData,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
+    }
+
+    /**
+     * Show organization contact tab
+     */
+    public function contact(Request $request, string $id)
+    {
+        $organizationData = $this->getOrganizationData($id);
+
+        return Inertia::render('frontend/organization/tabs/Contact', [
+            'organization' => $organizationData,
+            'auth' => Auth::user() ? ['user' => Auth::user()] : null,
+        ]);
     }
 }
