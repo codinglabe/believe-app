@@ -466,7 +466,7 @@ class ProductController extends BaseController
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'product.create');
-        
+
         // Check if organization has active subscription
         $user = Auth::user();
         if ($user->role === 'organization' || $user->role === 'organization_pending') {

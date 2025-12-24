@@ -39,9 +39,10 @@ interface DonationModalProps {
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
 export default function DonationModal({ isOpen, onClose, organization }: DonationModalProps) {
-  const { user } = usePage().props.auth
-    const flash = usePage().props
-    const { showNotification } = useNotification()
+  const pageProps = usePage().props as any
+  const user = pageProps.auth?.user || null
+  const flash = usePage().props
+  const { showNotification } = useNotification()
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")

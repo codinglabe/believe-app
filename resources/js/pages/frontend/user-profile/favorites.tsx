@@ -2,7 +2,7 @@
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
-import { Heart, Plus, ExternalLink, Building, UserMinus } from "lucide-react"
+import { Heart, Plus, ExternalLink, Building, UserMinus, Sparkles } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
@@ -207,7 +207,45 @@ export default function ProfileFavorites() {
               </Card>
             ))}
           </div>
-        ) : (
+        ) : null}
+
+        {/* Follow More Great Organizations Section */}
+        {favoriteOrganizations.length > 0 && (
+          <Card className="border-2 border-blue-200 dark:border-blue-800 bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 hover:shadow-xl transition-all duration-300">
+            <CardContent className="p-6 sm:p-8">
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6">
+                <div className="shrink-0">
+                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center shadow-lg">
+                    <Sparkles className="h-8 w-8 text-white" />
+                  </div>
+                </div>
+                <div className="flex-1 text-center sm:text-left">
+                  <h3 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-2">
+                    Follow More Great Organizations
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-300 mb-4 sm:mb-0">
+                    Discover and follow more verified non-profit organizations making a difference.
+                    Build your network and stay connected with causes you care about.
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 w-full sm:w-auto"
+                  >
+                    <Link href={route("organizations")} className="flex items-center">
+                      <Plus className="h-5 w-5 mr-2" />
+                      Explore Organizations
+                    </Link>
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {favoriteOrganizations.length === 0 && (
           /* Empty State */
           <Card className="border-2 border-dashed border-gray-300 dark:border-gray-600">
             <CardContent className="text-center py-16">
