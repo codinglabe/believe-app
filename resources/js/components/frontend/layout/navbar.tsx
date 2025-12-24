@@ -34,6 +34,7 @@ import {
   MessageSquare,
   Building2,
   Mail,
+  Sparkles,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -97,6 +98,7 @@ export default function Navbar() {
 
   // Services dropdown items
   const servicesItems = [
+    { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
     { name: "Jobs", href: "/jobs", icon: Briefcase },

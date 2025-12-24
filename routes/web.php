@@ -173,6 +173,39 @@ Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marke
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
+/* Service Hub - Fiverr-like service marketplace */
+Route::get('/service-hub', function () {
+    return Inertia::render('frontend/service-hub/index');
+})->name('service-hub.index');
+
+Route::get('/service-hub/create', function () {
+    return Inertia::render('frontend/service-hub/create');
+})->name('service-hub.create')->middleware(['auth', 'EnsureEmailIsVerified']);
+
+Route::get('/service-hub/order', function () {
+    return Inertia::render('frontend/service-hub/order');
+})->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
+
+Route::get('/service-hub/order/success', function () {
+    return Inertia::render('frontend/service-hub/order-success');
+})->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
+
+Route::get('/service-hub/seller/{id}', function ($id) {
+    return Inertia::render('frontend/service-hub/seller-profile', ['id' => $id]);
+})->name('service-hub.seller.profile');
+
+Route::get('/service-hub/my-orders', function () {
+    return Inertia::render('frontend/service-hub/my-orders');
+})->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+
+Route::get('/service-hub/{id}/reviews', function ($id) {
+    return Inertia::render('frontend/service-hub/reviews', ['id' => $id]);
+})->name('service-hub.reviews');
+
+Route::get('/service-hub/{id}', function ($id) {
+    return Inertia::render('frontend/service-hub/show', ['id' => $id]);
+})->name('service-hub.show');
+
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');

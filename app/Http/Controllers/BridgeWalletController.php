@@ -924,20 +924,45 @@ class BridgeWalletController extends Controller
             // Check TOS status from Bridge API via customer endorsements
             $tosStatusFromBridge = $integration->tos_status ?? 'pending';
             $tosAcceptedFromBridge = false;
+            
+            // If tos_status is empty, check metadata for signed_agreement_id as fallback
+            if (empty($tosStatusFromBridge) || $tosStatusFromBridge === '') {
+                $metadata = $integration->bridge_metadata ?? [];
+                if (is_string($metadata)) {
+                    $metadata = json_decode($metadata, true) ?? [];
+                }
+                if (!empty($metadata['signed_agreement_id'])) {
+                    // If we have a signed_agreement_id, TOS must be accepted
+                    $tosStatusFromBridge = 'accepted';
+                    $tosAcceptedFromBridge = true;
+                    // Update the integration to fix empty status
+                    $integration->tos_status = 'accepted';
+                    $integration->save();
+                }
+            }
 
             try {
                 $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
                 if ($customerResult['success'] && isset($customerResult['data'])) {
                     $customer = $customerResult['data'];
                     $endorsements = $customer['endorsements'] ?? [];
+                    
+                    // Also check has_accepted_terms_of_service from Bridge
+                    $hasAcceptedTos = $customer['has_accepted_terms_of_service'] ?? false;
+                    if ($hasAcceptedTos) {
+                        $tosAcceptedFromBridge = true;
+                        $tosStatusFromBridge = 'accepted';
+                    }
 
                     // Check if terms_of_service is in "complete" requirements
-                    foreach ($endorsements as $endorsement) {
-                        $complete = $endorsement['requirements']['complete'] ?? [];
-                        if (in_array('terms_of_service_v1', $complete) || in_array('terms_of_service_v2', $complete)) {
-                            $tosAcceptedFromBridge = true;
-                            $tosStatusFromBridge = 'accepted';
-                            break;
+                    if (!$tosAcceptedFromBridge) {
+                        foreach ($endorsements as $endorsement) {
+                            $complete = $endorsement['requirements']['complete'] ?? [];
+                            if (in_array('terms_of_service_v1', $complete) || in_array('terms_of_service_v2', $complete)) {
+                                $tosAcceptedFromBridge = true;
+                                $tosStatusFromBridge = 'accepted';
+                                break;
+                            }
                         }
                     }
 
@@ -952,8 +977,8 @@ class BridgeWalletController extends Controller
                         }
                     }
 
-                    // Update local database if Bridge status differs
-                    if ($tosAcceptedFromBridge && $integration->tos_status !== 'accepted') {
+                    // Update local database if Bridge status differs or is empty
+                    if ($tosAcceptedFromBridge && ($integration->tos_status !== 'accepted' && $integration->tos_status !== 'approved')) {
                         $integration->tos_status = 'accepted';
                         $integration->save();
                     }
@@ -1124,6 +1149,7 @@ class BridgeWalletController extends Controller
             // Get requested fields from submission if admin requested re-fill
             $requestedFields = null;
             $refillMessage = null;
+            $controlPersonData = null;
             if ($isOrgUser && isset($submission)) {
                 $submissionData = $submission->submission_data ?? [];
                 if (is_string($submissionData)) {
@@ -1132,6 +1158,27 @@ class BridgeWalletController extends Controller
                 if (isset($submissionData['requested_fields']) && is_array($submissionData['requested_fields']) && !empty($submissionData['requested_fields'])) {
                     $requestedFields = $submissionData['requested_fields'];
                     $refillMessage = $submissionData['refill_message'] ?? null;
+                }
+                
+                // Get control person data for pre-filling form
+                if ($submission->controlPerson) {
+                    $controlPerson = $submission->controlPerson;
+                    $controlPersonData = [
+                        'id_type' => $controlPerson->id_type,
+                        'id_number' => $controlPerson->id_number,
+                        'first_name' => $controlPerson->first_name,
+                        'last_name' => $controlPerson->last_name,
+                        'email' => $controlPerson->email,
+                        'birth_date' => $controlPerson->birth_date?->format('Y-m-d'),
+                        'ssn' => $controlPerson->ssn,
+                        'title' => $controlPerson->title,
+                        'ownership_percentage' => $controlPerson->ownership_percentage,
+                        'street_line_1' => $controlPerson->street_line_1,
+                        'city' => $controlPerson->city,
+                        'state' => $controlPerson->state,
+                        'postal_code' => $controlPerson->postal_code,
+                        'country' => $controlPerson->country,
+                    ];
                 }
             }
 
@@ -1225,6 +1272,7 @@ class BridgeWalletController extends Controller
                 'document_statuses' => $isOrgUser && isset($submission) ? $this->getDocumentStatuses($submission) : null, // Document approval/rejection statuses from VerificationDocument table
                 'requested_fields' => $requestedFields, // Fields that admin requested to be re-filled
                 'refill_message' => $refillMessage, // Message from admin about what needs to be re-filled
+                'control_person_data' => $controlPersonData, // Control person data for pre-filling form (ID Type, ID Number, etc.)
             ]);
         } catch (\Exception $e) {
             Log::error('Bridge status check error', ['error' => $e->getMessage()]);
@@ -1670,12 +1718,112 @@ class BridgeWalletController extends Controller
                         }
                     }
                 } else {
-                    // Customer ID from request doesn't exist in Bridge - ignore it
-                    Log::warning('TOS callback: Customer ID from request does not exist in Bridge, ignoring it', [
+                    // Customer ID from request doesn't exist in Bridge - try to find correct customer
+                    Log::warning('TOS callback: Customer ID from request does not exist in Bridge, searching all customers', [
                         'customer_id' => $customerId,
                         'signed_agreement_id' => $signedAgreementId,
                     ]);
-                    $customerId = null; // Clear it so it's not used later
+                    
+                    // Try to find the correct customer by searching all customers and matching by email
+                    // This handles cases where the customer_id in the request is wrong/old
+                    try {
+                        $allCustomersResult = $this->bridgeService->getCustomers();
+                        
+                        if ($allCustomersResult['success'] && isset($allCustomersResult['data'])) {
+                            $allCustomers = $allCustomersResult['data'];
+                            
+                            // Handle both array and object responses
+                            if (isset($allCustomers['data']) && is_array($allCustomers['data'])) {
+                                $allCustomers = $allCustomers['data'];
+                            } elseif (!is_array($allCustomers)) {
+                                $allCustomers = [$allCustomers];
+                            }
+                            
+                            // Try to find customer by matching with existing integrations
+                            foreach ($allCustomers as $bridgeCustomer) {
+                                $bridgeCustomerId = $bridgeCustomer['id'] ?? null;
+                                $bridgeCustomerEmail = $bridgeCustomer['email'] ?? null;
+                                
+                                if (!$bridgeCustomerId) {
+                                    continue;
+                                }
+                                
+                                // Check if this customer_id matches any existing integration
+                                $matchingIntegration = BridgeIntegration::where('bridge_customer_id', $bridgeCustomerId)->first();
+                                
+                                if ($matchingIntegration) {
+                                    // Found integration with this customer_id
+                                    $integration = $matchingIntegration;
+                                    $customerId = $bridgeCustomerId;
+                                    Log::info('TOS callback: Found integration by searching all Bridge customers', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'original_customer_id' => $customerId,
+                                    ]);
+                                    break;
+                                }
+                                
+                                // If no direct match, try matching by email
+                                if ($bridgeCustomerEmail && !$integration) {
+                                    // Try organization first
+                                    $organization = \App\Models\Organization::where('email', $bridgeCustomerEmail)->first();
+                                    if ($organization) {
+                                        $potentialIntegration = BridgeIntegration::where('integratable_id', $organization->id)
+                                            ->where('integratable_type', Organization::class)
+                                            ->first();
+                                        
+                                        if ($potentialIntegration) {
+                                            // Found integration by email - update customer_id
+                                            $integration = $potentialIntegration;
+                                            $integration->bridge_customer_id = $bridgeCustomerId;
+                                            $integration->save();
+                                            $customerId = $bridgeCustomerId;
+                                            Log::info('TOS callback: Found integration by email, updated customer_id', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'email' => $bridgeCustomerEmail,
+                                            ]);
+                                            break;
+                                        }
+                                    }
+                                    
+                                    // Try user if not found
+                                    if (!$integration) {
+                                        $userByEmail = \App\Models\User::where('email', $bridgeCustomerEmail)->first();
+                                        if ($userByEmail) {
+                                            $potentialIntegration = BridgeIntegration::where('integratable_id', $userByEmail->id)
+                                                ->where('integratable_type', \App\Models\User::class)
+                                                ->first();
+                                            
+                                            if ($potentialIntegration) {
+                                                // Found integration by email - update customer_id
+                                                $integration = $potentialIntegration;
+                                                $integration->bridge_customer_id = $bridgeCustomerId;
+                                                $integration->save();
+                                                $customerId = $bridgeCustomerId;
+                                                Log::info('TOS callback: Found integration by email, updated customer_id', [
+                                                    'integration_id' => $integration->id,
+                                                    'customer_id' => $customerId,
+                                                    'email' => $bridgeCustomerEmail,
+                                                ]);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (\Exception $e) {
+                        Log::warning('TOS callback: Failed to search all customers when customer_id not found', [
+                            'error' => $e->getMessage(),
+                            'original_customer_id' => $customerId,
+                        ]);
+                    }
+                    
+                    // If still not found, clear customer_id
+                    if (!$integration) {
+                        $customerId = null;
+                    }
                 }
             }
 
@@ -2184,6 +2332,16 @@ class BridgeWalletController extends Controller
                 $tosStatus = $tosAcceptedFromBridge ? 'accepted' : $tosStatusFromBridge;
             }
 
+            // Ensure tos_status is set - if we have a signed_agreement_id, TOS must be accepted
+            if ($signedAgreementId && empty($tosStatus)) {
+                $tosStatus = 'accepted';
+            }
+            
+            // Final fallback: if tosStatus is still empty or invalid, default to 'accepted' since we have signed_agreement_id
+            if (empty($tosStatus) || !in_array($tosStatus, ['accepted', 'approved', 'pending'])) {
+                $tosStatus = 'accepted'; // If we have signed_agreement_id, TOS is definitely accepted
+            }
+
             // Update local database
             // Store signed_agreement_id in bridge_metadata (JSON column), not as a direct column
             $metadata = $integration->bridge_metadata ?? [];
@@ -2202,10 +2360,20 @@ class BridgeWalletController extends Controller
             
             $integration->bridge_metadata = $metadata;
             
-            // Use update() to ensure proper JSON encoding
+            // Use update() to ensure proper JSON encoding - ALWAYS set tos_status to 'accepted' if we have signed_agreement_id
+            $finalTosStatus = ($signedAgreementId && $tosStatus !== 'accepted') ? 'accepted' : $tosStatus;
+            
             $integration->update([
-                'tos_status' => $tosStatus,
+                'tos_status' => $finalTosStatus,
                 'bridge_metadata' => $metadata,
+            ]);
+            
+            Log::info('TOS callback: Setting tos_status', [
+                'integration_id' => $integration->id,
+                'signed_agreement_id' => $signedAgreementId,
+                'tos_status_before' => $integration->getOriginal('tos_status'),
+                'tos_status_after' => $finalTosStatus,
+                'has_accepted_tos' => $hasAcceptedTos ?? false,
             ]);
 
             // Refresh to ensure we have the latest data
@@ -2230,6 +2398,7 @@ class BridgeWalletController extends Controller
                 return response()->json([
                     'success' => true,
                     'signed_agreement_id' => $signedAgreementId,
+                    'tos_status' => $integration->tos_status ?? 'accepted', // Return current TOS status
                 ]);
             }
 
@@ -3593,16 +3762,16 @@ class BridgeWalletController extends Controller
 
                     // Build identifying information array
                     $identifyingInfo = [
-                        [
-                            'type' => 'ssn',
-                            'issuing_country' => 'usa',
-                            'number' => $validated['ssn'],
-                        ],
-                        [
-                            'type' => $validated['id_type'],
-                            'issuing_country' => 'usa',
-                            'number' => $validated['id_number'],
-                            'image_front' => $idFrontBase64,
+                            [
+                                'type' => 'ssn',
+                                'issuing_country' => 'usa',
+                                'number' => $validated['ssn'],
+                            ],
+                            [
+                                'type' => $validated['id_type'],
+                                'issuing_country' => 'usa',
+                                'number' => $validated['id_number'],
+                                'image_front' => $idFrontBase64,
                         ],
                     ];
                     
@@ -4388,7 +4557,7 @@ class BridgeWalletController extends Controller
                         );
 
                         if ($transferResult['success'] && isset($transferResult['data'])) {
-                            $bridgeTransferId = $transferResult['data']['id'] ?? $transferResult['data']['transfer_id'] ?? null;
+                        $bridgeTransferId = $transferResult['data']['id'] ?? $transferResult['data']['transfer_id'] ?? null;
                             
                             Log::info('Bridge transfer created for send money', [
                                 'transfer_id' => $bridgeTransferId,

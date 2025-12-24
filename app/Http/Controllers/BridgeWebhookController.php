@@ -348,6 +348,55 @@ class BridgeWebhookController extends Controller
             'event_object_changes' => $changes,
         ]);
 
+        // Handle customer deletion
+        // Bridge.xyz webhook format for deletion:
+        // - event_type: "customer.deleted" or "customer.updated.status_transitioned" with status "deleted"
+        // - event_object_status: "deleted" or "offboarded"
+        // - event_object may contain: deleted_at, status: "deleted" or "offboarded"
+        $isDeleted = false;
+        
+        // Check event type (e.g., "customer.deleted", "customer.updated.status_transitioned")
+        if (str_contains(strtolower($eventType ?? ''), 'deleted')) {
+            $isDeleted = true;
+        }
+        
+        // Check event_object_status
+        if (!$isDeleted && $status) {
+            $statusLower = strtolower($status);
+            if (in_array($statusLower, ['deleted', 'offboarded'])) {
+                $isDeleted = true;
+            }
+        }
+        
+        // Check event_object fields
+        if (!$isDeleted) {
+            // Check for deleted_at timestamp
+            if (isset($eventObject['deleted_at']) && !empty($eventObject['deleted_at'])) {
+                $isDeleted = true;
+            }
+            
+            // Check status field in event_object
+            if (isset($eventObject['status'])) {
+                $objectStatus = strtolower($eventObject['status']);
+                if (in_array($objectStatus, ['deleted', 'offboarded'])) {
+                    $isDeleted = true;
+                }
+            }
+            
+            // Check kyb_status or kyc_status for "offboarded"
+            if (isset($eventObject['kyb_status']) && strtolower($eventObject['kyb_status']) === 'offboarded') {
+                $isDeleted = true;
+            }
+            if (isset($eventObject['kyc_status']) && strtolower($eventObject['kyc_status']) === 'offboarded') {
+                $isDeleted = true;
+            }
+        }
+
+        if ($isDeleted) {
+            $this->handleCustomerDeletion($integration, $customerId);
+            return;
+        }
+
         DB::transaction(function () use ($integration, $eventType, $eventObject, $status, $changes, $customerId) {
             $statusUpdated = false;
 
@@ -470,12 +519,14 @@ class BridgeWebhookController extends Controller
             $integration->save();
 
             // Auto-create wallet when account is approved
+            // For businesses, BOTH kyc_status AND kyb_status must be approved
+            // For individuals, only kyc_status needs to be approved
             $isApproved = false;
             $isBusiness = $integration->integratable_type === Organization::class;
             
             if ($isBusiness) {
-                // For businesses, check if KYB is approved
-                $isApproved = $integration->kyb_status === 'approved';
+                // For businesses, BOTH KYB and KYC must be approved
+                $isApproved = ($integration->kyb_status === 'approved' && $integration->kyc_status === 'approved');
             } else {
                 // For individuals, check if KYC is approved
                 $isApproved = $integration->kyc_status === 'approved';
@@ -682,15 +733,28 @@ class BridgeWebhookController extends Controller
             $integration->save();
 
             // Auto-create wallet when account is approved
+            // For businesses, BOTH kyc_status AND kyb_status must be approved
+            // For individuals, only kyc_status needs to be approved
             $isApproved = false;
             $isBusiness = $integration->integratable_type === Organization::class;
             
             if ($isBusiness) {
-                // For businesses, check if KYB is approved
-                $isApproved = $integration->kyb_status === 'approved';
+                // For businesses, BOTH KYB and KYC must be approved
+                $isApproved = ($integration->kyb_status === 'approved' && $integration->kyc_status === 'approved');
             } else {
                 // For individuals, check if KYC is approved
                 $isApproved = $integration->kyc_status === 'approved';
+            }
+
+            // For businesses, BOTH KYB and KYC must be approved before creating resources
+            if ($isBusiness && $integration->kyb_status !== 'approved') {
+                $isApproved = false;
+                Log::info('Business account KYC approved but KYB not approved yet - waiting for both', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'kyc_status' => $integration->kyc_status,
+                    'kyb_status' => $integration->kyb_status,
+                ]);
             }
 
             if ($isApproved && $integration->bridge_customer_id) {
@@ -1489,7 +1553,7 @@ class BridgeWebhookController extends Controller
      * @param string|null $linkId Optional KYC link ID for logging
      * @return void
      */
-    private function createWalletVirtualAccountAndCardAccount(BridgeIntegration $integration, string $customerId, ?string $linkId = null): void
+    public function createWalletVirtualAccountAndCardAccount(BridgeIntegration $integration, string $customerId, ?string $linkId = null): void
     {
         $customerId = $integration->bridge_customer_id;
         
@@ -1498,6 +1562,33 @@ class BridgeWebhookController extends Controller
                 'integration_id' => $integration->id,
             ]);
             return;
+        }
+        
+        // For business accounts, BOTH kyc_status AND kyb_status must be approved
+        // For individual accounts, only kyc_status needs to be approved
+        $isBusiness = $integration->integratable_type === \App\Models\Organization::class;
+        
+        if ($isBusiness) {
+            // Business account: check BOTH statuses
+            if ($integration->kyb_status !== 'approved' || $integration->kyc_status !== 'approved') {
+                Log::info('Business account not fully approved yet - waiting for both KYB and KYC', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'kyb_status' => $integration->kyb_status,
+                    'kyc_status' => $integration->kyc_status,
+                ]);
+                return;
+            }
+        } else {
+            // Individual account: check KYC only
+            if ($integration->kyc_status !== 'approved') {
+                Log::info('Individual account KYC not approved yet', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'kyc_status' => $integration->kyc_status,
+                ]);
+                return;
+            }
         }
 
         // 1. Create Wallet (only in production, not available in sandbox)
@@ -1587,8 +1678,10 @@ class BridgeWebhookController extends Controller
             $virtualAccountsResult = $this->bridgeService->getVirtualAccounts($customerId);
             $hasVirtualAccount = false;
             
+            $existingVirtualAccounts = [];
             if ($virtualAccountsResult['success'] && isset($virtualAccountsResult['data']['data'])) {
-                $hasVirtualAccount = count($virtualAccountsResult['data']['data']) > 0;
+                $existingVirtualAccounts = $virtualAccountsResult['data']['data'];
+                $hasVirtualAccount = count($existingVirtualAccounts) > 0;
             }
 
             if (!$hasVirtualAccount) {
@@ -1622,11 +1715,70 @@ class BridgeWebhookController extends Controller
                 }
 
                 if ($virtualAccountResult['success'] && isset($virtualAccountResult['data'])) {
+                    $virtualAccountData = $virtualAccountResult['data'];
+                    $virtualAccountId = $virtualAccountData['id'] ?? null;
+                    
+                    // Store virtual account in bridge_wallets table
+                    if ($virtualAccountId) {
+                        // Check if virtual account already exists in database
+                        $existingVirtualAccountWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                            ->where('virtual_account_id', $virtualAccountId)
+                            ->first();
+                        
+                        if (!$existingVirtualAccountWallet) {
+                            // Extract address from virtual account data
+                            $virtualAccountAddress = $virtualAccountData['destination']['address'] ?? null;
+                            $chain = $virtualAccountData['destination']['payment_rail'] ?? ($this->bridgeService->isSandbox() ? 'ethereum' : 'solana');
+                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdb');
+                            
+                            // Create or update bridge_wallets record for virtual account
+                            BridgeWallet::updateOrCreate(
+                                [
+                                    'bridge_integration_id' => $integration->id,
+                                    'virtual_account_id' => $virtualAccountId,
+                                ],
+                                [
+                                    'bridge_customer_id' => $customerId,
+                                    'wallet_address' => $virtualAccountAddress,
+                                    'chain' => $chain,
+                                    'currency' => $currency,
+                                    'status' => 'active',
+                                    'balance' => 0,
+                                    'virtual_account_details' => $virtualAccountData,
+                                    'is_primary' => !$existingWallet, // Set as primary if no wallet exists
+                                    'last_balance_sync' => now(),
+                                ]
+                            );
+                            
+                            Log::info('Bridge virtual account stored in bridge_wallets table', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'virtual_account_id' => $virtualAccountId,
+                                'address' => $virtualAccountAddress,
+                                'chain' => $chain,
+                                'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
+                            ]);
+                        } else {
+                            // Update existing virtual account record
+                            $existingVirtualAccountWallet->update([
+                                'virtual_account_details' => $virtualAccountData,
+                                'wallet_address' => $virtualAccountData['destination']['address'] ?? $existingVirtualAccountWallet->wallet_address,
+                                'last_balance_sync' => now(),
+                            ]);
+                            
+                            Log::info('Bridge virtual account updated in bridge_wallets table', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'virtual_account_id' => $virtualAccountId,
+                            ]);
+                        }
+                    }
+                    
                     Log::info('Bridge virtual account auto-created on approval', [
                         'integration_id' => $integration->id,
                         'customer_id' => $customerId,
                         'link_id' => $linkId,
-                        'virtual_account_id' => $virtualAccountResult['data']['id'] ?? null,
+                        'virtual_account_id' => $virtualAccountId,
                         'environment' => $this->bridgeService->isSandbox() ? 'sandbox' : 'production',
                     ]);
                 } else {
@@ -1637,6 +1789,50 @@ class BridgeWebhookController extends Controller
                     ]);
                 }
             } else {
+                // Virtual account already exists in Bridge - store it in database if not already stored
+                if (count($existingVirtualAccounts) > 0) {
+                    $virtualAccountData = $existingVirtualAccounts[0];
+                    $virtualAccountId = $virtualAccountData['id'] ?? null;
+                    
+                    if ($virtualAccountId) {
+                        $existingVirtualAccountWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
+                            ->where('virtual_account_id', $virtualAccountId)
+                            ->first();
+                        
+                        if (!$existingVirtualAccountWallet) {
+                            // Store existing virtual account in bridge_wallets table
+                            $virtualAccountAddress = $virtualAccountData['destination']['address'] ?? null;
+                            $chain = $virtualAccountData['destination']['payment_rail'] ?? ($this->bridgeService->isSandbox() ? 'ethereum' : 'solana');
+                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdb');
+                            
+                            BridgeWallet::updateOrCreate(
+                                [
+                                    'bridge_integration_id' => $integration->id,
+                                    'virtual_account_id' => $virtualAccountId,
+                                ],
+                                [
+                                    'bridge_customer_id' => $customerId,
+                                    'wallet_address' => $virtualAccountAddress,
+                                    'chain' => $chain,
+                                    'currency' => $currency,
+                                    'status' => 'active',
+                                    'balance' => 0,
+                                    'virtual_account_details' => $virtualAccountData,
+                                    'is_primary' => !$existingWallet, // Set as primary if no wallet exists
+                                    'last_balance_sync' => now(),
+                                ]
+                            );
+                            
+                            Log::info('Bridge existing virtual account stored in bridge_wallets table', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'virtual_account_id' => $virtualAccountId,
+                                'address' => $virtualAccountAddress,
+                            ]);
+                        }
+                    }
+                }
+                
                 Log::info('Bridge virtual account already exists, skipping creation', [
                     'integration_id' => $integration->id,
                     'customer_id' => $customerId,
@@ -1675,7 +1871,17 @@ class BridgeWebhookController extends Controller
             if (!$existingCardAccount) {
                 // Create card account - Bridge.xyz API may auto-create, but we explicitly create it
                 // POST /customers/{customerId}/card_accounts
-                $cardAccountResult = $this->bridgeService->createCardAccount($customerId);
+                // Determine chain and currency based on environment
+                $isSandbox = $this->bridgeService->isSandbox();
+                $chain = $isSandbox ? 'ethereum' : 'solana';
+                $currency = $isSandbox ? 'usdc' : 'usdb';
+                
+                $cardData = [
+                    'chain' => $chain,
+                    'currency' => $currency,
+                ];
+                
+                $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
 
                 if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
                     $cardAccountData = $cardAccountResult['data'];
@@ -1925,5 +2131,143 @@ class BridgeWebhookController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
         }
+    }
+
+    /**
+     * Handle customer deletion - clean up all Bridge-related data
+     * 
+     * Per Bridge.xyz API documentation, customer deletion webhooks can come in different formats:
+     * - event_type: "customer.deleted" or "customer.updated.status_transitioned"
+     * - event_object_status: "deleted" or "offboarded"
+     * - event_object may contain: deleted_at (timestamp), status: "deleted"/"offboarded"
+     * - kyb_status or kyc_status may be "offboarded"
+     * 
+     * When a Bridge customer is deleted, we clean up:
+     * 1. Delete all bridge_wallets (wallets and virtual accounts)
+     * 2. Delete all card_wallets
+     * 3. Delete all liquidation_addresses
+     * 4. Mark bridge_kyc_kyb_submissions as "offboarded" (keep for audit trail)
+     * 5. Clear all Bridge-specific fields from bridge_integrations (keep record for re-initialization)
+     * 
+     * Note: Transactions are kept as they're tied to users/organizations, not Bridge customers directly.
+     * Control persons, associated persons, and verification documents are kept for audit trail.
+     * 
+     * @param BridgeIntegration $integration The Bridge integration
+     * @param string $customerId The Bridge customer ID that was deleted
+     * @return void
+     */
+    private function handleCustomerDeletion(BridgeIntegration $integration, string $customerId): void
+    {
+        Log::info('Processing Bridge customer deletion', [
+            'integration_id' => $integration->id,
+            'customer_id' => $customerId,
+        ]);
+
+        DB::transaction(function () use ($integration, $customerId) {
+            try {
+                // 1. Delete all bridge_wallets (wallets and virtual accounts)
+                $deletedWallets = BridgeWallet::where('bridge_integration_id', $integration->id)->delete();
+                Log::info('Deleted bridge wallets for deleted customer', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'deleted_count' => $deletedWallets,
+                ]);
+
+                // 2. Delete all card_wallets
+                $deletedCardWallets = CardWallet::where('bridge_integration_id', $integration->id)->delete();
+                Log::info('Deleted card wallets for deleted customer', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'deleted_count' => $deletedCardWallets,
+                ]);
+
+                // 3. Delete all liquidation_addresses
+                $deletedLiquidationAddresses = LiquidationAddress::where('bridge_integration_id', $integration->id)->delete();
+                Log::info('Deleted liquidation addresses for deleted customer', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'deleted_count' => $deletedLiquidationAddresses,
+                ]);
+
+                // 4. Mark bridge_kyc_kyb_submissions as offboarded (keep for audit trail)
+                $submissions = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                    ->where('bridge_customer_id', $customerId)
+                    ->get();
+                
+                foreach ($submissions as $submission) {
+                    // Update submission status to indicate customer was deleted
+                    $submissionData = $submission->submission_data ?? [];
+                    if (is_string($submissionData)) {
+                        $submissionData = json_decode($submissionData, true) ?? [];
+                    }
+                    $submissionData['customer_deleted_at'] = now()->toIso8601String();
+                    $submissionData['customer_deleted'] = true;
+                    $submission->submission_data = $submissionData;
+                    $submission->submission_status = 'offboarded'; // Mark as offboarded per Bridge.xyz status
+                    $submission->bridge_customer_id = null; // Clear customer ID reference
+                    $submission->save();
+                }
+
+                Log::info('Marked KYB/KYC submissions as offboarded for deleted customer', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'submission_count' => $submissions->count(),
+                ]);
+                
+                // Note: control_persons and associated_persons are kept (cascade delete would remove them if we deleted submissions)
+                // verification_documents are also kept for audit trail
+
+                // 5. Clear bridge_customer_id and all related fields from integration
+                // Keep the integration record but clear Bridge-specific data
+                // This allows the user/organization to re-initialize if needed
+                $integration->bridge_customer_id = null;
+                $integration->bridge_wallet_id = null;
+                $integration->wallet_address = null;
+                $integration->wallet_chain = null;
+                $integration->kyc_status = 'not_started';
+                $integration->kyb_status = 'not_started';
+                $integration->tos_status = null;
+                $integration->tos_accepted = false;
+                $integration->tos_link_url = null;
+                $integration->kyc_link_url = null;
+                $integration->kyb_link_url = null;
+                $integration->kyc_link_id = null; // Clear KYC link ID if exists
+                
+                // Update metadata to record deletion
+                $metadata = $integration->bridge_metadata ?? [];
+                if (is_string($metadata)) {
+                    $metadata = json_decode($metadata, true) ?? [];
+                }
+                $metadata['customer_deleted'] = true;
+                $metadata['customer_deleted_at'] = now()->toIso8601String();
+                $metadata['deleted_customer_id'] = $customerId;
+                $integration->bridge_metadata = $metadata;
+                
+                $integration->save();
+
+                Log::info('Cleared Bridge customer data from integration', [
+                    'integration_id' => $integration->id,
+                    'deleted_customer_id' => $customerId,
+                ]);
+
+                Log::info('Bridge customer deletion processed successfully', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'deleted_wallets' => $deletedWallets,
+                    'deleted_card_wallets' => $deletedCardWallets,
+                    'deleted_liquidation_addresses' => $deletedLiquidationAddresses,
+                    'updated_submissions' => $submissions->count(),
+                ]);
+
+            } catch (\Exception $e) {
+                Log::error('Exception while processing Bridge customer deletion', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
+                throw $e; // Re-throw to rollback transaction
+            }
+        });
     }
 }

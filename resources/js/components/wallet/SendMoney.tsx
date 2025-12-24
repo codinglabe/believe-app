@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Search, RefreshCw, Check, Building2, User } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Recipient } from './types'
 import { formatCurrency, formatAddress } from './utils'
 
@@ -95,7 +96,27 @@ export function SendMoney({
                     
                     {/* Dropdown Results */}
                     <AnimatePresence>
-                        {showDropdown && searchResults.length > 0 && (
+                        {showDropdown && (isLoadingSearch ? (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: -10 }}
+                                transition={{ duration: 0.2 }}
+                                ref={dropdownRef}
+                                className="absolute z-50 w-full mt-1 bg-card border border-border rounded-lg shadow-lg p-2"
+                            >
+                                {[1, 2, 3].map((i) => (
+                                    <div key={i} className="flex items-center gap-3 p-3 border-b border-border last:border-b-0">
+                                        <Skeleton className="h-8 w-8 rounded-lg" />
+                                        <div className="flex-1 space-y-2">
+                                            <Skeleton className="h-4 w-32" />
+                                            <Skeleton className="h-3 w-24" />
+                                        </div>
+                                        <Skeleton className="h-5 w-20 rounded" />
+                                    </div>
+                                ))}
+                            </motion.div>
+                        ) : searchResults.length > 0 && (
                             <motion.div
                                 initial={{ opacity: 0, y: -10 }}
                                 animate={{ opacity: 1, y: 0 }}
@@ -144,7 +165,7 @@ export function SendMoney({
                                     </button>
                                 ))}
                             </motion.div>
-                        )}
+                        ))}
                     </AnimatePresence>
                     
                     {selectedRecipient && (
