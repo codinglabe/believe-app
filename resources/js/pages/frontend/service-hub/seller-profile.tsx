@@ -28,6 +28,8 @@ import {
   DollarSign,
   Zap,
   User,
+  Briefcase,
+  Edit,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
@@ -42,6 +44,7 @@ interface Seller {
 
 interface Service {
   id: number
+  slug: string
   title: string
   price: number
   rating: number
@@ -72,15 +75,35 @@ interface Stats {
   orderCompletion: number
 }
 
+interface SellerProfile {
+  id: number
+  bio: string | null
+  location: string | null
+  phone: string | null
+  response_time: string | null
+  website: string | null
+  linkedin: string | null
+  twitter: string | null
+  facebook: string | null
+  instagram: string | null
+  profile_image: string | null
+  skills: string[]
+  languages: Array<{ name: string; level: string }>
+  education: Array<{ institution: string; degree: string; year: number | null }>
+  experience: Array<{ company: string; position: string; duration: string }>
+}
+
 interface PageProps extends Record<string, unknown> {
   seller: Seller
+  sellerProfile?: SellerProfile | null
   services: Service[]
   stats: Stats
   recentReviews: Review[]
+  isOwner?: boolean
 }
 
 export default function SellerProfile() {
-  const { seller, services, stats, recentReviews } = usePage<PageProps>().props
+  const { seller, sellerProfile, services = [], stats, recentReviews = [], isOwner = false } = usePage<PageProps>().props
   const [isFavorite, setIsFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState("services")
 
@@ -100,18 +123,20 @@ export default function SellerProfile() {
               <div className="flex-1">
                 <h1 className="text-xl font-bold">Seller Profile</h1>
               </div>
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setIsFavorite(!isFavorite)}
-                >
-                  <Heart className={`h-5 w-5 ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
-                </Button>
-                <Button variant="ghost" size="icon">
-                  <Share2 className="h-5 w-5" />
-                </Button>
-              </div>
+              {!isOwner && (
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setIsFavorite(!isFavorite)}
+                  >
+                    <Heart className={`h-5 w-5 ${isFavorite ? "fill-red-500 text-red-500" : ""}`} />
+                  </Button>
+                  <Button variant="ghost" size="icon">
+                    <Share2 className="h-5 w-5" />
+                  </Button>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -135,7 +160,10 @@ export default function SellerProfile() {
                         className="relative"
                       >
                         <Avatar className="h-32 w-32 border-4 border-background shadow-xl">
-                          <AvatarImage src={seller.avatar || undefined} alt={seller.name} />
+                          <AvatarImage
+                            src={sellerProfile?.profile_image ? `/storage/${sellerProfile.profile_image}` : (seller.avatar || undefined)}
+                            alt={seller.name}
+                          />
                           <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-3xl">
                             {seller.name[0]}
                           </AvatarFallback>
@@ -160,7 +188,7 @@ export default function SellerProfile() {
                             <span>{stats.totalSales} Sales</span>
                           </div>
                         </div>
-                        <p className="text-muted-foreground leading-relaxed">{seller.description}</p>
+                        <p className="text-muted-foreground leading-relaxed">{sellerProfile?.bio || seller.description}</p>
                       </div>
 
                       {/* Quick Stats */}
@@ -185,14 +213,25 @@ export default function SellerProfile() {
 
                       {/* Action Buttons */}
                       <div className="flex flex-wrap gap-3 pt-2">
-                        <Button className="bg-blue-600 hover:bg-blue-700">
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Contact Seller
-                        </Button>
-                        <Button variant="outline">
-                          <Mail className="mr-2 h-4 w-4" />
-                          Send Message
-                        </Button>
+                        {isOwner ? (
+                          <Link href="/service-hub/seller-profile/edit">
+                            <Button className="bg-blue-600 hover:bg-blue-700">
+                              <Edit className="mr-2 h-4 w-4" />
+                              Edit Profile
+                            </Button>
+                          </Link>
+                        ) : (
+                          <>
+                            <Button className="bg-blue-600 hover:bg-blue-700">
+                              <MessageCircle className="mr-2 h-4 w-4" />
+                              Contact Seller
+                            </Button>
+                            <Button variant="outline">
+                              <Mail className="mr-2 h-4 w-4" />
+                              Send Message
+                            </Button>
+                          </>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -223,7 +262,7 @@ export default function SellerProfile() {
                           whileHover={{ y: -4 }}
                         >
                           <Card className="h-full border shadow-sm hover:shadow-md transition-shadow cursor-pointer overflow-hidden group">
-                            <Link href={`/service-hub/${service.id}`}>
+                            <Link href={`/service-hub/${service.slug}`}>
                               <div className="aspect-video w-full overflow-hidden bg-muted">
                                 <img
                                   src={service.image || '/placeholder-image.jpg'}
@@ -307,7 +346,7 @@ export default function SellerProfile() {
                             </div>
                           </motion.div>
                         ))}
-                        <Link href={`/service-hub/${services[0]?.id}/reviews`}>
+                        <Link href={`/service-hub/seller/${seller.id}/reviews`}>
                           <Button variant="outline" className="w-full">
                             View All Reviews
                           </Button>
@@ -319,6 +358,7 @@ export default function SellerProfile() {
                   {/* About Tab */}
                   <TabsContent value="about" className="mt-6">
                     <div className="space-y-6">
+                      {/* Bio */}
                       <Card className="border shadow-sm">
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2">
@@ -327,9 +367,196 @@ export default function SellerProfile() {
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-muted-foreground leading-relaxed mb-6">{seller.description}</p>
+                          <p className="text-muted-foreground leading-relaxed mb-6">
+                            {sellerProfile?.bio || seller.description}
+                          </p>
+                          {sellerProfile && (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t">
+                              {sellerProfile.location && (
+                                <div className="flex items-center gap-2">
+                                  <MapPin className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm">{sellerProfile.location}</span>
+                                </div>
+                              )}
+                              {sellerProfile.phone && (
+                                <div className="flex items-center gap-2">
+                                  <Mail className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm">{sellerProfile.phone}</span>
+                                </div>
+                              )}
+                              {sellerProfile.response_time && (
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-4 w-4 text-muted-foreground" />
+                                  <span className="text-sm">{sellerProfile.response_time}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </CardContent>
                       </Card>
+
+                      {/* Skills */}
+                      {sellerProfile?.skills && sellerProfile.skills.length > 0 && (
+                        <Card className="border shadow-sm">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <Award className="h-5 w-5 text-blue-600" />
+                              Skills
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="flex flex-wrap gap-2">
+                              {sellerProfile.skills.map((skill, index) => (
+                                <Badge key={index} variant="secondary">
+                                  {skill}
+                                </Badge>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Languages */}
+                      {sellerProfile?.languages && sellerProfile.languages.length > 0 && (
+                        <Card className="border shadow-sm">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <Globe className="h-5 w-5 text-blue-600" />
+                              Languages
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-2">
+                              {sellerProfile.languages.map((lang, index) => (
+                                <div key={index} className="flex items-center justify-between py-2 border-b last:border-0">
+                                  <span className="font-medium">{lang.name}</span>
+                                  <Badge variant="outline" className="capitalize">
+                                    {lang.level}
+                                  </Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Education */}
+                      {sellerProfile?.education && sellerProfile.education.length > 0 && (
+                        <Card className="border shadow-sm">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <Award className="h-5 w-5 text-blue-600" />
+                              Education
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              {sellerProfile.education.map((edu, index) => (
+                                <div key={index} className="pb-4 border-b last:border-0 last:pb-0">
+                                  <h4 className="font-semibold">{edu.degree}</h4>
+                                  <p className="text-sm text-muted-foreground">{edu.institution}</p>
+                                  {edu.year && (
+                                    <p className="text-xs text-muted-foreground mt-1">{edu.year}</p>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Experience */}
+                      {sellerProfile?.experience && sellerProfile.experience.length > 0 && (
+                        <Card className="border shadow-sm">
+                          <CardHeader>
+                            <CardTitle className="flex items-center gap-2">
+                              <Briefcase className="h-5 w-5 text-blue-600" />
+                              Professional Experience
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <div className="space-y-4">
+                              {sellerProfile.experience.map((exp, index) => (
+                                <div key={index} className="pb-4 border-b last:border-0 last:pb-0">
+                                  <h4 className="font-semibold">{exp.position}</h4>
+                                  <p className="text-sm text-muted-foreground">{exp.company}</p>
+                                  <p className="text-xs text-muted-foreground mt-1">{exp.duration}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {/* Social Links */}
+                      {sellerProfile && (
+                        (sellerProfile.website || sellerProfile.linkedin || sellerProfile.twitter ||
+                         sellerProfile.facebook || sellerProfile.instagram) && (
+                          <Card className="border shadow-sm">
+                            <CardHeader>
+                              <CardTitle className="flex items-center gap-2">
+                                <Globe className="h-5 w-5 text-blue-600" />
+                                Links & Portfolio
+                              </CardTitle>
+                            </CardHeader>
+                            <CardContent>
+                              <div className="flex flex-wrap gap-3">
+                                {sellerProfile.website && (
+                                  <a
+                                    href={sellerProfile.website}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline flex items-center gap-2"
+                                  >
+                                    <Globe className="h-4 w-4" />
+                                    Website
+                                  </a>
+                                )}
+                                {sellerProfile.linkedin && (
+                                  <a
+                                    href={sellerProfile.linkedin}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    LinkedIn
+                                  </a>
+                                )}
+                                {sellerProfile.twitter && (
+                                  <a
+                                    href={sellerProfile.twitter}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    Twitter
+                                  </a>
+                                )}
+                                {sellerProfile.facebook && (
+                                  <a
+                                    href={sellerProfile.facebook}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    Facebook
+                                  </a>
+                                )}
+                                {sellerProfile.instagram && (
+                                  <a
+                                    href={sellerProfile.instagram}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-blue-600 hover:underline"
+                                  >
+                                    Instagram
+                                  </a>
+                                )}
+                              </div>
+                            </CardContent>
+                          </Card>
+                        )
+                      )}
                     </div>
                   </TabsContent>
                 </Tabs>

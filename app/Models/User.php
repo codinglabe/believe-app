@@ -682,4 +682,12 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->hasMany(ServiceOrder::class, 'seller_id');
     }
+
+    /**
+     * Get the service seller profile for this user.
+     */
+    public function serviceSellerProfile(): HasOne
+    {
+        return $this->hasOne(ServiceSellerProfile::class);
+    }
 }
