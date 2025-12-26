@@ -14,6 +14,7 @@ class ServiceOrder extends Model
         'gig_id',
         'buyer_id',
         'seller_id',
+        'package_id',
         'order_number',
         'package_type',
         'amount',
@@ -21,7 +22,9 @@ class ServiceOrder extends Model
         'seller_earnings',
         'currency',
         'requirements',
+        'special_instructions',
         'status',
+        'payment_status',
         'delivered_at',
         'completed_at',
         'cancelled_at',
@@ -82,11 +85,19 @@ class ServiceOrder extends Model
     }
 
     /**
+     * Get the package for this order.
+     */
+    public function package(): BelongsTo
+    {
+        return $this->belongsTo(GigPackage::class, 'package_id');
+    }
+
+    /**
      * Get the review for this order.
      */
-    public function review(): BelongsTo
+    public function review(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->belongsTo(ServiceReview::class, 'id', 'order_id');
+        return $this->hasOne(ServiceReview::class, 'order_id', 'id');
     }
 
     /**
