@@ -15,4 +15,5 @@ export { ExternalAccounts } from './ExternalAccounts'
 export { TransferFromExternal } from './TransferFromExternal'
 export { KYCForm } from './KYCForm'
 export { KYBForm } from './KYBForm'
+export { SplashScreen, BalanceSkeleton, WalletAddressSkeleton, SearchResultsSkeleton, ActivitySkeleton, QRCodeSkeleton, DepositInstructionsSkeleton } from './Skeletons'
 

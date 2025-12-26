@@ -1,18 +1,24 @@
 import { ImageUploadDropzone } from '@/components/ImageUploadDropzone'
 import { KycFormData } from './types'
+import { motion } from 'framer-motion'
+import { Clock } from 'lucide-react'
 
 interface KYCFormProps {
     formData: KycFormData
     isLoading: boolean
     onFormDataChange: (data: KycFormData) => void
     onSubmit: () => void
+    kycStatus?: 'not_started' | 'incomplete' | 'under_review' | 'awaiting_questionnaire' | 'awaiting_ubo' | 'approved' | 'rejected' | 'paused' | 'offboarded'
+    kycSubmitted?: boolean
 }
 
 export function KYCForm({
     formData,
     isLoading,
     onFormDataChange,
-    onSubmit
+    onSubmit,
+    kycStatus = 'not_started',
+    kycSubmitted = false
 }: KYCFormProps) {
     const handleFieldChange = (field: keyof KycFormData, value: string) => {
         onFormDataChange({
@@ -28,6 +34,36 @@ export function KYCForm({
             id_type: idType,
             id_back_image: idType === 'passport' ? '' : formData.id_back_image
         })
+    }
+
+    // Show waiting screen if KYC has been submitted OR status is pending/under review
+    const shouldShowWaitingScreen = kycSubmitted || (kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected')
+
+    // Show form only when status is not_started (and not submitted) or rejected
+    const shouldShowForm = !shouldShowWaitingScreen
+
+    if (shouldShowWaitingScreen) {
+        return (
+            <div className="flex flex-col items-center justify-center py-8 px-4 space-y-4 w-full">
+                <motion.div
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
+                >
+                    <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                </motion.div>
+                <div className="text-center space-y-2">
+                    <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
+                    <p className="text-sm text-muted-foreground max-w-sm">
+                        Your KYC information has been successfully submitted and is being reviewed.
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-3">
+                        Please wait while we verify your identity. You will be notified once the verification is complete.
+                    </p>
+                </div>
+            </div>
+        )
     }
 
     return (
