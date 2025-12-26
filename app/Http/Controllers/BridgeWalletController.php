@@ -1018,6 +1018,14 @@ class BridgeWalletController extends Controller
                     // Check if control person data exists (from new control_persons table)
                     $hasControlPerson = $submission->controlPerson()->exists();
                     
+                    // Log for debugging
+                    Log::info('KYB Step Check', [
+                        'integration_id' => $integration->id,
+                        'submission_id' => $submission->id,
+                        'has_control_person' => $hasControlPerson,
+                        'control_person_count' => $submission->controlPerson()->count(),
+                    ]);
+                    
                     // Check if business documents exist (check VerificationDocument table)
                     $hasBusinessDocuments = false;
                     $businessDocs = $submission->verificationDocuments()
@@ -1099,17 +1107,80 @@ class BridgeWalletController extends Controller
                     $hasKycLink = !empty($controlPersonKycLink) || !empty($controlPersonKycIframeUrl);
                     $shouldShowKycStep = $hasControlPerson && $hasBusinessDocuments && ($isApproved || $hasKycLink);
                     
-                    if ($shouldShowKycStep) {
+                    // Check metadata for kyb_step first (it's the source of truth after submission)
+                    $metadata = $integration->bridge_metadata ?? [];
+                    if (is_string($metadata)) {
+                        $metadata = json_decode($metadata, true) ?? [];
+                    }
+                    $metadataKybStep = $metadata['kyb_step'] ?? null;
+                    
+                    // CRITICAL: If control person exists in database, we should NEVER be on control_person step
+                    // Override metadata if it incorrectly says control_person
+                    if ($hasControlPerson && $metadataKybStep === 'control_person') {
+                        // Control person exists but metadata says control_person - this is wrong, force to business_documents
+                        $metadataKybStep = 'business_documents';
+                        // Update metadata to fix it permanently
+                        $metadata['kyb_step'] = 'business_documents';
+                        $integration->bridge_metadata = $metadata;
+                        $integration->save();
+                        Log::warning('FIXED: Control person exists but metadata said control_person - forced to business_documents', [
+                            'integration_id' => $integration->id,
+                            'old_step' => 'control_person',
+                            'new_step' => 'business_documents',
+                            'has_control_person' => $hasControlPerson,
+                        ]);
+                    }
+                    
+                    // Also check directly in database as fallback
+                    if (!$hasControlPerson) {
+                        $directCheck = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)->exists();
+                        if ($directCheck) {
+                            $hasControlPerson = true;
+                            Log::warning('Control person found via direct DB check but relationship check failed', [
+                                'integration_id' => $integration->id,
+                                'submission_id' => $submission->id,
+                            ]);
+                        }
+                    }
+                    
+                    // Use metadata step if available and valid, otherwise calculate from submission
+                    if ($metadataKybStep && in_array($metadataKybStep, ['control_person', 'business_documents', 'kyc_verification'])) {
+                        $kybStep = $metadataKybStep;
+                    } elseif ($shouldShowKycStep) {
                         // Show KYC verification step - we're waiting for UBO verification
                         $kybStep = 'kyc_verification';
                     } elseif ($hasControlPerson && $hasBusinessDocuments) {
                         // Documents submitted but not approved yet and no KYC link - stay on business_documents step
                         $kybStep = 'business_documents';
                     } elseif ($hasControlPerson) {
+                        // Control person submitted but no business documents yet - move to business_documents step
                         $kybStep = 'business_documents';
                     } else {
                         $kybStep = 'control_person';
                     }
+                    
+                    // Final safety check: If control person exists, NEVER return control_person step
+                    if ($hasControlPerson && $kybStep === 'control_person') {
+                        $kybStep = 'business_documents';
+                        // Also update metadata to prevent this from happening again
+                        $metadata['kyb_step'] = 'business_documents';
+                        $integration->bridge_metadata = $metadata;
+                        $integration->save();
+                        Log::error('CRITICAL FIX: Forced kyb_step to business_documents because control person exists but step was control_person', [
+                            'integration_id' => $integration->id,
+                            'submission_id' => $submission->id ?? null,
+                            'has_control_person' => $hasControlPerson,
+                            'metadata_kyb_step' => $metadataKybStep,
+                        ]);
+                    }
+                    
+                    // Log final step decision
+                    Log::info('Final KYB Step Decision', [
+                        'integration_id' => $integration->id,
+                        'final_step' => $kybStep,
+                        'has_control_person' => $hasControlPerson,
+                        'metadata_step' => $metadataKybStep,
+                    ]);
                 } else {
                     // Check metadata for step if no submission yet
                     $metadata = $integration->bridge_metadata ?? [];
@@ -1265,6 +1336,7 @@ class BridgeWalletController extends Controller
                 'verification_type' => $isOrgUser ? 'kyb' : 'kyc',
                 'organization_data' => $organizationData, // Always include organization data for pre-filling
                 'kyb_step' => $isOrgUser ? $kybStep : null, // Current step for KYB multi-step flow
+                'has_control_person' => $isOrgUser && isset($submission) ? $hasControlPerson : false, // Whether control person exists in database
                 'control_person_kyc_link' => $isOrgUser ? $controlPersonKycLink : null, // KYC link for control person
                 'control_person_kyc_iframe_url' => $isOrgUser ? $controlPersonKycIframeUrl : null, // Iframe URL for control person KYC
                 'kyb_submission_status' => $isOrgUser && isset($submission) ? $submission->submission_status : null, // Submission status for checking approval
@@ -1657,12 +1729,20 @@ class BridgeWalletController extends Controller
             $customerId = $request->input('customer_id') ?? $request->query('customer_id');
             if (!$integration && $customerId) {
                 // FIRST verify the customer actually exists in Bridge before using it
+                // Note: 404 is expected if customer_id is wrong/old, so we handle it gracefully
                 $customerExistsInBridge = false;
                 try {
                     $verifyResult = $this->bridgeService->getCustomer($customerId);
                     $customerExistsInBridge = $verifyResult['success'];
+                    
+                    // If customer doesn't exist (404), this is expected - don't log as error
+                    if (!$customerExistsInBridge && isset($verifyResult['status']) && $verifyResult['status'] === 404) {
+                        Log::info('TOS callback: Customer ID from request does not exist in Bridge (expected if ID is outdated)', [
+                            'customer_id' => $customerId,
+                        ]);
+                    }
                 } catch (\Exception $e) {
-                    Log::warning('TOS callback: Failed to verify customer from request exists in Bridge', [
+                    Log::warning('TOS callback: Exception while verifying customer exists in Bridge', [
                         'customer_id' => $customerId,
                         'error' => $e->getMessage(),
                     ]);
@@ -4110,10 +4190,51 @@ class BridgeWalletController extends Controller
                 }
                 
                 // Set status based on customer type (use Bridge's actual status values)
+                // Check for instant approval like KYB does
                 if ($isOrgUser) {
                     // Business customer - check kyb_status
                     // Bridge KYB statuses: not_started, incomplete, under_review, awaiting_questionnaire, awaiting_ubo, approved, rejected, paused, offboarded
-                    $integration->kyb_status = $responseData['kyb_status'] ?? 'not_started';
+                    $bridgeKybStatus = $responseData['kyb_status'] ?? null;
+                    $bridgeCustomerStatus = $responseData['status'] ?? null;
+                    
+                    // Check if instantly approved (similar to KYB logic)
+                    $isApproved = false;
+                    $normalizedStatus = null;
+                    
+                    if ($bridgeKybStatus) {
+                        $normalizedStatus = strtolower($bridgeKybStatus);
+                        $isApproved = ($normalizedStatus === 'approved');
+                    } elseif ($bridgeCustomerStatus) {
+                        // For customer status, "active" means approved
+                        $isApproved = (strtolower($bridgeCustomerStatus) === 'active');
+                        $normalizedStatus = 'approved';
+                    }
+                    
+                    if ($isApproved) {
+                        $integration->kyb_status = 'approved';
+                        // Auto-create wallet, virtual account, and card account when approved instantly
+                        if ($integration->bridge_customer_id) {
+                            try {
+                                $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                                $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                                
+                                Log::info('Wallet, virtual account, and card account created for instant KYB approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $integration->bridge_customer_id,
+                                ]);
+                            } catch (\Exception $e) {
+                                Log::error('Failed to create wallet/virtual account/card account on instant KYB approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $integration->bridge_customer_id,
+                                    'error' => $e->getMessage(),
+                                    'trace' => $e->getTraceAsString(),
+                                ]);
+                            }
+                        }
+                    } else {
+                        $integration->kyb_status = $bridgeKybStatus ?? 'not_started';
+                    }
+                    
                     // Business might also have kyc_status for control persons
                     if (isset($responseData['kyc_status'])) {
                         $integration->kyc_status = $responseData['kyc_status'];
@@ -4121,7 +4242,46 @@ class BridgeWalletController extends Controller
                 } else {
                     // Individual customer - check kyc_status
                     // Bridge KYC statuses: not_started, incomplete, under_review, awaiting_questionnaire, approved, rejected, paused, offboarded
-                    $integration->kyc_status = $responseData['kyc_status'] ?? 'not_started';
+                    $bridgeKycStatus = $responseData['kyc_status'] ?? null;
+                    $bridgeCustomerStatus = $responseData['status'] ?? null;
+                    
+                    // Check if instantly approved (similar to KYB logic)
+                    $isApproved = false;
+                    $normalizedStatus = null;
+                    
+                    if ($bridgeKycStatus) {
+                        $normalizedStatus = strtolower($bridgeKycStatus);
+                        $isApproved = ($normalizedStatus === 'approved');
+                    } elseif ($bridgeCustomerStatus) {
+                        // For customer status, "active" means approved
+                        $isApproved = (strtolower($bridgeCustomerStatus) === 'active');
+                        $normalizedStatus = 'approved';
+                    }
+                    
+                    if ($isApproved) {
+                        $integration->kyc_status = 'approved';
+                        // Auto-create wallet, virtual account, and card account when approved instantly
+                        if ($integration->bridge_customer_id) {
+                            try {
+                                $webhookController = new \App\Http\Controllers\BridgeWebhookController($this->bridgeService);
+                                $webhookController->createWalletVirtualAccountAndCardAccount($integration, $integration->bridge_customer_id);
+                                
+                                Log::info('Wallet, virtual account, and card account created for instant KYC approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $integration->bridge_customer_id,
+                                ]);
+                            } catch (\Exception $e) {
+                                Log::error('Failed to create wallet/virtual account/card account on instant KYC approval', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $integration->bridge_customer_id,
+                                    'error' => $e->getMessage(),
+                                    'trace' => $e->getTraceAsString(),
+                                ]);
+                            }
+                        }
+                    } else {
+                        $integration->kyc_status = $bridgeKycStatus ?? 'not_started';
+                    }
                 }
 
                 $integration->tos_status = 'accepted';
@@ -4451,10 +4611,10 @@ class BridgeWalletController extends Controller
 
             // Determine sender entity (user or organization)
             if ($isOrgUser) {
-                $organization = $user->organization;
-                if (!$organization || !$organization->user) {
-                    return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
-                }
+            $organization = $user->organization;
+            if (!$organization || !$organization->user) {
+                return response()->json(['success' => false, 'message' => 'Organization not found.'], 404);
+            }
                 $senderEntity = $organization;
                 $senderEntityType = Organization::class;
                 $senderUser = $organization->user;
