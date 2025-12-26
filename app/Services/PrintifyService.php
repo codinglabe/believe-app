@@ -584,18 +584,35 @@ class PrintifyService
 
     /**
      * Create webhook in Printify
+     * @param string $url Webhook URL
+     * @param string $event Event topic (e.g., 'order:created')
+     * @param string|null $secret Optional secret for webhook signature verification
      */
-    public function createWebhook(string $url, string $event): array
+    public function createWebhook(string $url, string $event, ?string $secret = null): array
     {
         try {
+            $webhookData = [
+                'url' => $url,
+                'topic' => $event
+            ];
+
+            // Add secret if provided (optional according to Printify docs)
+            if ($secret) {
+                $webhookData['secret'] = $secret;
+            }
+
             $response = $this->client->post("v1/shops/{$this->shopId}/webhooks.json", [
-                'json' => [
-                    'url' => $url,
-                    'topic' => $event
-                ]
+                'json' => $webhookData
             ]);
 
             $data = json_decode($response->getBody(), true) ?? [];
+
+            Log::info('Printify webhook created successfully', [
+                'url' => $url,
+                'event' => $event,
+                'webhook_id' => $data['id'] ?? null,
+                'has_secret' => !empty($secret)
+            ]);
 
             return [
                 'success' => true,
@@ -629,15 +646,18 @@ class PrintifyService
 
     /**
      * Create multiple webhooks in Printify
+     * @param string $url Webhook URL
+     * @param array $events Array of event topics
+     * @param string|null $secret Optional secret for webhook signature verification
      */
-    public function createWebhooks(string $url, array $events): array
+    public function createWebhooks(string $url, array $events, ?string $secret = null): array
     {
         $results = [];
         $successCount = 0;
         $errorCount = 0;
 
         foreach ($events as $event) {
-            $result = $this->createWebhook($url, $event);
+            $result = $this->createWebhook($url, $event, $secret);
             $results[$event] = $result;
 
             if ($result['success']) {

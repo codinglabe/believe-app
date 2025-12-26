@@ -160,6 +160,51 @@ class OrderController extends Controller
             return $item->unit_price * $item->quantity;
         });
 
+        // Get profit margin from env (default 25%)
+        $profitMarginRate = (float) config('app.printify_profit_margin', 25);
+
+        // Get Printify order details if available for calculations
+        $printifyProductCost = 0;
+        $printifyShipping = 0;
+        $printifyTax = 0;
+
+        if ($order->printify_order_id) {
+            try {
+                $printifyOrder = $this->printifyService->getOrder($order->printify_order_id);
+                $printifyProductCost = isset($printifyOrder['total_price']) ? $printifyOrder['total_price'] / 100 : 0;
+                $printifyShipping = isset($printifyOrder['total_shipping']) ? $printifyOrder['total_shipping'] / 100 : 0;
+                $printifyTax = isset($printifyOrder['total_tax']) ? $printifyOrder['total_tax'] / 100 : 0;
+            } catch (\Exception $e) {
+                \Log::error('Error fetching Printify order for calculations: ' . $e->getMessage());
+            }
+        }
+
+        // Calculate financial breakdown
+        // Product Price = Printify Product Cost * (1 + Profit Margin %)
+        $productPrice = $printifyProductCost > 0
+            ? $printifyProductCost * (1 + ($profitMarginRate / 100))
+            : $order->subtotal;
+
+        $shippingCharged = $order->shipping_cost ?? 0;
+        $salesTaxCollected = $order->tax_amount ?? 0;
+
+        // Sales Tax Rate % = (Sales Tax Collected / (Product Price + Shipping Charged)) * 100
+        $salesTaxRate = ($productPrice + $shippingCharged) > 0
+            ? ($salesTaxCollected / ($productPrice + $shippingCharged)) * 100
+            : 0;
+
+        // Customer Total Paid = Product Price + Shipping Charged + Sales Tax Collected
+        $customerTotalPaid = $productPrice + $shippingCharged + $salesTaxCollected;
+
+        // Recognized Revenue = Product Price + Shipping Charged (NOT including tax)
+        $recognizedRevenue = $productPrice + $shippingCharged;
+
+        // Gross Profit = Recognized Revenue - Printify Product Cost - Printify Shipping
+        $grossProfit = $recognizedRevenue - $printifyProductCost - $printifyShipping;
+
+        // Platform / Payment Fee = (Product Price + Shipping Charged) * 2%
+        $platformPaymentFee = ($productPrice + $shippingCharged) * 0.02;
+
         $orderData = [
             'id' => $order->id,
             'reference_number' => $order->reference_number,
@@ -177,6 +222,21 @@ class OrderController extends Controller
             'printify_status' => $order->printify_status,
             'created_at' => $order->created_at,
             'paid_at' => $order->paid_at,
+            // Financial breakdown for admin/org view
+            'financial_breakdown' => [
+                'printify_product_cost' => $printifyProductCost,
+                'profit_margin_rate' => $profitMarginRate,
+                'product_price' => $productPrice,
+                'shipping_charged' => $shippingCharged,
+                'sales_tax_rate' => $salesTaxRate,
+                'sales_tax_collected' => $salesTaxCollected,
+                'customer_total_paid' => $customerTotalPaid,
+                'recognized_revenue' => $recognizedRevenue,
+                'gross_profit' => $grossProfit,
+                'platform_payment_fee' => $platformPaymentFee,
+                'printify_shipping' => $printifyShipping,
+                'printify_tax' => $printifyTax,
+            ],
             'user' => [
                 'id' => $order->user->id,
                 'name' => $order->user->name,

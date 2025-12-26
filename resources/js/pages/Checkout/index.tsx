@@ -106,9 +106,9 @@ export default function CheckoutIndex({
             <Step2
               items={items}
               subtotal={subtotal}
-            platform_fee={platform_fee}
-            donation_percentage={donation_percentage}
-            donation_amount={donationAmount}
+              // platform_fee={platform_fee} // Removed - customers don't pay platform fee
+              donation_percentage={donation_percentage}
+              donation_amount={donationAmount}
               step2Data={step2Data!}
               stripePublishableKey={stripePublishableKey}
               onBack={() => setStep(1)}

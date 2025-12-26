@@ -535,7 +535,8 @@ class ProductController extends BaseController
                 }
 
                 // Step 3: Update with correct pricing for ALL variants
-                $profitMargin = 0;
+                // Get profit margin from env (default 25%)
+                $profitMargin = (float) env('PRINTIFY_PROFIT_MARGIN', 25);
 
                 // Build updated variants - update ALL variants in the product
                 $updatedVariants = [];
@@ -548,20 +549,13 @@ class ProductController extends BaseController
                     $isSelected = in_array($variant['id'], $selectedVariantIds);
 
                     $costInCents = $variant['cost'] ?? 0;
-                    // $costInDollars = $costInCents / 100;
 
-                    // if ($isSelected) {
-                    //     // Calculate selling price for selected variants
-                    //     $sellingPriceInDollars = $this->calculateSellingPrice($costInDollars, $profitMargin);
-                    //     $sellingPriceInCents = $sellingPriceInDollars * 100;
-                    // } else {
-                    //     // For non-selected variants, use cost price (or disable them)
-                    //     $sellingPriceInCents = $costInCents;
-                    // }
+                    // Calculate selling price with profit margin: cost + (cost * profitMargin / 100)
+                    $sellingPriceInCents = (int) round($costInCents + ($costInCents * $profitMargin / 100));
 
                     $updatedVariants[] = [
                         'id' => $variant['id'],
-                        'price' => $costInCents,
+                        'price' => $sellingPriceInCents,
                         'is_enabled' => $isSelected // Only enable selected variants
                     ];
 
@@ -569,7 +563,8 @@ class ProductController extends BaseController
                         'variant_id' => $variant['id'],
                         'is_selected' => $isSelected,
                         'cost_in_cents' => $costInCents,
-                        'selling_price_in_cents' => $costInCents,
+                        'profit_margin_percent' => $profitMargin,
+                        'selling_price_in_cents' => $sellingPriceInCents,
                     ]);
                 }
 

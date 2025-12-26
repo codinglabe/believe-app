@@ -33,136 +33,7 @@ interface Step1Props {
   onComplete: (data: Step1CompleteData) => void
 }
 
-// Popup Component
-interface DonationReminderPopupProps {
-  isOpen: boolean
-  onClose: () => void
-  onProceedWithoutDonation: () => void
-  onEnableDonation: () => void
-  suggestedDonation: number
-}
-
-function DonationReminderPopup({
-  isOpen,
-  onClose,
-  onProceedWithoutDonation,
-  onEnableDonation,
-  suggestedDonation,
-}: DonationReminderPopupProps) {
-  if (!isOpen) return null
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 dark:bg-black/70 backdrop-blur-sm">
-      <div className="relative w-full max-w-md bg-white dark:bg-gray-800 rounded-2xl shadow-xl border border-gray-200 dark:border-gray-700 overflow-hidden animate-in fade-in duration-200">
-        {/* Header */}
-        <div className="p-6 border-b border-gray-100 dark:border-gray-700">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
-                <svg
-                  className="w-6 h-6 text-blue-600 dark:text-blue-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                    d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Support Our Mission (Optional)</h3>
-            </div>
-            <button
-              onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="p-6">
-          <div className="mb-6">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
-              <svg className="w-8 h-8 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M10 18a8 8 0 100-16 8 8 0 000 16zM7 9a1 1 0 100-2 1 1 0 000 2zm7-1a1 1 0 11-2 0 1 1 0 012 0zm-.464 5.535a1 1 0 10-1.415-1.414 3 3 0 01-4.242 0 1 1 0 00-1.415 1.414 5 5 0 007.072 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-base mb-2">
-              All items are offered at cost.
-            </p>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-base mb-2">
-              Your purchase price covers the product only.
-            </p>
-            <p className="text-gray-700 dark:text-gray-300 text-center text-base">
-              Would you like to make an optional donation to support our nonprofit mission?
-            </p>
-          </div>
-
-          {/* Suggested Donation */}
-          <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4 mb-6 border border-gray-200 dark:border-gray-600">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Suggested Donation (Optional)</span>
-              <span className="text-lg font-bold text-blue-600 dark:text-blue-400">
-                ${suggestedDonation.toFixed(2)}
-              </span>
-            </div>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-              Donations are voluntary and not required to complete your purchase.
-            </p>
-            <p className="text-xs text-gray-500 dark:text-gray-400">
-              No goods or services are provided in exchange for a donation.
-            </p>
-          </div>
-        </div>
-
-        {/* Footer - Action Buttons */}
-        <div className="p-6 pt-0 flex flex-col gap-3">
-          <button
-            onClick={onEnableDonation}
-            className="w-full py-3 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white font-semibold rounded-xl transition-all transform hover:scale-[1.02] active:scale-[0.98] shadow-lg hover:shadow-xl"
-          >
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-              </svg>
-              Add ${suggestedDonation.toFixed(2)} Donation
-            </div>
-          </button>
-
-          <button
-            onClick={onProceedWithoutDonation}
-            className="w-full py-3 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 font-semibold rounded-xl transition-colors border border-gray-300 dark:border-gray-600"
-          >
-            <div className="flex items-center justify-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
-              Continue Without Donation
-            </div>
-          </button>
-
-          <button
-            onClick={onClose}
-            className="w-full py-2 text-center text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-300 font-medium rounded-xl transition-colors text-sm"
-          >
-            Go Back & Review
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
+// DonationReminderPopup component removed - donation feature disabled for Printify products
 
 export default function Step1({
   items,
@@ -183,26 +54,11 @@ export default function Step1({
     country: "US",
   })
 
-  const [isDonating, setIsDonating] = useState(false)
-  const [customDonationAmount, setCustomDonationAmount] = useState<number>(0)
   const [isLoading, setIsLoading] = useState(false)
   const [errors, setErrors] = useState<Record<string, string>>({})
-  const [showDonationPopup, setShowDonationPopup] = useState(false)
-  const [isFormValidated, setIsFormValidated] = useState(false)
 
-  const defaultDonation = subtotal * (donation_percentage / 100)
-  const finalDonationAmount = isDonating ? customDonationAmount || defaultDonation : 0
-  const orderTotal = subtotal + platform_fee + finalDonationAmount
-
-  // Auto-suggest donation when toggled ON
-  useEffect(() => {
-    if (isDonating) {
-      const suggested = Math.round(defaultDonation * 100) / 100
-      setCustomDonationAmount(suggested)
-    } else {
-      setCustomDonationAmount(0)
-    }
-  }, [isDonating, defaultDonation])
+  // Platform fee removed - customers don't pay it
+  const orderTotal = subtotal
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target
@@ -212,19 +68,7 @@ export default function Step1({
     }
   }
 
-  const handleDonationToggle = (checked: boolean) => {
-    setIsDonating(checked)
-    if (checked) {
-      setCustomDonationAmount(Math.round(defaultDonation * 100) / 100)
-    } else {
-      setCustomDonationAmount(0)
-    }
-  }
-
-  const handleDonationAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = Number.parseFloat(e.target.value) || 0
-    setCustomDonationAmount(Math.round(value * 100) / 100)
-  }
+  // Donation handlers removed - donation feature disabled for Printify products
 
   const validateForm = (): boolean => {
     const requiredFields = ['name', 'email', 'phone', 'address', 'city', 'state', 'zip']
@@ -253,13 +97,7 @@ export default function Step1({
       return
     }
 
-    // Check if donation is not enabled
-    if (!isDonating && !isFormValidated) {
-      setShowDonationPopup(true)
-      return
-    }
-
-    // Proceed with form submission
+    // Proceed with form submission (donation popup removed)
     await submitForm()
   }
 
@@ -270,8 +108,8 @@ export default function Step1({
     try {
       const response = await axios.post("/checkout/step1", {
         ...formData,
-        platform_fee: Number.parseFloat(platform_fee.toFixed(2)),
-        donation_amount: isDonating ? Number.parseFloat(customDonationAmount.toFixed(2)) : 0,
+        // platform_fee: Number.parseFloat(platform_fee.toFixed(2)), // Removed - customers don't pay platform fee
+        donation_amount: 0, // Donation disabled for Printify products
       })
 
       if (response.data.success) {
@@ -282,7 +120,7 @@ export default function Step1({
           shippingCost: Number.parseFloat(response.data.shipping_cost.toFixed(2)),
           taxAmount: Number.parseFloat(response.data.tax_amount.toFixed(2)),
           totalAmount: Number.parseFloat(response.data.total_amount.toFixed(2)),
-          donationAmount: isDonating ? Number.parseFloat(customDonationAmount.toFixed(2)) : 0,
+          donationAmount: 0, // Donation disabled for Printify products
         })
       }
     } catch (error) {
@@ -297,40 +135,10 @@ export default function Step1({
     }
   }
 
-  const handleProceedWithoutDonation = () => {
-    setShowDonationPopup(false)
-    setIsFormValidated(true)
-    // Auto-submit the form after closing popup
-    setTimeout(() => {
-      submitForm()
-    }, 100)
-  }
-
-  const handleEnableDonation = () => {
-    setShowDonationPopup(false)
-    setIsDonating(true)
-    setIsFormValidated(true)
-    // Auto-focus donation input after popup closes
-    setTimeout(() => {
-      const donationInput = document.querySelector('input[type="number"]') as HTMLInputElement
-      if (donationInput) {
-        donationInput.focus()
-        donationInput.select()
-      }
-    }, 200)
-  }
+  // Donation popup handlers removed - donation feature disabled for Printify products
 
   return (
     <>
-      {/* Donation Reminder Popup */}
-      <DonationReminderPopup
-        isOpen={showDonationPopup}
-        onClose={() => setShowDonationPopup(false)}
-        onProceedWithoutDonation={handleProceedWithoutDonation}
-        onEnableDonation={handleEnableDonation}
-        suggestedDonation={defaultDonation}
-      />
-
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* Left Column - Form */}
         <div className="lg:col-span-2">
@@ -464,63 +272,6 @@ export default function Step1({
               </div>
             </div>
 
-            {/* Donation Section */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
-              <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Support with a Donation</h3>
-
-              <div className="flex items-center justify-between mb-4">
-                <label className="flex items-center space-x-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isDonating}
-                    onChange={(e) => handleDonationToggle(e.target.checked)}
-                    className="w-5 h-5 text-blue-600 rounded focus:ring-2 focus:ring-blue-500"
-                  />
-                  <span className="text-gray-900 dark:text-white font-medium">
-                    Add {donation_percentage}% donation
-                  </span>
-                </label>
-
-                {!isDonating && (
-                  <span className="text-sm text-gray-500 dark:text-gray-400 italic">
-                    Recommended to support our mission
-                  </span>
-                )}
-              </div>
-
-              {isDonating && (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      Donation Amount
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-600 dark:text-gray-400">$</span>
-                      <input
-                        type="number"
-                        value={customDonationAmount === 0 && isDonating ? defaultDonation : customDonationAmount}
-                        onChange={handleDonationAmountChange}
-                        step="0.01"
-                        min="0"
-                        className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-400"
-                        placeholder={defaultDonation.toFixed(2)}
-                      />
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      Default suggestion: ${defaultDonation.toFixed(2)} ({donation_percentage}% of subtotal)
-                    </p>
-                    <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 font-medium">
-                      You can customize any amount you want
-                    </p>
-                  </div>
-                </div>
-              )}
-
-              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                Your donation helps support our mission. Thank you!
-              </p>
-            </div>
-
             {errors.submit && (
               <div className="bg-red-100 dark:bg-red-900/20 border border-red-400 dark:border-red-700 text-red-700 dark:text-red-400 px-4 py-3 rounded-lg">
                 {errors.submit}
@@ -597,16 +348,7 @@ export default function Step1({
                 <span>Subtotal</span>
                 <span>${subtotal.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-gray-600 dark:text-gray-400">
-                <span>Platform Fee ({platform_fee_percentage}%)</span>
-                <span>${platform_fee.toFixed(2)}</span>
-              </div>
-              {isDonating && finalDonationAmount > 0 && (
-                <div className="flex justify-between text-blue-600 dark:text-blue-400 font-medium">
-                  <span>Donation</span>
-                  <span>${finalDonationAmount.toFixed(2)}</span>
-                </div>
-              )}
+              {/* Platform Fee removed - customers don't pay it */}
               <div className="flex justify-between font-bold text-gray-900 dark:text-white border-t border-gray-200 dark:border-gray-700 pt-3">
                 <span>Before Shipping & Tax</span>
                 <span>${orderTotal.toFixed(2)}</span>
@@ -616,14 +358,6 @@ export default function Step1({
               </p>
             </div>
 
-            {/* Donation Note */}
-            {!isDonating && (
-              <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-                <p className="text-xs text-amber-700 dark:text-amber-400 text-center">
-                  💝 Consider adding a donation to support our mission
-                </p>
-              </div>
-            )}
           </div>
         </div>
       </div>

@@ -52,7 +52,10 @@ class WebhookManagementController extends Controller
                 'order:shipment:delivered',
             ];
 
-            $result = $this->printifyService->createWebhooks($webhookUrl, $events);
+            // Get webhook secret from config (optional but recommended for security)
+            $webhookSecret = config('printify.webhook_secret');
+
+            $result = $this->printifyService->createWebhooks($webhookUrl, $events, $webhookSecret);
 
             if ($result['success']) {
                 Log::info('All Printify webhooks setup successfully', [

@@ -51,7 +51,13 @@ import {
     Link as LinkIcon,
     Newspaper,
     Megaphone,
-    Wallet
+    Wallet,
+    Gavel,
+    UserPlus,
+    Bell,
+    Send,
+    Store,
+    CreditCard
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -61,14 +67,15 @@ import { motion } from 'framer-motion';
 
 
 const mainNavItems: (NavItem | NavGroup)[] = [
-    // Main Dashboard
+    // 1. Dashboard
     {
         title: 'Dashboard',
         href: '/dashboard',
         icon: BarChart3,
         permission: "dashboard.read"
     },
-    // AI Chat Assistant
+
+    // 2. AI Chat Assistant
     {
         title: 'AI Chat Assistant',
         href: '/ai-chat',
@@ -77,216 +84,332 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         role: "organization",
     },
 
+    // 3. Governance
     {
-        title: 'Board of Directors',
-        icon: Users,
+        title: 'Governance',
+        icon: Gavel,
         items: [
             {
-                title: 'Index',
+                title: 'Board of Directors',
                 href: '/board-members',
                 icon: Users,
                 role: "organization"
             },
         ],
-        // permission: "data.management.read"
         role: "organization"
     },
 
+    // 4. People & Community
     {
-        title: 'Followers',
-        href: route("organization.followers.index"),
-        icon: UserCheck,
-        permission: "organization.followers.read",
-        role: "organization",
-    },
-
-    {
-        title: 'Volunteer Management',
-        icon: UserCheck,
+        title: 'People & Community',
+        icon: UserPlus,
         items: [
             {
-                title: 'Volunteers',
-                href: '/volunteers',
+                title: 'Followers',
+                href: route("organization.followers.index"),
                 icon: UserCheck,
-                permission: "volunteer.read",
+                permission: "organization.followers.read",
+                role: "organization",
+            },
+            {
+                title: 'Volunteer Management',
+                icon: UserCheck,
+                items: [
+                    {
+                        title: 'Volunteers',
+                        href: '/volunteers',
+                        icon: UserCheck,
+                        permission: "volunteer.read",
+                        role: "organization"
+                    },
+                    {
+                        title: 'Time Sheet',
+                        href: '/volunteers/timesheet',
+                        icon: Clock,
+                        permission: "volunteer.timesheet.read",
+                        role: "organization"
+                    },
+                ],
                 role: "organization"
             },
             {
-                title: 'Time Sheet',
-                href: '/volunteers/timesheet',
-                icon: Clock,
-                permission: "volunteer.timesheet.read",
-                role: "organization"
+                title: 'Job Management',
+                icon: Briefcase,
+                items: [
+                    {
+                        title: 'Position Categories',
+                        href: '/position-categories',
+                        icon: Building2,
+                        permission: "job.position.categories.read"
+                    },
+                    {
+                        title: 'Job Positions',
+                        href: '/job-positions',
+                        icon: Briefcase,
+                        permission: "job.positions.read"
+                    },
+                    {
+                        title: 'Job Posts',
+                        href: '/job-posts',
+                        icon: FileText,
+                        permission: "job.posts.read"
+                    },
+                    {
+                        title: 'Applications',
+                        href: '/job-applications',
+                        icon: Users,
+                        permission: "job.posts.read"
+                    },
+                ]
             },
         ],
         role: "organization"
     },
 
+    // 5. Communication & Engagement
     {
-        title: 'Content Management',
+        title: 'Communication & Engagement',
+        icon: MessageSquare,
+        items: [
+            {
+                title: 'Communication',
+                icon: MessageSquare,
+                items: [
+                    {
+                        title: 'Announcements',
+                        href: '/chat',
+                        icon: Bell,
+                        permission: "communication.read"
+                    },
+                    {
+                        title: 'Newsletter',
+                        href: '/newsletter',
+                        icon: Mail,
+                        permission: "newsletter.read"
+                    },
+                    {
+                        title: 'Email / SMS Campaigns',
+                        icon: Send,
+                        items: [
+                            {
+                                title: 'Campaigns',
+                                href: '/campaigns',
+                                icon: Calendar,
+                                permission: "campaign.read"
+                            },
+                            {
+                                title: 'Create Campaign',
+                                href: '/campaigns/create',
+                                icon: CalendarPlus,
+                                permission: "campaign.create"
+                            },
+                            {
+                                title: 'AI Campaign Generator',
+                                href: '/campaigns/ai/create',
+                                icon: Star,
+                                permission: "campaign.ai.create"
+                            },
+                        ],
+                        permission: "campaign.read"
+                    },
+                ],
+                permission: "communication.read"
+            },
+            {
+                title: 'Group Chat',
+                icon: MessageCircle,
+                items: [
+                    {
+                        title: 'Create',
+                        href: '/chat-group-topics',
+                        icon: MessageSquare,
+                        permission: "communication.read"
+                    },
+                    {
+                        title: 'Select Chat Topic',
+                        href: '/group-topics/select',
+                        icon: MessageSquare,
+                        permission: "communication.read"
+                    },
+                ],
+                permission: "communication.read"
+            },
+        ],
+        permission: "communication.read"
+    },
+
+    // 6. Content & Publishing
+    {
+        title: 'Content & Publishing',
         icon: FileText,
         items: [
             {
-                title: 'Content Items',
-                href: '/content',
-                icon: FileText, // or BookOpen for content
+                title: 'Content Management',
+                icon: FileText,
+                items: [
+                    {
+                        title: 'Content Items',
+                        href: '/content',
+                        icon: FileText,
+                        permission: "content.read"
+                    },
+                    {
+                        title: 'Create Content',
+                        href: '/content/create',
+                        icon: PlusCircle,
+                        permission: "content.create"
+                    },
+                ],
                 permission: "content.read"
             },
             {
-                title: 'Create Content',
-                href: '/content/create',
-                icon: PlusCircle, // or FilePlus for create
-                permission: "content.create"
-            },
-            {
-                title: 'Campaigns',
-                href: '/campaigns',
-                icon: Calendar, // or Send for campaigns
-                permission: "campaign.read"
-            },
-            {
-                title: 'Create Campaign',
-                href: '/campaigns/create',
-                icon: CalendarPlus, // or Send for create campaign
-                permission: "campaign.create"
-            },
-            {
-                title: 'AI Campaign Generator',
-                href: '/campaigns/ai/create',
-                icon: Star, // or Send for create campaign
-                permission: "campaign.ai.create"
-            },
-            {
-                title: 'Newsletter',
-                href: '/newsletter',
-                icon: Mail,
-                permission: "newsletter.read"
+                title: 'Facebook',
+                icon: Facebook,
+                role: "organization",
+                items: [
+                    {
+                        title: 'Connect Pages',
+                        href: '/facebook/connect',
+                        icon: LinkIcon,
+                        role: "organization"
+                    },
+                    {
+                        title: 'Posts',
+                        href: '/facebook/posts',
+                        icon: FileText,
+                        role: "organization"
+                    },
+                    {
+                        title: 'Create Post',
+                        href: '/facebook/posts/create',
+                        icon: Plus,
+                        role: "organization"
+                    },
+                ],
             },
         ],
         role: "organization"
     },
 
-    // Data Management Section
+    // 7. Programs & Events
     {
-        title: 'Data Management',
-        icon: Database,
+        title: 'Programs & Events',
+        icon: Calendar,
         items: [
             {
-                title: 'Upload Data',
-                href: '/upload',
-                icon: Download,
-                permission: "data.management.read"
+                title: 'Virtual (Courses & Events)',
+                icon: GraduationCap,
+                items: [
+                    {
+                        title: 'Courses & Events',
+                        href: '/admin/courses-events',
+                        icon: GraduationCap,
+                        permission: "course.read"
+                    },
+                    {
+                        title: 'Course Topics',
+                        href: '/topics',
+                        icon: BookOpen,
+                        permission: "topic.read"
+                    },
+                ],
+                permission: "course.read"
             },
             {
-                title: 'Manage Data',
-                href: '/manage-data',
-                icon: Database,
-                permission: "data.management.read"
+                title: 'Event Management',
+                icon: Calendar,
+                items: [
+                    {
+                        title: 'Events',
+                        href: '/events',
+                        icon: Calendar,
+                        permission: "event.read"
+                    },
+                    {
+                        title: 'Create Event',
+                        href: '/events/create',
+                        icon: Plus,
+                        permission: "event.create"
+                    },
+                ],
+                permission: "event.read"
             },
         ],
-        permission: "data.management.read"
+        permission: "event.read"
     },
 
+    // 8. Fundraising & Rewards
     {
+        title: 'Fundraising & Rewards',
+        icon: HeartHandshake,
+        items: [
+            {
+                title: 'Donations',
+                icon: HeartHandshake,
+                items: [
+                    {
+                        title: 'All Donations',
+                        href: '/donations',
+                        icon: HeartHandshake,
+                        role: "organization"
+                    },
+                ],
+                role: "organization"
+            },
+            {
                 title: 'Raffle Draws',
                 href: '/raffles',
                 icon: Gift,
                 permission: "raffle.read"
             },
-
-    // E-commerce Section
-    {
-        title: 'E-commerce',
-        icon: ShoppingCart,
-        items: [
-            {
-                title: 'Products',
-                href: '/products',
-                icon: ShoppingCart,
-                permission: "product.read"
-            },
-            {
-                title: 'Categories',
-                href: '/categories',
-                icon: Tag,
-                permission: "category.read"
-            },
-            {
-                title: 'Orders',
-                href: '/orders',
-                icon: Package,
-                permission: "ecommerce.read",
-            },
-            //  {
-            //     title: 'Order Items',
-            //     href: '/order-items',
-            //     icon: Package,
-            //     permission: "ecommerce.read",
-            // },
-        ]
-        // Removed group permission - nav-main will show group if any child is visible
-    },
-
-    // Job Management Section
-    {
-        title: 'Job Management',
-        icon: Briefcase,
-        items: [
-            {
-                title: 'Position Categories',
-                href: '/position-categories',
-                icon: Building2,
-                permission: "job.position.categories.read"
-            },
-            {
-                title: 'Job Positions',
-                href: '/job-positions',
-                icon: Briefcase,
-                permission: "job.positions.read"
-            },
-            {
-                title: 'Job Posts',
-                href: '/job-posts',
-                icon: FileText,
-                permission: "job.posts.read"
-            },
-            {
-                title: 'Applications',
-                href: '/job-applications',
-                icon: Users,
-                permission: "job.posts.read"
-            },
-        ]
-        // Removed group permission - nav-main will show group if any child is visible
-    },
-
-    {
-        title: 'Facebook',
-        icon: Facebook,
-        role: "organization",
-        items: [
-            {
-                title: 'Connect Pages',
-                href: '/facebook/connect',
-                icon: LinkIcon,
-                role: "organization"
-            },
-            {
-                title: 'Posts',
-                href: '/facebook/posts',
-                icon: FileText,
-                role: "organization"
-            },
-            {
-                title: 'Create Post',
-                href: '/facebook/posts/create',
-                icon: Plus,
-                role: "organization"
-            },
         ],
+        role: "organization"
     },
 
-    // Node Management Section
+    // 9. Commerce & Marketplace
+    {
+        title: 'Commerce & Marketplace',
+        icon: Store,
+        items: [
+            {
+                title: 'E-commerce',
+                icon: ShoppingCart,
+                items: [
+                    {
+                        title: 'Products',
+                        href: '/products',
+                        icon: ShoppingCart,
+                        permission: "product.read"
+                    },
+                    {
+                        title: 'Categories',
+                        href: '/categories',
+                        icon: Tag,
+                        permission: "category.read"
+                    },
+                    {
+                        title: 'Orders',
+                        href: '/orders',
+                        icon: Package,
+                        permission: "ecommerce.read",
+                    },
+                ]
+            },
+            {
+                title: 'Gift Cards',
+                icon: Gift,
+                items: [
+                    {
+                        title: 'Purchased Cards',
+                        href: route('gift-cards.created'),
+                        icon: Gift,
+                    },
+                ],
+            },
+        ]
+    },
+
+    // Node Management Section (keeping for admin)
     {
         title: 'Node Management',
         icon: Network,
@@ -311,48 +434,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "node.referral.read"
-    },
-
-    // Virtual (Course,Event) Management Section
-    {
-        title: 'Virtual (Course,Event)',
-        icon: GraduationCap,
-        items: [
-            {
-                title: 'Courses & Events',
-                href: '/admin/courses-events',
-                icon: GraduationCap,
-                permission: "course.read"
-            },
-            {
-                title: 'Course Topics',
-                href: '/topics',
-                icon: BookOpen,
-                permission: "topic.read"
-            },
-        ],
-        permission: "course.read"
-    },
-
-    // Event Management Section
-    {
-        title: 'Event Management',
-        icon: Calendar,
-        items: [
-            {
-                title: 'Events',
-                href: '/events',
-                icon: Calendar,
-                permission: "event.read"
-            },
-            {
-                title: 'Create Event',
-                href: '/events/create',
-                icon: Plus,
-                permission: "event.create"
-            },
-        ],
-        permission: "event.read"
     },
 
     // Code Management Section
@@ -390,74 +471,25 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "classification.code.read"
     },
 
-    // Communication Section
+    // Data Management Section (keeping for admin)
     {
-        title: 'Communication',
-        icon: MessageSquare,
+        title: 'Data Management',
+        icon: Database,
         items: [
             {
-                title: 'Chat',
-                href: '/chat',
-                icon: Text,
-                permission: "communication.read"
+                title: 'Upload Data',
+                href: '/upload',
+                icon: Download,
+                permission: "data.management.read"
             },
             {
-                title: 'Email Invites',
-                href: '/email-invite',
-                icon: Mail,
-                permission: "email.invite.read",
-                role: "organization"
+                title: 'Manage Data',
+                href: '/manage-data',
+                icon: Database,
+                permission: "data.management.read"
             },
         ],
-        permission: "communication.read"
-    },
-
-    // Donations Section (Organization Only)
-    {
-        title: 'Donations',
-        icon: HeartHandshake,
-        items: [
-            {
-                title: 'All Donations',
-                href: '/donations',
-                icon: HeartHandshake,
-                role: "organization"
-            },
-        ],
-        role: "organization"
-    },
-
-    // Gift Cards Section (Organization & Admin)
-    {
-        title: 'Gift Cards',
-        icon: Gift,
-        items: [
-            {
-                title: 'Purchased Cards',
-                href: route('gift-cards.created'),
-                icon: Gift,
-            },
-        ],
-    },
-
-    {
-        title: 'Group Chat',
-        icon: MessageSquare,
-        items: [
-            {
-                title: 'Create',
-                href: '/chat-group-topics',
-                icon: MessageSquare,
-                permission: "communication.read"
-            },
-            {
-                title: 'Select Chat Topic',
-                href: '/group-topics/select',
-                icon: MessageSquare,
-                permission: "communication.read"
-            },
-        ],
-        permission: "communication.read"
+        permission: "data.management.read"
     },
 
     // Application Management Section
@@ -571,51 +603,104 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ]
     },
 
-    // System Management Section
+    // 10. System Management
     {
         title: 'System Management',
         icon: Settings,
         items: [
             {
-                title: 'Role & Permissions',
+                title: 'Roles & Permissions',
                 href: '/permission-management',
                 icon: Shield,
                 permission: "role.management.read"
             },
             {
-                title: 'Settings',
+                title: 'Organization Settings',
                 href: '/settings/profile',
                 icon: Settings,
                 permission: "profile.read"
             },
             {
-                title: 'Reward Points',
-                href: '/admin/reward-points',
-                icon: Gift,
-                permission: "reward.point.manage"
+                title: 'Compliance / Logs',
+                icon: ClipboardList,
+                items: [
+                    {
+                        title: 'Compliance Reviews',
+                        href: '/admin/compliance',
+                        icon: ClipboardList,
+                        permission: "compliance.review"
+                    },
+                    {
+                        title: 'KYB Verification',
+                        href: '/admin/kyb-verification',
+                        icon: Shield,
+                        permission: "kyb.verification.read"
+                    },
+                    {
+                        title: 'KYC Verification',
+                        href: '/admin/kyc-verification',
+                        icon: UserCheck,
+                        permission: "kyc.verification.read"
+                    },
+                ],
+                permission: "compliance.review"
             },
+            {
+                title: 'Integrations',
+                icon: LinkIcon,
+                items: [
+                    {
+                        title: 'Email Invites',
+                        href: '/email-invite',
+                        icon: Mail,
+                        permission: "email.invite.read",
+                        role: "organization"
+                    },
+                    {
+                        title: 'Social Media',
+                        href: route('social-media.index'),
+                        icon: Facebook,
+                        role: "organization"
+                    },
+                ],
+                permission: "email.invite.read"
+            },
+            {
+                title: 'Billing / Plans',
+                icon: CreditCard,
+                items: [
+                    {
+                        title: 'Plans Management',
+                        href: '/admin/plans',
+                        icon: Sparkles,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Wallet Plans Management',
+                        href: '/admin/wallet-plans',
+                        icon: Wallet,
+                        permission: "wallet.plan.read"
+                    },
+                    {
+                        title: 'Email Packages',
+                        href: '/admin/email-packages',
+                        icon: Mail,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Reward Points',
+                        href: '/admin/reward-points',
+                        icon: Gift,
+                        permission: "reward.point.manage"
+                    },
+                ],
+                permission: "wallet.plan.read"
+            },
+            // Additional settings items
             {
                 title: 'About Page',
                 href: '/admin/about',
                 icon: Info,
-                role: "admin"
-            },
-            {
-                title: 'Plans Management',
-                href: '/admin/plans',
-                icon: Sparkles,
-                role: "admin"
-            },
-            {
-                title: 'Wallet Plans Management',
-                href: '/admin/wallet-plans',
-                icon: Wallet,
-                permission: "wallet.plan.read"
-            },
-            {
-                title: 'Email Packages',
-                href: '/admin/email-packages',
-                icon: Mail,
                 role: "admin"
             },
             {
@@ -636,18 +721,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/admin/contact-submissions',
                 icon: Mail,
                 role: "admin"
-            },
-            {
-                title: 'KYB Verification',
-                href: '/admin/kyb-verification',
-                icon: Shield,
-                permission: "kyb.verification.read"
-            },
-            {
-                title: 'KYC Verification',
-                href: '/admin/kyc-verification',
-                icon: UserCheck,
-                permission: "kyc.verification.read"
             },
         ]
         // Removed group permission - nav-main will show group if any child is visible

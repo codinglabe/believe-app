@@ -43,8 +43,8 @@ class CheckoutController extends Controller
         }
 
         $subtotal = $cart->getTotal();
-        $platformFeePercentage = config('printify.platform_fee', 3);
-        $platformFee = round($subtotal * ($platformFeePercentage / 100), 2);
+        // Platform fee removed from customer payment - only organization pays it
+        // Platform fee will be calculated separately for organization view
 
         return Inertia::render('Checkout/index', [
             'items' => $cart->items->map(function ($item) {
@@ -65,9 +65,10 @@ class CheckoutController extends Controller
                 ];
             }),
             'subtotal' => (float) $subtotal,
-            'platform_fee_percentage' => $platformFeePercentage,
-            'platform_fee' => (float) $platformFee,
-            'donation_percentage' => config('printify.optional_donation_percentage', 10),
+            'platform_fee_percentage' => 0, // Platform fee removed from customer payment
+            'platform_fee' => 0, // Platform fee removed from customer payment
+            // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
+            'donation_percentage' => 0, // Set to 0 to disable donation
             'stripePublishableKey' => config('services.stripe.key'),
         ]);
     }
@@ -86,8 +87,9 @@ class CheckoutController extends Controller
             'state' => 'required|string',
             'zip' => 'required|string',
             'country' => 'required|string',
-            'platform_fee' => 'required|numeric',
-            'donation_amount' => 'required|numeric',
+            // 'platform_fee' => 'required|numeric', // Removed - customers don't pay platform fee
+            // 'donation_amount' => 'required|numeric', // Commented out - removed donation for Printify products
+            'donation_amount' => 'nullable|numeric', // Made optional and will be set to 0
         ]);
 
         $user = auth()->user();
@@ -107,6 +109,7 @@ class CheckoutController extends Controller
             $lastName = count($nameParts) > 1 ? implode(' ', array_slice($nameParts, 1)) : '';
 
             // Create temp order
+            // Platform fee removed from customer payment - only organization pays it
             $tempOrder = TempOrder::create([
                 'user_id' => $user->id,
                 'cart_id' => $cart->id,
@@ -120,9 +123,10 @@ class CheckoutController extends Controller
                 'zip' => $validated['zip'],
                 'country' => $validated['country'],
                 'subtotal' => $subtotal,
-                'platform_fee' => $validated['platform_fee'],
-                'donation_amount' => $validated['donation_amount'],
-                'total_amount' => $subtotal + $validated['platform_fee'] + $validated['donation_amount'],
+                'platform_fee' => 0, // Platform fee removed - customers don't pay it
+                // 'donation_amount' => $validated['donation_amount'], // Commented out - removed donation for Printify products
+                'donation_amount' => 0, // Set to 0 - donation removed for Printify products
+                'total_amount' => $subtotal, // Platform fee removed from customer total
                 'status' => 'pending',
             ]);
 
@@ -154,11 +158,12 @@ class CheckoutController extends Controller
             }
 
             // Update temp order with shipping and tax
+            // Platform fee removed from customer payment
             $tempOrder->update([
                 'shipping_methods' => $shippingData['methods'] ?? [],
                 'shipping_cost' => $shippingData['cost'] ?? 0,
                 'tax_amount' => $taxAmount,
-                'total_amount' => $subtotal + $validated['platform_fee'] + $validated['donation_amount'] + ($shippingData['cost'] ?? 0) + $taxAmount,
+                'total_amount' => $subtotal + ($shippingData['cost'] ?? 0) + $taxAmount, // Platform fee removed from customer total
                 'status' => 'shipping_calculated',
             ]);
 
@@ -390,10 +395,10 @@ class CheckoutController extends Controller
         //     ]);
         // }
 
-        // Calculate new total
+        // Calculate new total (platform fee removed - customers don't pay it)
         $newTotalAmount = $tempOrder->subtotal +
-            $tempOrder->platform_fee +
-            $tempOrder->donation_amount +
+            // $tempOrder->platform_fee + // Removed - customers don't pay platform fee
+            // $tempOrder->donation_amount + // Commented out - removed donation for Printify products
             $newShippingCost +
             $newTaxAmount;
 
@@ -480,47 +485,51 @@ class CheckoutController extends Controller
                 return response()->json(['error' => 'Payment not completed'], 400);
             }
 
+            // COMMENTED OUT: Donation calculation removed for Printify products
             // Calculate total donation amount from temp order
-            $totalDonationAmount = $tempOrder->donation_amount;
+            // $totalDonationAmount = $tempOrder->donation_amount;
 
             // Calculate total subtotal for donation distribution
-            $totalSubtotal = $tempOrder->cart->items->sum(function ($item) {
-                return $item->unit_price * $item->quantity;
-            });
+            // $totalSubtotal = $tempOrder->cart->items->sum(function ($item) {
+            //     return $item->unit_price * $item->quantity;
+            // });
 
             // Group cart items by organization to calculate donation distribution
-            $organizationItems = [];
-            foreach ($tempOrder->cart->items as $cartItem) {
-                $orgId = $cartItem->product->organization_id;
-                if (!isset($organizationItems[$orgId])) {
-                    $organizationItems[$orgId] = [
-                        'items' => [],
-                        'subtotal' => 0
-                    ];
-                }
-                $organizationItems[$orgId]['items'][] = $cartItem;
-                $organizationItems[$orgId]['subtotal'] += $cartItem->unit_price * $cartItem->quantity;
-            }
+            // $organizationItems = [];
+            // foreach ($tempOrder->cart->items as $cartItem) {
+            //     $orgId = $cartItem->product->organization_id;
+            //     if (!isset($organizationItems[$orgId])) {
+            //         $organizationItems[$orgId] = [
+            //             'items' => [],
+            //             'subtotal' => 0
+            //         ];
+            //     }
+            //     $organizationItems[$orgId]['items'][] = $cartItem;
+            //     $organizationItems[$orgId]['subtotal'] += $cartItem->unit_price * $cartItem->quantity;
+            // }
 
             // Calculate donation percentage for each organization based on their subtotal share
-            $organizationDonations = [];
-            foreach ($organizationItems as $orgId => $orgData) {
-                // Avoid division by zero
-                if ($totalSubtotal > 0) {
-                    $orgSubtotalPercentage = ($orgData['subtotal'] / $totalSubtotal) * 100;
-                    $orgDonationAmount = ($totalDonationAmount * $orgSubtotalPercentage) / 100;
-                } else {
-                    $orgSubtotalPercentage = 0;
-                    $orgDonationAmount = 0;
-                }
+            // $organizationDonations = [];
+            // foreach ($organizationItems as $orgId => $orgData) {
+            //     // Avoid division by zero
+            //     if ($totalSubtotal > 0) {
+            //         $orgSubtotalPercentage = ($orgData['subtotal'] / $totalSubtotal) * 100;
+            //         $orgDonationAmount = ($totalDonationAmount * $orgSubtotalPercentage) / 100;
+            //     } else {
+            //         $orgSubtotalPercentage = 0;
+            //         $orgDonationAmount = 0;
+            //     }
 
-                $organizationDonations[$orgId] = [
-                    'donation_amount' => $orgDonationAmount,
-                    'subtotal_percentage' => $orgSubtotalPercentage,
-                    'item_count' => count($orgData['items']),
-                    'org_subtotal' => $orgData['subtotal'] // Add this for safety
-                ];
-            }
+            //     $organizationDonations[$orgId] = [
+            //         'donation_amount' => $orgDonationAmount,
+            //         'subtotal_percentage' => $orgSubtotalPercentage,
+            //         'item_count' => count($orgData['items']),
+            //         'org_subtotal' => $orgData['subtotal'] // Add this for safety
+            //     ];
+            // }
+
+            // Set empty organization donations array since donation is disabled
+            $organizationDonations = [];
 
             // Create final order
             $order = Order::create([
@@ -528,7 +537,8 @@ class CheckoutController extends Controller
                 'organization_id' => $tempOrder->cart->items->first()->product->organization_id ?? null,
                 'subtotal' => $tempOrder->subtotal,
                 'platform_fee' => $tempOrder->platform_fee,
-                'donation_amount' => $tempOrder->donation_amount,
+                // 'donation_amount' => $tempOrder->donation_amount, // Commented out - removed donation for Printify products
+                'donation_amount' => 0, // Set to 0 - donation removed for Printify products
                 'tax_amount' => $tempOrder->tax_amount,
                 'shipping_cost' => $tempOrder->shipping_cost,
                 'total_amount' => $tempOrder->total_amount,
@@ -554,30 +564,32 @@ class CheckoutController extends Controller
                 'shipping_method' => $tempOrder->selected_shipping_method,
             ]);
 
-            // Create order items from cart with organization-specific donation
+            // Create order items from cart (donation removed for Printify products)
             foreach ($tempOrder->cart->items as $cartItem) {
-                $orgId = $cartItem->product->organization_id;
-                $orgDonationData = $organizationDonations[$orgId] ?? null;
+                // COMMENTED OUT: Donation calculation removed for Printify products
+                // $orgId = $cartItem->product->organization_id;
+                // $orgDonationData = $organizationDonations[$orgId] ?? null;
 
                 // Calculate donation per item for this organization
-                $donationPerItem = 0;
+                $donationPerItem = 0; // Set to 0 - donation removed for Printify products
 
-                // FIX: Check if orgDonationData exists and has required data
-                if (
-                    $orgDonationData &&
-                    isset($orgDonationData['donation_amount']) &&
-                    isset($orgDonationData['org_subtotal']) &&
-                    $orgDonationData['org_subtotal'] > 0 &&
-                    $orgDonationData['item_count'] > 0
-                ) {
+                // COMMENTED OUT: Donation distribution logic
+                // // FIX: Check if orgDonationData exists and has required data
+                // if (
+                //     $orgDonationData &&
+                //     isset($orgDonationData['donation_amount']) &&
+                //     isset($orgDonationData['org_subtotal']) &&
+                //     $orgDonationData['org_subtotal'] > 0 &&
+                //     $orgDonationData['item_count'] > 0
+                // ) {
 
-                    $itemSubtotal = $cartItem->unit_price * $cartItem->quantity;
-                    $itemPercentage = ($itemSubtotal / $orgDonationData['org_subtotal']) * 100;
-                    $donationPerItem = ($orgDonationData['donation_amount'] * $itemPercentage) / 100;
+                //     $itemSubtotal = $cartItem->unit_price * $cartItem->quantity;
+                //     $itemPercentage = ($itemSubtotal / $orgDonationData['org_subtotal']) * 100;
+                //     $donationPerItem = ($orgDonationData['donation_amount'] * $itemPercentage) / 100;
 
-                    // Ensure donation per item is not negative
-                    $donationPerItem = max(0, $donationPerItem);
-                }
+                //     // Ensure donation per item is not negative
+                //     $donationPerItem = max(0, $donationPerItem);
+                // }
 
                 OrderItem::create([
                     'order_id' => $order->id,
@@ -603,14 +615,15 @@ class CheckoutController extends Controller
                 ]);
             }
 
+            // COMMENTED OUT: Donation logging removed for Printify products
             // Log donation distribution for debugging
-            \Log::info('Donation distribution completed', [
-                'order_id' => $order->id,
-                'total_donation' => $totalDonationAmount,
-                'total_subtotal' => $totalSubtotal,
-                'organization_count' => count($organizationDonations),
-                'organization_donations' => $organizationDonations
-            ]);
+            // \Log::info('Donation distribution completed', [
+            //     'order_id' => $order->id,
+            //     'total_donation' => $totalDonationAmount,
+            //     'total_subtotal' => $totalSubtotal,
+            //     'organization_count' => count($organizationDonations),
+            //     'organization_donations' => $organizationDonations
+            // ]);
 
             // Clear cart
             $tempOrder->cart->items()->delete();
@@ -775,7 +788,7 @@ class CheckoutController extends Controller
                 'shipping_cost' => $shippingCost,
                 'total_amount' => $tempOrder->subtotal +
                     $tempOrder->platform_fee +
-                    $tempOrder->donation_amount +
+                    // $tempOrder->donation_amount + // Commented out - removed donation for Printify products
                     $shippingCost +
                     $newTaxAmount,
             ]);

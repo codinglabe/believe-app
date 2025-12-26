@@ -23,7 +23,8 @@ import {
     Box,
     ShoppingCart,
     Percent,
-    Heart
+    Heart,
+    Info
 } from 'lucide-react';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
@@ -95,6 +96,21 @@ interface PrintifyDetails {
     fulfilment_type: string;
 }
 
+interface FinancialBreakdown {
+    printify_product_cost: number;
+    profit_margin_rate: number;
+    product_price: number;
+    shipping_charged: number;
+    sales_tax_rate: number;
+    sales_tax_collected: number;
+    customer_total_paid: number;
+    recognized_revenue: number;
+    gross_profit: number;
+    platform_payment_fee: number;
+    printify_shipping: number;
+    printify_tax: number;
+}
+
 interface Order {
     id: number;
     reference_number: string;
@@ -119,6 +135,7 @@ interface Order {
     items: OrderItem[];
     printify_details?: PrintifyDetails | null;
     printify_error?: string;
+    financial_breakdown?: FinancialBreakdown;
 }
 
 interface Props extends PageProps {
@@ -126,7 +143,7 @@ interface Props extends PageProps {
     userRole: string;
 }
 
-interface DonationCalculation {
+interface ProfitCalculation {
     revenue: {
         subtotal: number;
         platform_fee: number;
@@ -141,9 +158,9 @@ interface DonationCalculation {
         printify_tax: number;
         total: number;
     };
-    Donation: {
-        platform_fee_Donation: number;
-        net_Donation: number;
+    Profit: {
+        platform_fee_Profit: number;
+        net_Profit: number;
         margin: number;
     };
 }
@@ -151,13 +168,13 @@ interface DonationCalculation {
 export default function Show({ order, userRole }: Props) {
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [DonationCalculation, setDonationCalculation] = useState<DonationCalculation | null>(null);
+    const [ProfitCalculation, setProfitCalculation] = useState<ProfitCalculation | null>(null);
 
     useEffect(() => {
-        calculateDonation();
+        calculateProfit();
     }, [order]);
 
-    const calculateDonation = () => {
+    const calculateProfit = () => {
         // REVENUE BREAKDOWN
         const revenueSubtotal = order.subtotal || 0;
         const revenuePlatformFee = order.platform_fee || 0;
@@ -172,17 +189,17 @@ export default function Show({ order, userRole }: Props) {
         const printifyTax = order.printify_details?.total_tax || 0;
         const totalCosts = printifyProducts + printifyShipping + printifyTax;
 
-        // Donation CALCULATION
-        // Platform Fee Donation (100% of platform fee goes to us)
-        const platformFeeDonation = revenuePlatformFee;
+        // Profit CALCULATION
+        // Platform Fee Profit (100% of platform fee goes to us)
+        const platformFeeProfit = revenuePlatformFee;
 
-        // Net Donation (Total Revenue - Total Costs)
-        const netDonation = revenueTotal - totalCosts;
+        // Net Profit (Total Revenue - Total Costs)
+        const netProfit = revenueTotal - totalCosts;
 
-        // Donation Margin
-        const DonationMargin = revenueTotal > 0 ? (netDonation / revenueTotal) * 100 : 0;
+        // Profit Margin
+        const ProfitMargin = revenueTotal > 0 ? (netProfit / revenueTotal) * 100 : 0;
 
-        const calculation: DonationCalculation = {
+        const calculation: ProfitCalculation = {
             revenue: {
                 subtotal: revenueSubtotal,
                 platform_fee: revenuePlatformFee,
@@ -197,14 +214,14 @@ export default function Show({ order, userRole }: Props) {
                 printify_tax: printifyTax,
                 total: totalCosts
             },
-            Donation: {
-                platform_fee_Donation: platformFeeDonation,
-                net_Donation: netDonation,
-                margin: DonationMargin
+            Profit: {
+                platform_fee_Profit: platformFeeProfit,
+                net_Profit: netProfit,
+                margin: ProfitMargin
             }
         };
 
-        setDonationCalculation(calculation);
+        setProfitCalculation(calculation);
     };
 
     const canCancelOrder = () => {
@@ -266,9 +283,9 @@ export default function Show({ order, userRole }: Props) {
         }).format(amount);
     }
 
-    const getDonationColor = (Donation: number) => {
-        if (Donation > 0) return 'text-green-600 dark:text-green-400';
-        if (Donation < 0) return 'text-red-600 dark:text-red-400';
+    const getProfitColor = (Profit: number) => {
+        if (Profit > 0) return 'text-green-600 dark:text-green-400';
+        if (Profit < 0) return 'text-red-600 dark:text-red-400';
         return 'text-gray-600 dark:text-gray-400';
     }
 
@@ -300,163 +317,150 @@ export default function Show({ order, userRole }: Props) {
                     )}
                 </div>
 
-                {/* Complete Order Summary */}
-                <Card>
-                    <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <ShoppingCart className="w-5 h-5" />
-                            Complete Order Summary
-                        </CardTitle>
-                        <CardDescription>
-                            Detailed breakdown of order revenue and costs
-                        </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                            {/* Revenue Breakdown */}
-                            <div className="space-y-4">
-                                <h3 className="text-lg font-semibold text-green-600 flex items-center gap-2">
-                                    <DollarSign className="w-5 h-5" />
-                                    Revenue Breakdown
-                                </h3>
-
-                                <div className="space-y-3">
-                                    <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600">Products Subtotal</span>
-                                        <span className="font-medium">{formatCurrency(order.subtotal || 0)}</span>
-                                    </div>
-
-                                    <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600 flex items-center gap-2">
-                                            <Percent className="w-4 h-4" />
-                                            Platform Fee
-                                        </span>
-                                        <span className="font-medium text-blue-600">
-                                            +{formatCurrency(order.platform_fee || 0)}
-                                        </span>
-                                    </div>
-
-                                    {order.donation_amount > 0 && (
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600 flex items-center gap-2">
-                                                <Heart className="w-4 h-4 text-red-500" />
-                                                Donation
-                                            </span>
-                                            <span className="font-medium text-red-600">
-                                                +{formatCurrency(order.donation_amount || 0)}
-                                            </span>
-                                        </div>
-                                    )}
-
-                                    <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600">Shipping</span>
-                                        <span className="font-medium">
-                                            +{formatCurrency(order.shipping_cost || 0)}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex justify-between items-center py-2 border-b">
-                                        <span className="text-gray-600">Tax</span>
-                                        <span className="font-medium">
-                                            +{formatCurrency(order.tax_amount || 0)}
-                                        </span>
-                                    </div>
-
-                                    <div className="flex justify-between items-center pt-3 border-t-2 border-green-200">
-                                        <span className="text-lg font-bold text-green-600">Total Revenue</span>
-                                        <span className="text-xl font-bold text-green-600">
-                                            {formatCurrency(order.total_amount || 0)}
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Donation Calculation */}
-                            {DonationCalculation && (
-                                <div className="space-y-4">
-                                    <h3 className="text-lg font-semibold text-blue-600 flex items-center gap-2">
-                                        <Calculator className="w-5 h-5" />
-                                        Donation Calculation
+                {/* Complete Order Summary - Admin/Organization View */}
+                {(userRole === 'admin' || userRole === 'organization') && order.financial_breakdown && (
+                    <Card className="overflow-hidden">
+                        <CardHeader className="text-white">
+                            <CardTitle className="flex items-center gap-2 text-white">
+                                <Calculator className="w-6 h-6" />
+                                Complete Order Summary
+                            </CardTitle>
+                            <CardDescription className="text-blue-100">
+                                Detailed financial breakdown for admin & organization
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="p-6">
+                            <div className="space-y-6">
+                                {/* Product Pricing Section */}
+                                <div className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-6 border border-green-200 dark:border-green-800">
+                                    <h3 className="text-lg font-semibold text-green-800 dark:text-green-200 mb-4 flex items-center gap-2">
+                                        <Package className="w-5 h-5" />
+                                        Product Pricing
                                     </h3>
-
-                                    <div className="space-y-3">
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Platform Fee Donation</span>
-                                            <span className="font-medium text-green-600">
-                                                +{formatCurrency(DonationCalculation.Donation.platform_fee_Donation)}
-                                            </span>
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-green-200 dark:border-green-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Printify Product Cost</div>
+                                            <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(order.financial_breakdown.printify_product_cost)}
+                                            </div>
                                         </div>
-
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Supporter Donation</span>
-                                            <span className="font-medium text-green-600">
-                                                +{formatCurrency(DonationCalculation.revenue.donation)}
-                                            </span>
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-green-200 dark:border-green-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Profit Margin</div>
+                                            <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                                {order.financial_breakdown.profit_margin_rate.toFixed(0)}%
+                                            </div>
                                         </div>
-
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Printify Product Costs</span>
-                                            <span className="font-medium text-orange-600">
-                                                -{formatCurrency(DonationCalculation.costs.printify_products)}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Printify Shipping</span>
-                                            <span className="font-medium text-orange-600">
-                                                -{formatCurrency(DonationCalculation.costs.printify_shipping)}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex justify-between items-center py-2 border-b">
-                                            <span className="text-gray-600">Printify Tax</span>
-                                            <span className="font-medium text-orange-600">
-                                                -{formatCurrency(DonationCalculation.costs.printify_tax)}
-                                            </span>
-                                        </div>
-
-                                        <div className="flex justify-between items-center pt-3 border-t-2 border-blue-200">
-                                            <span className="text-lg font-bold text-blue-600">Net Donation & Platform Fee</span>
-                                            <span className={`text-xl font-bold ${getDonationColor(DonationCalculation.Donation.net_Donation)}`}>
-                                                {formatCurrency(DonationCalculation.Donation.net_Donation)}
-                                            </span>
-                                        </div>
-
-                                        <div className="text-center pt-2">
-                                            <Badge variant="outline" className={getDonationColor(DonationCalculation.Donation.net_Donation)}>
-                                                Donation Margin: {DonationCalculation.Donation.margin.toFixed(1)}%
-                                            </Badge>
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-green-200 dark:border-green-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Product Price</div>
+                                            <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                                                {formatCurrency(order.financial_breakdown.product_price)}
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
-                            )}
-                        </div>
 
-                        {/* Simple Donation Formula */}
-                        {DonationCalculation && (
-                            <div className="mt-6 p-4 bg-gradient-to-r from-green-50 to-blue-50 dark:from-green-900/20 dark:to-blue-900/20 rounded-xl border border-green-200">
-                                <div className="text-center">
-                                    <div className="text-lg font-bold text-gray-800 dark:text-gray-200 mb-3">
-                                        Donation Formula
-                                    </div>
-                                    <div className="text-lg text-blue-800 dark:text-blue-200 font-semibold space-y-2">
-                                        <div>
-                                            <span className="text-green-600">Total Revenue ({formatCurrency(DonationCalculation.revenue.total)})</span>
-                                            <span className="mx-4">-</span>
-                                            <span className="text-orange-600">Total Costs ({formatCurrency(DonationCalculation.costs.total)})</span>
+                                {/* Order Totals Section */}
+                                <div className="bg-gradient-to-br from-blue-50 to-cyan-50 dark:from-blue-900/20 dark:to-cyan-900/20 rounded-xl p-6 border border-blue-200 dark:border-blue-800">
+                                    <h3 className="text-lg font-semibold text-blue-800 dark:text-blue-200 mb-4 flex items-center gap-2">
+                                        <ShoppingCart className="w-5 h-5" />
+                                        Order Totals
+                                    </h3>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-blue-200 dark:border-blue-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Shipping Charged</div>
+                                            <div className="text-xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(order.financial_breakdown.shipping_charged)}
+                                            </div>
                                         </div>
-                                        <div className="text-xl">
-                                            <span className="mx-4">=</span>
-                                            <span className={`${getDonationColor(DonationCalculation.Donation.net_Donation)}`}>
-                                                Net Donation & Platform Fee: {formatCurrency(DonationCalculation.Donation.net_Donation)}
-                                            </span>
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-blue-200 dark:border-blue-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Sales Tax Rate</div>
+                                            <div className="text-xl font-bold text-blue-600 dark:text-blue-400">
+                                                {order.financial_breakdown.sales_tax_rate.toFixed(2)}%
+                                            </div>
+                                        </div>
+                                        <div className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-sm border border-blue-200 dark:border-blue-800">
+                                            <div className="text-sm text-gray-600 dark:text-gray-400 mb-1">Sales Tax Collected</div>
+                                            <div className="text-xl font-bold text-gray-900 dark:text-white">
+                                                {formatCurrency(order.financial_breakdown.sales_tax_collected)}
+                                            </div>
+                                        </div>
+                                        <div className="bg-gradient-to-br from-blue-600 to-cyan-600 rounded-lg p-4 shadow-lg border border-blue-700">
+                                            <div className="text-sm text-blue-100 mb-1">Customer Total Paid</div>
+                                            <div className="text-2xl font-bold text-white">
+                                                {formatCurrency(order.financial_breakdown.customer_total_paid)}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Revenue & Profit Section */}
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                                    {/* Recognized Revenue */}
+                                    <div className="bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl p-6 text-white shadow-lg">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <TrendingUp className="w-5 h-5" />
+                                            <h3 className="text-lg font-semibold">Recognized Revenue</h3>
+                                        </div>
+                                        <div className="text-3xl font-bold mb-2">
+                                            {formatCurrency(order.financial_breakdown.recognized_revenue)}
+                                        </div>
+                                        <div className="text-sm text-indigo-100">
+                                            Product Price + Shipping
+                                        </div>
+                                    </div>
+
+                                    {/* Gross Profit */}
+                                    <div className="bg-gradient-to-br from-pink-500 to-rose-600 rounded-xl p-6 text-white shadow-lg">
+                                        <div className="flex items-center gap-2 mb-3">
+                                            <DollarSign className="w-5 h-5" />
+                                            <h3 className="text-lg font-semibold">Gross Profit</h3>
+                                        </div>
+                                        <div className="text-3xl font-bold mb-2">
+                                            {formatCurrency(order.financial_breakdown.gross_profit)}
+                                        </div>
+                                        <div className="text-sm text-pink-100">
+                                            Revenue - Costs
+                                        </div>
+                                    </div>
+
+                                    {/* Platform Fee */}
+                                    <div className="bg-gradient-to-br from-amber-500 to-orange-600 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-16 -mt-16"></div>
+                                        <div className="relative z-10">
+                                            <div className="flex items-center gap-2 mb-3">
+                                                <CreditCard className="w-5 h-5" />
+                                                <h3 className="text-lg font-semibold">Platform Fee</h3>
+                                            </div>
+                                            <div className="text-3xl font-bold mb-2">
+                                                {formatCurrency(order.financial_breakdown.platform_payment_fee)}
+                                            </div>
+                                            <div className="text-xs text-amber-100 bg-amber-600/30 rounded-md px-2 py-1 inline-block mt-2">
+                                                Organization pays (Not on receipt)
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Summary Note */}
+                                <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-lg p-4 border-l-4 border-amber-500">
+                                    <div className="flex items-start gap-3">
+                                        <div className="flex-shrink-0 mt-0.5">
+                                            <Info className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                                                Platform / Payment Fee
+                                            </p>
+                                            <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                                                This fee is paid by the nonprofit organization and does not appear on the customer receipt.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        )}
-                    </CardContent>
-                </Card>
+                        </CardContent>
+                    </Card>
+                )}
 
                 {/* Order Details */}
                 <Card>

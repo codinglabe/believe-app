@@ -11,19 +11,32 @@ class WebhookController extends Controller
 {
     /**
      * Handle Printify webhooks
+     * According to Printify docs: Header is X-Pfy-Signature with format sha256={digest}
      */
     public function printify(Request $request)
     {
         $secret = config('printify.webhook_secret');
-        $signature = $request->header('X-Printify-Signature');
+        $signature = $request->header('X-Pfy-Signature');
 
-        // Verify webhook signature
-        $payload = $request->getContent();
-        $hash = hash_hmac('sha256', $payload, $secret);
+        // If no secret is configured, skip verification (not recommended for production)
+        if (!$secret) {
+            Log::warning('Printify webhook secret not configured - skipping signature verification');
+            // Continue processing if no secret is set (for development)
+        } else {
+            // Verify webhook signature
+            $payload = $request->getContent();
 
-        if ($hash !== $signature) {
-            Log::warning('Invalid Printify webhook signature');
-            return response()->json(['error' => 'Invalid signature'], 401);
+            // Generate expected signature with sha256= prefix (as per Printify docs)
+            $expectedSignature = 'sha256=' . hash_hmac('sha256', $payload, $secret);
+
+            // Use constant time comparison to prevent timing attacks
+            if (!hash_equals($signature, $expectedSignature)) {
+                Log::warning('Invalid Printify webhook signature', [
+                    'received' => substr($signature ?? '', 0, 20) . '...',
+                    'expected' => substr($expectedSignature, 0, 20) . '...'
+                ]);
+                return response()->json(['error' => 'Invalid signature'], 401);
+            }
         }
 
         $event = $request->input('event');

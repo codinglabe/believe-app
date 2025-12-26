@@ -123,4 +123,16 @@ return [
         'driver' => env('APP_MAINTENANCE_DRIVER', 'file'),
         'store' => env('APP_MAINTENANCE_STORE', 'database'),
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Printify Profit Margin
+    |--------------------------------------------------------------------------
+    |
+    | This value determines the profit margin percentage applied to Printify
+    | product costs. Default is 25%.
+    |
+    */
+
+    'printify_profit_margin' => (float) env('PRINTIFY_PROFIT_MARGIN', 25),
 ];

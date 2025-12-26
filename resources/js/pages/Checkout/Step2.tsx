@@ -44,7 +44,7 @@ interface Step2Data {
 interface Step2Props {
   items: CartItem[]
   subtotal: number
-  platform_fee: number
+  // platform_fee: number // Removed - customers don't pay platform fee
   donation_amount: number
   step2Data: Step2Data
   stripePublishableKey: string
@@ -74,7 +74,7 @@ const cardElementOptions = {
   hidePostalCode: true,
 }
 
-function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
+function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit<Step2Props, "stripePublishableKey">) {
   const stripe = useStripe()
   const elements = useElements()
   const [stripeLoaded, setStripeLoaded] = useState(false)
@@ -83,7 +83,7 @@ function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, 
   const [currentTaxAmount, setCurrentTaxAmount] = useState(step2Data.taxAmount)
   const [currentShippingCost, setCurrentShippingCost] = useState(step2Data.shippingCost)
   const [currentTotalAmount, setCurrentTotalAmount] = useState(step2Data.totalAmount)
-  const [currentDonationAmount, setCurrentDonationAmount] = useState(donation_amount)
+  // Donation removed for Printify products - currentDonationAmount always 0
 
   // New state for tax calculation status
   const [isTaxCalculated, setIsTaxCalculated] = useState(false)
@@ -185,15 +185,13 @@ function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, 
         if (intentResponse.data.shipping_cost !== undefined) {
           setCurrentShippingCost(intentResponse.data.shipping_cost)
         }
-        if (intentResponse.data.donation_amount !== undefined) {
-          setCurrentDonationAmount(intentResponse.data.donation_amount)
-        }
+        // Donation removed for Printify products
 
         // Store payment intent data for next step
         setPaymentIntentData({
           clientSecret: intentResponse.data.clientSecret,
           tempOrderId: intentResponse.data.temp_order_id,
-          donationAmount: intentResponse.data.donation_amount,
+          donationAmount: 0, // Donation disabled for Printify products
           taxAmount: intentResponse.data.tax_amount,
         })
 
@@ -270,16 +268,7 @@ function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, 
     }
   }
 
-  // Calculate donation percentage for display
-  const calculateDonationPercentage = () => {
-    if (currentDonationAmount > 0 && subtotal > 0) {
-      const percentage = (currentDonationAmount / subtotal) * 100;
-      return Math.round(percentage * 100) / 100; // Round to 2 decimal places
-    }
-    return 0;
-  };
-
-  const donationPercentage = calculateDonationPercentage();
+  // Donation calculation removed for Printify products
 
   // Determine button text and state based on payment step
   const getButtonText = () => {
@@ -497,23 +486,8 @@ function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, 
               <span>Subtotal</span>
               <span>${subtotal.toFixed(2)}</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
-              <span>Platform Fee</span>
-              <span>${platform_fee.toFixed(2)}</span>
-            </div>
-
-            {/* Donation Amount */}
-            {currentDonationAmount > 0 && (
-              <div className="flex justify-between text-sm">
-                <div className="flex items-center text-green-600 dark:text-green-400">
-                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M3.172 5.172a4 4 0 015.656 0L10 6.343l1.172-1.171a4 4 0 115.656 5.656L10 17.657l-6.828-6.829a4 4 0 010-5.656z" clipRule="evenodd" />
-                  </svg>
-                  <span>Donation ({donationPercentage}%)</span>
-                </div>
-                <span className="text-green-600 dark:text-green-400 font-semibold">+${currentDonationAmount.toFixed(2)}</span>
-              </div>
-            )}
+            {/* Platform Fee removed - customers don't pay it */}
+            {/* Donation Amount - Removed for Printify products */}
 
             <div className="flex justify-between text-sm text-gray-600 dark:text-gray-400">
               <span>Shipping</span>
@@ -604,22 +578,7 @@ function Step2Form({ items, subtotal, platform_fee, donation_amount, step2Data, 
             )}
           </div>
 
-          {/* Donation Message */}
-          {currentDonationAmount > 0 && (
-            <div className="mt-4 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
-              <div className="flex items-center text-green-800 dark:text-green-400">
-                <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
-                </svg>
-                <div>
-                  <p className="text-sm font-medium">Thank you for your donation!</p>
-                  <p className="text-xs mt-1">
-                    ${currentDonationAmount.toFixed(2)} ({donationPercentage}%) will support our community initiatives.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Donation Message - Removed for Printify products */}
 
           <div className="mt-6 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg border border-green-200 dark:border-green-800">
             <div className="flex items-center text-green-800 dark:text-green-400">
