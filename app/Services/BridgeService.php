@@ -813,25 +813,84 @@ class BridgeService
         string $toCustomerId,
         string $toWalletId,
         float $amount,
-        string $currency = 'USD'
+        string $currency = 'USD',
+        ?string $fromAddress = null,
+        ?string $toAddress = null
     ): array {
         // Convert USD to USDB for bridge_wallet payment rail
         $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency);
         
-        $transferData = [
-            'amount' => number_format($amount, 2, '.', ''),
-            'on_behalf_of' => $toCustomerId, // Customer receiving the transfer
-            'source' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $fromWalletId,
-            ],
-            'destination' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $toWalletId,
-            ],
-        ];
+        // In sandbox mode: Virtual accounts use ethereum payment rail, not bridge_wallet
+        // In production mode: Both use bridge_wallet payment rail
+        if ($this->isSandbox()) {
+            // In sandbox: Virtual accounts are on ethereum chain
+            // Source must use ethereum payment rail with bridge_wallet_id (virtual_account_id)
+            // Destination can use ethereum with bridge_wallet_id or address
+            if (empty($fromWalletId)) {
+                return [
+                    'success' => false,
+                    'error' => 'Source wallet ID (virtual account ID) is required for transfers in sandbox mode.',
+                    'error_code' => 'MISSING_SOURCE_WALLET_ID',
+                ];
+            }
+            
+            // In sandbox, virtual accounts are on ethereum chain, so use ethereum payment rail
+            if (!empty($toWalletId)) {
+                // Both have virtual account IDs - use ethereum payment rail for both
+                $transferData = [
+                    'amount' => number_format($amount, 2, '.', ''),
+                    'on_behalf_of' => $toCustomerId,
+                    'source' => [
+                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
+                        'currency' => 'usdc', // Sandbox uses USDC for Ethereum
+                        'bridge_wallet_id' => $fromWalletId, // Virtual account ID
+                    ],
+                    'destination' => [
+                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
+                        'currency' => 'usdc',
+                        'bridge_wallet_id' => $toWalletId, // Virtual account ID
+                    ],
+                ];
+            } elseif ($toAddress) {
+                // Destination has address - use ethereum for destination
+                $transferData = [
+                    'amount' => number_format($amount, 2, '.', ''),
+                    'on_behalf_of' => $toCustomerId,
+                    'source' => [
+                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
+                        'currency' => 'usdc',
+                        'bridge_wallet_id' => $fromWalletId, // Virtual account ID
+                    ],
+                    'destination' => [
+                        'payment_rail' => 'ethereum',
+                        'currency' => 'usdc',
+                        'address' => $toAddress,
+                    ],
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'error' => 'Destination wallet ID (virtual account ID) or address is required for transfers in sandbox mode.',
+                    'error_code' => 'MISSING_DESTINATION',
+                ];
+            }
+        } else {
+            // Production mode: Use bridge_wallet payment rail for both
+            $transferData = [
+                'amount' => number_format($amount, 2, '.', ''),
+                'on_behalf_of' => $toCustomerId,
+                'source' => [
+                    'payment_rail' => 'bridge_wallet',
+                    'currency' => $bridgeCurrency,
+                    'bridge_wallet_id' => $fromWalletId,
+                ],
+                'destination' => [
+                    'payment_rail' => 'bridge_wallet',
+                    'currency' => $bridgeCurrency,
+                    'bridge_wallet_id' => $toWalletId,
+                ],
+            ];
+        }
 
         return $this->createTransfer($transferData);
     }

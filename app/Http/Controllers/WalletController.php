@@ -111,6 +111,7 @@ class WalletController extends Controller
     /**
      * Get user's wallet balance
      * For organization users, returns the organization's balance
+     * Tries to fetch from Bridge API first, falls back to local balance
      */
     public function getBalance(Request $request)
     {
@@ -120,36 +121,10 @@ class WalletController extends Controller
             // Check if user is an organization user
             $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
             
+            // Determine entity (user or organization)
             if ($isOrgUser) {
-                // Get organization through the user's organization relationship
                 $organization = $user->organization;
-                
-                if ($organization && $organization->user) {
-                    // Get balance from organization's user, not organization itself
-                    $orgUser = $organization->user;
-                    $balance = (float) ($orgUser->balance ?? 0);
-                    
-                    // Check if organization has active subscription
-                    $hasSubscription = $orgUser->current_plan_id !== null;
-                    
-                    // Generate wallet address from organization ID
-                    $walletAddress = '0x' . str_pad(dechex($organization->id), 40, '0', STR_PAD_LEFT);
-                    
-                    return response()->json([
-                        'success' => true,
-                        'balance' => $balance,
-                        'organization_balance' => $balance,
-                        'local_balance' => $balance,
-                        'currency' => 'USD',
-                        'connected' => true,
-                        'source' => 'organization',
-                        'organization_id' => $organization->id,
-                        'organization_name' => $organization->name,
-                        'address' => $walletAddress,
-                        'has_subscription' => $hasSubscription,
-                    ]);
-                } else {
-                    // Organization user but no organization or user found
+                if (!$organization || !$organization->user) {
                     return response()->json([
                         'success' => true,
                         'balance' => 0,
@@ -162,23 +137,88 @@ class WalletController extends Controller
                         'has_subscription' => false,
                     ]);
                 }
+                $entity = $organization;
+                $entityType = \App\Models\Organization::class;
+                $entityUser = $organization->user;
+            } else {
+                $entity = $user;
+                $entityType = \App\Models\User::class;
+                $entityUser = $user;
             }
 
-            // For regular users, get balance directly from user table
-            $balance = (float) ($user->balance ?? 0);
+            // Try to fetch balance from Bridge first
+            $bridgeBalance = null;
+            $bridgeService = app(\App\Services\BridgeService::class);
+            
+            try {
+                $integration = \App\Models\BridgeIntegration::with('primaryWallet')
+                    ->where('integratable_id', $entity->id)
+                    ->where('integratable_type', $entityType)
+                    ->first();
+
+                if ($integration && $integration->bridge_customer_id) {
+                    $isSandbox = $bridgeService->isSandbox();
+                    
+                    // Try to get wallet ID (works in both sandbox and production)
+                    $walletId = $integration->bridge_wallet_id ?? 
+                               ($integration->primaryWallet ? $integration->primaryWallet->bridge_wallet_id : null);
+                    
+                    // In sandbox, virtual accounts don't have wallet IDs, so try virtual_account_id
+                    if (!$walletId && $isSandbox && $integration->primaryWallet && $integration->primaryWallet->virtual_account_id) {
+                        // In sandbox, virtual accounts don't hold balances, but we can try to get customer info
+                        // For now, we'll skip Bridge fetch in sandbox since virtual accounts don't have balances
+                        $walletId = null;
+                    }
+                    
+                    // Try to get balance from Bridge wallet (production mode)
+                    if ($walletId && !$isSandbox) {
+                        $walletResult = $bridgeService->getWallet($integration->bridge_customer_id, $walletId);
+                        
+                        if ($walletResult['success'] && isset($walletResult['data'])) {
+                            $walletData = $walletResult['data'];
+                            $bridgeBalance = (float) ($walletData['balance'] ?? $walletData['available_balance'] ?? $walletData['total_balance'] ?? 0);
+                            
+                            // Update local balance to match Bridge balance
+                            if ($bridgeBalance !== null) {
+                                $entityUser->balance = $bridgeBalance;
+                                $entityUser->save();
+                            }
+                        }
+                    }
+                }
+            } catch (\Exception $bridgeError) {
+                // Log but don't fail - fall back to local balance
+                \Illuminate\Support\Facades\Log::warning('Failed to fetch Bridge balance', [
+                    'error' => $bridgeError->getMessage(),
+                    'user_id' => $user->id,
+                ]);
+            }
+
+            // Use Bridge balance if available, otherwise use local balance
+            $balance = $bridgeBalance !== null ? $bridgeBalance : (float) ($entityUser->balance ?? 0);
             
             // Check if user has active subscription
-            $hasSubscription = $user->current_plan_id !== null;
+            $hasSubscription = $entityUser->current_plan_id !== null;
             
-            return response()->json([
+            $response = [
                 'success' => true,
                 'balance' => $balance,
-                'local_balance' => $balance,
+                'local_balance' => (float) ($entityUser->balance ?? 0),
+                'bridge_balance' => $bridgeBalance,
                 'currency' => 'USD',
                 'connected' => true,
-                'source' => 'user',
+                'source' => $bridgeBalance !== null ? 'bridge' : ($isOrgUser ? 'organization' : 'user'),
                 'has_subscription' => $hasSubscription,
-            ]);
+            ];
+
+            if ($isOrgUser) {
+                $response['organization_balance'] = $balance;
+                $response['organization_id'] = $organization->id;
+                $response['organization_name'] = $organization->name;
+                $response['address'] = '0x' . str_pad(dechex($organization->id), 40, '0', STR_PAD_LEFT);
+            }
+
+            return response()->json($response);
 
         } catch (\Exception $e) {
             Log::error('Wallet balance fetch error: ' . $e->getMessage(), [

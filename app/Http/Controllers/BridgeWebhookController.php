@@ -1626,8 +1626,7 @@ class BridgeWebhookController extends Controller
                     // Update integration with primary wallet info (for backward compatibility)
                     if (!$integration->bridge_wallet_id) {
                         $integration->bridge_wallet_id = $wallet->bridge_wallet_id;
-                        $integration->wallet_address = $wallet->wallet_address;
-                        $integration->wallet_chain = $chain;
+                        // wallet_address and wallet_chain are stored on BridgeWallet, not BridgeIntegration
                         $integration->save();
                     }
 
@@ -2222,12 +2221,11 @@ class BridgeWebhookController extends Controller
                 // This allows the user/organization to re-initialize if needed
                 $integration->bridge_customer_id = null;
                 $integration->bridge_wallet_id = null;
-                $integration->wallet_address = null;
-                $integration->wallet_chain = null;
+                // wallet_address and wallet_chain are stored on BridgeWallet, not BridgeIntegration
                 $integration->kyc_status = 'not_started';
                 $integration->kyb_status = 'not_started';
                 $integration->tos_status = null;
-                $integration->tos_accepted = false;
+                // tos_accepted is not a column in bridge_integrations table
                 $integration->tos_link_url = null;
                 $integration->kyc_link_url = null;
                 $integration->kyb_link_url = null;

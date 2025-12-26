@@ -8,7 +8,11 @@ import { Button } from "@/components/ui/button"
 import { CheckCircle, ArrowRight } from "lucide-react"
 import { motion } from "framer-motion"
 
-export default function PlansSuccess() {
+interface PlansSuccessProps {
+    successMessage?: string
+}
+
+export default function PlansSuccess({ successMessage }: PlansSuccessProps) {
     return (
         <AppSidebarLayout>
             <Head title="Subscription Successful - BelieveInUnity.org" />
@@ -30,6 +34,11 @@ export default function PlansSuccess() {
                                     <h1 className="text-2xl font-bold mb-2">
                                         Subscription Started Successfully!
                                     </h1>
+                                    {successMessage && (
+                                        <p className="text-primary font-semibold mb-2">
+                                            {successMessage}
+                                        </p>
+                                    )}
                                     <p className="text-muted-foreground mb-4">
                                         Your 14-day free trial has begun. You now have full access to all plan features.
                                     </p>
@@ -58,6 +67,10 @@ export default function PlansSuccess() {
         </AppSidebarLayout>
     )
 }
+
+
+
+
 
 
 

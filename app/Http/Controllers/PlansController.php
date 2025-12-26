@@ -520,7 +520,11 @@ class PlansController extends Controller
                     'kyc_fee_paid' => !$hasPaidKycFee,
                 ]);
 
-                return redirect()->back()->with('success', 'Wallet subscription activated successfully! You can now access your digital wallet.');
+                // Render success page instead of redirecting
+                $successMessage = 'Wallet subscription activated successfully! You can now access your digital wallet.';
+                return Inertia::render('Plans/Success', [
+                    'successMessage' => $successMessage,
+                ]);
             }
 
             return redirect()->back()->withErrors([
@@ -689,7 +693,10 @@ class PlansController extends Controller
                 $successMessage .= " {$emailsIncluded} emails included.";
             }
 
-            return redirect()->route('plans.index')->with('success', $successMessage);
+            // Render success page instead of redirecting
+            return Inertia::render('Plans/Success', [
+                'successMessage' => $successMessage,
+            ]);
         } catch (\Exception $e) {
             Log::error('Plan subscription success handler error', [
                 'error' => $e->getMessage(),

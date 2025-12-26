@@ -25,6 +25,14 @@ import {
     ExternalAccounts,
     TransferFromExternal,
     KYCForm,
+    KYBForm,
+    SplashScreen,
+    BalanceSkeleton,
+    WalletAddressSkeleton,
+    SearchResultsSkeleton,
+    ActivitySkeleton,
+    QRCodeSkeleton,
+    DepositInstructionsSkeleton,
     getCsrfToken as getWalletCsrfToken,
     formatAddress as formatWalletAddress
 } from './wallet'
@@ -146,6 +154,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [verificationType, setVerificationType] = useState<'kyc' | 'kyb' | null>(null)
     const [showVerificationIframe, setShowVerificationIframe] = useState(false)
     const [useCustomKyc, setUseCustomKyc] = useState(true) // Toggle between custom form and iframe
+    const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
     const [showTosIframe, setShowTosIframe] = useState(false)
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
@@ -1233,6 +1242,82 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 // Refresh status to get updated info (this will also update hasWallet from backend)
                 await checkBridgeAndFetchBalance()
 
+                // After wallet creation, also create Card Account and Liquidation Address
+                // Note: Virtual Account is already created by the backend create-wallet endpoint
+                // These calls are non-blocking and won't affect wallet creation success
+                try {
+                    // Get customer ID from status check
+                    const statusResponse = await fetch('/wallet/bridge/status', {
+                        method: 'GET',
+                        headers: {
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': getCsrfToken(),
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-store',
+                    })
+
+                    if (statusResponse.ok) {
+                        const statusData = await statusResponse.json()
+                        const customerId = statusData.data?.customer_id
+
+                        if (customerId) {
+                            // Create Card Account (if not exists) - Non-blocking
+                            fetch('/wallet/bridge/card-account', {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': getCsrfToken(),
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                credentials: 'include',
+                                cache: 'no-store',
+                                body: JSON.stringify({}),
+                            })
+                                .then(res => res.json())
+                                .then(cardData => {
+                                    if (cardData.success) {
+                                        console.log('Card account created/verified successfully')
+                                    }
+                                })
+                                .catch(cardError => {
+                                    console.warn('Card account creation (non-critical):', cardError)
+                                })
+
+                            // Create Liquidation Address (if not exists) - Non-blocking
+                            fetch('/wallet/bridge/liquidation-address', {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': getCsrfToken(),
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                credentials: 'include',
+                                cache: 'no-store',
+                                body: JSON.stringify({
+                                    chain: 'ethereum', // Default chain
+                                    currency: 'usdc', // Default currency
+                                }),
+                            })
+                                .then(res => res.json())
+                                .then(liquidationData => {
+                                    if (liquidationData.success) {
+                                        console.log('Liquidation address created/verified successfully')
+                                    }
+                                })
+                                .catch(liquidationError => {
+                                    console.warn('Liquidation address creation (non-critical):', liquidationError)
+                                })
+                        }
+                    }
+                } catch (additionalError) {
+                    console.warn('Additional account creation (non-critical):', additionalError)
+                    // Non-critical errors, wallet creation was successful
+                }
+
                 // Ensure we're showing the wallet screen by switching to account tab
                 setActiveTab('account')
                 setActionView('main')
@@ -2160,7 +2245,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                 if (data.success) {
                     showSuccessToast('KYC data submitted successfully. Verification is pending.')
-                    setKycStatus('pending')
+                    setKycStatus('under_review') // Set status to under_review after submission
+                    setKycSubmitted(true) // Mark that KYC has been submitted
                     setRequiresVerification(true)
                     // Refresh status from backend to ensure sync
                     setTimeout(() => {
@@ -2178,7 +2264,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             .then(statusData => {
                                 if (statusData.success) {
                                     if (statusData.kyc_status) {
-                                        setKycStatus(statusData.kyc_status)
+                                        // If KYC was submitted, don't allow status to go back to not_started (which would show form)
+                                        // Keep waiting screen visible until approved or rejected
+                                        if (kycSubmitted && statusData.kyc_status === 'not_started') {
+                                            // Keep status as under_review to maintain waiting screen
+                                            console.log('KYC submitted - keeping status as under_review to show waiting screen')
+                                        } else {
+                                            setKycStatus(statusData.kyc_status)
+                                            // If status becomes approved, clear the submitted flag
+                                            if (statusData.kyc_status === 'approved') {
+                                                setKycSubmitted(false)
+                                            }
+                                        }
                                     }
                                     if (statusData.requires_verification !== undefined) {
                                         setRequiresVerification(statusData.requires_verification)
@@ -2741,162 +2838,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    // Splash Screen Component
-    const SplashScreen = () => (
-        <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="flex-1 flex flex-col items-center justify-center p-8 space-y-6 bg-gradient-to-br from-purple-50 via-blue-50 to-purple-50 dark:from-purple-950/20 dark:via-blue-950/20 dark:to-purple-950/20"
-        >
-            {/* Animated Wallet Icon */}
-            <motion.div
-                initial={{ scale: 0.8, rotate: -10 }}
-                animate={{
-                    scale: [0.8, 1.1, 1],
-                    rotate: [-10, 10, 0],
-                }}
-                transition={{
-                    duration: 1.5,
-                    repeat: Infinity,
-                    repeatType: "reverse",
-                    ease: "easeInOut"
-                }}
-                className="relative"
-            >
-                <div className="w-20 h-20 bg-gradient-to-r from-purple-600 to-blue-600 rounded-2xl flex items-center justify-center shadow-2xl">
-                    <Wallet className="h-10 w-10 text-white" />
-                </div>
-                {/* Pulsing ring effect */}
-                <motion.div
-                    className="absolute inset-0 rounded-2xl bg-gradient-to-r from-purple-600 to-blue-600"
-                    animate={{
-                        scale: [1, 1.3, 1],
-                        opacity: [0.5, 0, 0.5],
-                    }}
-                    transition={{
-                        duration: 2,
-                        repeat: Infinity,
-                        ease: "easeInOut"
-                    }}
-                />
-            </motion.div>
-
-            {/* Loading Text */}
-            <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.2 }}
-                className="text-center space-y-2"
-            >
-                <h3 className="text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                    Loading Wallet
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                    Securing your financial data...
-                </p>
-            </motion.div>
-
-            {/* Loading Dots */}
-            <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.4 }}
-                className="flex gap-2"
-            >
-                {[0, 1, 2].map((i) => (
-                    <motion.div
-                        key={i}
-                        className="w-2 h-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full"
-                        animate={{
-                            scale: [1, 1.5, 1],
-                            opacity: [0.5, 1, 0.5],
-                        }}
-                        transition={{
-                            duration: 1,
-                            repeat: Infinity,
-                            delay: i * 0.2,
-                            ease: "easeInOut"
-                        }}
-                    />
-                ))}
-            </motion.div>
-        </motion.div>
-    )
-
-    // Skeleton Components
-    const BalanceSkeleton = () => (
-        <div className="text-center py-4 space-y-2">
-            <Skeleton className="h-4 w-24 mx-auto" />
-            <Skeleton className="h-10 w-32 mx-auto" />
-        </div>
-    )
-
-    const WalletAddressSkeleton = () => (
-        <div className="space-y-2">
-            <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
-                <div className="flex items-center gap-2 flex-1">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <Skeleton className="h-4 flex-1 max-w-[200px]" />
-                </div>
-                <Skeleton className="h-6 w-6 rounded" />
-            </div>
-        </div>
-    )
-
-    const ActivitySkeleton = () => (
-        <div className="space-y-3 p-4">
-            {[1, 2, 3, 4].map((i) => (
-                <div key={i} className="flex items-center gap-3 p-3 border border-border rounded-lg">
-                    <Skeleton className="h-10 w-10 rounded-full" />
-                    <div className="flex-1 space-y-2">
-                        <Skeleton className="h-4 w-3/4" />
-                        <Skeleton className="h-3 w-1/2" />
-                    </div>
-                    <Skeleton className="h-6 w-16" />
-                </div>
-            ))}
-        </div>
-    )
-
-    const DepositInstructionsSkeleton = () => (
-        <div className="space-y-4 p-4">
-            <Skeleton className="h-6 w-40" />
-            <div className="space-y-2">
-                <Skeleton className="h-4 w-full" />
-                <Skeleton className="h-4 w-5/6" />
-                <Skeleton className="h-4 w-4/6" />
-            </div>
-            <Skeleton className="h-32 w-full rounded-lg" />
-        </div>
-    )
-
-    const QRCodeSkeleton = () => (
-        <div className="flex items-center justify-center p-8">
-            <Skeleton className="h-64 w-64 rounded-lg" />
-        </div>
-    )
-
-    const SearchResultsSkeleton = () => (
-        <div className="space-y-2 p-2">
-            {[1, 2, 3].map((i) => (
-                <div key={i} className="flex items-center gap-3 p-2 hover:bg-muted rounded-lg">
-                    <Skeleton className="h-8 w-8 rounded-full" />
-                    <div className="flex-1 space-y-1">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-3 w-24" />
-                    </div>
-                </div>
-            ))}
-        </div>
-    )
+    // Splash Screen and Skeleton components are now imported from './wallet'
+    // Removed inline definitions to reduce file size
 
     return (
         <AnimatePresence>
             {isOpen && (
-                <>
+                <React.Fragment key="wallet-popup">
                     {/* Backdrop - No blur */}
                     <motion.div
+                        key="wallet-backdrop"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         exit={{ opacity: 0 }}
@@ -2906,6 +2857,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                     {/* Popup - MetaMask style structure */}
                     <motion.div
+                        key="wallet-popup-content"
                         initial={{ opacity: 0, scale: 0.95, y: -10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
@@ -3033,14 +2985,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             {isInitialLoading ? (
                                 <SplashScreen key="splash-screen" />
                             ) : (
-                                <React.Fragment key="main-content">
+                                <motion.div 
+                                    key="main-content"
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="flex-1 flex flex-col"
+                                >
                                     {/* Success Animation Overlay */}
                                     <AnimatePresence>
-                                        <SuccessMessage
-                                            show={showSuccess}
-                                            successType={successType}
-                                            message={successMessage}
-                                        />
+                                        {showSuccess && (
+                                            <SuccessMessage
+                                                key="success-message"
+                                                show={showSuccess}
+                                                successType={successType}
+                                                message={successMessage}
+                                            />
+                                        )}
                                     </AnimatePresence>
 
                                     {/* Balance Display - Show at top for all action views */}
@@ -3058,7 +3019,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                     {!showSuccess && actionView === 'send' ? (
                                         isLoadingSearch && searchResults.length === 0 ? (
-                                            <div className="p-4 space-y-4">
+                                            <div key="send-loading" className="p-4 space-y-4">
                                                 <BalanceSkeleton />
                                                 <div className="space-y-3">
                                                     <Skeleton className="h-10 w-full" />
@@ -3070,6 +3031,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             </div>
                                         ) : (
                                             <SendMoney
+                                                key="send-money"
                                                 sendAmount={sendAmount}
                                                 walletBalance={walletBalance}
                                                 recipientSearch={recipientSearch}
@@ -3101,7 +3063,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )
                                     ) : !showSuccess && actionView === 'external_accounts' ? (
                                         isLoadingExternalAccounts && externalAccounts.length === 0 ? (
-                                            <div className="p-4 space-y-4">
+                                            <div key="external-accounts-loading" className="p-4 space-y-4">
                                                 <div className="space-y-3">
                                                     {[1, 2, 3].map((i) => (
                                                         <div key={i} className="p-4 border border-border rounded-lg space-y-2">
@@ -3114,6 +3076,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             </div>
                                         ) : (
                                             <ExternalAccounts
+                                                key="external-accounts"
                                                 externalAccounts={externalAccounts}
                                                 isLoading={isLoadingExternalAccounts}
                                                 onRefresh={fetchExternalAccounts}
@@ -3122,6 +3085,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )
                                     ) : !showSuccess && actionView === 'transfer_from_external' ? (
                                         <TransferFromExternal
+                                            key="transfer-from-external"
                                             externalAccounts={externalAccounts}
                                             selectedExternalAccount={selectedExternalAccount}
                                             transferAmount={transferAmount}
@@ -3132,13 +3096,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         />
                                     ) : !showSuccess && actionView === 'receive' ? (
                                         isLoadingReceiveData ? (
-                                            <div className="p-4 space-y-4">
+                                            <div key="receive-loading" className="p-4 space-y-4">
                                                 <BalanceSkeleton />
                                                 <QRCodeSkeleton />
                                                 <DepositInstructionsSkeleton />
                                             </div>
                                         ) : (
                                             <ReceiveMoney
+                                                key="receive-money"
                                                 isLoading={isLoadingReceiveData}
                                                 qrCodeUrl={qrCodeUrl}
                                                 depositInstructions={receiveDepositInstructions}
@@ -3148,15 +3113,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             />
                                         )
                                     ) : !showSuccess && actionView === 'swap' ? (
-                                        <SwapView />
+                                        <SwapView key="swap-view" />
                                     ) : !showSuccess && actionView === 'addMoney' ? (
                                         isLoadingDepositInstructions ? (
-                                            <div className="p-4 space-y-4">
+                                            <div key="add-money-loading" className="p-4 space-y-4">
                                                 <BalanceSkeleton />
                                                 <DepositInstructionsSkeleton />
                                             </div>
                                         ) : (
                                             <AddMoney
+                                                key="add-money"
                                                 isLoading={isLoadingDepositInstructions}
                                                 depositInstructions={depositInstructions}
                                                 selectedPaymentMethod={selectedPaymentMethod}
@@ -3195,7 +3161,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                             return 'other' // Continue to other checks
                                         })() === 'skeleton' ? (
-                                            <div className="p-4 space-y-4">
+                                            <div key="account-skeleton" className="p-4 space-y-4">
                                                 <BalanceSkeleton />
                                                 <div className="grid grid-cols-4 gap-2">
                                                     {[1, 2, 3, 4].map((i) => (
@@ -3231,6 +3197,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             return 'other'
                                         })() === 'wallet_screen' ? (
                                             <WalletScreen
+                                                key="wallet-screen"
                                                 walletBalance={walletBalance}
                                                 walletAddress={walletAddress}
                                                 isLoading={isLoading}
@@ -3259,6 +3226,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             return 'other' // Continue to other checks
                                         })() === 'create_wallet' ? (
                                             <CreateWallet
+                                                key="create-wallet"
                                                 isLoading={isLoading}
                                                 isSandbox={isSandbox}
                                                 verificationType={verificationType}
@@ -3272,10 +3240,69 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             return 'other'
                                         })() === 'connect_wallet' ? (
                                             <ConnectWallet
+                                                key="connect-wallet"
                                                 isLoading={isLoading}
                                                 organizationName={organizationName}
                                                 onConnect={handleConnectWallet}
                                             />
+                                        ) : (() => {
+                                            // PRIORITY: If status is approved, ALWAYS show wallet screen (return false)
+                                            if (bridgeInitialized && verificationType) {
+                                                const isKybApproved = verificationType === 'kyb' && kybStatus === 'approved'
+                                                const isKycApproved = verificationType === 'kyc' && kycStatus === 'approved'
+
+                                                if (isKybApproved || isKycApproved) {
+                                                    return false // Show wallet screen - status is approved!
+                                                }
+                                            }
+
+                                            // PRIORITY: For KYC - if submitted and pending, show simple waiting screen instead of full verification screen
+                                            if (verificationType === 'kyc' && kycSubmitted && kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected') {
+                                                return 'kyc_waiting' // Show simple waiting screen
+                                            }
+
+                                            // Show verification screen only if:
+                                            // 1. Bridge is initialized
+                                            // 2. Verification type is set  
+                                            // 3. Status is NOT approved
+                                            if (!bridgeInitialized || !verificationType) {
+                                                return false // Show wallet screen if not initialized or no verification type
+                                            }
+
+                                            // Check if status is NOT approved
+                                            const isKybNotApproved = verificationType === 'kyb' && kybStatus && kybStatus !== 'approved'
+                                            const isKycNotApproved = verificationType === 'kyc' && kycStatus && kycStatus !== 'approved'
+
+                                            // Show verification screen if status exists and is NOT approved
+                                            return isKybNotApproved || isKycNotApproved
+                                        })() === 'kyc_waiting' ? (
+                                            /* Simple KYC Waiting Screen - No verification wrapper */
+                                            <motion.div
+                                                key="kyc-waiting-screen"
+                                                initial={{ opacity: 0, y: 20 }}
+                                                animate={{ opacity: 1, y: 0 }}
+                                                exit={{ opacity: 0, y: -20 }}
+                                                transition={{ duration: 0.3 }}
+                                                className="flex-1 flex flex-col items-center justify-center p-3 sm:p-4 space-y-4"
+                                            >
+                                                <motion.div
+                                                    initial={{ scale: 0.8, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    transition={{ duration: 0.3 }}
+                                                    className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
+                                                >
+                                                    <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                                                </motion.div>
+                                                <div className="text-center space-y-2">
+                                                    <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
+                                                    <p className="text-sm text-muted-foreground max-w-sm">
+                                                        Your KYC information has been successfully submitted and is being reviewed.
+                                                    </p>
+                                                    <p className="text-xs text-muted-foreground mt-3">
+                                                        Please wait while we verify your identity. You will be notified once the verification is complete.
+                                                    </p>
+                                                </div>
+                                            </motion.div>
                                         ) : (() => {
                                             // PRIORITY: If status is approved, ALWAYS show wallet screen (return false)
                                             if (bridgeInitialized && verificationType) {
@@ -3304,6 +3331,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         })() ? (
                                             /* Verification Required Screen */
                                             <motion.div
+                                                key="verification-screen"
                                                 initial={{ opacity: 0, y: 20 }}
                                                 animate={{ opacity: 1, y: 0 }}
                                                 exit={{ opacity: 0, y: -20 }}
@@ -3493,12 +3521,42 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                             /* Custom KYC/KYB Form */
                                                                             <div className="space-y-2 sm:space-y-3 max-h-[250px] sm:max-h-[350px] overflow-y-auto overflow-x-hidden [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] w-full -mx-0">
                                                                                 {verificationType === 'kyc' ? (
-                                                                                    <KYCForm
-                                                                                        formData={kycFormData}
-                                                                                        isLoading={isLoading}
-                                                                                        onFormDataChange={setKycFormData}
-                                                                                        onSubmit={handleSubmitCustomKyc}
-                                                                                    />
+                                                                                    // Show waiting screen until KYC is approved
+                                                                                    // Show waiting screen if:
+                                                                                    // 1. KYC has been submitted (kycSubmitted flag is true), OR
+                                                                                    // 2. Status is not not_started, not approved, and not rejected
+                                                                                    // Only show form when status is not_started (initial) and NOT submitted, or rejected (needs resubmission)
+                                                                                    (kycSubmitted || (kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected')) ? (
+                                                                                        /* KYC Waiting Screen */
+                                                                                        <div className="flex flex-col items-center justify-center py-8 px-4 space-y-4 w-full">
+                                                                                            <motion.div
+                                                                                                initial={{ scale: 0.8, opacity: 0 }}
+                                                                                                animate={{ scale: 1, opacity: 1 }}
+                                                                                                transition={{ duration: 0.3 }}
+                                                                                                className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
+                                                                                            >
+                                                                                                <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+                                                                                            </motion.div>
+                                                                                            <div className="text-center space-y-2">
+                                                                                                <h3 className="text-lg font-bold text-foreground">KYC Verification Pending</h3>
+                                                                                                <p className="text-sm text-muted-foreground max-w-sm">
+                                                                                                    Your KYC information has been successfully submitted and is being reviewed.
+                                                                                                </p>
+                                                                                                <p className="text-xs text-muted-foreground mt-3">
+                                                                                                    Please wait while we verify your identity. You will be notified once the verification is complete.
+                                                                                                </p>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <KYCForm
+                                                                                            formData={kycFormData}
+                                                                                            isLoading={isLoading}
+                                                                                            onFormDataChange={setKycFormData}
+                                                                                            onSubmit={handleSubmitCustomKyc}
+                                                                                            kycStatus={kycStatus}
+                                                                                            kycSubmitted={kycSubmitted}
+                                                                                        />
+                                                                                    )
                                                                                 ) : verificationType === 'kyb' ? (
                                                                                     /* Business KYB Multi-Step Form */
                                                                                     <>
@@ -5622,7 +5680,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             />
                                         )
                                     )}
-                                </React.Fragment>
+                                </motion.div>
                             )}
                         </div>
 
@@ -5634,18 +5692,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         </div>
 
                     </motion.div>
-                </>
+                </React.Fragment>
             )}
 
             {/* Subscription Required Modal */}
-            <SubscriptionRequiredModal
-                isOpen={showSubscriptionModal}
-                onClose={() => {
-                    setShowSubscriptionModal(false)
-                    onClose() // Also close the wallet popup
-                }}
-                feature="wallet"
-            />
+            {showSubscriptionModal && (
+                <SubscriptionRequiredModal
+                    key="subscription-modal"
+                    isOpen={showSubscriptionModal}
+                    onClose={() => {
+                        setShowSubscriptionModal(false)
+                        onClose() // Also close the wallet popup
+                    }}
+                    feature="wallet"
+                />
+            )}
         </AnimatePresence>
     )
 }

@@ -330,8 +330,8 @@ export default function Navbar() {
                               </Button> */}
                 <NotificationBell userId={auth.user.id} />
 
-                {/* Wallet Balance Button - Always show */}
-                {isLoggedIn && (
+                {/* Wallet Balance Button - Hide for admin users */}
+                {isLoggedIn && auth?.user?.role !== "admin" && (
                   <Button
                     variant="ghost"
                     size="sm"
@@ -545,8 +545,8 @@ export default function Navbar() {
                           <p className="text-xs text-muted-foreground">{auth?.user?.email ?? "john@example.com"}</p>
                         </div>
                       </div>
-                      {/* Wallet section for mobile - Always show */}
-                      {isLoggedIn && (
+                      {/* Wallet section for mobile - Hide for admin users */}
+                      {isLoggedIn && auth?.user?.role !== "admin" && (
                         <Button
                           variant="ghost"
                           className="w-full justify-start bg-gray-50 dark:bg-gray-800 rounded-md"
