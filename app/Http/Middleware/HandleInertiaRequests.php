@@ -53,14 +53,23 @@ class HandleInertiaRequests extends Middleware
         }
         $user = $isLivestockDomain
             ? $request->user('livestock')
-            : $request->user()?->load("organization");
-        $role = $user?->roles?->first();
+            : $request->user();
+
+        // Only load organization relationship if user is not a LivestockUser
+        if ($user && !$isLivestockDomain && !($user instanceof \App\Models\LivestockUser)) {
+            $user->load("organization");
+        }
+        // Only access roles if user is not a LivestockUser (User model has roles via Spatie Permission)
+        $role = null;
+        if ($user && !($user instanceof \App\Models\LivestockUser)) {
+            $role = $user->roles?->first();
+        }
 
         // Get all permissions (both role-based and direct user permissions) - only for main app users
         $permissions = [];
         $roles = [];
 
-        if ($user && !$isLivestockDomain) {
+        if ($user && !$isLivestockDomain && !($user instanceof \App\Models\LivestockUser) && method_exists($user, 'getAllPermissions')) {
             $permissions = $user->getAllPermissions()->pluck('name')->toArray();
             $roles = $user->roles?->pluck('name')->toArray() ?? [];
         }
@@ -68,7 +77,7 @@ class HandleInertiaRequests extends Middleware
         // Build user data based on domain
         $userData = null;
         if ($user) {
-            if ($isLivestockDomain) {
+            if ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data
                 $userData = [
                     'id' => $user->id,
@@ -93,42 +102,44 @@ class HandleInertiaRequests extends Middleware
                     ] : null,
                 ];
             } else {
-                // Main app user data
-                $userData = [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'phone' => $user->contact_number,
-                    'role' => $user->role,
-                    'organization_role' => $user->organization_role ?? null,
-                    'balance'=>$user->balance,
-                    'reward_points' => $user->reward_points ?? 0,
-                    'credits' => $user->credits ?? 0,
-                    'current_plan_id' => $user->current_plan_id ?? null,
-                    'current_plan_details' => $user->current_plan_details ?? null,
-                    "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),
-                    'favorite_organizations_count' => $user->favoriteOrganizations()->count(),
-                    "cover_img" => $user->role !== "organization" ? ($user->cover_img ? '/storage/' . $user->cover_img : null) :($user->organization?->user?->cover_img ? '/storage/' . $user->organization?->user?->cover_img : null),
-                    "dob" => $user->dob,
-                    'joined' => $user->created_at->format('F Y'),
-                    "email_verified_at" => $user->email_verified_at,
-                    "ownership_verified_at" => $user->ownership_verified_at,
-                    'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
-                    'push_token' => $user->push_token ?? null,
-                    'timezone' => $user->timezone ?? 'UTC',
-                    "organization" => $user->organization ? [
-                        'name' => $user->organization->name,
-                        "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
-                        'contact_title' => $user->organization->contact_title,
-                        'website' => $user->organization->website,
-                        'description' => $user->organization->description,
-                        'mission' => $user->organization->mission,
-                        'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
+                // Main app user data (only for regular User models)
+                if (!($user instanceof \App\Models\LivestockUser)) {
+                    $userData = [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'phone' => $user->contact_number,
+                        'role' => $user->role,
+                        'organization_role' => $user->organization_role ?? null,
+                        'balance'=>$user->balance,
+                        'reward_points' => $user->reward_points ?? 0,
+                        'credits' => $user->credits ?? 0,
+                        'current_plan_id' => $user->current_plan_id ?? null,
+                        'current_plan_details' => $user->current_plan_details ?? null,
+                        "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),
+                        'favorite_organizations_count' => $user->favoriteOrganizations()->count(),
+                        "cover_img" => $user->role !== "organization" ? ($user->cover_img ? '/storage/' . $user->cover_img : null) :($user->organization?->user?->cover_img ? '/storage/' . $user->organization?->user?->cover_img : null),
+                        "dob" => $user->dob,
                         'joined' => $user->created_at->format('F Y'),
-                        'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
-                        'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
-                    ] : null,
-                ];
+                        "email_verified_at" => $user->email_verified_at,
+                        "ownership_verified_at" => $user->ownership_verified_at,
+                        'referral_link' => $user->referral_code ? url('/register?ref=' . $user->referral_code) : null,
+                        'push_token' => $user->push_token ?? null,
+                        'timezone' => $user->timezone ?? 'UTC',
+                        "organization" => $user->organization ? [
+                            'name' => $user->organization->name,
+                            "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
+                            'contact_title' => $user->organization->contact_title,
+                            'website' => $user->organization->website,
+                            'description' => $user->organization->description,
+                            'mission' => $user->organization->mission,
+                            'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
+                            'joined' => $user->created_at->format('F Y'),
+                            'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
+                            'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
+                        ] : null,
+                    ];
+                }
             }
         }
 

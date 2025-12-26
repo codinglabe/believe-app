@@ -29,101 +29,64 @@ import {
   Zap,
   User,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
 
-// Mock data - replace with real data from backend
-const mockSeller = {
-  id: 1,
-  name: "DesignPro",
-  avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200",
-  level: "Level 2 Seller",
-  responseTime: "1 hour",
-  memberSince: "2020",
-  totalSales: 1247,
-  rating: 4.9,
-  totalReviews: 892,
-  location: "United States",
-  languages: ["English", "Spanish"],
-  description: "Professional graphic designer with over 5 years of experience specializing in logo design and brand identity. I've helped hundreds of businesses establish their visual identity with memorable, modern designs that tell their unique story.",
-  bio: "I'm a passionate designer who loves creating visual identities that make brands stand out. My approach combines modern design principles with a deep understanding of brand psychology. Every project is an opportunity to create something meaningful.",
-  skills: ["Logo Design", "Brand Identity", "Vector Graphics", "Typography", "Color Theory"],
-  verified: true,
-  services: [
-    {
-      id: 1,
-      title: "Professional Logo Design",
-      price: 25,
-      rating: 4.9,
-      reviews: 1247,
-      image: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-      category: "Graphics & Design",
-    },
-    {
-      id: 2,
-      title: "Complete Brand Identity Package",
-      price: 150,
-      rating: 5.0,
-      reviews: 234,
-      image: "https://images.unsplash.com/photo-1561070791-2526d30994b5?w=400",
-      category: "Graphics & Design",
-    },
-    {
-      id: 3,
-      title: "Business Card Design",
-      price: 35,
-      rating: 4.8,
-      reviews: 456,
-      image: "https://images.unsplash.com/photo-1633409361618-c73427e4e206?w=400",
-      category: "Graphics & Design",
-    },
-  ],
-  recentReviews: [
-    {
-      id: 1,
-      user: "John D.",
-      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100",
-      rating: 5,
-      comment: "Amazing work! The logo perfectly represents my brand. Fast delivery and great communication.",
-      service: "Professional Logo Design",
-      date: "2 days ago",
-    },
-    {
-      id: 2,
-      user: "Sarah M.",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
-      rating: 5,
-      comment: "Professional designer with great attention to detail. Highly recommend!",
-      service: "Complete Brand Identity Package",
-      date: "5 days ago",
-    },
-    {
-      id: 3,
-      user: "Mike T.",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100",
-      rating: 4,
-      comment: "Good quality work, though I needed a couple of revisions. Overall satisfied.",
-      service: "Professional Logo Design",
-      date: "1 week ago",
-    },
-  ],
-  stats: {
-    ordersCompleted: 1247,
-    repeatBuyers: 456,
-    averageResponseTime: "1 hour",
-    onTimeDelivery: 98,
-    orderCompletion: 100,
-  },
+interface Seller {
+  id: number
+  name: string
+  avatar: string | null
+  description: string
+}
+
+interface Service {
+  id: number
+  title: string
+  price: number
+  rating: number
+  reviews: number
+  image: string | null
+  category: string
+}
+
+interface Review {
+  id: number
+  user: {
+    name: string
+    avatar: string | null
+  }
+  rating: number
+  comment: string
+  service: string
+  date: string
+}
+
+interface Stats {
+  totalSales: number
+  totalReviews: number
+  avgRating: number
+  totalServices: number
+  repeatBuyers: number
+  onTimeDelivery: number
+  orderCompletion: number
+}
+
+interface PageProps extends Record<string, unknown> {
+  seller: Seller
+  services: Service[]
+  stats: Stats
+  recentReviews: Review[]
 }
 
 export default function SellerProfile() {
+  const { seller, services, stats, recentReviews } = usePage<PageProps>().props
   const [isFavorite, setIsFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState("services")
 
   return (
     <FrontendLayout>
-      <Head title={`${mockSeller.name} - Seller Profile`} />
+      <Head title={`${seller.name} - Seller Profile`} />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -172,16 +135,11 @@ export default function SellerProfile() {
                         className="relative"
                       >
                         <Avatar className="h-32 w-32 border-4 border-background shadow-xl">
-                          <AvatarImage src={mockSeller.avatar} alt={mockSeller.name} />
+                          <AvatarImage src={seller.avatar || undefined} alt={seller.name} />
                           <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white text-3xl">
-                            {mockSeller.name[0]}
+                            {seller.name[0]}
                           </AvatarFallback>
                         </Avatar>
-                        {mockSeller.verified && (
-                          <div className="absolute bottom-0 right-0 p-1.5 bg-background rounded-full shadow-lg">
-                            <CheckCircle2 className="h-5 w-5 text-blue-600 fill-blue-600" />
-                          </div>
-                        )}
                       </motion.div>
                     </div>
 
@@ -189,51 +147,38 @@ export default function SellerProfile() {
                     <div className="flex-1 space-y-4">
                       <div>
                         <div className="flex items-center gap-3 mb-2">
-                          <h2 className="text-3xl font-bold">{mockSeller.name}</h2>
-                          <Badge variant="secondary" className="bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                            {mockSeller.level}
-                          </Badge>
-                          {mockSeller.verified && (
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300">
-                              <CheckCircle2 className="h-3 w-3 mr-1" />
-                              Verified
-                            </Badge>
-                          )}
+                          <h2 className="text-3xl font-bold">{seller.name}</h2>
                         </div>
                         <div className="flex items-center gap-4 text-sm text-muted-foreground mb-4">
                           <div className="flex items-center gap-1">
                             <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                            <span className="font-semibold text-foreground">{mockSeller.rating}</span>
-                            <span>({mockSeller.totalReviews} reviews)</span>
+                            <span className="font-semibold text-foreground">{stats.avgRating}</span>
+                            <span>({stats.totalReviews} reviews)</span>
                           </div>
                           <div className="flex items-center gap-1">
                             <TrendingUp className="h-4 w-4" />
-                            <span>{mockSeller.totalSales} Sales</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Clock className="h-4 w-4" />
-                            <span>Responds in {mockSeller.responseTime}</span>
+                            <span>{stats.totalSales} Sales</span>
                           </div>
                         </div>
-                        <p className="text-muted-foreground leading-relaxed">{mockSeller.description}</p>
+                        <p className="text-muted-foreground leading-relaxed">{seller.description}</p>
                       </div>
 
                       {/* Quick Stats */}
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4 border-t">
                         <div className="text-center p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{mockSeller.stats.ordersCompleted}</div>
+                          <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{stats.totalSales}</div>
                           <div className="text-xs text-muted-foreground">Orders</div>
                         </div>
                         <div className="text-center p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{mockSeller.stats.repeatBuyers}</div>
+                          <div className="text-2xl font-bold text-green-600 dark:text-green-400">{stats.repeatBuyers}</div>
                           <div className="text-xs text-muted-foreground">Repeat Buyers</div>
                         </div>
                         <div className="text-center p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{mockSeller.stats.onTimeDelivery}%</div>
+                          <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{stats.onTimeDelivery}%</div>
                           <div className="text-xs text-muted-foreground">On-Time</div>
                         </div>
                         <div className="text-center p-3 rounded-lg bg-muted/50">
-                          <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{mockSeller.stats.orderCompletion}%</div>
+                          <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">{stats.orderCompletion}%</div>
                           <div className="text-xs text-muted-foreground">Completion</div>
                         </div>
                       </div>
@@ -261,15 +206,15 @@ export default function SellerProfile() {
                 {/* Tabs */}
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
-                    <TabsTrigger value="services">Services ({mockSeller.services.length})</TabsTrigger>
-                    <TabsTrigger value="reviews">Reviews ({mockSeller.totalReviews})</TabsTrigger>
+                    <TabsTrigger value="services">Services ({services.length})</TabsTrigger>
+                    <TabsTrigger value="reviews">Reviews ({stats.totalReviews})</TabsTrigger>
                     <TabsTrigger value="about">About</TabsTrigger>
                   </TabsList>
 
                   {/* Services Tab */}
                   <TabsContent value="services" className="mt-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {mockSeller.services.map((service, index) => (
+                      {services.map((service, index) => (
                         <motion.div
                           key={service.id}
                           initial={{ opacity: 0, y: 20 }}
@@ -281,7 +226,7 @@ export default function SellerProfile() {
                             <Link href={`/service-hub/${service.id}`}>
                               <div className="aspect-video w-full overflow-hidden bg-muted">
                                 <img
-                                  src={service.image}
+                                  src={service.image || '/placeholder-image.jpg'}
                                   alt={service.title}
                                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                                 />
@@ -317,7 +262,7 @@ export default function SellerProfile() {
                   <TabsContent value="reviews" className="mt-6">
                     <Card className="border shadow-sm">
                       <CardContent className="pt-6 space-y-6">
-                        {mockSeller.recentReviews.map((review, index) => (
+                        {recentReviews.map((review, index) => (
                           <motion.div
                             key={review.id}
                             initial={{ opacity: 0, y: 20 }}
@@ -327,14 +272,14 @@ export default function SellerProfile() {
                           >
                             <div className="flex items-start gap-4">
                               <Avatar>
-                                <AvatarImage src={review.avatar} />
-                                <AvatarFallback>{review.user[0]}</AvatarFallback>
+                                <AvatarImage src={review.user.avatar || undefined} />
+                                <AvatarFallback>{review.user.name[0]}</AvatarFallback>
                               </Avatar>
                               <div className="flex-1">
                                 <div className="flex items-start justify-between mb-2">
                                   <div>
                                     <div className="flex items-center gap-2 mb-1">
-                                      <span className="font-semibold">{review.user}</span>
+                                      <span className="font-semibold">{review.user.name}</span>
                                       <Badge variant="secondary" className="text-xs">
                                         {review.service}
                                       </Badge>
@@ -362,7 +307,7 @@ export default function SellerProfile() {
                             </div>
                           </motion.div>
                         ))}
-                        <Link href={`/service-hub/${mockSeller.services[0]?.id}/reviews`}>
+                        <Link href={`/service-hub/${services[0]?.id}/reviews`}>
                           <Button variant="outline" className="w-full">
                             View All Reviews
                           </Button>
@@ -378,66 +323,11 @@ export default function SellerProfile() {
                         <CardHeader>
                           <CardTitle className="flex items-center gap-2">
                             <User className="h-5 w-5 text-blue-600" />
-                            About {mockSeller.name}
+                            About {seller.name}
                           </CardTitle>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-muted-foreground leading-relaxed mb-6">{mockSeller.bio}</p>
-                          
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div>
-                              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                                <MapPin className="h-4 w-4 text-blue-600" />
-                                Location
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{mockSeller.location}</p>
-                            </div>
-                            <div>
-                              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                                <Globe className="h-4 w-4 text-blue-600" />
-                                Languages
-                              </h4>
-                              <div className="flex flex-wrap gap-2">
-                                {mockSeller.languages.map((lang) => (
-                                  <Badge key={lang} variant="secondary">
-                                    {lang}
-                                  </Badge>
-                                ))}
-                              </div>
-                            </div>
-                            <div>
-                              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-blue-600" />
-                                Member Since
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{mockSeller.memberSince}</p>
-                            </div>
-                            <div>
-                              <h4 className="font-semibold mb-3 flex items-center gap-2">
-                                <Clock className="h-4 w-4 text-blue-600" />
-                                Response Time
-                              </h4>
-                              <p className="text-sm text-muted-foreground">{mockSeller.responseTime}</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-
-                      <Card className="border shadow-sm">
-                        <CardHeader>
-                          <CardTitle className="flex items-center gap-2">
-                            <Award className="h-5 w-5 text-blue-600" />
-                            Skills & Expertise
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <div className="flex flex-wrap gap-2">
-                            {mockSeller.skills.map((skill) => (
-                              <Badge key={skill} variant="secondary" className="text-sm py-1.5 px-3">
-                                {skill}
-                              </Badge>
-                            ))}
-                          </div>
+                          <p className="text-muted-foreground leading-relaxed mb-6">{seller.description}</p>
                         </CardContent>
                       </Card>
                     </div>
@@ -467,28 +357,28 @@ export default function SellerProfile() {
                             <Package className="h-4 w-4 text-blue-600" />
                             <span className="text-sm">Orders Completed</span>
                           </div>
-                          <span className="font-bold text-blue-600">{mockSeller.stats.ordersCompleted}</span>
+                          <span className="font-bold text-blue-600">{stats.totalSales}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                           <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-green-600" />
                             <span className="text-sm">Repeat Buyers</span>
                           </div>
-                          <span className="font-bold text-green-600">{mockSeller.stats.repeatBuyers}</span>
+                          <span className="font-bold text-green-600">{stats.repeatBuyers}</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                           <div className="flex items-center gap-2">
                             <Zap className="h-4 w-4 text-purple-600" />
                             <span className="text-sm">On-Time Delivery</span>
                           </div>
-                          <span className="font-bold text-purple-600">{mockSeller.stats.onTimeDelivery}%</span>
+                          <span className="font-bold text-purple-600">{stats.onTimeDelivery}%</span>
                         </div>
                         <div className="flex items-center justify-between p-3 bg-background/50 rounded-lg">
                           <div className="flex items-center gap-2">
                             <CheckCircle2 className="h-4 w-4 text-yellow-600" />
                             <span className="text-sm">Order Completion</span>
                           </div>
-                          <span className="font-bold text-yellow-600">{mockSeller.stats.orderCompletion}%</span>
+                          <span className="font-bold text-yellow-600">{stats.orderCompletion}%</span>
                         </div>
                       </div>
                     </CardContent>
