@@ -175,7 +175,6 @@ class ServiceHubController extends Controller
                 'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
                 'status' => 'active',
             ]);
-
             // Create packages
             foreach ($validated['packages'] as $index => $packageData) {
                 GigPackage::create([

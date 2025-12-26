@@ -176,9 +176,62 @@ export default function CreateService() {
       return
     }
 
-    // Here you would submit to backend
-    showSuccessToast("Service created successfully!")
-    router.visit("/service-hub")
+    if (formData.images.length === 0) {
+      showErrorToast("Please upload at least one image")
+      return
+    }
+
+    // Prepare FormData for submission
+    const formDataToSubmit = new FormData()
+
+    // Append basic fields
+    formDataToSubmit.append('title', formData.title)
+    formDataToSubmit.append('category_id', formData.category_id)
+    formDataToSubmit.append('description', formData.description)
+    if (formData.fullDescription) {
+      formDataToSubmit.append('full_description', formData.fullDescription)
+    }
+
+    // Append tags
+    formData.tags.forEach((tag) => {
+      formDataToSubmit.append('tags[]', tag)
+    })
+
+    // Append packages
+    packages.forEach((pkg, index) => {
+      formDataToSubmit.append(`packages[${index}][name]`, pkg.name)
+      formDataToSubmit.append(`packages[${index}][price]`, pkg.price.toString())
+      formDataToSubmit.append(`packages[${index}][delivery_time]`, pkg.deliveryTime)
+      if (pkg.description) {
+        formDataToSubmit.append(`packages[${index}][description]`, pkg.description)
+      }
+
+      // Append features (filter out empty strings)
+      const validFeatures = pkg.features.filter(f => f.trim() !== '')
+      validFeatures.forEach((feature, featureIndex) => {
+        formDataToSubmit.append(`packages[${index}][features][${featureIndex}]`, feature)
+      })
+    })
+
+    // Append images
+    formData.images.forEach((image) => {
+      formDataToSubmit.append('images[]', image)
+    })
+
+    // Submit to backend
+    router.post('/service-hub', formDataToSubmit, {
+      forceFormData: true,
+      onSuccess: () => {
+        showSuccessToast("Service created successfully!")
+      },
+      onError: (errors) => {
+        if (errors.message) {
+          showErrorToast(errors.message)
+        } else {
+          showErrorToast("Failed to create service. Please check all fields.")
+        }
+      },
+    })
   }
 
   return (
