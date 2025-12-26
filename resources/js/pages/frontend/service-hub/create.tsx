@@ -21,10 +21,20 @@ import {
   Package,
   Check,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
+
+interface Category {
+  id: number
+  name: string
+  slug: string
+}
+
+interface PageProps extends Record<string, unknown> {
+  categories: Category[]
+}
 
 interface Package {
   id: number
@@ -36,13 +46,15 @@ interface Package {
 }
 
 export default function CreateService() {
+  const { categories } = usePage<PageProps>().props
+
   const [formData, setFormData] = useState({
     title: "",
-    category: "",
+    category_id: "",
     description: "",
     fullDescription: "",
     tags: [] as string[],
-    images: [] as string[],
+    images: [] as File[],
   })
   const [packages, setPackages] = useState<Package[]>([
     {
@@ -56,17 +68,6 @@ export default function CreateService() {
   ])
   const [newTag, setNewTag] = useState("")
   const [newFeature, setNewFeature] = useState<{ packageId: number; feature: string } | null>(null)
-
-  const categories = [
-    "Graphics & Design",
-    "Programming & Tech",
-    "Digital Marketing",
-    "Writing & Translation",
-    "Video & Animation",
-    "Music & Audio",
-    "Business",
-    "Lifestyle",
-  ]
 
   const handleAddTag = () => {
     if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
@@ -147,7 +148,7 @@ export default function CreateService() {
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (files) {
-      const newImages = Array.from(files).map((file) => URL.createObjectURL(file))
+      const newImages = Array.from(files)
       setFormData({
         ...formData,
         images: [...formData.images, ...newImages],
@@ -165,7 +166,7 @@ export default function CreateService() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Validate form
-    if (!formData.title || !formData.category || !formData.description) {
+    if (!formData.title || !formData.category_id || !formData.description) {
       showErrorToast("Please fill in all required fields")
       return
     }
@@ -243,19 +244,19 @@ export default function CreateService() {
                   </div>
 
                   <div>
-                    <Label htmlFor="category">
+                    <Label htmlFor="category_id">
                       Category <span className="text-red-500">*</span>
                     </Label>
                     <select
-                      id="category"
-                      value={formData.category}
-                      onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                      id="category_id"
+                      value={formData.category_id}
+                      onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
                       className="mt-2 w-full px-3 py-2 rounded-md border bg-background"
                     >
                       <option value="">Select a category</option>
                       {categories.map((cat) => (
-                        <option key={cat} value={cat}>
-                          {cat}
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
                         </option>
                       ))}
                     </select>
@@ -335,7 +336,7 @@ export default function CreateService() {
                     {formData.images.map((image, index) => (
                       <div key={index} className="relative aspect-video group">
                         <img
-                          src={image}
+                          src={URL.createObjectURL(image)}
                           alt={`Service image ${index + 1}`}
                           className="w-full h-full object-cover rounded-lg"
                         />
