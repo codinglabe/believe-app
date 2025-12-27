@@ -33,139 +33,55 @@ import {
   Award,
   ChevronDown,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 
-// Mock data - replace with real data from backend
-const mockServices = [
-  {
-    id: 1,
-    title: "Professional Logo Design",
-    description: "I will create a stunning, modern logo design for your brand with unlimited revisions",
-    price: 25,
-    deliveryTime: "3 days",
-    rating: 4.9,
-    reviews: 1247,
-    image: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-    seller: {
-      name: "DesignPro",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100",
-      level: "Level 2 Seller",
-      responseTime: "1 hour",
-    },
-    category: "Graphics & Design",
-    tags: ["Logo", "Branding", "Vector"],
-    isFavorite: false,
-  },
-  {
-    id: 2,
-    title: "Website Development - React & Next.js",
-    description: "Full-stack web development with modern technologies, responsive design, and SEO optimization",
-    price: 150,
-    deliveryTime: "7 days",
-    rating: 5.0,
-    reviews: 892,
-    image: "https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?w=400",
-    seller: {
-      name: "CodeMaster",
-      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100",
-      level: "Top Rated",
-      responseTime: "30 min",
-    },
-    category: "Programming & Tech",
-    tags: ["Web Development", "React", "Next.js"],
-    isFavorite: true,
-  },
-  {
-    id: 3,
-    title: "Social Media Content Creation",
-    description: "Engaging social media posts, stories, and reels for Instagram, Facebook, and TikTok",
-    price: 45,
-    deliveryTime: "2 days",
-    rating: 4.8,
-    reviews: 634,
-    image: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400",
-    seller: {
-      name: "SocialBoost",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
-      level: "Level 1 Seller",
-      responseTime: "2 hours",
-    },
-    category: "Digital Marketing",
-    tags: ["Social Media", "Content", "Marketing"],
-    isFavorite: false,
-  },
-  {
-    id: 4,
-    title: "Voice Over Recording",
-    description: "Professional voice over in English, Spanish, or French. Commercial, narration, or character voices",
-    price: 80,
-    deliveryTime: "1 day",
-    rating: 4.9,
-    reviews: 445,
-    image: "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400",
-    seller: {
-      name: "VoiceStudio",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100",
-      level: "Level 2 Seller",
-      responseTime: "1 hour",
-    },
-    category: "Music & Audio",
-    tags: ["Voice Over", "Audio", "Recording"],
-    isFavorite: false,
-  },
-  {
-    id: 5,
-    title: "Video Editing & Post-Production",
-    description: "Professional video editing with color grading, transitions, effects, and motion graphics",
-    price: 120,
-    deliveryTime: "5 days",
-    rating: 4.7,
-    reviews: 321,
-    image: "https://images.unsplash.com/photo-1533750516457-a7f992034fec?w=400",
-    seller: {
-      name: "VideoPro",
-      avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?w=100",
-      level: "Top Rated",
-      responseTime: "45 min",
-    },
-    category: "Video & Animation",
-    tags: ["Video Editing", "Post-Production", "Motion Graphics"],
-    isFavorite: false,
-  },
-  {
-    id: 6,
-    title: "SEO Optimization & Content Writing",
-    description: "SEO-optimized blog posts, articles, and web content that ranks high on Google",
-    price: 60,
-    deliveryTime: "4 days",
-    rating: 4.8,
-    reviews: 789,
-    image: "https://images.unsplash.com/photo-1455390582262-044cdead277a?w=400",
-    seller: {
-      name: "ContentKing",
-      avatar: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?w=100",
-      level: "Level 2 Seller",
-      responseTime: "1 hour",
-    },
-    category: "Writing & Translation",
-    tags: ["SEO", "Content Writing", "Blog"],
-    isFavorite: false,
-  },
-]
+interface Gig {
+  id: number
+  slug: string
+  title: string
+  description: string
+  price: number
+  deliveryTime: string
+  rating: number
+  reviews: number
+  image: string | null
+  seller: {
+    id: number
+    name: string
+    avatar: string | null
+  }
+  category: string
+  tags: string[]
+}
 
-const categories = [
-  "All Categories",
-  "Graphics & Design",
-  "Programming & Tech",
-  "Digital Marketing",
-  "Writing & Translation",
-  "Video & Animation",
-  "Music & Audio",
-  "Business",
-  "Lifestyle",
-]
+interface Category {
+  id: number
+  name: string
+  slug: string
+}
+
+interface PageProps extends Record<string, unknown> {
+  gigs: {
+    data: Gig[]
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+  categories: Category[]
+  favoriteIds: number[]
+  filters: {
+    search: string
+    category: string
+    price_min: number
+    price_max: number
+    min_rating: number
+    delivery_time: string | null
+    sort_by: string
+  }
+}
 
 const sortOptions = [
   { label: "Best Selling", value: "best_selling" },
@@ -176,56 +92,107 @@ const sortOptions = [
 ]
 
 export default function ServiceHubIndex() {
-  const [services, setServices] = useState(mockServices)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [selectedCategory, setSelectedCategory] = useState("All Categories")
-  const [sortBy, setSortBy] = useState("best_selling")
+  const { gigs, categories, favoriteIds, filters: initialFilters } = usePage<PageProps>().props
+
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
+  const [selectedCategory, setSelectedCategory] = useState(initialFilters.category || "all")
+  const [sortBy, setSortBy] = useState(initialFilters.sort_by || "best_selling")
   const [showFilters, setShowFilters] = useState(false)
-  const [priceRange, setPriceRange] = useState({ min: 0, max: 1000 })
-  const [deliveryTime, setDeliveryTime] = useState<string | null>(null)
-  const [minRating, setMinRating] = useState(0)
+  const [priceRange, setPriceRange] = useState({
+    min: initialFilters.price_min || 0,
+    max: initialFilters.price_max || 1000
+  })
+  const [deliveryTime, setDeliveryTime] = useState<string | null>(initialFilters.delivery_time || null)
+  const [minRating, setMinRating] = useState(initialFilters.min_rating || 0)
+
+  // Add favorite status to gigs
+  const services = gigs.data.map(gig => ({
+    ...gig,
+    isFavorite: favoriteIds.includes(gig.id)
+  }))
+
+  const applyFilters = () => {
+    const params: any = {
+      search: searchQuery || undefined,
+      category: selectedCategory !== "all" ? selectedCategory : undefined,
+      price_min: priceRange.min > 0 ? priceRange.min : undefined,
+      price_max: priceRange.max < 1000 ? priceRange.max : undefined,
+      min_rating: minRating > 0 ? minRating : undefined,
+      delivery_time: deliveryTime || undefined,
+      sort_by: sortBy,
+    }
+
+    router.get('/service-hub', params, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    })
+  }
+
+  // Debounce search query
+  useEffect(() => {
+    if (searchQuery === initialFilters.search) return
+    const timeoutId = setTimeout(() => {
+      applyFilters()
+    }, 500)
+    return () => clearTimeout(timeoutId)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchQuery])
+
+  // Apply other filters immediately
+  useEffect(() => {
+    if (
+      selectedCategory === initialFilters.category &&
+      priceRange.min === initialFilters.price_min &&
+      priceRange.max === initialFilters.price_max &&
+      minRating === initialFilters.min_rating &&
+      deliveryTime === initialFilters.delivery_time &&
+      sortBy === initialFilters.sort_by
+    ) return
+    applyFilters()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCategory, sortBy, priceRange, deliveryTime, minRating])
 
   const clearAllFilters = () => {
-    setSelectedCategory("All Categories")
+    setSelectedCategory("all")
     setPriceRange({ min: 0, max: 1000 })
     setDeliveryTime(null)
     setMinRating(0)
     setSearchQuery("")
+    router.get('/service-hub')
   }
 
-  const hasActiveFilters = selectedCategory !== "All Categories" || 
-    priceRange.min > 0 || priceRange.max < 1000 || 
+  const hasActiveFilters = selectedCategory !== "all" ||
+    priceRange.min > 0 || priceRange.max < 1000 ||
     deliveryTime !== null || minRating > 0
 
-  const filteredServices = services.filter((service) => {
-    const matchesSearch = service.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      service.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === "All Categories" || service.category === selectedCategory
-    const matchesPrice = service.price >= priceRange.min && service.price <= priceRange.max
-    const matchesRating = service.rating >= minRating
-    const matchesDelivery = !deliveryTime || service.deliveryTime === deliveryTime
-
-    return matchesSearch && matchesCategory && matchesPrice && matchesRating && matchesDelivery
-  })
-
-  const sortedServices = [...filteredServices].sort((a, b) => {
-    switch (sortBy) {
-      case "price_low":
-        return a.price - b.price
-      case "price_high":
-        return b.price - a.price
-      case "rating":
-        return b.rating - a.rating
-      case "newest":
-        return b.id - a.id
-      default:
-        return b.reviews - a.reviews
+  const toggleFavorite = async (slug: string) => {
+    try {
+      const response = await fetch(`/service-hub/${slug}/favorite`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+      })
+      const data = await response.json()
+      if (data.favorited) {
+        favoriteIds.push(id)
+      } else {
+        const index = favoriteIds.indexOf(id)
+        if (index > -1) favoriteIds.splice(index, 1)
+      }
+      router.reload({ only: ['favoriteIds'] })
+    } catch (error) {
+      console.error('Error toggling favorite:', error)
     }
-  })
-
-  const toggleFavorite = (id: number) => {
-    setServices(services.map(s => s.id === id ? { ...s, isFavorite: !s.isFavorite } : s))
   }
+
+  const categoryList = [
+    { name: "All Categories", slug: "all" },
+    ...categories.map(cat => ({ name: cat.name, slug: cat.slug }))
+  ]
 
   const containerVariants = {
     hidden: { opacity: 0 },
@@ -311,6 +278,7 @@ export default function ServiceHubIndex() {
                   <Button
                     size="lg"
                     className="absolute right-2 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    onClick={() => applyFilters()}
                   >
                     Search
                   </Button>
@@ -332,7 +300,7 @@ export default function ServiceHubIndex() {
               <Card className="sticky top-24 border shadow-lg bg-gradient-to-br from-background to-muted/30 overflow-hidden">
                 {/* Decorative gradient overlay */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-500/10 to-purple-500/10 rounded-full -mr-16 -mt-16 blur-2xl" />
-                
+
                 <CardHeader className="relative">
                   <div className="flex items-center justify-between mb-2">
                     <CardTitle className="text-lg flex items-center gap-2 font-bold">
@@ -389,7 +357,7 @@ export default function ServiceHubIndex() {
                               <Tag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                             </motion.div>
                             <span className="font-semibold text-sm">Categories</span>
-                            {selectedCategory !== "All Categories" && (
+                            {selectedCategory !== "all" && (
                               <Badge variant="secondary" className="ml-auto bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300 text-xs">
                                 1
                               </Badge>
@@ -403,22 +371,22 @@ export default function ServiceHubIndex() {
                             transition={{ delay: 0.1 }}
                             className="space-y-1.5"
                           >
-                            {categories.map((category, index) => (
+                            {categoryList.map((category, index) => (
                               <motion.button
-                                key={category}
+                                key={category.slug}
                                 initial={{ opacity: 0, x: -10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 transition={{ delay: index * 0.03 }}
                                 whileHover={{ x: 4 }}
                                 whileTap={{ scale: 0.98 }}
-                                onClick={() => setSelectedCategory(category)}
+                                onClick={() => setSelectedCategory(category.slug)}
                                 className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-all duration-200 ${
-                                  selectedCategory === category
+                                  selectedCategory === category.slug
                                     ? "bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium shadow-md"
                                     : "hover:bg-muted hover:shadow-sm"
                                 }`}
                               >
-                                {category}
+                                {category.name}
                               </motion.button>
                             ))}
                           </motion.div>
@@ -603,10 +571,10 @@ export default function ServiceHubIndex() {
               <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6">
                 <div>
                   <h2 className="text-2xl font-bold">
-                    {sortedServices.length} Services Found
+                    {gigs.total} Services Found
                   </h2>
                   <p className="text-muted-foreground text-sm">
-                    {selectedCategory !== "All Categories" && `in ${selectedCategory}`}
+                    {selectedCategory !== "all" && `in ${categoryList.find(c => c.slug === selectedCategory)?.name}`}
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -633,7 +601,7 @@ export default function ServiceHubIndex() {
                 className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
               >
                 <AnimatePresence mode="wait">
-                  {sortedServices.map((service) => (
+                  {services.map((service) => (
                     <motion.div
                       key={service.id}
                       variants={itemVariants}
@@ -641,11 +609,11 @@ export default function ServiceHubIndex() {
                       className="group"
                     >
                       <Card className="h-full overflow-hidden border-2 hover:border-primary/50 transition-all duration-300 cursor-pointer">
-                        <Link href={`/service-hub/${service.id}`}>
+                        <Link href={`/service-hub/${service.slug}`}>
                           <div className="relative">
                             <div className="aspect-video w-full overflow-hidden bg-muted">
                               <img
-                                src={service.image}
+                                src={service.image || '/placeholder-image.jpg'}
                                 alt={service.title}
                                 className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                               />
@@ -656,7 +624,7 @@ export default function ServiceHubIndex() {
                               className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm hover:bg-background"
                               onClick={(e) => {
                                 e.preventDefault()
-                                toggleFavorite(service.id)
+                                toggleFavorite(service.slug)
                               }}
                             >
                               <Heart
@@ -688,12 +656,11 @@ export default function ServiceHubIndex() {
                               {/* Seller Info */}
                               <div className="flex items-center gap-2">
                                 <Avatar className="h-8 w-8">
-                                  <AvatarImage src={service.seller.avatar} />
+                                  <AvatarImage src={service.seller.avatar || undefined} />
                                   <AvatarFallback>{service.seller.name[0]}</AvatarFallback>
                                 </Avatar>
                                 <div className="flex-1 min-w-0">
                                   <p className="text-sm font-medium truncate">{service.seller.name}</p>
-                                  <p className="text-xs text-muted-foreground">{service.seller.level}</p>
                                 </div>
                               </div>
 
@@ -727,7 +694,7 @@ export default function ServiceHubIndex() {
                 </AnimatePresence>
               </motion.div>
 
-              {sortedServices.length === 0 && (
+              {services.length === 0 && (
                 <motion.div
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

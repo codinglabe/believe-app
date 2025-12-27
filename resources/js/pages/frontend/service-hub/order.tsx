@@ -27,39 +27,40 @@ import {
   Gift,
   TrendingUp,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast } from "@/lib/toast"
 
-// Mock data
-const mockService = {
-  id: 1,
-  title: "Professional Logo Design",
-  image: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
+interface Gig {
+  id: number
+  slug: string
+  title: string
+  image: string | null
   seller: {
-    name: "DesignPro",
-    level: "Level 2 Seller",
-    rating: 4.9,
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100",
-  },
-  selectedPackage: {
-    id: 2,
-    name: "Standard",
-    price: 50,
-    deliveryTime: "2 days",
-    features: [
-      "3 Logo Concepts",
-      "Unlimited Revisions",
-      "PNG, JPG, SVG, PDF Files",
-      "Source File",
-      "Color Variations",
-      "Social Media Sizes",
-    ],
-  },
+    id: number
+    name: string
+    avatar: string | null
+    rating: number
+  }
+}
+
+interface Package {
+  id: number
+  name: string
+  price: number
+  deliveryTime: string
+  features: string[]
+}
+
+interface PageProps extends Record<string, unknown> {
+  gig: Gig
+  package: Package
 }
 
 export default function ServiceOrder() {
+  const { gig, package: selectedPackage } = usePage<PageProps>().props
+
   const [orderData, setOrderData] = useState({
     requirements: "",
     specialInstructions: "",
@@ -68,7 +69,7 @@ export default function ServiceOrder() {
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
 
-  const subtotal = mockService.selectedPackage.price
+  const subtotal = selectedPackage.price
   const serviceFee = subtotal * 0.05 // 5% service fee
   const total = subtotal + serviceFee
 
@@ -82,11 +83,21 @@ export default function ServiceOrder() {
     e.preventDefault()
     setIsProcessing(true)
 
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 2000))
-
-    showSuccessToast("Order placed successfully!")
-    router.visit(`/service-hub/order/success`)
+    router.post('/service-hub/order', {
+      gig_id: gig.id,
+      package_id: selectedPackage.id,
+      requirements: orderData.requirements,
+      special_instructions: orderData.specialInstructions || null,
+      payment_method: orderData.paymentMethod,
+    }, {
+      onSuccess: () => {
+        showSuccessToast("Order placed successfully!")
+        router.visit('/service-hub/order/success')
+      },
+      onError: () => {
+        setIsProcessing(false)
+      },
+    })
   }
 
   return (
@@ -98,7 +109,7 @@ export default function ServiceOrder() {
           <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,transparent)]" />
           <div className="container mx-auto px-4 py-6 relative z-10">
             <div className="flex items-center gap-4">
-              <Link href={`/service-hub/${mockService.id}`}>
+              <Link href={`/service-hub/${gig.slug}`}>
                 <Button variant="ghost" size="icon" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -173,31 +184,31 @@ export default function ServiceOrder() {
                           whileHover={{ scale: 1.05 }}
                           className="w-28 h-28 rounded-xl overflow-hidden bg-muted flex-shrink-0 shadow-md ring-2 ring-primary/20"
                         >
-                          <img
-                            src={mockService.image}
-                            alt={mockService.title}
-                            className="w-full h-full object-cover"
-                          />
+                        <img
+                          src={gig.image || '/placeholder-image.jpg'}
+                          alt={gig.title}
+                          className="w-full h-full object-cover"
+                        />
                         </motion.div>
                         <div className="flex-1">
                           <h3 className="font-bold text-xl mb-2 bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                            {mockService.title}
+                            {gig.title}
                           </h3>
                           <div className="flex items-center gap-3 mb-3">
                             <div className="flex items-center gap-2">
                               <div className="w-8 h-8 rounded-full overflow-hidden bg-muted">
-                                <img src={mockService.seller.avatar} alt={mockService.seller.name} className="w-full h-full object-cover" />
+                                <img src={gig.seller.avatar || '/placeholder-avatar.jpg'} alt={gig.seller.name} className="w-full h-full object-cover" />
                               </div>
                               <div>
-                                <p className="text-sm font-medium">{mockService.seller.name}</p>
+                                <p className="text-sm font-medium">{gig.seller.name}</p>
                                 <div className="flex items-center gap-1">
                                   <Star className="h-3 w-3 fill-yellow-400 text-yellow-400" />
-                                  <span className="text-xs text-muted-foreground">{mockService.seller.rating}</span>
+                                  <span className="text-xs text-muted-foreground">{gig.seller.rating}</span>
                                 </div>
                               </div>
                             </div>
                             <Badge variant="secondary" className="bg-gradient-to-r from-blue-100 to-purple-100 text-blue-700 dark:from-blue-900 dark:to-purple-900 dark:text-blue-300">
-                              {mockService.selectedPackage.name}
+                              {selectedPackage.name}
                             </Badge>
                           </div>
                         </div>
@@ -225,13 +236,13 @@ export default function ServiceOrder() {
                       <div className="grid grid-cols-2 gap-4 p-4 bg-muted/50 rounded-lg">
                         <div>
                           <span className="text-xs text-muted-foreground uppercase tracking-wide">Package</span>
-                          <p className="font-semibold text-lg mt-1">{mockService.selectedPackage.name}</p>
+                          <p className="font-semibold text-lg mt-1">{selectedPackage.name}</p>
                         </div>
                         <div>
                           <span className="text-xs text-muted-foreground uppercase tracking-wide">Delivery</span>
                           <div className="flex items-center gap-2 mt-1">
                             <Clock className="h-4 w-4 text-primary" />
-                            <p className="font-semibold">{mockService.selectedPackage.deliveryTime}</p>
+                            <p className="font-semibold">{selectedPackage.deliveryTime}</p>
                           </div>
                         </div>
                       </div>
@@ -242,7 +253,7 @@ export default function ServiceOrder() {
                           <p className="text-sm font-semibold">What's Included:</p>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                          {mockService.selectedPackage.features.map((feature, index) => (
+                          {selectedPackage.features.map((feature, index) => (
                             <motion.div
                               key={index}
                               initial={{ opacity: 0, x: -10 }}

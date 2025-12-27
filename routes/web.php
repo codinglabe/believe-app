@@ -174,37 +174,27 @@ Route::get('/product/{product}', [ProductController::class, 'show'])->name('prod
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
 /* Service Hub - Fiverr-like service marketplace */
-Route::get('/service-hub', function () {
-    return Inertia::render('frontend/service-hub/index');
-})->name('service-hub.index');
+Route::get('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'index'])->name('service-hub.index');
+Route::get('/service-hub/create', [App\Http\Controllers\ServiceHubController::class, 'create'])->name('service-hub.create')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'store'])->name('service-hub.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 
-Route::get('/service-hub/create', function () {
-    return Inertia::render('frontend/service-hub/create');
-})->name('service-hub.create')->middleware(['auth', 'EnsureEmailIsVerified']);
-
-Route::get('/service-hub/order', function () {
-    return Inertia::render('frontend/service-hub/order');
-})->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
-
+// Seller Profile Routes
+Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileCreate'])->name('service-hub.seller-profile.create')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order/success', function () {
     return Inertia::render('frontend/service-hub/order-success');
 })->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
-
-Route::get('/service-hub/seller/{id}', function ($id) {
-    return Inertia::render('frontend/service-hub/seller-profile', ['id' => $id]);
-})->name('service-hub.seller.profile');
-
-Route::get('/service-hub/my-orders', function () {
-    return Inertia::render('frontend/service-hub/my-orders');
-})->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
-
-Route::get('/service-hub/{id}/reviews', function ($id) {
-    return Inertia::render('frontend/service-hub/reviews', ['id' => $id]);
-})->name('service-hub.reviews');
-
-Route::get('/service-hub/{id}', function ($id) {
-    return Inertia::render('frontend/service-hub/show', ['id' => $id]);
-})->name('service-hub.show');
+Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
+Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
+Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/favorite', [App\Http\Controllers\ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
+Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {

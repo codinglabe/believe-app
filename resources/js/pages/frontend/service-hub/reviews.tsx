@@ -19,82 +19,49 @@ import {
   CheckCircle,
   Sparkles,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
-import { showSuccessToast } from "@/lib/toast"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
-// Mock data
-const mockService = {
-  id: 1,
-  title: "Professional Logo Design",
-  image: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-  rating: 4.9,
-  totalReviews: 1247,
+interface Gig {
+  id: number
+  slug: string
+  title: string
+  rating: number
+  totalReviews: number
 }
 
-const mockReviews = [
-  {
-    id: 1,
-    user: "John D.",
-    avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100",
-    rating: 5,
-    comment: "Amazing work! The logo perfectly represents my brand. Fast delivery and great communication. The designer was very responsive and made all the changes I requested. Highly recommend!",
-    date: "2 days ago",
-    helpful: 12,
-    verified: true,
-  },
-  {
-    id: 2,
-    user: "Sarah M.",
-    avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
-    rating: 5,
-    comment: "Professional designer with great attention to detail. The final logo exceeded my expectations. The process was smooth and the seller was very patient with my revisions.",
-    date: "5 days ago",
-    helpful: 8,
-    verified: true,
-  },
-  {
-    id: 3,
-    user: "Mike T.",
-    avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100",
-    rating: 4,
-    comment: "Good quality work, though I needed a couple of revisions. Overall satisfied with the result. The delivery was on time and the files were well organized.",
-    date: "1 week ago",
-    helpful: 5,
-    verified: true,
-  },
-  {
-    id: 4,
-    user: "Emily R.",
-    avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100",
-    rating: 5,
-    comment: "Exceptional service! The logo design is modern and professional. The seller understood my vision perfectly and delivered exactly what I wanted. Will definitely order again!",
-    date: "1 week ago",
-    helpful: 15,
-    verified: true,
-  },
-  {
-    id: 5,
-    user: "David K.",
-    avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100",
-    rating: 5,
-    comment: "Top-notch quality and professionalism. The communication was excellent throughout the project. The final logo is perfect for my business. Thank you!",
-    date: "2 weeks ago",
-    helpful: 9,
-    verified: true,
-  },
-]
+interface Review {
+  id: number
+  user: {
+    name: string
+    avatar: string | null
+  }
+  rating: number
+  comment: string
+  date: string
+  helpful: number
+  verified: boolean
+}
 
-const ratingDistribution = {
-  5: 89,
-  4: 8,
-  3: 2,
-  2: 0.5,
-  1: 0.5,
+interface PageProps extends Record<string, unknown> {
+  gig: Gig
+  reviews: {
+    data: Review[]
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+  ratingDistribution: {
+    [key: number]: number
+  }
 }
 
 export default function ServiceReviews() {
+  const { gig, reviews, ratingDistribution } = usePage<PageProps>().props
+
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -105,12 +72,32 @@ export default function ServiceReviews() {
     if (!comment.trim()) return
 
     setIsSubmitting(true)
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500))
 
-    showSuccessToast("Review submitted successfully!")
-    setComment("")
-    setIsSubmitting(false)
+    // Get order_id from URL params or use a default - you may need to pass this from the controller
+    const urlParams = new URLSearchParams(window.location.search)
+    const orderId = urlParams.get('order_id')
+
+    if (!orderId) {
+      showErrorToast("Order ID is required to submit a review")
+      setIsSubmitting(false)
+      return
+    }
+
+    router.post(`/service-hub/${gig.slug}/reviews`, {
+      order_id: orderId,
+      rating: rating,
+      comment: comment,
+    }, {
+      onSuccess: () => {
+        showSuccessToast("Review submitted successfully!")
+        setComment("")
+        setIsSubmitting(false)
+        router.reload()
+      },
+      onError: () => {
+        setIsSubmitting(false)
+      },
+    })
   }
 
   const toggleHelpful = (reviewId: number) => {
@@ -121,25 +108,24 @@ export default function ServiceReviews() {
     )
   }
 
-  const averageRating =
-    mockReviews.reduce((sum, review) => sum + review.rating, 0) / mockReviews.length
+  const averageRating = gig.rating
 
   return (
     <FrontendLayout>
-      <Head title={`Reviews - ${mockService.title}`} />
+      <Head title={`Reviews - ${gig.title}`} />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center gap-4">
-              <Link href={`/service-hub/${mockService.id}`}>
+              <Link href={`/service-hub/${gig.slug}`}>
                 <Button variant="ghost" size="icon">
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
               </Link>
               <div>
                 <h1 className="text-2xl font-bold">Reviews & Ratings</h1>
-                <p className="text-sm text-muted-foreground">{mockService.title}</p>
+                <p className="text-sm text-muted-foreground">{gig.title}</p>
               </div>
             </div>
           </div>
@@ -173,7 +159,7 @@ export default function ServiceReviews() {
                             ))}
                           </div>
                           <p className="text-sm text-muted-foreground mt-1">
-                            {mockService.totalReviews} reviews
+                            {gig.totalReviews} reviews
                           </p>
                         </div>
                       </div>
@@ -190,13 +176,13 @@ export default function ServiceReviews() {
                           <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                             <motion.div
                               initial={{ width: 0 }}
-                              animate={{ width: `${ratingDistribution[stars as keyof typeof ratingDistribution]}%` }}
+                              animate={{ width: `${ratingDistribution[stars] || 0}%` }}
                               transition={{ duration: 0.8, delay: stars * 0.1 }}
                               className="h-full bg-yellow-400"
                             />
                           </div>
                           <span className="text-sm text-muted-foreground w-12 text-right">
-                            {ratingDistribution[stars as keyof typeof ratingDistribution]}%
+                            {ratingDistribution[stars] || 0}%
                           </span>
                         </div>
                       ))}
@@ -206,90 +192,6 @@ export default function ServiceReviews() {
               </Card>
             </motion.div>
 
-            {/* Write Review */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    Write a Review
-                  </CardTitle>
-                  <CardDescription>Share your experience with this service</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSubmitReview} className="space-y-4">
-                    <div>
-                      <Label>Your Rating</Label>
-                      <div className="flex items-center gap-2 mt-2">
-                        {[1, 2, 3, 4, 5].map((stars) => (
-                          <button
-                            key={stars}
-                            type="button"
-                            onClick={() => setRating(stars)}
-                            className="focus:outline-none"
-                          >
-                            <Star
-                              className={`h-8 w-8 transition-all ${
-                                stars <= rating
-                                  ? "fill-yellow-400 text-yellow-400 scale-110"
-                                  : "text-muted-foreground hover:text-yellow-400"
-                              }`}
-                            />
-                          </button>
-                        ))}
-                        <span className="ml-2 text-sm text-muted-foreground">
-                          {rating === 5
-                            ? "Excellent"
-                            : rating === 4
-                            ? "Very Good"
-                            : rating === 3
-                            ? "Good"
-                            : rating === 2
-                            ? "Fair"
-                            : "Poor"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="comment">
-                        Your Review <span className="text-red-500">*</span>
-                      </Label>
-                      <Textarea
-                        id="comment"
-                        placeholder="Tell others about your experience with this service..."
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        className="mt-2"
-                        rows={5}
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={!comment.trim() || isSubmitting}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Submit Review
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-            </motion.div>
 
             {/* Reviews List */}
             <motion.div
@@ -312,7 +214,7 @@ export default function ServiceReviews() {
                 </div>
 
                 <div className="space-y-6">
-                  {mockReviews.map((review, index) => (
+                  {reviews.data.map((review, index) => (
                     <motion.div
                       key={review.id}
                       initial={{ opacity: 0, y: 20 }}
@@ -323,14 +225,14 @@ export default function ServiceReviews() {
                         <CardContent className="pt-6">
                           <div className="flex items-start gap-4">
                             <Avatar className="h-12 w-12">
-                              <AvatarImage src={review.avatar} />
-                              <AvatarFallback>{review.user[0]}</AvatarFallback>
+                              <AvatarImage src={review.user.avatar || undefined} />
+                              <AvatarFallback>{review.user.name[0]}</AvatarFallback>
                             </Avatar>
                             <div className="flex-1">
                               <div className="flex items-start justify-between mb-2">
                                 <div>
                                   <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-semibold">{review.user}</span>
+                                    <span className="font-semibold">{review.user.name}</span>
                                     {review.verified && (
                                       <Badge variant="secondary" className="text-xs">
                                         <CheckCircle className="h-3 w-3 mr-1" />
@@ -375,10 +277,6 @@ export default function ServiceReviews() {
                                     }`}
                                   />
                                   <span>Helpful ({review.helpful})</span>
-                                </button>
-                                <button className="flex items-center gap-2 text-sm text-muted-foreground hover:text-primary transition-colors">
-                                  <MessageCircle className="h-4 w-4" />
-                                  <span>Reply</span>
                                 </button>
                               </div>
                             </div>

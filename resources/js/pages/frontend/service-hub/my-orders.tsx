@@ -25,123 +25,51 @@ import {
   Filter,
   Search,
 } from "lucide-react"
-import { Link, router } from "@inertiajs/react"
-import { useState } from "react"
+import { Link, router, usePage } from "@inertiajs/react"
+import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 
-// Mock data - replace with real data from backend
-const mockOrders = [
-  {
-    id: 1,
-    orderNumber: "SO-ABC123XYZ",
-    service: {
-      id: 1,
-      title: "Professional Logo Design",
-      image: "https://images.unsplash.com/photo-1611224923853-80b023f02d71?w=400",
-    },
-    seller: {
-      id: 1,
-      name: "DesignPro",
-      avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100",
-    },
-    package: "Standard",
-    amount: 50,
-    platformFee: 2.5,
-    total: 52.5,
-    status: "in_progress",
-    paymentStatus: "paid",
-    orderDate: "2024-01-15",
-    deliveryDate: "2024-01-17",
-    requirements: "I need a modern logo for my tech startup. Colors: blue and white. Style: minimalist.",
-    canReview: false,
-    canCancel: true,
-  },
-  {
-    id: 2,
-    orderNumber: "SO-DEF456UVW",
-    service: {
-      id: 2,
-      title: "Website Development - React & Next.js",
-      image: "https://images.unsplash.com/photo-1467232004584-a241de8bcf5d?w=400",
-    },
-    seller: {
-      id: 2,
-      name: "CodeMaster",
-      avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100",
-    },
-    package: "Premium",
-    amount: 150,
-    platformFee: 7.5,
-    total: 157.5,
-    status: "delivered",
-    paymentStatus: "paid",
-    orderDate: "2024-01-10",
-    deliveryDate: "2024-01-17",
-    deliveredDate: "2024-01-17",
-    requirements: "Full-stack web application with user authentication and payment integration.",
-    canReview: true,
-    canCancel: false,
-    deliverables: [
-      { name: "Source Code", url: "#", type: "zip" },
-      { name: "Documentation", url: "#", type: "pdf" },
-    ],
-  },
-  {
-    id: 3,
-    orderNumber: "SO-GHI789RST",
-    service: {
-      id: 3,
-      title: "Social Media Content Creation",
-      image: "https://images.unsplash.com/photo-1611162617474-5b21e879e113?w=400",
-    },
-    seller: {
-      id: 3,
-      name: "SocialBoost",
-      avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100",
-    },
-    package: "Basic",
-    amount: 45,
-    platformFee: 2.25,
-    total: 47.25,
-    status: "completed",
-    paymentStatus: "paid",
-    orderDate: "2024-01-05",
-    deliveryDate: "2024-01-07",
-    deliveredDate: "2024-01-07",
-    completedDate: "2024-01-08",
-    requirements: "10 social media posts for Instagram and Facebook.",
-    canReview: false,
-    canCancel: false,
-    deliverables: [
-      { name: "Social Media Posts", url: "#", type: "images" },
-    ],
-  },
-  {
-    id: 4,
-    orderNumber: "SO-JKL012MNO",
-    service: {
-      id: 4,
-      title: "Voice Over Recording",
-      image: "https://images.unsplash.com/photo-1478737270239-2f02b77fc618?w=400",
-    },
-    seller: {
-      id: 4,
-      name: "VoiceStudio",
-      avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100",
-    },
-    package: "Standard",
-    amount: 80,
-    platformFee: 4,
-    total: 84,
-    status: "pending",
-    paymentStatus: "pending",
-    orderDate: "2024-01-20",
-    deliveryDate: "2024-01-21",
-    requirements: "Professional voice over for a 2-minute commercial video.",
-    canReview: false,
-    canCancel: true,
-  },
-]
+interface Order {
+  id: number
+  orderNumber: string
+  service: {
+    id: number
+    slug: string
+    title: string
+    image: string | null
+  }
+  seller: {
+    id: number
+    name: string
+    avatar: string | null
+  }
+  package: string
+  amount: number
+  platformFee: number
+  total: number
+  status: string
+  paymentStatus: string
+  orderDate: string
+  deliveryDate: string
+  requirements: string
+  deliverables: Array<{ name: string; url: string; type: string }>
+  canReview: boolean
+  canCancel: boolean
+}
+
+interface PageProps extends Record<string, unknown> {
+  orders: {
+    data: Order[]
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+  filters: {
+    status: string
+    search: string
+  }
+}
 
 const statusConfig = {
   pending: {
@@ -177,17 +105,34 @@ const statusConfig = {
 }
 
 export default function MyOrders() {
-  const [selectedStatus, setSelectedStatus] = useState<string>("all")
-  const [searchQuery, setSearchQuery] = useState("")
+  const { orders, filters: initialFilters } = usePage<PageProps>().props
+  const [selectedStatus, setSelectedStatus] = useState<string>(initialFilters.status || "all")
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
 
-  const filteredOrders = mockOrders.filter((order) => {
-    const matchesStatus = selectedStatus === "all" || order.status === selectedStatus
-    const matchesSearch =
-      order.orderNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.service.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.seller.name.toLowerCase().includes(searchQuery.toLowerCase())
-    return matchesStatus && matchesSearch
-  })
+  const applyFilters = () => {
+    const params: any = {
+      status: selectedStatus !== "all" ? selectedStatus : undefined,
+      search: searchQuery || undefined,
+    }
+
+    router.get('/service-hub/my-orders', params, {
+      preserveState: true,
+      preserveScroll: true,
+    })
+  }
+
+  useEffect(() => {
+    if (
+      selectedStatus === initialFilters.status &&
+      searchQuery === initialFilters.search
+    ) return
+    applyFilters()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStatus])
+
+  const handleSearch = () => {
+    applyFilters()
+  }
 
   const getStatusConfig = (status: string) => {
     return statusConfig[status as keyof typeof statusConfig] || statusConfig.pending
@@ -202,7 +147,10 @@ export default function MyOrders() {
   }
 
   const handleReview = (orderId: number) => {
-    router.visit(`/service-hub/${mockOrders.find((o) => o.id === orderId)?.service.id}/reviews`)
+    const order = orders.data.find((o) => o.id === orderId)
+    if (order) {
+      router.visit(`/service-hub/${order.service.slug}/reviews`)
+    }
   }
 
   const handleCancel = (orderId: number) => {
@@ -250,6 +198,7 @@ export default function MyOrders() {
                         placeholder="Search orders by number, service, or seller..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
                         className="w-full pl-10 pr-4 py-2 rounded-md border bg-background text-foreground dark:text-white placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-blue-500"
                       />
                     </div>
@@ -278,8 +227,8 @@ export default function MyOrders() {
             {/* Orders List */}
             <div className="space-y-4">
               <AnimatePresence mode="wait">
-                {filteredOrders.length > 0 ? (
-                  filteredOrders.map((order, index) => {
+                {orders.data.length > 0 ? (
+                  orders.data.map((order, index) => {
                     const statusInfo = getStatusConfig(order.status)
                     const StatusIcon = statusInfo.icon
 
@@ -300,7 +249,7 @@ export default function MyOrders() {
                                 {/* Service Image */}
                                 <div className="w-20 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
                                   <img
-                                    src={order.service.image}
+                                    src={order.service.image || '/placeholder-image.jpg'}
                                     alt={order.service.title}
                                     className="w-full h-full object-cover"
                                   />
@@ -348,7 +297,7 @@ export default function MyOrders() {
                                   {/* Seller Info */}
                                   <div className="flex items-center gap-2 mt-2">
                                     <Avatar className="h-6 w-6">
-                                      <AvatarImage src={order.seller.avatar} />
+                                      <AvatarImage src={order.seller.avatar || undefined} />
                                       <AvatarFallback>{order.seller.name[0]}</AvatarFallback>
                                     </Avatar>
                                     <span className="text-sm text-muted-foreground">by {order.seller.name}</span>
@@ -382,7 +331,7 @@ export default function MyOrders() {
                             )}
 
                             {/* Deliverables */}
-                            {order.deliverables && order.deliverables.length > 0 && (
+                            {order.deliverables && Array.isArray(order.deliverables) && order.deliverables.length > 0 && (
                               <div className="mb-4 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
                                 <div className="flex items-center gap-2 mb-2">
                                   <Download className="h-4 w-4 text-green-600" />
@@ -391,14 +340,14 @@ export default function MyOrders() {
                                   </span>
                                 </div>
                                 <div className="space-y-1">
-                                  {order.deliverables.map((deliverable, idx) => (
+                                  {order.deliverables.map((deliverable: any, idx: number) => (
                                     <a
                                       key={idx}
-                                      href={deliverable.url}
+                                      href={deliverable.url || '#'}
                                       className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300 hover:underline"
                                     >
                                       <FileText className="h-3 w-3" />
-                                      {deliverable.name}
+                                      {deliverable.name || 'File'}
                                     </a>
                                   ))}
                                 </div>
@@ -407,7 +356,7 @@ export default function MyOrders() {
 
                             {/* Actions */}
                             <div className="flex flex-wrap items-center gap-3 pt-4 border-t">
-                              <Link href={`/service-hub/${order.service.id}`}>
+                              <Link href={`/service-hub/${order.service.slug}`}>
                                 <Button variant="outline" size="sm">
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Service

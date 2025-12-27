@@ -649,4 +649,45 @@ class User extends Authenticatable implements MustVerifyEmail
             'follower_position_id'
         )->withTimestamps();
     }
+
+    /**
+     * Get the gigs created by this user
+     */
+    public function gigs(): HasMany
+    {
+        return $this->hasMany(Gig::class);
+    }
+
+    /**
+     * Get the favorite gigs for this user
+     */
+    public function favoriteGigs(): BelongsToMany
+    {
+        return $this->belongsToMany(Gig::class, 'gig_favorites')
+            ->withTimestamps();
+    }
+
+    /**
+     * Get service orders where user is buyer
+     */
+    public function serviceOrdersAsBuyer(): HasMany
+    {
+        return $this->hasMany(ServiceOrder::class, 'buyer_id');
+    }
+
+    /**
+     * Get service orders where user is seller
+     */
+    public function serviceOrdersAsSeller(): HasMany
+    {
+        return $this->hasMany(ServiceOrder::class, 'seller_id');
+    }
+
+    /**
+     * Get the service seller profile for this user.
+     */
+    public function serviceSellerProfile(): HasOne
+    {
+        return $this->hasOne(ServiceSellerProfile::class);
+    }
 }
