@@ -33,6 +33,7 @@ import {
     ActivitySkeleton,
     QRCodeSkeleton,
     DepositInstructionsSkeleton,
+    WaitingScreen,
     getCsrfToken as getWalletCsrfToken,
     formatAddress as formatWalletAddress
 } from './wallet'
@@ -62,6 +63,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [walletAddress, setWalletAddress] = useState<string | null>(null)
     const [isLoading, setIsLoading] = useState(false)
     const [isInitialLoading, setIsInitialLoading] = useState(true) // Track initial load for splash screen
+    const [isConnectingWallet, setIsConnectingWallet] = useState(false) // Track wallet connection loading
     const [hasSubscription, setHasSubscription] = useState<boolean | null>(null)
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
     const [copied, setCopied] = useState(false)
@@ -155,7 +157,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [showVerificationIframe, setShowVerificationIframe] = useState(false)
     const [useCustomKyc, setUseCustomKyc] = useState(true) // Toggle between custom form and iframe
     const [kycSubmitted, setKycSubmitted] = useState(false) // Track if KYC has been submitted
-    const [showTosIframe, setShowTosIframe] = useState(false)
     const [tosIframeUrl, setTosIframeUrl] = useState<string | null>(null)
     const [signedAgreementId, setSignedAgreementId] = useState<string | null>(null)
 
@@ -417,9 +418,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setKybStatus(statusData.kyb_status)
                 }
                 if (statusData.tos_status) {
+                    // Only update TOS status if:
+                    // 1. Current status is not already accepted/approved, OR
+                    // 2. Backend confirms it's accepted/approved (to sync with backend)
+                    const currentTosStatus = tosStatus
+                    const isCurrentlyAccepted = currentTosStatus === 'accepted' || currentTosStatus === 'approved'
+                    const isBackendAccepted = statusData.tos_status === 'accepted' || statusData.tos_status === 'approved'
+
+                    // Always update if backend says it's accepted (to sync)
+                    // Or update if current status is not accepted (to get latest status)
+                    if (isBackendAccepted || !isCurrentlyAccepted) {
                     setTosStatus(statusData.tos_status)
+                    }
+
                     // If TOS is accepted, hide the iframe immediately
-                    if (statusData.tos_status === 'accepted' || statusData.tos_status === 'approved') {
+                    if (isBackendAccepted) {
                         setTosIframeUrl(null)
                         // If TOS is accepted but we don't have signedAgreementId, try to get it
                         if (!signedAgreementId) {
@@ -451,34 +464,122 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 if (statusData.kyb_step && statusData.verification_type === 'kyb') {
                     const previousStep = kybStep
 
-                    // Only move to kyc_verification if documents are approved
-                    // Otherwise, stay on business_documents step to show waiting screen
+                    // CRITICAL: Check has_control_person FIRST - this is the source of truth
+                    console.log('KYB Step Check:', {
+                        has_control_person: statusData.has_control_person,
+                        kyb_step: statusData.kyb_step,
+                        controlPersonSubmitted: controlPersonSubmitted,
+                    })
+
+                    if (statusData.has_control_person) {
+                        // Control person EXISTS in database - set state immediately
+                        setControlPersonSubmitted(true)
+
+                        // CRITICAL: If control person exists, we should NEVER be on control_person step
+                        // Check if step is control_person OR if we're currently on control_person step
+                        const needsAdvance = statusData.kyb_step === 'control_person' || kybStep === 'control_person'
+
+                        if (needsAdvance) {
+                            const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
+                                statusData.document_statuses?.id_back === 'rejected')
+                            const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
+                            
+                            // Check if requested fields are for control_person (start with 'control_person.' or are control person related)
+                            const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
+                                'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
+                                'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
+                                'control_person.country', 'control_person.id_type', 'control_person.id_number', 
+                                'control_person.id_front_image', 'control_person.id_back_image']
+                            const hasControlPersonRequestedFields = hasRequestedFields && 
+                                statusData.requested_fields.some((field: string) => 
+                                    controlPersonFields.includes(field) || field.startsWith('control_person.')
+                                )
+
+                            console.log('Control person exists but step is/was control_person', {
+                                backend_step: statusData.kyb_step,
+                                current_step: kybStep,
+                                hasRejectedDocs,
+                                hasRequestedFields,
+                                hasControlPersonRequestedFields,
+                            })
+
+                            // If rejected docs OR requested fields for control_person, stay on control_person step
+                            if (hasRejectedDocs || hasControlPersonRequestedFields) {
+                                console.log('Control person exists but has rejected docs or requested fields for control_person - staying on control_person for re-upload')
+                                setKybStep('control_person')
+                                setControlPersonSubmitted(false) // Show form for re-upload
+                                return // Exit early
+                            } else {
+                                // No rejected docs and no control_person requested fields - advance to business_documents
+                                console.error('FORCING: Control person exists - advancing to business_documents')
+                                setKybStep('business_documents')
+                                // CRITICAL: Don't set businessDocumentsSubmitted to true - user hasn't submitted documents yet!
+                                // Only set it if backend confirms documents were actually submitted
+                                if (statusData.business_documents_submitted) {
+                                    setBusinessDocumentsSubmitted(true)
+                                } else {
+                                    setBusinessDocumentsSubmitted(false)
+                                }
+                                // Don't return - continue to handle kyc_verification if needed
+                            }
+                        }
+
+                        // Handle kyc_verification step if backend says so
                     if (statusData.kyb_step === 'kyc_verification') {
-                        // Check if documents are actually approved before moving to step 3
+                            // Handle kyc_verification step
+                            const isKybApproved = statusData.kyb_status === 'approved'
                         const documentsApproved = statusData.kyb_submission_status === 'approved' ||
                             (statusData.document_statuses &&
                                 (statusData.document_statuses.business_formation === 'approved' ||
                                     statusData.document_statuses.business_ownership === 'approved'))
 
-                        if (documentsApproved) {
+                            if (isKybApproved && documentsApproved) {
                             setKybStep('kyc_verification')
                             setBusinessDocumentsSubmitted(true)
-                            // If we just moved to kyc_verification step and don't have KYC link yet, fetch it automatically
                             if (previousStep !== 'kyc_verification' && !controlPersonKycIframeUrl && !controlPersonKycLink && kybFormData.control_person.email) {
-                                // Automatically fetch KYC link when step becomes active (silent mode - no loading spinner)
                                 handleControlPersonKyc(true)
                             }
                         } else {
-                            // Documents not approved yet, stay on business_documents step
                             setKybStep('business_documents')
+                                // Only set to true if documents were actually submitted
+                                if (statusData.business_documents_submitted) {
                             setBusinessDocumentsSubmitted(true)
+                                } else {
+                                    setBusinessDocumentsSubmitted(false)
+                                }
+                            }
+                        } else if (statusData.kyb_step === 'business_documents') {
+                            // Step is business_documents - use it
+                            setKybStep(statusData.kyb_step)
+                            // IMPORTANT: Only set businessDocumentsSubmitted if backend confirms documents were submitted
+                            if (statusData.business_documents_submitted) {
+                                setBusinessDocumentsSubmitted(true)
+                    } else {
+                                setBusinessDocumentsSubmitted(false)
+                            }
+                        } else {
+                            // Other step - use it
+                        setKybStep(statusData.kyb_step)
                         }
                     } else {
-                        // For control_person or business_documents steps, set normally
+                        // Control person doesn't exist - use step from backend
                         setKybStep(statusData.kyb_step)
-                        // If we're past step 1, mark control person as submitted
-                        if (statusData.kyb_step !== 'control_person') {
-                            setControlPersonSubmitted(true)
+
+                        // Handle kyc_verification step if needed
+                        if (statusData.kyb_step === 'kyc_verification') {
+                            const isKybApproved = statusData.kyb_status === 'approved'
+                            const documentsApproved = statusData.kyb_submission_status === 'approved' ||
+                                (statusData.document_statuses &&
+                                    (statusData.document_statuses.business_formation === 'approved' ||
+                                        statusData.document_statuses.business_ownership === 'approved'))
+
+                            if (isKybApproved && documentsApproved) {
+                                setKybStep('kyc_verification')
+                                setBusinessDocumentsSubmitted(true)
+                            } else {
+                                setKybStep('business_documents')
+                                setBusinessDocumentsSubmitted(true)
+                            }
                         }
                     }
                 }
@@ -788,7 +889,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 // After the request, try to get token again
                                 csrfToken = getCsrfToken()
                             } catch (e) {
-                                console.warn('Failed to refresh CSRF token:', e)
                             }
                         }
 
@@ -838,24 +938,40 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                             // Update TOS status from backend response if available, otherwise use 'accepted'
                             const backendTosStatus = data.tos_status || 'accepted'
-                            setTosStatus(backendTosStatus === 'approved' ? 'approved' : 'accepted')
+                            const finalTosStatus = backendTosStatus === 'approved' ? 'approved' : 'accepted'
+                            // Immediately set the status to ensure UI updates
+                            setTosStatus(finalTosStatus)
 
                             // If action is checkStatus, it means success screen was already shown and hidden
                             // Just check the status without showing toast again
                             if (action === 'checkStatus' && hideSuccess) {
                                 // Success screen was already shown, now just check status
                                 // Status already updated above, now sync with backend
+                                // Use a shorter delay to ensure status persists
+                                setTimeout(() => {
                                 checkBridgeAndFetchBalance()
+
+                                    // Refresh page after sync to ensure UI is updated
+                                    setTimeout(() => {
+                                        window.location.reload()
+                                    }, 1000)
+                                }, 500)
                             } else {
                                 // First time - show success message
                                 showSuccessToast('Terms of Service accepted successfully')
 
                                 // Status already updated above, now sync with backend after delay
-                                // After 2 seconds (when success screen hides), check status again to ensure sync
+                                // After success message shows, check status to ensure sync
+                                // Then refresh page to ensure UI reflects the accepted status
                                 setTimeout(() => {
                                     // Re-check status to ensure everything is synced with backend
                                     checkBridgeAndFetchBalance()
-                                }, 2000)
+
+                                    // Refresh page after a short delay to ensure UI updates properly
+                                    setTimeout(() => {
+                                        window.location.reload()
+                                    }, 1500)
+                                }, 1500)
                             }
                         } else {
                             showErrorToast(data.message || 'Failed to accept Terms of Service')
@@ -1279,11 +1395,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 .then(res => res.json())
                                 .then(cardData => {
                                     if (cardData.success) {
-                                        console.log('Card account created/verified successfully')
                                     }
                                 })
                                 .catch(cardError => {
-                                    console.warn('Card account creation (non-critical):', cardError)
                                 })
 
                             // Create Liquidation Address (if not exists) - Non-blocking
@@ -1305,16 +1419,13 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                 .then(res => res.json())
                                 .then(liquidationData => {
                                     if (liquidationData.success) {
-                                        console.log('Liquidation address created/verified successfully')
                                     }
                                 })
                                 .catch(liquidationError => {
-                                    console.warn('Liquidation address creation (non-critical):', liquidationError)
                                 })
                         }
                     }
                 } catch (additionalError) {
-                    console.warn('Additional account creation (non-critical):', additionalError)
                     // Non-critical errors, wallet creation was successful
                 }
 
@@ -1333,6 +1444,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }
 
     const handleConnectWallet = async () => {
+        setIsConnectingWallet(true) // Show loading animation screen
         setIsLoading(true)
         try {
             // Get fresh CSRF token
@@ -1445,28 +1557,118 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                 // Load KYB step progress from backend
                 if (statusData.kyb_step && statusData.verification_type === 'kyb') {
-                    // Only move to kyc_verification if documents are approved
-                    if (statusData.kyb_step === 'kyc_verification') {
-                        // Check if documents are actually approved before moving to step 3
-                        const documentsApproved = statusData.kyb_submission_status === 'approved' ||
-                            (statusData.document_statuses &&
-                                (statusData.document_statuses.business_formation === 'approved' ||
-                                    statusData.document_statuses.business_ownership === 'approved'))
+                    // CRITICAL: Check has_control_person FIRST - same logic as checkBridgeAndFetchBalance
+                    console.log('handleConnectWallet - KYB Step Check:', {
+                        has_control_person: statusData.has_control_person,
+                        kyb_step: statusData.kyb_step,
+                        current_kybStep: kybStep,
+                    })
 
-                        if (documentsApproved) {
+                    if (statusData.has_control_person) {
+                        // Control person EXISTS in database - set state immediately
+                        setControlPersonSubmitted(true)
+
+                        // CRITICAL: If control person exists, we should NEVER be on control_person step
+                        const needsAdvance = statusData.kyb_step === 'control_person' || kybStep === 'control_person'
+
+                        if (needsAdvance) {
+                            const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
+                                statusData.document_statuses?.id_back === 'rejected')
+                            const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
+                            
+                            // Check if requested fields are for control_person
+                            const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
+                                'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
+                                'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
+                                'control_person.country', 'control_person.id_type', 'control_person.id_number', 
+                                'control_person.id_front_image', 'control_person.id_back_image']
+                            const hasControlPersonRequestedFields = hasRequestedFields && 
+                                statusData.requested_fields.some((field: string) => 
+                                    controlPersonFields.includes(field) || field.startsWith('control_person.')
+                                )
+
+                            // If rejected docs OR requested fields for control_person, stay on control_person step
+                            if (hasRejectedDocs || hasControlPersonRequestedFields) {
+                                setKybStep('control_person')
+                                setControlPersonSubmitted(false)
+                                return // Exit early
+                            } else {
+                                // No rejected docs and no control_person requested fields - advance to business_documents
+                                console.error('handleConnectWallet - FORCING: Control person exists - advancing to business_documents')
+                                setKybStep('business_documents')
+                                // CRITICAL: Don't set businessDocumentsSubmitted to true - user hasn't submitted documents yet!
+                                if (statusData.business_documents_submitted) {
+                                    setBusinessDocumentsSubmitted(true)
+                                } else {
+                                    setBusinessDocumentsSubmitted(false)
+                                }
+                            }
+                        }
+
+                        // Handle kyc_verification step if backend says so
+                        if (statusData.kyb_step === 'kyc_verification') {
+                            // Admin requested KYC verification - show it
                             setKybStep('kyc_verification')
                             setBusinessDocumentsSubmitted(true)
-                        } else {
-                            // Documents not approved yet, stay on business_documents step to show waiting screen
-                            setKybStep('business_documents')
+                        } else if (statusData.kyb_step === 'business_documents') {
+                            // Step is business_documents - use it
+                            setKybStep(statusData.kyb_step)
+                            // IMPORTANT: Only set businessDocumentsSubmitted if backend confirms documents were submitted
+                            // BUT: If there are rejected docs or requested fields, don't show waiting screen
+                            const hasRejectedBusinessDocs = statusData.document_statuses?.business_formation === 'rejected' ||
+                                statusData.document_statuses?.business_ownership === 'rejected' ||
+                                statusData.document_statuses?.proof_of_address === 'rejected'
+                            const businessDocFields = ['business_formation_document', 'business_ownership_document', 
+                                'proof_of_address_document', 'proof_of_nature_of_business', 'entity_type', 'business_description',
+                                'business_industry', 'primary_website', 'source_of_funds', 'annual_revenue', 'transaction_volume',
+                                'account_purpose', 'high_risk_activities', 'high_risk_geographies', 'dao_status']
+                            const hasBusinessDocRequestedFields = statusData.requested_fields && 
+                                statusData.requested_fields.some((field: string) => 
+                                    businessDocFields.includes(field) || field.startsWith('physical_address.')
+                                )
+                            
+                            // If documents submitted AND no rejected docs AND no requested fields, show waiting screen
+                            if (statusData.business_documents_submitted && !hasRejectedBusinessDocs && !hasBusinessDocRequestedFields) {
                             setBusinessDocumentsSubmitted(true)
+                        } else {
+                                // Has rejected docs or requested fields - show form for re-upload
+                                setBusinessDocumentsSubmitted(false)
+                            }
+                        } else {
+                            // Other step - use it (kyc_verification is already handled above)
+                            setKybStep(statusData.kyb_step)
                         }
                     } else {
-                        // For control_person or business_documents steps, set normally
+                        // Control person doesn't exist - use step from backend
+                        if (statusData.kyb_step === 'kyc_verification') {
+                            // Admin requested KYC verification - show it
+                            setKybStep('kyc_verification')
+                            setBusinessDocumentsSubmitted(true)
+                        } else if (statusData.kyb_step === 'business_documents') {
+                            // Check for rejected docs or requested fields for business documents
+                            const hasRejectedBusinessDocs = statusData.document_statuses?.business_formation === 'rejected' ||
+                                statusData.document_statuses?.business_ownership === 'rejected' ||
+                                statusData.document_statuses?.proof_of_address === 'rejected'
+                            const businessDocFields = ['business_formation_document', 'business_ownership_document', 
+                                'proof_of_address_document', 'proof_of_nature_of_business', 'entity_type', 'business_description',
+                                'business_industry', 'primary_website', 'source_of_funds', 'annual_revenue', 'transaction_volume',
+                                'account_purpose', 'high_risk_activities', 'high_risk_geographies', 'dao_status']
+                            const hasBusinessDocRequestedFields = statusData.requested_fields && 
+                                statusData.requested_fields.some((field: string) => 
+                                    businessDocFields.includes(field) || field.startsWith('physical_address.')
+                                )
+                            
+                            setKybStep('business_documents')
+                            // If documents submitted AND no rejected docs AND no requested fields, show waiting screen
+                            if (statusData.business_documents_submitted && !hasRejectedBusinessDocs && !hasBusinessDocRequestedFields) {
+                            setBusinessDocumentsSubmitted(true)
+                            } else {
+                                // Has rejected docs or requested fields - show form for re-upload
+                                setBusinessDocumentsSubmitted(false)
+                        }
+                    } else {
+                            // Other step - use it
                         setKybStep(statusData.kyb_step)
-                        // If we're past step 1, mark control person as submitted
-                        if (statusData.kyb_step !== 'control_person') {
-                            setControlPersonSubmitted(true)
                         }
                     }
                 }
@@ -1535,6 +1737,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             showErrorToast(errorMessage)
         } finally {
             setIsLoading(false)
+            // Delay hiding the connecting screen slightly to show completion
+            setTimeout(() => {
+                setIsConnectingWallet(false)
+            }, 500)
         }
     }
 
@@ -2244,9 +2450,26 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 const data = await response.json()
 
                 if (data.success) {
+                    // Check if KYC was instantly approved (like KYB)
+                    const kycStatusFromResponse = data.data?.kyc_status
+                    const isInstantlyApproved = kycStatusFromResponse === 'approved'
+
+                    if (isInstantlyApproved) {
+                        // Instantly approved - same behavior as KYB
+                        showSuccessToast('KYC verification approved instantly! You can now access your wallet.')
+                        setKycStatus('approved')
+                        setKycSubmitted(false) // Clear submitted flag since it's approved
+                        setRequiresVerification(false)
+
+                        // Refresh wallet status to show wallet screen
+                        setTimeout(() => {
+                            checkBridgeAndFetchBalance()
+                        }, 500)
+                    } else {
+                        // Not instantly approved - show waiting screen
                     showSuccessToast('KYC data submitted successfully. Verification is pending.')
-                    setKycStatus('under_review') // Set status to under_review after submission
-                    setKycSubmitted(true) // Mark that KYC has been submitted
+                        setKycStatus('under_review') // Set status to under_review after submission
+                        setKycSubmitted(true) // Mark that KYC has been submitted
                     setRequiresVerification(true)
                     // Refresh status from backend to ensure sync
                     setTimeout(() => {
@@ -2264,18 +2487,20 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             .then(statusData => {
                                 if (statusData.success) {
                                     if (statusData.kyc_status) {
-                                        // If KYC was submitted, don't allow status to go back to not_started (which would show form)
-                                        // Keep waiting screen visible until approved or rejected
-                                        if (kycSubmitted && statusData.kyc_status === 'not_started') {
-                                            // Keep status as under_review to maintain waiting screen
-                                            console.log('KYC submitted - keeping status as under_review to show waiting screen')
-                                        } else {
-                                            setKycStatus(statusData.kyc_status)
-                                            // If status becomes approved, clear the submitted flag
-                                            if (statusData.kyc_status === 'approved') {
-                                                setKycSubmitted(false)
+                                            // If KYC was submitted, don't allow status to go back to not_started (which would show form)
+                                            // Keep waiting screen visible until approved or rejected
+                                            if (kycSubmitted && statusData.kyc_status === 'not_started') {
+                                                // Keep status as under_review to maintain waiting screen
+                                            } else {
+                                        setKycStatus(statusData.kyc_status)
+                                                // If status becomes approved, clear the submitted flag
+                                                if (statusData.kyc_status === 'approved') {
+                                                    setKycSubmitted(false)
+                                                    setRequiresVerification(false)
+                                                    // Refresh wallet status
+                                                    checkBridgeAndFetchBalance()
+                                                }
                                             }
-                                        }
                                     }
                                     if (statusData.requires_verification !== undefined) {
                                         setRequiresVerification(statusData.requires_verification)
@@ -2284,6 +2509,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             })
                             .catch(err => console.error('Failed to refresh KYC status:', err))
                     }, 500)
+                    }
                 } else {
                     showErrorToast(data.message || 'Failed to submit KYC data')
                 }
@@ -2326,7 +2552,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
-    // Use formatAddress from wallet utils (imported as formatWalletAddress)
+    // Use formatAddress from wallet utils
     const formatAddress = formatWalletAddress
 
     // Debounced search function
@@ -2714,7 +2940,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         setIsLoading(true)
 
         try {
-            // TODO: Replace with actual API endpoint when backend is ready
             // For now, simulate the API call
             const response = await fetch('/wallet/bridge/deposit', {
                 method: 'POST',
@@ -2985,7 +3210,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             {isInitialLoading ? (
                                 <SplashScreen key="splash-screen" />
                             ) : (
-                                <motion.div 
+                                <motion.div
                                     key="main-content"
                                     initial={{ opacity: 0 }}
                                     animate={{ opacity: 1 }}
@@ -2995,12 +3220,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     {/* Success Animation Overlay */}
                                     <AnimatePresence>
                                         {showSuccess && (
-                                            <SuccessMessage
+                                        <SuccessMessage
                                                 key="success-message"
-                                                show={showSuccess}
-                                                successType={successType}
-                                                message={successMessage}
-                                            />
+                                            show={showSuccess}
+                                            successType={successType}
+                                            message={successMessage}
+                                        />
                                         )}
                                     </AnimatePresence>
 
@@ -3232,6 +3457,108 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 verificationType={verificationType}
                                                 onCreateWallet={handleCreateWallet}
                                             />
+                                        ) : isConnectingWallet ? (
+                                            // Show animated loading screen when connecting wallet
+                                            <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 relative z-10">
+                                                {/* Animated Spinner with Center Icon */}
+                                                <motion.div
+                                                    className="relative w-24 h-24 flex items-center justify-center"
+                                                    initial={{ scale: 0, opacity: 0 }}
+                                                    animate={{ scale: 1, opacity: 1 }}
+                                                    transition={{ duration: 0.3 }}
+                                                >
+                                                    {/* Glowing Background Ring */}
+                                                    <motion.div
+                                                        className="absolute inset-0 rounded-full bg-gradient-to-r from-purple-600/20 to-blue-600/20 blur-xl"
+                                                        animate={{
+                                                            scale: [1, 1.2, 1],
+                                                            opacity: [0.3, 0.5, 0.3],
+                                                        }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut",
+                                                        }}
+                                                    />
+
+                                                    {/* Outer Ring */}
+                                                    <motion.div
+                                                        className="absolute inset-0 border-4 border-purple-200 dark:border-purple-800 rounded-full"
+                                                        animate={{ rotate: 360 }}
+                                                        transition={{
+                                                            duration: 2,
+                                                            repeat: Infinity,
+                                                            ease: "linear",
+                                                        }}
+                                                    />
+
+                                                    {/* Inner Spinner */}
+                                                    <motion.div
+                                                        className="absolute inset-2 border-4 border-transparent border-t-purple-600 dark:border-t-purple-400 rounded-full"
+                                                        animate={{ rotate: -360 }}
+                                                        transition={{
+                                                            duration: 1,
+                                                            repeat: Infinity,
+                                                            ease: "linear",
+                                                        }}
+                                                    />
+
+                                                    {/* Center Icon - Larger and More Prominent */}
+                                                    <motion.div
+                                                        className="relative z-10"
+                                                        animate={{
+                                                            scale: [1, 1.1, 1],
+                                                        }}
+                                                        transition={{
+                                                            duration: 1.5,
+                                                            repeat: Infinity,
+                                                            ease: "easeInOut",
+                                                        }}
+                                                    >
+                                                        <Wallet className="h-12 w-12 text-purple-600 dark:text-purple-400" />
+                                                    </motion.div>
+                                                </motion.div>
+
+                                                {/* Loading Text */}
+                                                <motion.div
+                                                    className="text-center space-y-2"
+                                                    initial={{ opacity: 0, y: 10 }}
+                                                    animate={{ opacity: 1, y: 0 }}
+                                                    transition={{ delay: 0.2 }}
+                                                >
+                                                    <h3 className="text-xl font-semibold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
+                                                        Connecting Wallet...
+                                                    </h3>
+                                                    <p className="text-sm text-muted-foreground">
+                                                        Setting up your Bridge account
+                                                    </p>
+                                                </motion.div>
+
+                                                {/* Animated Dots */}
+                                                <motion.div
+                                                    className="flex gap-2"
+                                                    initial={{ opacity: 0 }}
+                                                    animate={{ opacity: 1 }}
+                                                    transition={{ delay: 0.4 }}
+                                                >
+                                                    {[0, 1, 2].map((i) => (
+                                                        <motion.div
+                                                            key={i}
+                                                            className="w-2 h-2 bg-purple-600 dark:bg-purple-400 rounded-full"
+                                                            animate={{
+                                                                y: [0, -8, 0],
+                                                                opacity: [0.5, 1, 0.5],
+                                                            }}
+                                                            transition={{
+                                                                duration: 0.6,
+                                                                repeat: Infinity,
+                                                                delay: i * 0.2,
+                                                                ease: "easeInOut",
+                                                            }}
+                                                        />
+                                                    ))}
+                                                </motion.div>
+                                            </div>
                                         ) : (() => {
                                             // Check if we should show Connect Wallet
                                             if (!bridgeInitialized && !isLoading) {
@@ -3491,7 +3818,37 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                 (verificationType === 'kyc' && kycStatus !== 'approved')
                                                             ) && (
                                                                     <div className="space-y-2 sm:space-y-3 w-full mt-3">
-                                                                        {/* Toggle between custom form and iframe */}
+                                                                        {/* Toggle between custom form and iframe - Hide when KYB waiting screen is shown */}
+                                                                        {(() => {
+                                                                                            // Check if KYB waiting screen should be shown
+                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
+                                                                                                (documentStatuses.id_front === 'pending' || 
+                                                                                                 documentStatuses.id_front === 'approved' ||
+                                                                                                 documentStatuses.id_back === 'pending' ||
+                                                                                                 documentStatuses.id_back === 'approved')
+                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
+                                                                                                (documentStatuses.business_formation === 'pending' ||
+                                                                                                 documentStatuses.business_formation === 'approved' ||
+                                                                                                 documentStatuses.business_ownership === 'pending' ||
+                                                                                                 documentStatuses.business_ownership === 'approved')
+                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
+                                                                                                documentStatuses.id_back === 'rejected' ||
+                                                                                                documentStatuses.business_formation === 'rejected' ||
+                                                                                                documentStatuses.business_ownership === 'rejected' ||
+                                                                                                documentStatuses.proof_of_address === 'rejected'
+                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                            const shouldShowKybWaitingScreen = verificationType === 'kyb' &&
+                                                                                                kybStatus !== 'approved' &&
+                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
+                                                                                                !hasRejectedDocs &&
+                                                                                                !hasRequestedFields
+                                                                                            
+                                                                                            // Hide toggle buttons when waiting screen is shown
+                                                                                            if (shouldShowKybWaitingScreen) {
+                                                                                                return null
+                                                                                            }
+                                                                                            
+                                                                                            return (
                                                                         <div className="flex gap-2 w-full">
                                                                             <Button
                                                                                 size="sm"
@@ -3516,6 +3873,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                 Bridge Widget
                                                                             </Button>
                                                                         </div>
+                                                                                            )
+                                                                                        })()}
 
                                                                         {useCustomKyc ? (
                                                                             /* Custom KYC/KYB Form */
@@ -3548,19 +3907,88 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                             </div>
                                                                                         </div>
                                                                                     ) : (
-                                                                                        <KYCForm
-                                                                                            formData={kycFormData}
-                                                                                            isLoading={isLoading}
-                                                                                            onFormDataChange={setKycFormData}
-                                                                                            onSubmit={handleSubmitCustomKyc}
+                                                                                    <KYCForm
+                                                                                        formData={kycFormData}
+                                                                                        isLoading={isLoading}
+                                                                                        onFormDataChange={setKycFormData}
+                                                                                        onSubmit={handleSubmitCustomKyc}
                                                                                             kycStatus={kycStatus}
                                                                                             kycSubmitted={kycSubmitted}
-                                                                                        />
+                                                                                    />
                                                                                     )
                                                                                 ) : verificationType === 'kyb' ? (
                                                                                     /* Business KYB Multi-Step Form */
                                                                                     <>
-                                                                                        {/* Step Indicator with Labels */}
+                                                                                        {/* Single KYB Submitted Waiting Screen - Show when KYB is submitted but not approved */}
+                                                                                        {(() => {
+                                                                                            // Check if KYB is submitted (any step completed) but not yet approved
+                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
+                                                                                                (documentStatuses.id_front === 'pending' || 
+                                                                                                 documentStatuses.id_front === 'approved' ||
+                                                                                                 documentStatuses.id_back === 'pending' ||
+                                                                                                 documentStatuses.id_back === 'approved')
+                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
+                                                                                                (documentStatuses.business_formation === 'pending' ||
+                                                                                                 documentStatuses.business_formation === 'approved' ||
+                                                                                                 documentStatuses.business_ownership === 'pending' ||
+                                                                                                 documentStatuses.business_ownership === 'approved')
+                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
+                                                                                                documentStatuses.id_back === 'rejected' ||
+                                                                                                documentStatuses.business_formation === 'rejected' ||
+                                                                                                documentStatuses.business_ownership === 'rejected' ||
+                                                                                                documentStatuses.proof_of_address === 'rejected'
+                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                            
+                                                                                            // Show waiting screen if KYB is submitted (any step) but not approved, and no rejected docs/requested fields
+                                                                                            const shouldShowKybWaitingScreen = kybStatus !== 'approved' &&
+                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
+                                                                                                !hasRejectedDocs &&
+                                                                                                !hasRequestedFields
+                                                                                            
+                                                                                            if (shouldShowKybWaitingScreen) {
+                                                                                                return (
+                                                                                                    <WaitingScreen
+                                                                                                        variant="business_documents"
+                                                                                                        title="KYB Submitted"
+                                                                                                        message="Your KYB (Know Your Business) verification has been submitted and is currently under review."
+                                                                                                        subMessage="Please wait while we verify your business information. You will be notified once the verification is complete."
+                                                                                                    />
+                                                                                                )
+                                                                                            }
+                                                                                            
+                                                                                            // Show steps if not showing waiting screen
+                                                                                            return null
+                                                                                        })()}
+                                                                                        
+                                                                                        {/* Step Indicator with Labels - Hide when waiting screen is shown */}
+                                                                                        {(() => {
+                                                                                            const hasControlPersonSubmitted = controlPersonSubmitted && 
+                                                                                                (documentStatuses.id_front === 'pending' || 
+                                                                                                 documentStatuses.id_front === 'approved' ||
+                                                                                                 documentStatuses.id_back === 'pending' ||
+                                                                                                 documentStatuses.id_back === 'approved')
+                                                                                            const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
+                                                                                                (documentStatuses.business_formation === 'pending' ||
+                                                                                                 documentStatuses.business_formation === 'approved' ||
+                                                                                                 documentStatuses.business_ownership === 'pending' ||
+                                                                                                 documentStatuses.business_ownership === 'approved')
+                                                                                            const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
+                                                                                                documentStatuses.id_back === 'rejected' ||
+                                                                                                documentStatuses.business_formation === 'rejected' ||
+                                                                                                documentStatuses.business_ownership === 'rejected' ||
+                                                                                                documentStatuses.proof_of_address === 'rejected'
+                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                            const shouldShowKybWaitingScreen = kybStatus !== 'approved' &&
+                                                                                                (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
+                                                                                                !hasRejectedDocs &&
+                                                                                                !hasRequestedFields
+                                                                                            
+                                                                                            if (shouldShowKybWaitingScreen) {
+                                                                                                return null // Hide steps when waiting screen is shown
+                                                                                            }
+                                                                                            
+                                                                                            return (
+                                                                                                <>
                                                                                         <div className="mb-3 space-y-2">
                                                                                             <div className="flex items-center gap-1">
                                                                                                 {/* Step 1 */}
@@ -3709,6 +4137,36 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                         {/* Step 1: Control Person */}
                                                                                         {kybStep === 'control_person' && (
                                                                                             <>
+                                                                                                {/* WAITING SCREEN FOR CONTROL PERSON - If submitted and no rejected docs/requested fields */}
+                                                                                                {(() => {
+                                                                                                    // Check if control person is submitted and no rejected docs or requested fields
+                                                                                                    const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
+                                                                                                    const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                                    const hasPendingOrApprovedIdDocs = documentStatuses.id_front === 'pending' ||
+                                                                                                        documentStatuses.id_front === 'approved' ||
+                                                                                                        documentStatuses.id_back === 'pending' ||
+                                                                                                        documentStatuses.id_back === 'approved'
+                                                                                                    
+                                                                                                    // Show waiting screen if control person is submitted and no rejected docs/requested fields
+                                                                                                    const shouldShowWaitingScreen = controlPersonSubmitted &&
+                                                                                                        hasPendingOrApprovedIdDocs &&
+                                                                                                        !hasRejectedIdDocs &&
+                                                                                                        !hasRequestedFields
+                                                                                                    
+                                                                                                    if (shouldShowWaitingScreen) {
+                                                                                                        return (
+                                                                                                            <WaitingScreen
+                                                                                                                variant="control_person"
+                                                                                                                title="Control Person Information Submitted"
+                                                                                                                message="Your control person information and ID documents are currently under review."
+                                                                                                                subMessage="Once approved, you will be able to proceed to Step 2: Business Documents."
+                                                                                                            />
+                                                                                                        )
+                                                                                                    }
+                                                                                                    
+                                                                                                    // Show form only if there are rejected docs or requested fields
+                                                                                                    return (
+                                                                                            <>
                                                                                                 {/* Show refill message banner if admin requested re-fill */}
                                                                                                 {(refillMessage || (requestedFields && requestedFields.length > 0)) && (
                                                                                                     <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
@@ -3742,71 +4200,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                     </div>
                                                                                                 )}
 
-                                                                                                {/* Check if ID documents are submitted and pending approval - show waiting screen */}
-                                                                                                {(() => {
-                                                                                                    // Check if there are any rejected ID documents that need re-upload
-                                                                                                    const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                    
-                                                                                                    // Check if ID documents are in pending or approved state (submitted)
-                                                                                                    const hasPendingOrApprovedIdDocs = documentStatuses.id_front === 'pending' ||
-                                                                                                        documentStatuses.id_back === 'pending' ||
-                                                                                                        documentStatuses.id_front === 'approved' ||
-                                                                                                        documentStatuses.id_back === 'approved'
-
-                                                                                                    // Show waiting screen if:
-                                                                                                    // 1. We're on the control_person step
-                                                                                                    // 2. Control person has been submitted (controlPersonSubmitted flag OR documents are pending/approved)
-                                                                                                    // 3. No documents are currently rejected (if rejected, show form for re-upload)
-                                                                                                    const shouldShowWaitingScreen = controlPersonSubmitted && 
-                                                                                                        hasPendingOrApprovedIdDocs && 
-                                                                                                        !hasRejectedIdDocs
-
-                                                                                                    if (shouldShowWaitingScreen) {
-                                                                                                        return (
-                                                                                                            <div className="space-y-4">
-                                                                                                                {/* Waiting for Approval Screen */}
-                                                                                                                <div className="p-6 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-center">
-                                                                                                                    <div className="flex flex-col items-center gap-3">
-                                                                                                                        <div className="w-16 h-16 rounded-full bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center animate-pulse">
-                                                                                                                            <Loader2 className="h-8 w-8 text-blue-600 dark:text-blue-400 animate-spin" />
-                                                                                                                        </div>
-                                                                                                                        <div>
-                                                                                                                            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1">
-                                                                                                                                Waiting for Admin Review
-                                                                                                                            </h3>
-                                                                                                                            <p className="text-xs text-gray-600 dark:text-gray-400">
-                                                                                                                                Your ID documents have been successfully submitted and are awaiting admin approval.
-                                                                                                                            </p>
-                                                                                                                        </div>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            </div>
-                                                                                                        )
-                                                                                                    }
-
-                                                                                                    // Show form fields if waiting screen is NOT showing
-                                                                                                    return null
-                                                                                                })()}
-
-                                                                                                {/* Only show form fields if NOT showing waiting screen */}
-                                                                                                {(() => {
-                                                                                                    // Check if waiting screen should be shown
-                                                                                                    const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                    const hasPendingOrApprovedIdDocs = documentStatuses.id_front === 'pending' ||
-                                                                                                        documentStatuses.id_back === 'pending' ||
-                                                                                                        documentStatuses.id_front === 'approved' ||
-                                                                                                        documentStatuses.id_back === 'approved'
-                                                                                                    const shouldShowWaitingScreen = controlPersonSubmitted && 
-                                                                                                        hasPendingOrApprovedIdDocs && 
-                                                                                                        !hasRejectedIdDocs
-                                                                                                    
-                                                                                                    // Don't show form if waiting screen is showing
-                                                                                                    if (shouldShowWaitingScreen) {
-                                                                                                        return null
-                                                                                                    }
-                                                                                                    
-                                                                                                    return (
-                                                                                                        <>
                                                                                                 {/* Display business info (read-only) from organization */}
                                                                                                 {shouldShowField('business_name') || shouldShowField('email') || shouldShowField('ein') || shouldShowField('street_line_1') ? (
                                                                                                     <div className="mb-3 p-2 bg-muted/50 rounded-lg border border-border">
@@ -4670,37 +5063,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                                                                                     return shouldShowWaiting
                                                                                                 })() ? (
-                                                                                                    /* Waiting for Approval Screen */
-                                                                                                    <div className="flex flex-col items-center justify-center py-8 px-4 space-y-4">
-                                                                                                        <motion.div
-                                                                                                            initial={{ scale: 0.8, opacity: 0 }}
-                                                                                                            animate={{ scale: 1, opacity: 1 }}
-                                                                                                            transition={{ duration: 0.3 }}
-                                                                                                            className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center"
-                                                                                                        >
-                                                                                                            <Clock className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                                                                                                        </motion.div>
-                                                                                                        <div className="text-center space-y-2">
-                                                                                                            <h3 className="text-lg font-bold text-foreground">Documents Submitted</h3>
-                                                                                                            <p className="text-sm text-muted-foreground max-w-sm">
-                                                                                                                Your business documents have been successfully submitted and are awaiting admin approval.
-                                                                                                            </p>
-                                                                                                            <p className="text-xs text-muted-foreground mt-3">
-                                                                                                                Once your documents are approved, you will be able to proceed to Step 3: KYC Verification.
-                                                                                                            </p>
-                                                                                                        </div>
-                                                                                                        <div className="w-full max-w-sm p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                                                                                                            <div className="space-y-2">
-                                                                                                                <div className="flex items-center gap-2 text-xs">
-                                                                                                                    <FileCheck className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                                                                                                                    <span className="text-blue-900 dark:text-blue-100 font-medium">Status: Pending Review</span>
-                                                                                                                </div>
-                                                                                                                <p className="text-xs text-blue-800 dark:text-blue-200 pl-6">
-                                                                                                                    Our team will review your documents and notify you once the review is complete.
-                                                                                                                </p>
-                                                                                                            </div>
-                                                                                                        </div>
-                                                                                                    </div>
+                                                                                                    <WaitingScreen
+                                                                                                        variant="business_documents"
+                                                                                                        title="Documents Submitted"
+                                                                                                        message="Your business documents are currently under review."
+                                                                                                        subMessage="Once your documents are approved, you will be able to proceed to Step 3: KYC Verification."
+                                                                                                    />
                                                                                                 ) : (
                                                                                                     /* Show only rejected documents or initial form if nothing submitted yet */
                                                                                                     <>
@@ -5281,6 +5649,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                         {/* Step 3: Control Person KYC Verification - Show when step is set to kyc_verification */}
                                                                                         {kybStep === 'kyc_verification' && (
                                                                                             <>
+                                                                                                {/* Show waiting screen until KYB is approved */}
+                                                                                                {kybStatus !== 'approved' ? (
+                                                                                                    <WaitingScreen
+                                                                                                        variant="kyc_verification"
+                                                                                                        title="KYB Verification Pending"
+                                                                                                        message="Your business documents have been submitted and are being reviewed."
+                                                                                                        subMessage="Please wait while we verify your business information. Once KYB is approved, you will be able to proceed with Control Person KYC verification."
+                                                                                                    />
+                                                                                                ) : (
+                                                                                            <>
                                                                                                 <div className="mb-3">
                                                                                                     <p className="text-xs font-semibold mb-2 text-left">Step 3: Control Person KYC Verification *</p>
                                                                                                     <p className="text-xs text-muted-foreground mb-3 text-left">Your business documents have been approved. The Control Person must complete KYC verification to finalize business verification</p>
@@ -5376,6 +5754,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                 )}
                                                                                             </>
                                                                                         )}
+                                                                                                </>
+                                                                                            )}
+                                                                                        </>
+                                                                                    )
+                                                                                })()}
                                                                                     </>
                                                                                 ) : (
                                                                                     <KYCForm
@@ -5385,26 +5768,35 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                         onSubmit={handleSubmitCustomKyc}
                                                                                     />
                                                                                 )}
-                                                                                {/* Hide button when the Step 2 waiting screen is shown, BUT always show it if admin requested refill */}
+                                                                                {/* Hide button when KYB waiting screen is shown, BUT always show it if admin requested refill */}
                                                                                 {(() => {
-                                                                                    // Check if waiting screen should be shown
-                                                                                    const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
+                                                                                    // Check if KYB waiting screen should be shown
+                                                                                    const hasControlPersonSubmitted = controlPersonSubmitted && 
+                                                                                        (documentStatuses.id_front === 'pending' || 
+                                                                                         documentStatuses.id_front === 'approved' ||
+                                                                                         documentStatuses.id_back === 'pending' ||
+                                                                                         documentStatuses.id_back === 'approved')
+                                                                                    const hasBusinessDocumentsSubmitted = businessDocumentsSubmitted &&
+                                                                                        (documentStatuses.business_formation === 'pending' ||
+                                                                                         documentStatuses.business_formation === 'approved' ||
+                                                                                         documentStatuses.business_ownership === 'pending' ||
+                                                                                         documentStatuses.business_ownership === 'approved')
+                                                                                    const hasRejectedDocs = documentStatuses.id_front === 'rejected' ||
+                                                                                        documentStatuses.id_back === 'rejected' ||
+                                                                                        documentStatuses.business_formation === 'rejected' ||
                                                                                         documentStatuses.business_ownership === 'rejected' ||
                                                                                         documentStatuses.proof_of_address === 'rejected'
-                                                                                    const hasPendingOrApprovedDocuments = documentStatuses.business_formation === 'pending' ||
-                                                                                        documentStatuses.business_ownership === 'pending' ||
-                                                                                        documentStatuses.business_formation === 'approved' ||
-                                                                                        documentStatuses.business_ownership === 'approved'
                                                                                     const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                    const shouldShowWaiting = kybStep === 'business_documents' &&
-                                                                                        (businessDocumentsSubmitted || hasPendingOrApprovedDocuments) &&
-                                                                                        !hasRejectedDocuments &&
+                                                                                    const shouldShowKybWaitingScreen = verificationType === 'kyb' &&
+                                                                                        kybStatus !== 'approved' &&
+                                                                                        (hasControlPersonSubmitted || hasBusinessDocumentsSubmitted) &&
+                                                                                        !hasRejectedDocs &&
                                                                                         !hasRequestedFields
 
                                                                                     // Show button if:
                                                                                     // 1. Admin requested refill (requestedFields exist), OR
-                                                                                    // 2. Waiting screen is NOT showing
-                                                                                    return hasRequestedFields || !shouldShowWaiting
+                                                                                    // 2. KYB waiting screen is NOT showing
+                                                                                    return hasRequestedFields || !shouldShowKybWaitingScreen
                                                                                 })() && (
                                                                                         <Button
                                                                                             size="sm"
@@ -5697,15 +6089,15 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             {/* Subscription Required Modal */}
             {showSubscriptionModal && (
-                <SubscriptionRequiredModal
+            <SubscriptionRequiredModal
                     key="subscription-modal"
-                    isOpen={showSubscriptionModal}
-                    onClose={() => {
-                        setShowSubscriptionModal(false)
-                        onClose() // Also close the wallet popup
-                    }}
-                    feature="wallet"
-                />
+                isOpen={showSubscriptionModal}
+                onClose={() => {
+                    setShowSubscriptionModal(false)
+                    onClose() // Also close the wallet popup
+                }}
+                feature="wallet"
+            />
             )}
         </AnimatePresence>
     )

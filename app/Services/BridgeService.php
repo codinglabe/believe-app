@@ -174,7 +174,12 @@ class BridgeService
                     }
                 }
 
-                Log::error('Bridge API Error', [
+                // Handle 404 (Not Found) more gracefully - it's often expected when checking if resources exist
+                $isNotFound = $statusCode === 404;
+                $logLevel = $isNotFound ? 'warning' : 'error';
+                $logMessage = $isNotFound ? 'Bridge API Resource Not Found' : 'Bridge API Error';
+
+                Log::{$logLevel}($logMessage, [
                     'method' => $method,
                     'endpoint' => $endpoint,
                     'status' => $statusCode,
@@ -353,6 +358,19 @@ class BridgeService
     public function createAssociatedPerson(string $customerId, array $personData): array
     {
         return $this->makeRequest('POST', "/customers/{$customerId}/associated_persons", $personData);
+    }
+
+    /**
+     * Update an associated person (beneficial owner or control person) for a business customer
+     * 
+     * @param string $customerId The Bridge customer ID
+     * @param string $associatedPersonId The Bridge associated person ID
+     * @param array $personData Associated person data to update
+     * @return array
+     */
+    public function updateAssociatedPerson(string $customerId, string $associatedPersonId, array $personData): array
+    {
+        return $this->makeRequest('PUT', "/customers/{$customerId}/associated_persons/{$associatedPersonId}", $personData);
     }
 
     // ==================== KYC LINKS ====================
@@ -837,8 +855,8 @@ class BridgeService
             // In sandbox, virtual accounts are on ethereum chain, so use ethereum payment rail
             if (!empty($toWalletId)) {
                 // Both have virtual account IDs - use ethereum payment rail for both
-                $transferData = [
-                    'amount' => number_format($amount, 2, '.', ''),
+        $transferData = [
+            'amount' => number_format($amount, 2, '.', ''),
                     'on_behalf_of' => $toCustomerId,
                     'source' => [
                         'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
@@ -879,17 +897,17 @@ class BridgeService
             $transferData = [
                 'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $toCustomerId,
-                'source' => [
-                    'payment_rail' => 'bridge_wallet',
-                    'currency' => $bridgeCurrency,
-                    'bridge_wallet_id' => $fromWalletId,
-                ],
-                'destination' => [
-                    'payment_rail' => 'bridge_wallet',
-                    'currency' => $bridgeCurrency,
-                    'bridge_wallet_id' => $toWalletId,
-                ],
-            ];
+            'source' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $fromWalletId,
+            ],
+            'destination' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $toWalletId,
+            ],
+        ];
         }
 
         return $this->createTransfer($transferData);
