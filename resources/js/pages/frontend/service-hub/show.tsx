@@ -30,6 +30,7 @@ import { Head } from "@inertiajs/react"
 
 interface Gig {
   id: number
+  slug: string
   title: string
   description: string
   fullDescription: string
@@ -87,7 +88,7 @@ export default function ServiceShow() {
 
   const toggleFavorite = async () => {
     try {
-      const response = await fetch(`/service-hub/${gig.id}/favorite`, {
+      const response = await fetch(`/service-hub/${gig.slug}/favorite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -281,7 +282,7 @@ export default function ServiceShow() {
                             </div>
                           </div>
                         ))}
-                        <Link href={`/service-hub/${gig.id}/reviews`}>
+                        <Link href={`/service-hub/${gig.slug}/reviews`}>
                           <Button variant="outline" className="w-full">
                             View All Reviews
                           </Button>

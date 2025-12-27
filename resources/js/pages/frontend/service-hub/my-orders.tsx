@@ -34,6 +34,7 @@ interface Order {
   orderNumber: string
   service: {
     id: number
+    slug: string
     title: string
     image: string | null
   }
@@ -148,7 +149,7 @@ export default function MyOrders() {
   const handleReview = (orderId: number) => {
     const order = orders.data.find((o) => o.id === orderId)
     if (order) {
-      router.visit(`/service-hub/${order.service.id}/reviews`)
+      router.visit(`/service-hub/${order.service.slug}/reviews`)
     }
   }
 
@@ -355,7 +356,7 @@ export default function MyOrders() {
 
                             {/* Actions */}
                             <div className="flex flex-wrap items-center gap-3 pt-4 border-t">
-                              <Link href={`/service-hub/${order.service.id}`}>
+                              <Link href={`/service-hub/${order.service.slug}`}>
                                 <Button variant="outline" size="sm">
                                   <Eye className="mr-2 h-4 w-4" />
                                   View Service

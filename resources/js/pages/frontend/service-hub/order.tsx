@@ -34,6 +34,7 @@ import { showSuccessToast } from "@/lib/toast"
 
 interface Gig {
   id: number
+  slug: string
   title: string
   image: string | null
   seller: {
@@ -108,7 +109,7 @@ export default function ServiceOrder() {
           <div className="absolute inset-0 bg-grid-white/10 [mask-image:linear-gradient(0deg,white,transparent)]" />
           <div className="container mx-auto px-4 py-6 relative z-10">
             <div className="flex items-center gap-4">
-              <Link href={`/service-hub/${gig.id}`}>
+              <Link href={`/service-hub/${gig.slug}`}>
                 <Button variant="ghost" size="icon" className="bg-white/10 hover:bg-white/20 text-white border-white/20">
                   <ArrowLeft className="h-5 w-5" />
                 </Button>

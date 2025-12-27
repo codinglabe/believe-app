@@ -22,10 +22,11 @@ import {
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
-import { showSuccessToast } from "@/lib/toast"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
 interface Gig {
   id: number
+  slug: string
   title: string
   rating: number
   totalReviews: number
@@ -60,7 +61,7 @@ interface PageProps extends Record<string, unknown> {
 
 export default function ServiceReviews() {
   const { gig, reviews, ratingDistribution } = usePage<PageProps>().props
-  
+
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -82,7 +83,7 @@ export default function ServiceReviews() {
       return
     }
 
-    router.post(`/service-hub/${gig.id}/reviews`, {
+    router.post(`/service-hub/${gig.slug}/reviews`, {
       order_id: orderId,
       rating: rating,
       comment: comment,
@@ -117,7 +118,7 @@ export default function ServiceReviews() {
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center gap-4">
-              <Link href={`/service-hub/${gig.id}`}>
+              <Link href={`/service-hub/${gig.slug}`}>
                 <Button variant="ghost" size="icon">
                   <ArrowLeft className="h-5 w-5" />
                 </Button>
@@ -191,90 +192,6 @@ export default function ServiceReviews() {
               </Card>
             </motion.div>
 
-            {/* Write Review */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    Write a Review
-                  </CardTitle>
-                  <CardDescription>Share your experience with this service</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <form onSubmit={handleSubmitReview} className="space-y-4">
-                    <div>
-                      <Label>Your Rating</Label>
-                      <div className="flex items-center gap-2 mt-2">
-                        {[1, 2, 3, 4, 5].map((stars) => (
-                          <button
-                            key={stars}
-                            type="button"
-                            onClick={() => setRating(stars)}
-                            className="focus:outline-none"
-                          >
-                            <Star
-                              className={`h-8 w-8 transition-all ${
-                                stars <= rating
-                                  ? "fill-yellow-400 text-yellow-400 scale-110"
-                                  : "text-muted-foreground hover:text-yellow-400"
-                              }`}
-                            />
-                          </button>
-                        ))}
-                        <span className="ml-2 text-sm text-muted-foreground">
-                          {rating === 5
-                            ? "Excellent"
-                            : rating === 4
-                            ? "Very Good"
-                            : rating === 3
-                            ? "Good"
-                            : rating === 2
-                            ? "Fair"
-                            : "Poor"}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div>
-                      <Label htmlFor="comment">
-                        Your Review <span className="text-red-500">*</span>
-                      </Label>
-                      <Textarea
-                        id="comment"
-                        placeholder="Tell others about your experience with this service..."
-                        value={comment}
-                        onChange={(e) => setComment(e.target.value)}
-                        className="mt-2"
-                        rows={5}
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={!comment.trim() || isSubmitting}
-                      className="w-full bg-gradient-to-r from-blue-600 to-purple-600"
-                    >
-                      {isSubmitting ? (
-                        <>
-                          <Sparkles className="mr-2 h-4 w-4 animate-spin" />
-                          Submitting...
-                        </>
-                      ) : (
-                        <>
-                          <Send className="mr-2 h-4 w-4" />
-                          Submit Review
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-            </motion.div>
 
             {/* Reviews List */}
             <motion.div

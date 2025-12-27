@@ -39,6 +39,7 @@ import { Head } from "@inertiajs/react"
 
 interface Gig {
   id: number
+  slug: string
   title: string
   description: string
   price: number
@@ -165,9 +166,9 @@ export default function ServiceHubIndex() {
     priceRange.min > 0 || priceRange.max < 1000 ||
     deliveryTime !== null || minRating > 0
 
-  const toggleFavorite = async (id: number) => {
+  const toggleFavorite = async (slug: string) => {
     try {
-      const response = await fetch(`/service-hub/${id}/favorite`, {
+      const response = await fetch(`/service-hub/${slug}/favorite`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -608,7 +609,7 @@ export default function ServiceHubIndex() {
                       className="group"
                     >
                       <Card className="h-full overflow-hidden border-2 hover:border-primary/50 transition-all duration-300 cursor-pointer">
-                        <Link href={`/service-hub/${service.id}`}>
+                        <Link href={`/service-hub/${service.slug}`}>
                           <div className="relative">
                             <div className="aspect-video w-full overflow-hidden bg-muted">
                               <img
@@ -623,7 +624,7 @@ export default function ServiceHubIndex() {
                               className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm hover:bg-background"
                               onClick={(e) => {
                                 e.preventDefault()
-                                toggleFavorite(service.id)
+                                toggleFavorite(service.slug)
                               }}
                             >
                               <Heart

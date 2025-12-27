@@ -46,7 +46,15 @@ interface Package {
 }
 
 export default function CreateService() {
-  const { categories } = usePage<PageProps>().props
+  const { categories, errors: backendErrors } = usePage<PageProps & { errors?: Record<string, string | string[]> }>().props
+
+  // Helper function to get error message for a field
+  const getError = (fieldName: string): string | null => {
+    if (!backendErrors) return null
+    const error = backendErrors[fieldName]
+    if (!error) return null
+    return Array.isArray(error) ? error[0] : error
+  }
 
   const [formData, setFormData] = useState({
     title: "",
@@ -176,9 +184,62 @@ export default function CreateService() {
       return
     }
 
-    // Here you would submit to backend
-    showSuccessToast("Service created successfully!")
-    router.visit("/service-hub")
+    if (formData.images.length === 0) {
+      showErrorToast("Please upload at least one image")
+      return
+    }
+
+    // Prepare FormData for submission
+    const formDataToSubmit = new FormData()
+
+    // Append basic fields
+    formDataToSubmit.append('title', formData.title)
+    formDataToSubmit.append('category_id', formData.category_id)
+    formDataToSubmit.append('description', formData.description)
+    if (formData.fullDescription) {
+      formDataToSubmit.append('full_description', formData.fullDescription)
+    }
+
+    // Append tags
+    formData.tags.forEach((tag) => {
+      formDataToSubmit.append('tags[]', tag)
+    })
+
+    // Append packages
+    packages.forEach((pkg, index) => {
+      formDataToSubmit.append(`packages[${index}][name]`, pkg.name)
+      formDataToSubmit.append(`packages[${index}][price]`, pkg.price.toString())
+      formDataToSubmit.append(`packages[${index}][delivery_time]`, pkg.deliveryTime)
+      if (pkg.description) {
+        formDataToSubmit.append(`packages[${index}][description]`, pkg.description)
+      }
+
+      // Append features (filter out empty strings)
+      const validFeatures = pkg.features.filter(f => f.trim() !== '')
+      validFeatures.forEach((feature, featureIndex) => {
+        formDataToSubmit.append(`packages[${index}][features][${featureIndex}]`, feature)
+      })
+    })
+
+    // Append images
+    formData.images.forEach((image) => {
+      formDataToSubmit.append('images[]', image)
+    })
+
+    // Submit to backend
+    router.post('/service-hub', formDataToSubmit, {
+      forceFormData: true,
+      onSuccess: () => {
+        showSuccessToast("Service created successfully!")
+      },
+      onError: (errors) => {
+        // Field-level errors are displayed below each input field
+        // Only show a general error if there's no specific field errors
+        if (errors.message && !Object.keys(errors).some(key => key !== 'message')) {
+          showErrorToast(errors.message)
+        }
+      },
+    })
   }
 
   return (
@@ -251,7 +312,7 @@ export default function CreateService() {
                       id="category_id"
                       value={formData.category_id}
                       onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                      className="mt-2 w-full px-3 py-2 rounded-md border bg-background"
+                      className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError('category_id') ? 'border-red-500' : ''}`}
                     >
                       <option value="">Select a category</option>
                       {categories.map((cat) => (
@@ -260,6 +321,11 @@ export default function CreateService() {
                         </option>
                       ))}
                     </select>
+                    {getError('category_id') && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        {getError('category_id')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -271,9 +337,14 @@ export default function CreateService() {
                       placeholder="A brief description of your service (appears in search results)"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className="mt-2"
+                      className={`mt-2 ${getError('description') ? 'border-red-500' : ''}`}
                       rows={3}
                     />
+                    {getError('description') && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        {getError('description')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -283,9 +354,14 @@ export default function CreateService() {
                       placeholder="Detailed description of what you offer, process, and what clients will receive"
                       value={formData.fullDescription}
                       onChange={(e) => setFormData({ ...formData, fullDescription: e.target.value })}
-                      className="mt-2"
+                      className={`mt-2 ${getError('full_description') ? 'border-red-500' : ''}`}
                       rows={8}
                     />
+                    {getError('full_description') && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        {getError('full_description')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
@@ -315,6 +391,11 @@ export default function CreateService() {
                         </Badge>
                       ))}
                     </div>
+                    {getError('tags') && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        {getError('tags')}
+                      </p>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -365,6 +446,11 @@ export default function CreateService() {
                       </label>
                     )}
                   </div>
+                  {getError('images') && (
+                    <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+                      {getError('images')}
+                    </p>
+                  )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -423,8 +509,13 @@ export default function CreateService() {
                             placeholder="e.g., Basic, Standard, Premium"
                             value={pkg.name}
                             onChange={(e) => handleUpdatePackage(pkg.id, "name", e.target.value)}
-                            className="mt-2"
+                            className={`mt-2 ${getError(`packages.${index}.name`) ? 'border-red-500' : ''}`}
                           />
+                          {getError(`packages.${index}.name`) && (
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              {getError(`packages.${index}.name`)}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label>
@@ -435,8 +526,13 @@ export default function CreateService() {
                             placeholder="0"
                             value={pkg.price}
                             onChange={(e) => handleUpdatePackage(pkg.id, "price", Number(e.target.value))}
-                            className="mt-2"
+                            className={`mt-2 ${getError(`packages.${index}.price`) ? 'border-red-500' : ''}`}
                           />
+                          {getError(`packages.${index}.price`) && (
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              {getError(`packages.${index}.price`)}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label>
@@ -445,7 +541,7 @@ export default function CreateService() {
                           <select
                             value={pkg.deliveryTime}
                             onChange={(e) => handleUpdatePackage(pkg.id, "deliveryTime", e.target.value)}
-                            className="mt-2 w-full px-3 py-2 rounded-md border bg-background"
+                            className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError(`packages.${index}.delivery_time`) ? 'border-red-500' : ''}`}
                           >
                             <option value="1 day">1 day</option>
                             <option value="2 days">2 days</option>
@@ -454,6 +550,11 @@ export default function CreateService() {
                             <option value="7 days">7 days</option>
                             <option value="14 days">14 days</option>
                           </select>
+                          {getError(`packages.${index}.delivery_time`) && (
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              {getError(`packages.${index}.delivery_time`)}
+                            </p>
+                          )}
                         </div>
                         <div>
                           <Label>Description</Label>
@@ -461,8 +562,13 @@ export default function CreateService() {
                             placeholder="Brief description of this package"
                             value={pkg.description}
                             onChange={(e) => handleUpdatePackage(pkg.id, "description", e.target.value)}
-                            className="mt-2"
+                            className={`mt-2 ${getError(`packages.${index}.description`) ? 'border-red-500' : ''}`}
                           />
+                          {getError(`packages.${index}.description`) && (
+                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                              {getError(`packages.${index}.description`)}
+                            </p>
+                          )}
                         </div>
                       </div>
 
@@ -471,13 +577,21 @@ export default function CreateService() {
                         <div className="space-y-2 mt-2">
                           {pkg.features.map((feature, featureIndex) => (
                             <div key={featureIndex} className="flex gap-2">
-                              <Input
-                                placeholder="Feature description"
-                                value={feature}
-                                onChange={(e) =>
-                                  handleUpdateFeature(pkg.id, featureIndex, e.target.value)
-                                }
-                              />
+                              <div className="flex-1">
+                                <Input
+                                  placeholder="Feature description"
+                                  value={feature}
+                                  onChange={(e) =>
+                                    handleUpdateFeature(pkg.id, featureIndex, e.target.value)
+                                  }
+                                  className={getError(`packages.${index}.features.${featureIndex}`) ? 'border-red-500' : ''}
+                                />
+                                {getError(`packages.${index}.features.${featureIndex}`) && (
+                                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                                    {getError(`packages.${index}.features.${featureIndex}`)}
+                                  </p>
+                                )}
+                              </div>
                               {pkg.features.length > 1 && (
                                 <Button
                                   type="button"
@@ -490,6 +604,11 @@ export default function CreateService() {
                               )}
                             </div>
                           ))}
+                          {getError(`packages.${index}.features`) && (
+                            <p className="text-sm text-red-600 dark:text-red-400">
+                              {getError(`packages.${index}.features`)}
+                            </p>
+                          )}
                           <Button
                             type="button"
                             variant="outline"
