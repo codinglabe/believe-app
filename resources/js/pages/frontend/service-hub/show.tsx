@@ -40,6 +40,7 @@ interface Gig {
   reviews: number
   category: string
   tags: string[]
+  faqs?: Array<{ question: string; answer: string }>
   images: string[]
   packages: Array<{
     id: number
@@ -356,9 +357,31 @@ export default function ServiceShow() {
                   <TabsContent value="faq" className="mt-6">
                     <Card className="border shadow-sm">
                       <CardContent className="pt-6 space-y-4">
-                        <div className="text-center py-8 text-muted-foreground">
-                          <p>No FAQ available for this service.</p>
-                        </div>
+                        {!gig.faqs || gig.faqs.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>No FAQ available for this service.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {gig.faqs.map((faq, index) => (
+                              <motion.div
+                                key={index}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.1 }}
+                                className="border rounded-lg p-4 hover:shadow-md transition-shadow"
+                              >
+                                <h4 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                                  <span className="text-blue-600">Q{index + 1}:</span>
+                                  {faq.question}
+                                </h4>
+                                <p className="text-muted-foreground pl-6 whitespace-pre-wrap">
+                                  {faq.answer}
+                                </p>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>

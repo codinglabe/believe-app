@@ -63,6 +63,7 @@ export default function CreateService() {
     fullDescription: "",
     tags: [] as string[],
     images: [] as File[],
+    faqs: [] as Array<{ question: string; answer: string }>,
   })
   const [packages, setPackages] = useState<Package[]>([
     {
@@ -76,6 +77,29 @@ export default function CreateService() {
   ])
   const [newTag, setNewTag] = useState("")
   const [newFeature, setNewFeature] = useState<{ packageId: number; feature: string } | null>(null)
+
+  const handleAddFAQ = () => {
+    setFormData({
+      ...formData,
+      faqs: [...formData.faqs, { question: "", answer: "" }],
+    })
+  }
+
+  const handleRemoveFAQ = (index: number) => {
+    setFormData({
+      ...formData,
+      faqs: formData.faqs.filter((_, i) => i !== index),
+    })
+  }
+
+  const handleUpdateFAQ = (index: number, field: 'question' | 'answer', value: string) => {
+    setFormData({
+      ...formData,
+      faqs: formData.faqs.map((faq, i) =>
+        i === index ? { ...faq, [field]: value } : faq
+      ),
+    })
+  }
 
   const handleAddTag = () => {
     if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
@@ -203,6 +227,14 @@ export default function CreateService() {
     // Append tags
     formData.tags.forEach((tag) => {
       formDataToSubmit.append('tags[]', tag)
+    })
+
+    // Append FAQs
+    formData.faqs.forEach((faq, index) => {
+      if (faq.question.trim() && faq.answer.trim()) {
+        formDataToSubmit.append(`faqs[${index}][question]`, faq.question)
+        formDataToSubmit.append(`faqs[${index}][answer]`, faq.answer)
+      }
     })
 
     // Append packages
@@ -623,6 +655,81 @@ export default function CreateService() {
                       </div>
                     </motion.div>
                   ))}
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            {/* FAQs */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25 }}
+            >
+              <Card>
+                <CardHeader>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center gap-2">
+                        <Sparkles className="h-5 w-5" />
+                        Frequently Asked Questions (FAQ)
+                      </CardTitle>
+                      <CardDescription>Add common questions and answers about your service</CardDescription>
+                    </div>
+                    <Button type="button" variant="outline" onClick={handleAddFAQ}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add FAQ
+                    </Button>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {formData.faqs.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-8">
+                      No FAQs added yet. Click "Add FAQ" to get started.
+                    </p>
+                  ) : (
+                    formData.faqs.map((faq, index) => (
+                      <motion.div
+                        key={index}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: index * 0.1 }}
+                        className="p-4 border rounded-lg space-y-3"
+                      >
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-sm font-semibold">FAQ {index + 1}</h4>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveFAQ(index)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        <div className="space-y-2">
+                          <div>
+                            <Label htmlFor={`faq-question-${index}`}>Question</Label>
+                            <Input
+                              id={`faq-question-${index}`}
+                              placeholder="e.g., What is included in this service?"
+                              value={faq.question}
+                              onChange={(e) => handleUpdateFAQ(index, 'question', e.target.value)}
+                            />
+                          </div>
+                          <div>
+                            <Label htmlFor={`faq-answer-${index}`}>Answer</Label>
+                            <Textarea
+                              id={`faq-answer-${index}`}
+                              placeholder="Provide a detailed answer..."
+                              value={faq.answer}
+                              onChange={(e) => handleUpdateFAQ(index, 'answer', e.target.value)}
+                              rows={3}
+                            />
+                          </div>
+                        </div>
+                      </motion.div>
+                    ))
+                  )}
                 </CardContent>
               </Card>
             </motion.div>

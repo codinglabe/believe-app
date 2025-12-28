@@ -25,6 +25,7 @@ class Gig extends Model
         'reviews_count',
         'orders_count',
         'tags',
+        'faqs',
         'status',
         'is_featured',
     ];
@@ -33,6 +34,7 @@ class Gig extends Model
         'price' => 'decimal:2',
         'rating' => 'decimal:2',
         'tags' => 'array',
+        'faqs' => 'array',
         'is_featured' => 'boolean',
         'reviews_count' => 'integer',
         'orders_count' => 'integer',

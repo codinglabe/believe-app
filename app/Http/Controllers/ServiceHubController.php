@@ -195,6 +195,9 @@ class ServiceHubController extends Controller
             'full_description' => 'nullable|string',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:50',
+            'faqs' => 'nullable|array',
+            'faqs.*.question' => 'required|string|max:255',
+            'faqs.*.answer' => 'required|string|max:1000',
             'packages' => 'required|array|min:1',
             'packages.*.name' => 'required|string|max:100',
             'packages.*.price' => 'required|numeric|min:0',
@@ -207,6 +210,19 @@ class ServiceHubController extends Controller
         ]);
 
         try {
+            // Format FAQs
+            $faqs = [];
+            if (isset($validated['faqs']) && is_array($validated['faqs'])) {
+                foreach ($validated['faqs'] as $faq) {
+                    if (!empty($faq['question']) && !empty($faq['answer'])) {
+                        $faqs[] = [
+                            'question' => $faq['question'],
+                            'answer' => $faq['answer'],
+                        ];
+                    }
+                }
+            }
+
             $gig = Gig::create([
                 'user_id' => Auth::id(),
                 'category_id' => $validated['category_id'],
@@ -214,6 +230,7 @@ class ServiceHubController extends Controller
                 'description' => $validated['description'],
                 'full_description' => $validated['full_description'] ?? null,
                 'tags' => $validated['tags'] ?? [],
+                'faqs' => $faqs,
                 'price' => $validated['packages'][0]['price'] ?? 0,
                 'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
                 'status' => 'active',
@@ -328,6 +345,7 @@ class ServiceHubController extends Controller
             'reviews' => $gig->reviews_count,
             'category' => $gig->category->name ?? '',
             'tags' => $gig->tags ?? [],
+            'faqs' => $gig->faqs ?? [],
             'images' => $images,
             'packages' => $packages,
             'seller' => [
