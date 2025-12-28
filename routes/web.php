@@ -1308,6 +1308,19 @@ Route::prefix('admin/email-packages')
         Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
     });
 
+// Admin Service Categories Management
+Route::prefix('admin/service-categories')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.service-categories.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'store'])->name('store');
+        Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
+        Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
+    });
+
 // Admin Promotional Banners Management
 Route::prefix('admin/promotional-banners')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected', 'permission:promotional.banner.read'])

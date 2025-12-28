@@ -51,7 +51,8 @@ import {
     Link as LinkIcon,
     Newspaper,
     Megaphone,
-    Wallet
+    Wallet,
+    FolderOpen
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -616,6 +617,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Email Packages',
                 href: '/admin/email-packages',
                 icon: Mail,
+                role: "admin"
+            },
+            {
+                title: 'Service Categories',
+                href: '/admin/service-categories',
+                icon: FolderOpen,
                 role: "admin"
             },
             {
