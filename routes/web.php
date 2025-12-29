@@ -197,6 +197,14 @@ Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubContro
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 
 // Cart routes (protected)
+// Believe Points Routes
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->name('believe-points.')->group(function () {
+    Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
+    Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
+    Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
+    Route::get('/cancel', [App\Http\Controllers\BelievePointController::class, 'cancel'])->name('cancel');
+});
+
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
     Route::get('/cart/data', [CartController::class, 'getCartDataApi'])->name('cart.data');
@@ -453,6 +461,15 @@ Route::prefix('admin/reward-points')
     ->group(function () {
         Route::get('/', [RewardPointController::class, 'index'])->name('index');
         Route::put('/', [RewardPointController::class, 'update'])->name('update');
+    });
+
+// Admin Believe Points Management
+Route::prefix('admin/believe-points')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.believe-points.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\BelievePointController::class, 'index'])->name('index');
+        Route::put('/', [App\Http\Controllers\Admin\BelievePointController::class, 'update'])->name('update');
     });
 
 // Fractional Ownership (Admin-only - Full CRUD)

@@ -45,6 +45,7 @@ import { NotificationBell } from "@/components/notification-bell"
 import SiteTitle from "@/components/site-title"
 import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
+import { BelievePointsDisplay } from "@/components/believe-points-display"
 
 // Extending SharedData interface to include wallet_balance
 interface SharedData {
@@ -63,6 +64,7 @@ interface SharedData {
       referral_link?: string
       balance?: string // Added wallet_balance
       reward_points?: number // Added reward_points
+      believe_points?: number // Added believe_points
       role?: string // Ensure role is also present
     }
   }
@@ -210,7 +212,7 @@ export default function Navbar() {
   const handleWalletClick = () => {
     // Check if user is a regular user (supporter)
     const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-    
+
     if (isRegularUser) {
       // For regular users, check subscription status
       // If hasSubscription is null, we're still loading - allow access for now
@@ -222,7 +224,7 @@ export default function Navbar() {
       }
       // If hasSubscription is true or null, proceed to wallet popup
     }
-    
+
     // Has subscription or is organization user, show wallet popup
     setShowWalletPopup(true)
   }
@@ -357,6 +359,15 @@ export default function Navbar() {
                       {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
                   </Button>
+                )}
+
+                {/* Believe Points Display - Visible for all authenticated users */}
+                {isLoggedIn && auth?.user?.believe_points !== undefined && (
+                  <BelievePointsDisplay
+                    balance={auth.user.believe_points || 0}
+                    variant="compact"
+                    showLabel={false}
+                  />
                 )}
 
                 <DropdownMenu>
@@ -596,6 +607,14 @@ export default function Navbar() {
                       </div>
                       )}
 
+                      {/* Believe Points section for mobile */}
+                      {auth?.user?.believe_points !== undefined && (
+                        <BelievePointsDisplay
+                          balance={auth.user.believe_points || 0}
+                          variant="mobile"
+                        />
+                      )}
+
                                           {/* cart mobile button */}
                                           <Link href={route("cart.index")}>
                                               <Button variant="ghost" className="w-full justify-start">
@@ -679,11 +698,11 @@ export default function Navbar() {
 }
 
 // Render modals outside nav to avoid z-index issues
-export function NavbarModals({ 
-  showWalletPopup, 
-  showSubscriptionModal, 
-  onWalletClose, 
-  onSubscriptionClose 
+export function NavbarModals({
+  showWalletPopup,
+  showSubscriptionModal,
+  onWalletClose,
+  onSubscriptionClose
 }: {
   showWalletPopup: boolean
   showSubscriptionModal: boolean

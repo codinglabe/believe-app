@@ -42,6 +42,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'name',
         'balance',
         'reward_points',
+        'believe_points',
         'user_id',
         'slug',
         'email',
@@ -107,6 +108,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'emails_used' => 'integer',
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
+            'believe_points' => 'decimal:2',
         ];
     }
 
@@ -689,5 +691,49 @@ class User extends Authenticatable implements MustVerifyEmail
     public function serviceSellerProfile(): HasOne
     {
         return $this->hasOne(ServiceSellerProfile::class);
+    }
+
+    /**
+     * Get believe point purchases for this user.
+     */
+    public function believePointPurchases(): HasMany
+    {
+        return $this->hasMany(BelievePointPurchase::class);
+    }
+
+    /**
+     * Add believe points to the user's balance.
+     *
+     * @param float $points
+     * @return void
+     */
+    public function addBelievePoints(float $points): void
+    {
+        $this->increment('believe_points', $points);
+    }
+
+    /**
+     * Deduct believe points from the user's balance.
+     *
+     * @param float $points
+     * @return bool Returns true if deduction was successful, false if insufficient points
+     */
+    public function deductBelievePoints(float $points): bool
+    {
+        if ($this->believe_points < $points) {
+            return false;
+        }
+        $this->decrement('believe_points', $points);
+        return true;
+    }
+
+    /**
+     * Get the current believe points balance of the user.
+     *
+     * @return float
+     */
+    public function currentBelievePoints(): float
+    {
+        return (float) ($this->believe_points ?? 0);
     }
 }

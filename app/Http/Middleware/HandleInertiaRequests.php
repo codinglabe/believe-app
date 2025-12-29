@@ -113,6 +113,7 @@ class HandleInertiaRequests extends Middleware
                         'organization_role' => $user->organization_role ?? null,
                         'balance'=>$user->balance,
                         'reward_points' => $user->reward_points ?? 0,
+                        'believe_points' => $user->believe_points ?? 0,
                         'credits' => $user->credits ?? 0,
                         'current_plan_id' => $user->current_plan_id ?? null,
                         'current_plan_details' => $user->current_plan_details ?? null,

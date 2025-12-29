@@ -75,6 +75,13 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "dashboard.read"
     },
 
+    // Believe Points
+    {
+        title: 'Believe Points',
+        href: '/believe-points',
+        icon: Coins,
+    },
+
     // 2. AI Chat Assistant
     {
         title: 'AI Chat Assistant',
@@ -692,6 +699,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         href: '/admin/reward-points',
                         icon: Gift,
                         permission: "reward.point.manage"
+                    },
+                    {
+                        title: 'Believe Points',
+                        href: '/admin/believe-points',
+                        icon: Coins,
+                        role: "admin"
                     },
                 ],
                 permission: "wallet.plan.read"

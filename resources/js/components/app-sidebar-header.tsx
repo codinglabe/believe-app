@@ -13,24 +13,26 @@ import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
+import { BelievePointsDisplay } from './believe-points-display';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
-    const { isImpersonating, auth } = usePage<{ 
+    const { isImpersonating, auth } = usePage<{
         isImpersonating?: boolean;
         auth?: {
             user?: {
                 role?: string;
                 balance?: number;
+                believe_points?: number;
             };
         };
     }>().props;
-    
+
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
     const [walletConnected, setWalletConnected] = useState(false);
     const [walletPopupOpen, setWalletPopupOpen] = useState(false);
     const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
-    
+
     const isOrgUser = auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending';
 
     // Get sidebar state - wrapped in try-catch since header might render outside provider
@@ -46,7 +48,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     useEffect(() => {
         const fetchOrganizationBalance = async () => {
             if (!isOrgUser) return;
-            
+
             try {
                 // Fetch organization balance directly
                 const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
@@ -59,7 +61,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                     credentials: 'include',
                     cache: 'no-cache',
                 });
-                
+
                 if (balanceResponse.ok) {
                     const balanceData = await balanceResponse.json();
                     if (balanceData.success) {
@@ -73,9 +75,9 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 setWalletBalance(0);
             }
         };
-        
+
         fetchOrganizationBalance();
-        
+
         // Refresh balance every 30 seconds
         const interval = setInterval(fetchOrganizationBalance, 30000);
         return () => clearInterval(interval);
@@ -93,7 +95,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     };
 
     return (
-        <header 
+        <header
             className="flex justify-between h-16 shrink-0 items-center gap-2 border-b-2 border-gray-200 dark:border-gray-800 px-3 sm:px-4 md:px-6 transition-[left,width] duration-200 ease-linear fixed top-0 left-0 md:left-[var(--sidebar-width,16rem)] right-0 z-40 bg-background shadow-sm"
             style={typeof window !== 'undefined' && window.innerWidth >= 768 && sidebarCollapsed ? {
                 left: 'calc(var(--sidebar-width-icon, 3rem) + 1rem + 2px)'
@@ -118,12 +120,21 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         <span className="sm:hidden">Exit</span>
                     </Button>
                 )}
-                
+
                 {/* Notification Bell */}
                 {auth?.user?.id && (
                     <NotificationBell userId={auth.user.id} />
                 )}
-                
+
+                {/* Believe Points Display - Visible for all authenticated users */}
+                {auth?.user?.id && auth.user.believe_points !== undefined && (
+                    <BelievePointsDisplay
+                        balance={auth.user.believe_points || 0}
+                        variant="compact"
+                        showLabel={false}
+                    />
+                )}
+
                 {/* Wallet Balance Display for Organization Users - Always visible */}
                 {isOrgUser && (
                     <button
@@ -145,14 +156,14 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0" />
                         <span className="whitespace-nowrap">
                             {walletConnected && walletBalance !== null ? (
-                                `$${walletBalance.toLocaleString('en-US', { 
-                                    minimumFractionDigits: 2, 
-                                    maximumFractionDigits: 2 
+                                `$${walletBalance.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
                                 })}`
                             ) : walletBalance !== null ? (
-                                `$${walletBalance.toLocaleString('en-US', { 
-                                    minimumFractionDigits: 2, 
-                                    maximumFractionDigits: 2 
+                                `$${walletBalance.toLocaleString('en-US', {
+                                    minimumFractionDigits: 2,
+                                    maximumFractionDigits: 2
                                 })}`
                             ) : (
                                 '$0.00'
@@ -160,7 +171,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         </span>
                     </button>
                 )}
-                
+
                 {/* Wallet Popup - Only show if has subscription */}
                 {isOrgUser && hasSubscription && (
                     <WalletPopup
@@ -169,7 +180,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         organizationName={(auth?.user as any)?.organization?.name || undefined}
                     />
                 )}
-                
+
                 {/* Subscription Required Modal */}
                 {isOrgUser && (
                     <SubscriptionRequiredModal
@@ -178,10 +189,10 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                         feature="wallet"
                     />
                 )}
-                
+
                 {/* Theme Toggle */}
                 <AppearanceToggleDropdown />
-                
+
                 <SidebarFooter>
                     <NavUser />
                 </SidebarFooter>

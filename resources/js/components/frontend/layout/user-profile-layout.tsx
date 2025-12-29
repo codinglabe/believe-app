@@ -31,6 +31,7 @@ import {
   UserCheck, // Added MessageCircle icon
   PieChart,
   Gift,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -144,6 +145,13 @@ const navigationItems = [
     icon: Gift,
     description: "My gift cards",
     color: "from-pink-500 to-rose-600",
+  },
+  {
+    name: "Believe Points",
+    href: "/believe-points",
+    icon: Coins,
+    description: "Purchase and manage Believe Points",
+    color: "from-blue-500 to-purple-600",
   },
   // {
   //   name: "Node Boss",
