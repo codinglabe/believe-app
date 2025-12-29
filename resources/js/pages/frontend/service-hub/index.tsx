@@ -33,6 +33,8 @@ import {
   Award,
   ChevronDown,
   MessageCircle,
+  Package,
+  ShoppingBag,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -263,6 +265,18 @@ export default function ServiceHubIndex() {
                     )}
                   </Button>
                 </Link>
+                <Link href="/service-hub/my-orders">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <Package className="h-4 w-4" />
+                    My Orders
+                  </Button>
+                </Link>
+                <Link href="/service-hub/seller-orders">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <ShoppingBag className="h-4 w-4" />
+                    My Sales
+                  </Button>
+                </Link>
               </div>
             </div>
           </div>
@@ -353,6 +367,18 @@ export default function ServiceHubIndex() {
                       {unreadCount > 99 ? '99+' : unreadCount}
                     </Badge>
                   )}
+                </Button>
+              </Link>
+              <Link href="/service-hub/my-orders">
+                <Button variant="outline" className="gap-2">
+                  <Package className="h-4 w-4" />
+                  My Orders
+                </Button>
+              </Link>
+              <Link href="/service-hub/seller-orders">
+                <Button variant="outline" className="gap-2">
+                  <ShoppingBag className="h-4 w-4" />
+                  My Sales
                 </Button>
               </Link>
             </div>

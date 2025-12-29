@@ -12,6 +12,7 @@ use App\Models\ServiceReview;
 use App\Models\ServiceSellerProfile;
 use App\Models\ServiceChat;
 use App\Models\ServiceChatMessage;
+use App\Models\CustomOffer;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -547,11 +548,35 @@ class ServiceHubController extends Controller
         // Check if current user is the owner
         $isOwner = Auth::check() && $gig->user_id === Auth::id();
 
+        // Get seller's gigs for offer creation
+        $sellerGigs = [];
+        if ($isOwner) {
+            $sellerGigs = Gig::where('user_id', Auth::id())
+                ->where('status', 'active')
+                ->select('id', 'slug', 'title', 'description', 'price')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($g) {
+                    $primaryImage = $g->images()->where('is_primary', true)->first()
+                        ?? $g->images()->first();
+                    return [
+                        'id' => $g->id,
+                        'slug' => $g->slug,
+                        'title' => $g->title,
+                        'description' => $g->description,
+                        'price' => (float) $g->price,
+                        'image' => $primaryImage ? Storage::url($primaryImage->image_path) : null,
+                    ];
+                })
+                ->toArray();
+        }
+
         return Inertia::render('frontend/service-hub/show', [
             'gig' => $gigData,
             'recentReviews' => $recentReviews,
             'isFavorite' => $isFavorite,
             'isOwner' => $isOwner,
+            'sellerGigs' => $sellerGigs,
         ]);
     }
 
@@ -717,6 +742,255 @@ class ServiceHubController extends Controller
                 'search' => $request->get('search', ''),
             ],
         ]);
+    }
+
+    public function sellerOrders(Request $request): Response
+    {
+        $query = ServiceOrder::with(['gig', 'buyer', 'package'])
+            ->where('seller_id', Auth::id());
+
+        // Filter by status
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        // Search
+        if ($request->has('search') && $request->search) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'LIKE', "%{$search}%")
+                    ->orWhereHas('gig', function ($gq) use ($search) {
+                        $gq->where('title', 'LIKE', "%{$search}%");
+                    })
+                    ->orWhereHas('buyer', function ($bq) use ($search) {
+                        $bq->where('name', 'LIKE', "%{$search}%");
+                    });
+            });
+        }
+
+        $orders = $query->with(['gig.images'])->orderBy('created_at', 'desc')->paginate(10);
+
+        // Transform orders data
+        $orders->getCollection()->transform(function ($order) {
+            $gigImage = $order->gig->images->where('is_primary', true)->first()
+                ?? $order->gig->images->first();
+            $imageUrl = $gigImage ? Storage::url($gigImage->image_path) : null;
+
+            return [
+                'id' => $order->id,
+                'orderNumber' => $order->order_number,
+                'service' => [
+                    'id' => $order->gig->id,
+                    'slug' => $order->gig->slug,
+                    'title' => $order->gig->title,
+                    'image' => $imageUrl,
+                ],
+                'buyer' => [
+                    'id' => $order->buyer->id,
+                    'name' => $order->buyer->name,
+                    'avatar' => $order->buyer->image ? Storage::url($order->buyer->image) : null,
+                ],
+                'package' => $order->package_type ?? 'Standard',
+                'amount' => (float) $order->amount,
+                'platformFee' => (float) $order->platform_fee,
+                'sellerEarnings' => (float) $order->seller_earnings,
+                'total' => (float) ($order->amount + $order->platform_fee),
+                'status' => $order->status,
+                'paymentStatus' => $order->payment_status,
+                'orderDate' => $order->created_at->format('Y-m-d'),
+                'deliveryDate' => $order->created_at->copy()->addDays(3)->format('Y-m-d'),
+                'deliveredAt' => $order->delivered_at ? $order->delivered_at->format('Y-m-d H:i') : null,
+                'requirements' => $order->requirements,
+                'specialInstructions' => $order->special_instructions,
+                'deliverables' => $order->deliverables ?? [],
+                'canDeliver' => in_array($order->status, ['pending', 'in_progress']),
+            ];
+        });
+
+        return Inertia::render('frontend/service-hub/seller-orders', [
+            'orders' => $orders,
+            'filters' => [
+                'status' => $request->get('status', 'all'),
+                'search' => $request->get('search', ''),
+            ],
+        ]);
+    }
+
+    public function orderDetail(Request $request, $orderId): Response
+    {
+        $order = ServiceOrder::with([
+            'gig.images',
+            'gig.category',
+            'buyer',
+            'seller.serviceSellerProfile',
+            'package',
+            'buyerReview',
+            'sellerReview',
+        ])->findOrFail($orderId);
+
+        // Check if user has access to this order
+        if ($order->buyer_id !== Auth::id() && $order->seller_id !== Auth::id()) {
+            abort(403, 'You do not have permission to view this order.');
+        }
+
+        $isBuyer = $order->buyer_id === Auth::id();
+        $isSeller = $order->seller_id === Auth::id();
+
+        $gigImage = $order->gig->images->where('is_primary', true)->first()
+            ?? $order->gig->images->first();
+        $imageUrl = $gigImage ? Storage::url($gigImage->image_path) : null;
+
+        $orderData = [
+            'id' => $order->id,
+            'orderNumber' => $order->order_number,
+            'service' => [
+                'id' => $order->gig->id,
+                'slug' => $order->gig->slug,
+                'title' => $order->gig->title,
+                'description' => $order->gig->description,
+                'image' => $imageUrl,
+                'category' => $order->gig->category->name ?? '',
+            ],
+            'buyer' => [
+                'id' => $order->buyer->id,
+                'name' => $order->buyer->name,
+                'avatar' => $order->buyer->image ? Storage::url($order->buyer->image) : null,
+            ],
+            'seller' => [
+                'id' => $order->seller->id,
+                'name' => $order->seller->name,
+                'avatar' => $order->seller->serviceSellerProfile && $order->seller->serviceSellerProfile->profile_image
+                    ? Storage::url($order->seller->serviceSellerProfile->profile_image)
+                    : ($order->seller->image ? Storage::url($order->seller->image) : null),
+            ],
+            'package' => [
+                'id' => $order->package_id,
+                'name' => $order->package_type ?? 'Standard',
+                'price' => (float) $order->amount,
+            ],
+            'amount' => (float) $order->amount,
+            'platformFee' => (float) $order->platform_fee,
+            'sellerEarnings' => (float) $order->seller_earnings,
+            'total' => (float) ($order->amount + $order->platform_fee),
+            'status' => $order->status,
+            'paymentStatus' => $order->payment_status,
+            'orderDate' => $order->created_at->format('Y-m-d H:i'),
+            'deliveredAt' => $order->delivered_at ? $order->delivered_at->format('Y-m-d H:i') : null,
+            'completedAt' => $order->completed_at ? $order->completed_at->format('Y-m-d H:i') : null,
+            'requirements' => $order->requirements,
+            'specialInstructions' => $order->special_instructions,
+            'deliverables' => $order->deliverables ?? [],
+            'canDeliver' => $isSeller && in_array($order->status, ['pending', 'in_progress']),
+            'canAcceptDelivery' => $isBuyer && $order->status === 'delivered',
+            'canComplete' => $isBuyer && $order->status === 'delivered',
+            'canReview' => $isBuyer && $order->status === 'completed' && !$order->buyerReview,
+            'canSellerReview' => $isSeller && $order->status === 'completed' && $order->buyerReview && !$order->sellerReview,
+            'hasBuyerReview' => $order->buyerReview ? [
+                'rating' => $order->buyerReview->rating,
+                'comment' => $order->buyerReview->comment,
+                'created_at' => $order->buyerReview->created_at->format('Y-m-d'),
+            ] : null,
+            'hasSellerReview' => $order->sellerReview ? [
+                'rating' => $order->sellerReview->rating,
+                'comment' => $order->sellerReview->comment,
+                'created_at' => $order->sellerReview->created_at->format('Y-m-d'),
+            ] : null,
+        ];
+
+        return Inertia::render('frontend/service-hub/order-detail', [
+            'order' => $orderData,
+            'isBuyer' => $isBuyer,
+            'isSeller' => $isSeller,
+        ]);
+    }
+
+    public function deliverOrder(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the seller
+        if ($order->seller_id !== Auth::id()) {
+            abort(403, 'Only the seller can deliver orders.');
+        }
+
+        // Check if order can be delivered
+        if (!in_array($order->status, ['pending', 'in_progress'])) {
+            return back()->withErrors(['error' => 'This order cannot be delivered in its current status.']);
+        }
+
+        $validated = $request->validate([
+            'deliverables' => 'required|array|min:1',
+            'deliverables.*.name' => 'required|string|max:255',
+            'deliverables.*.description' => 'nullable|string|max:1000',
+            'deliverables.*.file' => 'nullable|file|max:10240', // 10MB max
+            'deliverables.*.url' => 'nullable|url',
+            'deliverables.*.type' => 'nullable|string|max:50',
+        ]);
+
+        try {
+            // Process deliverables with file uploads
+            $processedDeliverables = [];
+            foreach ($validated['deliverables'] as $index => $deliverable) {
+                $deliverableData = [
+                    'name' => $deliverable['name'],
+                    'description' => $deliverable['description'] ?? null,
+                    'type' => $deliverable['type'] ?? 'file',
+                ];
+
+                // Handle file upload
+                if ($request->hasFile("deliverables.{$index}.file")) {
+                    $file = $request->file("deliverables.{$index}.file");
+                    $path = $file->store("orders/{$order->id}/deliverables", 'public');
+                    $deliverableData['url'] = Storage::url($path);
+                    $deliverableData['file_name'] = $file->getClientOriginalName();
+                    $deliverableData['file_size'] = $file->getSize();
+                    $deliverableData['mime_type'] = $file->getMimeType();
+                } elseif (isset($deliverable['url'])) {
+                    // If URL is provided instead of file
+                    $deliverableData['url'] = $deliverable['url'];
+                } else {
+                    return back()->withErrors(['error' => "Deliverable {$index} must have either a file or URL."]);
+                }
+
+                $processedDeliverables[] = $deliverableData;
+            }
+
+            $order->markAsDelivered($processedDeliverables);
+
+            return redirect()->route('service-hub.order.detail', $order->id)
+                ->with('success', 'Order delivered successfully!');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to deliver order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function acceptDelivery(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the buyer
+        if ($order->buyer_id !== Auth::id()) {
+            abort(403, 'Only the buyer can accept delivery.');
+        }
+
+        // Check if order is delivered
+        if ($order->status !== 'delivered') {
+            return back()->withErrors(['error' => 'This order is not in delivered status.']);
+        }
+
+        try {
+            $order->markAsCompleted();
+
+            return redirect()->route('service-hub.order.detail', $order->id)
+                ->with('success', 'Order completed! You can now leave a review.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to accept delivery: ' . $e->getMessage()]);
+        }
+    }
+
+    public function completeOrder(Request $request, $orderId): RedirectResponse
+    {
+        return $this->acceptDelivery($request, $orderId);
     }
 
     public function sellerProfile(Request $request, $id): Response
@@ -980,12 +1254,60 @@ class ServiceHubController extends Controller
                 'gig_id' => $gig->id,
                 'order_id' => $order->id,
                 'user_id' => Auth::id(),
+                'reviewer_type' => 'buyer',
                 'rating' => $validated['rating'],
                 'comment' => $validated['comment'],
                 'is_verified' => true,
             ]);
 
             return back()->with('success', 'Review submitted successfully!');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to submit review: ' . $e->getMessage()]);
+        }
+    }
+
+    public function sellerReviewStore(Request $request, $orderId)
+    {
+        $validated = $request->validate([
+            'rating' => 'required|integer|min:1|max:5',
+            'comment' => 'required|string|max:1000',
+        ]);
+
+        try {
+            $order = ServiceOrder::findOrFail($orderId);
+
+            // Check if user is the seller
+            if ($order->seller_id !== Auth::id()) {
+                abort(403, 'Only the seller can submit a seller review.');
+            }
+
+            // Check if order is completed
+            if ($order->status !== 'completed') {
+                return back()->withErrors(['error' => 'Order must be completed before seller can review.']);
+            }
+
+            // Check if buyer has reviewed
+            if (!$order->buyerReview) {
+                return back()->withErrors(['error' => 'Buyer must review first before seller can review.']);
+            }
+
+            // Check if seller review already exists
+            if ($order->sellerReview) {
+                return back()->withErrors(['error' => 'You have already reviewed this order.']);
+            }
+
+            ServiceReview::create([
+                'gig_id' => $order->gig_id,
+                'order_id' => $order->id,
+                'user_id' => Auth::id(),
+                'reviewer_type' => 'seller',
+                'rating' => $validated['rating'],
+                'comment' => $validated['comment'],
+                'is_verified' => true,
+            ]);
+
+            return redirect()->route('service-hub.order.detail', $order->id)
+                ->with('success', 'Seller review submitted successfully!');
         } catch (\Exception $e) {
             return back()->withErrors(['error' => 'Failed to submit review: ' . $e->getMessage()]);
         }
@@ -1526,10 +1848,197 @@ class ServiceHubController extends Controller
                 'name' => $otherUser->name,
                 'avatar' => $otherUser->image ? Storage::url($otherUser->image) : null,
             ],
+            'buyer_id' => $serviceChat->buyer_id,
+            'seller_id' => $serviceChat->seller_id,
         ];
+
+        // Get seller's gigs if current user is seller
+        $sellerGigs = [];
+        $isSeller = Auth::id() === $serviceChat->seller_id;
+        if ($isSeller) {
+            $sellerGigs = Gig::where('user_id', Auth::id())
+                ->where('status', 'active')
+                ->with(['images' => function ($q) {
+                    $q->where('is_primary', true)->orWhere(function ($q2) {
+                        $q2->orderBy('sort_order')->limit(1);
+                    });
+                }])
+                ->select('id', 'slug', 'title', 'description', 'price')
+                ->orderBy('created_at', 'desc')
+                ->get()
+                ->map(function ($g) {
+                    $primaryImage = $g->images->first();
+                    return [
+                        'id' => $g->id,
+                        'slug' => $g->slug,
+                        'title' => $g->title,
+                        'description' => $g->description,
+                        'price' => (float) $g->price,
+                        'image' => $primaryImage ? Storage::url($primaryImage->image_path) : null,
+                    ];
+                })
+                ->toArray();
+        }
+
+        // Get offers for this chat
+        $offers = CustomOffer::with(['gig'])
+            ->where(function ($query) use ($serviceChat) {
+                $query->where('buyer_id', $serviceChat->buyer_id)
+                    ->where('seller_id', $serviceChat->seller_id);
+            })
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($offer) {
+                return [
+                    'id' => $offer->id,
+                    'gig_id' => $offer->gig_id,
+                    'title' => $offer->title,
+                    'description' => $offer->description,
+                    'price' => (float) $offer->price,
+                    'delivery_time' => $offer->delivery_time,
+                    'requirements' => $offer->requirements,
+                    'status' => $offer->status,
+                    'created_at' => $offer->created_at->toISOString(),
+                ];
+            })
+            ->toArray();
 
         return Inertia::render('frontend/service-hub/chat', [
             'chat' => $chatData,
+            'sellerGigs' => $sellerGigs,
+            'isSeller' => $isSeller,
+            'offers' => $offers,
         ]);
+    }
+
+    public function createCustomOffer(Request $request, $slug): \Illuminate\Http\JsonResponse
+    {
+        $gig = Gig::where('slug', $slug)->firstOrFail();
+
+        // Check if user is the seller
+        if ($gig->user_id !== Auth::id()) {
+            return response()->json(['error' => 'Only the seller can create offers.'], 403);
+        }
+
+        $validated = $request->validate([
+            'buyer_id' => 'nullable|exists:users,id',
+            'chat_id' => 'nullable|exists:service_chats,id',
+            'title' => 'required|string|max:255',
+            'description' => 'required|string',
+            'price' => 'required|numeric|min:5',
+            'delivery_time' => 'required|string|max:100',
+            'requirements' => 'nullable|string',
+        ]);
+
+        // Get buyer_id from chat if chat_id is provided
+        $buyerId = $validated['buyer_id'] ?? null;
+        if (!$buyerId && isset($validated['chat_id']) && $validated['chat_id']) {
+            $serviceChat = ServiceChat::findOrFail($validated['chat_id']);
+            $buyerId = Auth::id() === $serviceChat->seller_id ? $serviceChat->buyer_id : $serviceChat->seller_id;
+        }
+
+        // Check if buyer is not the seller
+        if ($buyerId && $buyerId == Auth::id()) {
+            return response()->json(['error' => 'You cannot create an offer for yourself.'], 400);
+        }
+
+        // If buyer_id is still not provided, return error
+        if (!$buyerId || $buyerId == 0) {
+            return response()->json([
+                'error' => 'Buyer ID is required. Please provide buyer ID or chat ID.',
+            ], 400);
+        }
+
+        $offer = CustomOffer::create([
+            'gig_id' => $gig->id,
+            'seller_id' => Auth::id(),
+            'buyer_id' => $buyerId,
+            'title' => $validated['title'],
+            'description' => $validated['description'],
+            'price' => $validated['price'],
+            'delivery_time' => $validated['delivery_time'],
+            'requirements' => $validated['requirements'] ?? null,
+            'status' => 'pending',
+            'expires_at' => now()->addDays(7), // Offer expires in 7 days
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Custom offer created successfully!',
+            'offer' => [
+                'id' => $offer->id,
+                'title' => $offer->title,
+                'price' => $offer->price,
+                'delivery_time' => $offer->delivery_time,
+            ],
+        ]);
+    }
+
+    public function acceptCustomOffer(Request $request, $offerId): RedirectResponse
+    {
+        $offer = CustomOffer::with(['gig', 'seller', 'buyer'])->findOrFail($offerId);
+
+        // Check if user is the buyer
+        if ($offer->buyer_id !== Auth::id()) {
+            abort(403, 'You do not have permission to accept this offer.');
+        }
+
+        // Check if offer is still valid
+        if ($offer->status !== 'pending') {
+            return back()->withErrors(['error' => 'This offer is no longer available.']);
+        }
+
+        if ($offer->isExpired()) {
+            $offer->update(['status' => 'expired']);
+            return back()->withErrors(['error' => 'This offer has expired.']);
+        }
+
+        try {
+            // Calculate fees
+            $platformFee = $offer->price * 0.05; // 5% platform fee
+            $sellerEarnings = $offer->price - $platformFee;
+
+            // Create order from offer
+            $order = ServiceOrder::create([
+                'gig_id' => $offer->gig_id,
+                'buyer_id' => $offer->buyer_id,
+                'seller_id' => $offer->seller_id,
+                'package_id' => null, // Custom offer, no package
+                'package_type' => 'Custom Offer',
+                'amount' => $offer->price,
+                'platform_fee' => $platformFee,
+                'seller_earnings' => $sellerEarnings,
+                'requirements' => $offer->requirements,
+                'special_instructions' => $offer->description,
+                'status' => 'pending',
+                'payment_status' => 'pending',
+            ]);
+
+            // Mark offer as accepted
+            $offer->accept();
+
+            return redirect()->route('service-hub.order.detail', $order->id)
+                ->with('success', 'Offer accepted! Order created successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to accept offer: ' . $e->getMessage()]);
+        }
+    }
+
+    public function rejectCustomOffer(Request $request, $offerId): RedirectResponse
+    {
+        $offer = CustomOffer::findOrFail($offerId);
+
+        // Check if user is the buyer
+        if ($offer->buyer_id !== Auth::id()) {
+            abort(403, 'You do not have permission to reject this offer.');
+        }
+
+        if ($offer->status !== 'pending') {
+            return back()->withErrors(['error' => 'This offer is no longer available.']);
+        }
+
+        $offer->reject();
+
+        return back()->with('success', 'Offer rejected.');
     }
 }

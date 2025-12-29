@@ -185,6 +185,9 @@ Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubC
 Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/create-offer', [App\Http\Controllers\ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/accept', [App\Http\Controllers\ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order/success', function () {
@@ -193,8 +196,14 @@ Route::get('/service-hub/order/success', function () {
 Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
 Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
 Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-orders', [App\Http\Controllers\ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/orders/{orderId}', [App\Http\Controllers\ServiceHubController::class, 'orderDetail'])->name('service-hub.order.detail')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/deliver', [App\Http\Controllers\ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/accept-delivery', [App\Http\Controllers\ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/complete', [App\Http\Controllers\ServiceHubController::class, 'completeOrder'])->name('service-hub.order.complete')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/favorite', [App\Http\Controllers\ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers\ServiceHubController::class, 'sellerReviewStore'])->name('service-hub.order.seller-review')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 
