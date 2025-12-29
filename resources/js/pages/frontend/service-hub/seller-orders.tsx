@@ -24,6 +24,7 @@ import {
   Sparkles,
   Filter,
   Search,
+  Upload,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -38,7 +39,7 @@ interface Order {
     title: string
     image: string | null
   }
-  seller: {
+  buyer: {
     id: number
     name: string
     avatar: string | null
@@ -46,15 +47,17 @@ interface Order {
   package: string
   amount: number
   platformFee: number
+  sellerEarnings: number
   total: number
   status: string
   paymentStatus: string
   orderDate: string
   deliveryDate: string
+  deliveredAt: string | null
   requirements: string
+  specialInstructions: string | null
   deliverables: Array<{ name: string; url: string; type: string }>
-  canReview: boolean
-  canCancel: boolean
+  canDeliver: boolean
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -76,19 +79,19 @@ const statusConfig = {
     label: "Pending",
     color: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
     icon: Clock,
-    description: "Order is pending seller confirmation",
+    description: "Order is pending your confirmation",
   },
   in_progress: {
     label: "In Progress",
     color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
     icon: Package,
-    description: "Seller is working on your order",
+    description: "You are working on this order",
   },
   delivered: {
     label: "Delivered",
     color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
     icon: CheckCircle2,
-    description: "Order has been delivered, please review",
+    description: "Order has been delivered, waiting for buyer acceptance",
   },
   completed: {
     label: "Completed",
@@ -104,7 +107,7 @@ const statusConfig = {
   },
 }
 
-export default function MyOrders() {
+export default function SellerOrders() {
   const { orders, filters: initialFilters } = usePage<PageProps>().props
   const [selectedStatus, setSelectedStatus] = useState<string>(initialFilters.status || "all")
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
@@ -115,7 +118,7 @@ export default function MyOrders() {
       search: searchQuery || undefined,
     }
 
-    router.get('/service-hub/my-orders', params, {
+    router.get('/service-hub/seller-orders', params, {
       preserveState: true,
       preserveScroll: true,
     })
@@ -146,21 +149,9 @@ export default function MyOrders() {
     })
   }
 
-  const handleReview = (orderId: number) => {
-    const order = orders.data.find((o) => o.id === orderId)
-    if (order) {
-      router.visit(`/service-hub/${order.service.slug}/reviews`)
-    }
-  }
-
-  const handleCancel = (orderId: number) => {
-    // Handle cancellation
-    console.log("Cancel order:", orderId)
-  }
-
   return (
     <FrontendLayout>
-      <Head title="My Orders - Service Hub" />
+      <Head title="My Sales - Service Hub" />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -172,8 +163,8 @@ export default function MyOrders() {
                 </Button>
               </Link>
               <div className="flex-1">
-                <h1 className="text-2xl font-bold">My Orders</h1>
-                <p className="text-sm text-muted-foreground">Track and manage your service orders</p>
+                <h1 className="text-2xl font-bold">My Sales</h1>
+                <p className="text-sm text-muted-foreground">Manage your service orders</p>
               </div>
             </div>
           </div>
@@ -195,7 +186,7 @@ export default function MyOrders() {
                       <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                       <input
                         type="text"
-                        placeholder="Search orders by number, service, or seller..."
+                        placeholder="Search orders by number, service, or buyer..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
@@ -241,7 +232,7 @@ export default function MyOrders() {
                         transition={{ delay: index * 0.1 }}
                       >
                         <Card className="border shadow-lg hover:shadow-xl transition-all duration-300 overflow-hidden">
-                          <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-blue-600 to-purple-600" />
+                          <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-green-600 to-blue-600" />
                           <CardContent className="p-6">
                             {/* Order Header */}
                             <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-4">
@@ -288,19 +279,21 @@ export default function MyOrders() {
                                       <Calendar className="h-3.5 w-3.5" />
                                       <span>Ordered {formatDate(order.orderDate)}</span>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="h-3.5 w-3.5" />
-                                      <span>Due {formatDate(order.deliveryDate)}</span>
-                                    </div>
+                                    {order.deliveredAt && (
+                                      <div className="flex items-center gap-1">
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        <span>Delivered {formatDate(order.deliveredAt)}</span>
+                                      </div>
+                                    )}
                                   </div>
 
-                                  {/* Seller Info */}
+                                  {/* Buyer Info */}
                                   <div className="flex items-center gap-2 mt-2">
                                     <Avatar className="h-6 w-6">
-                                      <AvatarImage src={order.seller.avatar || undefined} />
-                                      <AvatarFallback>{order.seller.name[0]}</AvatarFallback>
+                                      <AvatarImage src={order.buyer.avatar || undefined} />
+                                      <AvatarFallback>{order.buyer.name[0]}</AvatarFallback>
                                     </Avatar>
-                                    <span className="text-sm text-muted-foreground">by {order.seller.name}</span>
+                                    <span className="text-sm text-muted-foreground">Buyer: {order.buyer.name}</span>
                                     <Badge variant="secondary" className="text-xs">
                                       {order.package}
                                     </Badge>
@@ -308,13 +301,13 @@ export default function MyOrders() {
                                 </div>
                               </div>
 
-                              {/* Price */}
+                              {/* Earnings */}
                               <div className="text-right">
-                                <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                                  ${order.total.toFixed(2)}
+                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                  ${order.sellerEarnings.toFixed(2)}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  Service: ${order.amount} + Fee: ${order.platformFee}
+                                  Total: ${order.total} (Fee: ${order.platformFee})
                                 </div>
                               </div>
                             </div>
@@ -344,6 +337,8 @@ export default function MyOrders() {
                                     <a
                                       key={idx}
                                       href={deliverable.url || '#'}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
                                       className="flex items-center gap-2 text-sm text-green-700 dark:text-green-300 hover:underline"
                                     >
                                       <FileText className="h-3 w-3" />
@@ -368,60 +363,22 @@ export default function MyOrders() {
                                   View Service
                                 </Button>
                               </Link>
-                              <Link href={`/service-hub/seller/${order.seller.id}`}>
+                              <Link href={`/service-hub/seller/${order.buyer.id}`}>
                                 <Button variant="outline" size="sm">
                                   <MessageCircle className="mr-2 h-4 w-4" />
-                                  Contact Seller
+                                  Contact Buyer
                                 </Button>
                               </Link>
-                              {order.canReview && (
-                                <Button
-                                  size="sm"
-                                  className="bg-blue-600 hover:bg-blue-700"
-                                  onClick={() => handleReview(order.id)}
-                                >
-                                  <Star className="mr-2 h-4 w-4" />
-                                  Leave Review
-                                </Button>
-                              )}
-                              {order.canCancel && (
-                                <Button
-                                  variant="destructive"
-                                  size="sm"
-                                  onClick={() => handleCancel(order.id)}
-                                >
-                                  <XCircle className="mr-2 h-4 w-4" />
-                                  Cancel Order
-                                </Button>
-                              )}
-                              {order.status === "delivered" && (
-                                <Button
-                                  size="sm"
-                                  className="bg-green-600 hover:bg-green-700"
-                                  onClick={async () => {
-                                    try {
-                                      const response = await fetch(`/service-hub/orders/${order.id}/accept-delivery`, {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                        },
-                                        credentials: 'same-origin',
-                                      })
-                                      if (response.ok) {
-                                        router.visit(`/service-hub/orders/${order.id}`)
-                                      } else {
-                                        const data = await response.json()
-                                        alert(data.error || "Failed to accept delivery")
-                                      }
-                                    } catch (error) {
-                                      alert("Failed to accept delivery")
-                                    }
-                                  }}
-                                >
-                                  <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Accept & Complete
-                                </Button>
+                              {order.canDeliver && (
+                                <Link href={`/service-hub/orders/${order.id}`}>
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700"
+                                  >
+                                    <Upload className="mr-2 h-4 w-4" />
+                                    Deliver Order
+                                  </Button>
+                                </Link>
                               )}
                             </div>
                           </CardContent>
@@ -442,7 +399,7 @@ export default function MyOrders() {
                         <p className="text-muted-foreground mb-6">
                           {searchQuery || selectedStatus !== "all"
                             ? "Try adjusting your filters or search query"
-                            : "You haven't placed any orders yet"}
+                            : "You haven't received any orders yet"}
                         </p>
                         {!searchQuery && selectedStatus === "all" && (
                           <Link href="/service-hub">

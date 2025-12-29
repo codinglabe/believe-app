@@ -93,11 +93,27 @@ class ServiceOrder extends Model
     }
 
     /**
-     * Get the review for this order.
+     * Get the buyer review for this order.
+     */
+    public function buyerReview(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ServiceReview::class, 'order_id', 'id')->where('reviewer_type', 'buyer');
+    }
+
+    /**
+     * Get the seller review for this order.
+     */
+    public function sellerReview(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ServiceReview::class, 'order_id', 'id')->where('reviewer_type', 'seller');
+    }
+
+    /**
+     * Get the review for this order (backward compatibility - returns buyer review).
      */
     public function review(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(ServiceReview::class, 'order_id', 'id');
+        return $this->buyerReview();
     }
 
     /**

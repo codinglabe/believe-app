@@ -11,6 +11,7 @@ class ServiceReview extends Model
         'gig_id',
         'order_id',
         'user_id',
+        'reviewer_type',
         'rating',
         'comment',
         'helpful_count',

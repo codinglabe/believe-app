@@ -4,6 +4,7 @@ import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
+import { Badge } from "@/components/frontend/ui/badge"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import {
@@ -12,7 +13,21 @@ import {
   MessageCircle,
   Paperclip,
   X,
+  Handshake,
+  Check,
+  XCircle,
 } from "lucide-react"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+import { Input } from "@/components/frontend/ui/input"
+import { Label } from "@/components/frontend/ui/label"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect, useRef } from "react"
 import { Head } from "@inertiajs/react"
@@ -24,6 +39,29 @@ interface Chat {
     name: string
     avatar: string | null
   }
+  buyer_id?: number
+  seller_id?: number
+}
+
+interface SellerGig {
+  id: number
+  slug: string
+  title: string
+  description: string
+  price: number
+  image: string | null
+}
+
+interface Offer {
+  id: number
+  gig_id: number
+  title: string
+  description: string
+  price: number
+  delivery_time: string
+  requirements: string | null
+  status: string
+  created_at: string
 }
 
 interface Message {
@@ -47,15 +85,29 @@ interface Message {
 
 interface PageProps extends Record<string, unknown> {
   chat: Chat
+  sellerGigs?: SellerGig[]
+  isSeller?: boolean
+  offers?: Offer[]
 }
 
 export default function ServiceChat() {
-  const { chat } = usePage<PageProps>().props
+  const { chat, sellerGigs = [], isSeller = false, offers: initialOffers = [] } = usePage<PageProps>().props
   const [messages, setMessages] = useState<Message[]>([])
   const [message, setMessage] = useState("")
   const [attachments, setAttachments] = useState<File[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isSending, setIsSending] = useState(false)
+  const [showOfferModal, setShowOfferModal] = useState(false)
+  const [selectedGigForOffer, setSelectedGigForOffer] = useState<SellerGig | null>(null)
+  const [offerForm, setOfferForm] = useState({
+    title: "",
+    description: "",
+    price: "",
+    delivery_time: "3 days",
+    requirements: "",
+  })
+  const [isCreatingOffer, setIsCreatingOffer] = useState(false)
+  const [offers, setOffers] = useState<Offer[]>(initialOffers)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const messagesContainerRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -63,10 +115,10 @@ export default function ServiceChat() {
   const shouldScrollToBottomRef = useRef(true)
 
   const isNearBottom = () => {
-    if (!messagesContainerRef.current) return true
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
-    const threshold = 150 // pixels from bottom
-    return scrollHeight - scrollTop - clientHeight < threshold
+    // if (!messagesContainerRef.current) return true
+    // const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
+    // const threshold = 150 // pixels from bottom
+    // return scrollHeight - scrollTop - clientHeight < threshold
   }
 
   const scrollToBottom = (smooth = true) => {
@@ -77,9 +129,9 @@ export default function ServiceChat() {
 
   const loadMessages = async (preserveScroll = false) => {
     try {
-      const wasNearBottom = preserveScroll ? isNearBottom() : false
-      const previousScrollHeight = messagesContainerRef.current?.scrollHeight || 0
-      const previousScrollTop = messagesContainerRef.current?.scrollTop || 0
+     const wasNearBottom = preserveScroll ? isNearBottom() : false
+    //   const previousScrollHeight = messagesContainerRef.current?.scrollHeight || 0
+    //   const previousScrollTop = messagesContainerRef.current?.scrollTop || 0
 
       const response = await fetch(`/service-hub/chat/${chat.id}/messagesget`)
       if (!response.ok) {
@@ -128,17 +180,17 @@ export default function ServiceChat() {
       if (preserveScroll) {
         if (wasNearBottom) {
           // User was near bottom, scroll to bottom after new messages
-          setTimeout(() => scrollToBottom(true), 100)
+        //   setTimeout(() => scrollToBottom(true), 100)
         } else {
           // User was scrolling up, maintain exact scroll position
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              const newScrollHeight = messagesContainerRef.current.scrollHeight
-              const scrollDiff = newScrollHeight - previousScrollHeight
-              // Maintain relative position
-              messagesContainerRef.current.scrollTop = previousScrollTop + scrollDiff
-            }
-          }, 0)
+        //   setTimeout(() => {
+        //     if (messagesContainerRef.current) {
+        //       const newScrollHeight = messagesContainerRef.current.scrollHeight
+        //       const scrollDiff = newScrollHeight - previousScrollHeight
+        //       // Maintain relative position
+        //       messagesContainerRef.current.scrollTop = previousScrollTop + scrollDiff
+        //     }
+        //   }, 0)
         }
       }
     } catch (error) {
@@ -184,11 +236,11 @@ export default function ServiceChat() {
     if (!container) return
 
     const handleScroll = () => {
-      shouldScrollToBottomRef.current = isNearBottom()
+    //   shouldScrollToBottomRef.current = isNearBottom()
     }
 
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
+    // container.addEventListener('scroll', handleScroll)
+    // return () => container.removeEventListener('scroll', handleScroll)
   }, [])
 
   const handleSendMessage = async () => {
@@ -295,21 +347,32 @@ export default function ServiceChat() {
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
           <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center gap-4">
-              <Link href="/service-hub/chats/list">
-                <Button variant="ghost" size="icon">
-                  <ArrowLeft className="h-5 w-5" />
-                </Button>
-              </Link>
-              <div className="flex items-center gap-3 flex-1">
-                <Avatar className="h-10 w-10">
-                  <AvatarImage src={chat.other_user.avatar || undefined} />
-                  <AvatarFallback>{chat.other_user.name[0]}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <h2 className="font-semibold">{chat.other_user.name}</h2>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Link href="/service-hub/chats/list">
+                  <Button variant="ghost" size="icon">
+                    <ArrowLeft className="h-5 w-5" />
+                  </Button>
+                </Link>
+                <div className="flex items-center gap-3 flex-1">
+                  <Avatar className="h-10 w-10">
+                    <AvatarImage src={chat.other_user.avatar || undefined} />
+                    <AvatarFallback>{chat.other_user.name[0]}</AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <h2 className="font-semibold">{chat.other_user.name}</h2>
+                  </div>
                 </div>
               </div>
+              {isSeller && sellerGigs.length > 0 && (
+                <Button
+                  onClick={() => setShowOfferModal(true)}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Handshake className="mr-2 h-4 w-4" />
+                  Create Offer
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -323,6 +386,104 @@ export default function ServiceChat() {
                 ref={messagesContainerRef}
                 className="flex-1 overflow-y-auto p-4 space-y-4"
               >
+                {/* Display Offers */}
+                {offers.map((offer) => (
+                  <motion.div
+                    key={`offer-${offer.id}`}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex justify-center"
+                  >
+                    <Card className="max-w-md w-full border-2 border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
+                      <CardContent className="p-4">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Handshake className="h-5 w-5 text-green-600" />
+                          <h4 className="font-semibold">Custom Offer</h4>
+                          <Badge variant={offer.status === 'pending' ? 'default' : offer.status === 'accepted' ? 'default' : 'destructive'} className="ml-auto">
+                            {offer.status}
+                          </Badge>
+                        </div>
+                        <h5 className="font-medium mb-1">{offer.title}</h5>
+                        <p className="text-sm text-muted-foreground mb-2">{offer.description}</p>
+                        <div className="flex items-center justify-between text-sm mb-2">
+                          <span className="font-semibold text-lg">${offer.price}</span>
+                          <span className="text-muted-foreground">Delivery: {offer.delivery_time}</span>
+                        </div>
+                        {offer.requirements && (
+                          <p className="text-xs text-muted-foreground mb-2">Requirements: {offer.requirements}</p>
+                        )}
+                        {!isSeller && offer.status === 'pending' && (
+                          <div className="flex gap-2 mt-3">
+                            <Button
+                              size="sm"
+                              className="flex-1 bg-green-600 hover:bg-green-700"
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch(`/service-hub/offers/${offer.id}/accept`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                      'Accept': 'application/json',
+                                    },
+                                    credentials: 'same-origin',
+                                    redirect: 'follow',
+                                  })
+                                  if (response.redirected) {
+                                    showSuccessToast("Offer accepted! Order created.")
+                                    window.location.href = response.url
+                                  } else if (response.ok) {
+                                    showSuccessToast("Offer accepted! Order created.")
+                                    setOffers(prev => prev.map(o => o.id === offer.id ? { ...o, status: 'accepted' } : o))
+                                    router.visit('/service-hub/my-orders')
+                                  } else {
+                                    const data = await response.json()
+                                    showErrorToast(data.error || "Failed to accept offer")
+                                  }
+                                } catch (error) {
+                                  showErrorToast("Failed to accept offer")
+                                }
+                              }}
+                            >
+                              <Check className="mr-2 h-4 w-4" />
+                              Accept Offer
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="flex-1"
+                              onClick={async () => {
+                                try {
+                                  const response = await fetch(`/service-hub/offers/${offer.id}/reject`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                    },
+                                    credentials: 'same-origin',
+                                  })
+                                  if (response.ok) {
+                                    showSuccessToast("Offer rejected")
+                                    setOffers(prev => prev.map(o => o.id === offer.id ? { ...o, status: 'rejected' } : o))
+                                  } else {
+                                    showErrorToast("Failed to reject offer")
+                                  }
+                                } catch (error) {
+                                  showErrorToast("Failed to reject offer")
+                                }
+                              }}
+                            >
+                              <XCircle className="mr-2 h-4 w-4" />
+                              Reject
+                            </Button>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground mt-2">{formatTime(offer.created_at)}</p>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                ))}
+
                 {isLoading ? (
                   <div className="flex items-center justify-center h-full">
                     <div className="text-muted-foreground">Loading messages...</div>
@@ -449,6 +610,246 @@ export default function ServiceChat() {
           </Card>
         </div>
       </div>
+
+      {/* Create Custom Offer Modal */}
+      <Dialog open={showOfferModal} onOpenChange={(open) => {
+        setShowOfferModal(open)
+        if (!open) {
+          setSelectedGigForOffer(null)
+          setOfferForm({
+            title: "",
+            description: "",
+            price: "",
+            delivery_time: "3 days",
+            requirements: "",
+          })
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Handshake className="h-5 w-5" />
+              Create Custom Offer
+            </DialogTitle>
+            <DialogDescription>
+              {!selectedGigForOffer
+                ? "Select a service to create an offer for"
+                : "Fill in the offer details"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!selectedGigForOffer ? (
+            // Step 1: Select Gig
+            <div className="space-y-4 py-4">
+              {sellerGigs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>You don't have any active services yet.</p>
+                  <Link href="/service-hub/create" className="text-primary hover:underline mt-2 inline-block">
+                    Create your first service
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto">
+                  {sellerGigs.map((sellerGig) => (
+                    <button
+                      key={sellerGig.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedGigForOffer(sellerGig)
+                        setOfferForm({
+                          title: sellerGig.title,
+                          description: sellerGig.description,
+                          price: sellerGig.price.toString(),
+                          delivery_time: "3 days",
+                          requirements: "",
+                        })
+                      }}
+                      className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted transition-colors text-left"
+                    >
+                      {sellerGig.image && (
+                        <img
+                          src={sellerGig.image}
+                          alt={sellerGig.title}
+                          className="w-20 h-20 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <h4 className="font-semibold">{sellerGig.title}</h4>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{sellerGig.description}</p>
+                        <p className="text-sm font-medium mt-1">${sellerGig.price}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            // Step 2: Offer Form
+            <div className="space-y-4 py-4">
+              <div className="p-3 bg-muted rounded-lg flex items-center gap-3">
+                {selectedGigForOffer.image && (
+                  <img
+                    src={selectedGigForOffer.image}
+                    alt={selectedGigForOffer.title}
+                    className="w-12 h-12 object-cover rounded"
+                  />
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{selectedGigForOffer.title}</p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGigForOffer(null)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Change service
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="offer_title">Offer Title *</Label>
+                <Input
+                  id="offer_title"
+                  placeholder="e.g., Custom Logo Design Package"
+                  value={offerForm.title}
+                  onChange={(e) => setOfferForm({ ...offerForm, title: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="offer_description">Description *</Label>
+                <Textarea
+                  id="offer_description"
+                  placeholder="Describe what you'll deliver..."
+                  value={offerForm.description}
+                  onChange={(e) => setOfferForm({ ...offerForm, description: e.target.value })}
+                  rows={4}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="offer_price">Price ($) *</Label>
+                  <Input
+                    id="offer_price"
+                    type="number"
+                    min="5"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={offerForm.price}
+                    onChange={(e) => setOfferForm({ ...offerForm, price: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="offer_delivery">Delivery Time *</Label>
+                  <Input
+                    id="offer_delivery"
+                    placeholder="e.g., 3 days, 1 week"
+                    value={offerForm.delivery_time}
+                    onChange={(e) => setOfferForm({ ...offerForm, delivery_time: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="offer_requirements">Requirements (Optional)</Label>
+                <Textarea
+                  id="offer_requirements"
+                  placeholder="Any specific requirements or instructions..."
+                  value={offerForm.requirements}
+                  onChange={(e) => setOfferForm({ ...offerForm, requirements: e.target.value })}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedGigForOffer) {
+                  setSelectedGigForOffer(null)
+                } else {
+                  setShowOfferModal(false)
+                }
+              }}
+              disabled={isCreatingOffer}
+            >
+              {selectedGigForOffer ? "Back" : "Cancel"}
+            </Button>
+            {selectedGigForOffer && (
+              <Button
+                onClick={async () => {
+                  if (!offerForm.title || !offerForm.description || !offerForm.price || !offerForm.delivery_time) {
+                    showErrorToast("Please fill in all required fields")
+                    return
+                  }
+
+                  setIsCreatingOffer(true)
+                  try {
+                    const response = await fetch(`/service-hub/${selectedGigForOffer.slug}/create-offer`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                      },
+                      credentials: 'same-origin',
+                      body: JSON.stringify({
+                        chat_id: chat.id,
+                        title: offerForm.title,
+                        description: offerForm.description,
+                        price: parseFloat(offerForm.price),
+                        delivery_time: offerForm.delivery_time,
+                        requirements: offerForm.requirements || null,
+                      }),
+                    })
+
+                    const data = await response.json()
+
+                    if (response.ok) {
+                      showSuccessToast(data.message || "Custom offer created successfully!")
+                      setShowOfferModal(false)
+                      setSelectedGigForOffer(null)
+                      setOfferForm({
+                        title: "",
+                        description: "",
+                        price: "",
+                        delivery_time: "3 days",
+                        requirements: "",
+                      })
+                      // Add the new offer to the list
+                      setOffers(prev => [{
+                        id: data.offer.id,
+                        gig_id: selectedGigForOffer.id,
+                        title: offerForm.title,
+                        description: offerForm.description,
+                        price: parseFloat(offerForm.price),
+                        delivery_time: offerForm.delivery_time,
+                        requirements: offerForm.requirements || null,
+                        status: 'pending',
+                        created_at: new Date().toISOString(),
+                      }, ...prev])
+                    } else {
+                      showErrorToast(data.error || "Failed to create offer")
+                    }
+                  } catch (error) {
+                    console.error('Error creating offer:', error)
+                    showErrorToast("Failed to create offer. Please try again.")
+                  } finally {
+                    setIsCreatingOffer(false)
+                  }
+                }}
+                disabled={isCreatingOffer}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isCreatingOffer ? "Creating..." : "Create Offer"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </FrontendLayout>
   )
 }
