@@ -38,8 +38,10 @@ export function ActivityList({
 
     return (
         <div 
-            className="flex-1 overflow-y-auto p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[350px] sm:max-h-[350px] sm:min-h-[350px]"
-            onScroll={onScroll}
+            className={`flex-1 p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[350px] sm:max-h-[350px] sm:min-h-[350px] ${
+                hasMore ? 'overflow-y-auto' : 'overflow-hidden'
+            }`}
+            onScroll={hasMore ? onScroll : undefined}
         >
             <div className="space-y-2">
                 {activities.map((activity) => {
@@ -122,12 +124,6 @@ export function ActivityList({
             {isLoadingMore && (
                 <div className="text-center py-4">
                     <RefreshCw className="h-5 w-5 text-muted-foreground mx-auto animate-spin" />
-                </div>
-            )}
-            
-            {!hasMore && activities.length > 0 && (
-                <div className="text-center py-4">
-                    <p className="text-xs text-muted-foreground">No more transactions</p>
                 </div>
             )}
         </div>

@@ -1,7 +1,9 @@
 import { motion } from 'framer-motion'
-import { RefreshCw, Building2, Plus } from 'lucide-react'
+import { useState } from 'react'
+import { RefreshCw, Building2, Plus, ArrowDownLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ExternalAccount } from './types'
+import { AddBankAccount } from './AddBankAccount'
 
 interface ExternalAccountsProps {
     externalAccounts: ExternalAccount[]
@@ -12,29 +14,54 @@ interface ExternalAccountsProps {
         account_number: string
         account_type: 'checking' | 'savings'
         account_holder_name: string
+        bank_name: string
+        first_name: string
+        last_name: string
+        street_line_1: string
+        city: string
+        state: string
+        postal_code: string
+        country: string
     }) => void
+    onWithdraw?: () => void
 }
 
 export function ExternalAccounts({
     externalAccounts,
     isLoading,
     onRefresh,
-    onLinkAccount
+    onLinkAccount,
+    onWithdraw
 }: ExternalAccountsProps) {
+    const [showAddForm, setShowAddForm] = useState(false)
+
     const handleLinkClick = () => {
-        const routingNumber = prompt('Enter routing number:')
-        const accountNumber = prompt('Enter account number:')
-        const accountType = prompt('Account type (checking/savings):') as 'checking' | 'savings'
-        const accountHolderName = prompt('Account holder name:')
-        
-        if (routingNumber && accountNumber && accountType && accountHolderName) {
-            onLinkAccount({
-                routing_number: routingNumber,
-                account_number: accountNumber,
-                account_type: accountType,
-                account_holder_name: accountHolderName,
-            })
-        }
+        setShowAddForm(true)
+    }
+
+    const handleCancel = () => {
+        setShowAddForm(false)
+    }
+
+    const handleLinkAccount = async (accountData: {
+        routing_number: string
+        account_number: string
+        account_type: 'checking' | 'savings'
+        account_holder_name: string
+    }) => {
+        await onLinkAccount(accountData)
+        setShowAddForm(false)
+    }
+
+    // Show AddBankAccount form if user clicked to add
+    if (showAddForm) {
+        return (
+            <AddBankAccount
+                isLoading={isLoading}
+                onLinkAccount={handleLinkAccount}
+                onCancel={handleCancel}
+            />
+        )
     }
 
     return (
@@ -103,15 +130,27 @@ export function ExternalAccounts({
                                 </div>
                             </div>
                         ))}
-                        <Button
-                            onClick={handleLinkClick}
-                            size="sm"
-                            variant="outline"
-                            className="w-full"
-                        >
-                            <Plus className="h-3 w-3 mr-1" />
-                            Link Another Account
-                        </Button>
+                        <div className="space-y-2">
+                            {onWithdraw && (
+                                <Button
+                                    onClick={onWithdraw}
+                                    size="sm"
+                                    className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                                >
+                                    <ArrowDownLeft className="h-3 w-3 mr-1" />
+                                    Withdraw to Bank
+                                </Button>
+                            )}
+                            <Button
+                                onClick={handleLinkClick}
+                                size="sm"
+                                variant="outline"
+                                className="w-full"
+                            >
+                                <Plus className="h-3 w-3 mr-1" />
+                                Link Another Account
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>

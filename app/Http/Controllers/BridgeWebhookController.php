@@ -47,13 +47,13 @@ class BridgeWebhookController extends Controller
 
         // Verify webhook signature
         $signatureValid = $this->verifySignature($request);
-        
+
         if (!$signatureValid) {
             Log::warning('Invalid Bridge webhook signature', [
                 'ip' => $request->ip(),
                 'app_env' => config('app.env'),
             ]);
-            
+
             // In development, allow webhook to proceed even if signature fails
             if (config('app.env') === 'local' || config('app.env') === 'development') {
                 Log::info('Allowing webhook in development environment despite signature failure');
@@ -73,6 +73,9 @@ class BridgeWebhookController extends Controller
             'customer_id' => $payload['event_object']['id'] ?? null,
             'kyb_status' => $payload['event_object']['kyb_status'] ?? null,
             'kyc_status' => $payload['event_object']['kyc_status'] ?? null,
+            'has_accepted_terms_of_service' => $payload['event_object']['has_accepted_terms_of_service'] ?? null,
+            'signed_agreement_id' => $payload['event_object']['signed_agreement_id'] ?? null,
+            'tos_status' => $payload['event_object']['tos_status'] ?? null,
             'full_payload' => json_encode($payload),
         ]);
 
@@ -158,7 +161,6 @@ class BridgeWebhookController extends Controller
                 'status' => 'success',
                 'event_id' => $eventId ?? null,
             ], 200)->header('Content-Type', 'application/json');
-
         } catch (\Exception $e) {
             Log::error('Bridge webhook processing error', [
                 'error' => $e->getMessage(),
@@ -178,17 +180,17 @@ class BridgeWebhookController extends Controller
     private function verifySignature(Request $request): bool
     {
         // Try multiple possible header names (Bridge documentation may use different names)
-        $signatureHeader = $request->header('BridgeApi-Signature') 
+        $signatureHeader = $request->header('BridgeApi-Signature')
             ?? $request->header('X-Webhook-Signature')
             ?? $request->header('Bridge-Signature')
             ?? $request->header('X-Bridge-Signature');
-        
+
         $payload = $request->getContent();
-        
+
         // Load webhook public key from database (similar to BridgeService)
         $publicKeyPem = null;
         $bridgeConfig = \App\Models\PaymentMethod::getConfig('bridge');
-        
+
         if ($bridgeConfig) {
             // Determine environment - check database first, then fallback to config/env
             $environment = null;
@@ -197,7 +199,7 @@ class BridgeWebhookController extends Controller
             } else {
                 $environment = trim(strtolower(env('BRIDGE_ENVIRONMENT', config('services.bridge.environment', 'sandbox'))));
             }
-            
+
             // Try to get from database based on environment
             if ($environment === 'sandbox' && !empty($bridgeConfig->sandbox_webhook_public_key)) {
                 $publicKeyPem = $bridgeConfig->sandbox_webhook_public_key;
@@ -205,7 +207,7 @@ class BridgeWebhookController extends Controller
                 $publicKeyPem = $bridgeConfig->live_webhook_public_key;
             }
         }
-        
+
         // Fallback to config/env if not found in database
         if (!$publicKeyPem) {
             $publicKeyPem = config('services.bridge.webhook_public_key', env('BRIDGE_WEBHOOK_PUBLIC_KEY', ''));
@@ -246,7 +248,7 @@ class BridgeWebhookController extends Controller
         // Check timestamp (reject events older than 10 minutes)
         $currentTimeMs = (int)(microtime(true) * 1000);
         $timestampMs = (int)$timestamp;
-        
+
         if (($currentTimeMs - $timestampMs) > 600000) { // 10 minutes in milliseconds
             Log::warning('Bridge webhook timestamp too old', [
                 'timestamp' => $timestamp,
@@ -275,7 +277,7 @@ class BridgeWebhookController extends Controller
                     'public_key_preview' => substr($publicKeyPem, 0, 50) . '...',
                     'environment' => $environment ?? 'unknown',
                 ]);
-                
+
                 // In development/local, allow webhook if public key is not configured
                 if (config('app.env') === 'local' || config('app.env') === 'development') {
                     Log::info('Allowing webhook in development environment (public key not configured)');
@@ -300,7 +302,7 @@ class BridgeWebhookController extends Controller
                     'environment' => $environment ?? 'unknown',
                     'has_public_key' => !empty($publicKeyPem),
                 ]);
-                
+
                 // In development/local, allow webhook if signature verification fails (for testing)
                 if (config('app.env') === 'local' || config('app.env') === 'development') {
                     Log::info('Allowing webhook in development environment (signature verification failed)');
@@ -313,7 +315,7 @@ class BridgeWebhookController extends Controller
                     'error' => $opensslError,
                     'environment' => $environment ?? 'unknown',
                 ]);
-                
+
                 // In development/local, allow webhook on openssl errors (for testing)
                 if (config('app.env') === 'local' || config('app.env') === 'development') {
                     Log::info('Allowing webhook in development environment (openssl error)');
@@ -321,7 +323,6 @@ class BridgeWebhookController extends Controller
                 }
                 return false;
             }
-
         } catch (\Exception $e) {
             Log::error('Bridge webhook signature verification exception', [
                 'error' => $e->getMessage()
@@ -351,7 +352,7 @@ class BridgeWebhookController extends Controller
     private function handleCustomerEvent(string $eventType, array $eventObject, ?string $status, array $changes)
     {
         $customerId = $eventObject['id'] ?? null;
-        
+
         if (!$customerId) {
             Log::warning('Bridge customer event missing customer id', ['event_object' => $eventObject]);
             return;
@@ -385,12 +386,12 @@ class BridgeWebhookController extends Controller
         // - event_object_status: "deleted" or "offboarded"
         // - event_object may contain: deleted_at, status: "deleted" or "offboarded"
         $isDeleted = false;
-        
+
         // Check event type (e.g., "customer.deleted", "customer.updated.status_transitioned")
         if (str_contains(strtolower($eventType ?? ''), 'deleted')) {
             $isDeleted = true;
         }
-        
+
         // Check event_object_status
         if (!$isDeleted && $status) {
             $statusLower = strtolower($status);
@@ -398,14 +399,14 @@ class BridgeWebhookController extends Controller
                 $isDeleted = true;
             }
         }
-        
+
         // Check event_object fields
         if (!$isDeleted) {
             // Check for deleted_at timestamp
             if (isset($eventObject['deleted_at']) && !empty($eventObject['deleted_at'])) {
                 $isDeleted = true;
             }
-            
+
             // Check status field in event_object
             if (isset($eventObject['status'])) {
                 $objectStatus = strtolower($eventObject['status']);
@@ -413,7 +414,7 @@ class BridgeWebhookController extends Controller
                     $isDeleted = true;
                 }
             }
-            
+
             // Check kyb_status or kyc_status for "offboarded"
             if (isset($eventObject['kyb_status']) && strtolower($eventObject['kyb_status']) === 'offboarded') {
                 $isDeleted = true;
@@ -439,7 +440,7 @@ class BridgeWebhookController extends Controller
                     if ($newKybStatus) {
                         $integration->kyb_status = $newKybStatus;
                         $statusUpdated = true;
-                        
+
                         // When KYB is approved, also set KYC status to approved (per user requirement)
                         if ($newKybStatus === 'approved' && $integration->kyc_status !== 'approved') {
                             $integration->kyc_status = 'approved';
@@ -448,7 +449,7 @@ class BridgeWebhookController extends Controller
                                 'customer_id' => $customerId,
                             ]);
                         }
-                        
+
                         Log::info('Bridge KYB status transitioned', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
@@ -464,7 +465,7 @@ class BridgeWebhookController extends Controller
                     if ($newKycStatus) {
                         $integration->kyc_status = $newKycStatus;
                         $statusUpdated = true;
-                        
+
                         Log::info('Bridge KYC status transitioned', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
@@ -479,7 +480,7 @@ class BridgeWebhookController extends Controller
             // Also update if status exists in event_object (to ensure we always have latest status)
             // IMPORTANT: Process KYB first, then KYC, so that when KYB is approved, we can set KYC to approved
             // This ensures both are set correctly when Bridge sends both as approved
-            
+
             // Update KYB status for business customers first
             if (isset($eventObject['kyb_status'])) {
                 $newKybStatus = $this->normalizeStatus($eventObject['kyb_status']);
@@ -488,7 +489,7 @@ class BridgeWebhookController extends Controller
                     if ($oldKybStatus !== $newKybStatus) {
                         $integration->kyb_status = $newKybStatus;
                         $statusUpdated = true;
-                        
+
                         // When KYB is approved, also set KYC status to approved (per user requirement)
                         // This ensures both are approved when KYB is approved
                         if ($newKybStatus === 'approved') {
@@ -499,7 +500,7 @@ class BridgeWebhookController extends Controller
                                 'previous_kyc_status' => $integration->getOriginal('kyc_status'),
                             ]);
                         }
-                        
+
                         Log::info('Bridge KYB status updated from event_object', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
@@ -509,7 +510,7 @@ class BridgeWebhookController extends Controller
                     }
                 }
             }
-            
+
             // Update KYC status (but don't override if we just set it to approved from KYB)
             if (isset($eventObject['kyc_status'])) {
                 $newKycStatus = $this->normalizeStatus($eventObject['kyc_status']);
@@ -519,7 +520,7 @@ class BridgeWebhookController extends Controller
                     if ($oldKycStatus !== $newKycStatus) {
                         $integration->kyc_status = $newKycStatus;
                         $statusUpdated = true;
-                        
+
                         Log::info('Bridge KYC status updated from event_object', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
@@ -530,11 +531,71 @@ class BridgeWebhookController extends Controller
                 }
             }
 
+            // Handle TOS (Terms of Service) status from customer.updated events
+            // Bridge sends has_accepted_terms_of_service or signed_agreement_id when TOS is accepted
+            $hasAcceptedTos = $eventObject['has_accepted_terms_of_service'] ?? false;
+            $signedAgreementId = $eventObject['signed_agreement_id'] ?? null;
+
+            // Check for TOS status in changes
+            if (!empty($changes)) {
+                if (isset($changes['has_accepted_terms_of_service']) && is_array($changes['has_accepted_terms_of_service']) && count($changes['has_accepted_terms_of_service']) >= 2) {
+                    $hasAcceptedTos = $changes['has_accepted_terms_of_service'][1] ?? $hasAcceptedTos;
+                }
+                if (isset($changes['signed_agreement_id']) && is_array($changes['signed_agreement_id']) && count($changes['signed_agreement_id']) >= 2) {
+                    $signedAgreementId = $changes['signed_agreement_id'][1] ?? $signedAgreementId;
+                }
+            }
+
+            // Check endorsements for TOS status
+            $tosAcceptedFromEndorsements = false;
+            if (isset($eventObject['endorsements']) && is_array($eventObject['endorsements'])) {
+                foreach ($eventObject['endorsements'] as $endorsement) {
+                    $complete = $endorsement['complete'] ?? [];
+                    if (!empty($complete)) {
+                        if (in_array('terms_of_service_v1', $complete) || in_array('terms_of_service_v2', $complete)) {
+                            $tosAcceptedFromEndorsements = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Update TOS status if TOS was accepted
+            if ($hasAcceptedTos || $tosAcceptedFromEndorsements || $signedAgreementId) {
+                $oldTosStatus = $integration->tos_status;
+                $newTosStatus = 'accepted';
+
+                if ($oldTosStatus !== $newTosStatus) {
+                    $integration->tos_status = $newTosStatus;
+                    $statusUpdated = true;
+
+                    Log::info('Bridge TOS status updated from customer.updated webhook', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                        'old_status' => $oldTosStatus,
+                        'new_status' => $newTosStatus,
+                        'has_accepted_terms_of_service' => $hasAcceptedTos,
+                        'tos_accepted_from_endorsements' => $tosAcceptedFromEndorsements,
+                        'signed_agreement_id' => $signedAgreementId,
+                    ]);
+                }
+
+                // Store signed_agreement_id in metadata if provided
+                if ($signedAgreementId) {
+                    $metadata = $integration->bridge_metadata ?? [];
+                    if (!is_array($metadata)) {
+                        $metadata = is_string($metadata) ? json_decode($metadata, true) : [];
+                    }
+                    $metadata['signed_agreement_id'] = $signedAgreementId;
+                    $integration->bridge_metadata = $metadata;
+                }
+            }
+
             // Update BridgeKycKybSubmission status if exists
             $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
                 ->where('bridge_customer_id', $customerId)
                 ->first();
-            
+
             if ($submission) {
                 // Map Bridge customer status to submission status
                 $submissionStatus = null;
@@ -543,11 +604,11 @@ class BridgeWebhookController extends Controller
                 } elseif (isset($eventObject['kyc_status'])) {
                     $submissionStatus = $this->normalizeStatus($eventObject['kyc_status']);
                 }
-                
+
                 if ($submissionStatus && in_array($submissionStatus, ['approved', 'rejected', 'under_review', 'awaiting_ubo', 'awaiting_questionnaire', 'incomplete'])) {
                     $submission->submission_status = $submissionStatus;
                     $submission->save();
-                    
+
                     Log::info('Bridge KYB/KYC submission status updated from webhook', [
                         'submission_id' => $submission->id,
                         'new_status' => $submissionStatus,
@@ -568,7 +629,7 @@ class BridgeWebhookController extends Controller
             if ($isBusiness) {
                 $customerStatus = strtolower($eventObject['status'] ?? $status ?? '');
                 $hasApprovedEndorsements = false;
-                
+
                 if (isset($eventObject['endorsements']) && is_array($eventObject['endorsements'])) {
                     foreach ($eventObject['endorsements'] as $endorsement) {
                         if (isset($endorsement['status']) && strtolower($endorsement['status']) === 'approved') {
@@ -577,12 +638,12 @@ class BridgeWebhookController extends Controller
                         }
                     }
                 }
-                
+
                 // If customer is active and has approved endorsements, KYB is approved
                 if ($customerStatus === 'active' && $hasApprovedEndorsements && $integration->kyb_status !== 'approved') {
                     $integration->kyb_status = 'approved';
                     $statusUpdated = true;
-                    
+
                     Log::info('Bridge KYB status set to approved based on active customer status and approved endorsements', [
                         'integration_id' => $integration->id,
                         'customer_id' => $customerId,
@@ -603,7 +664,7 @@ class BridgeWebhookController extends Controller
             $integration->bridge_metadata = $metadata;
 
             $integration->save();
-            
+
             // Refresh integration to ensure we have the latest statuses from database
             $integration->refresh();
 
@@ -612,11 +673,11 @@ class BridgeWebhookController extends Controller
             // For individuals, only kyc_status needs to be approved
             $isApproved = false;
             $isBusiness = $integration->integratable_type === Organization::class;
-            
+
             if ($isBusiness) {
                 // For businesses, ONLY KYB must be approved (not KYC)
                 $isApproved = $integration->kyb_status === 'approved';
-                
+
                 Log::info('Checking if business account is approved for resource creation', [
                     'integration_id' => $integration->id,
                     'customer_id' => $customerId,
@@ -637,7 +698,7 @@ class BridgeWebhookController extends Controller
                     'kyb_status' => $integration->kyb_status,
                     'kyc_status' => $integration->kyc_status,
                 ]);
-                
+
                 // Auto-create wallet, virtual account, card account, and liquidation address when approved
                 $this->createWalletVirtualAccountAndCardAccount($integration, $customerId);
             } else {
@@ -696,7 +757,7 @@ class BridgeWebhookController extends Controller
 
         // Find integration by link_id or customer_id
         $integration = BridgeIntegration::where('kyc_link_id', $linkId)->first();
-        
+
         if (!$integration && $customerId) {
             $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
         }
@@ -738,7 +799,7 @@ class BridgeWebhookController extends Controller
                 if ($newTosStatus) {
                     $integration->tos_status = $newTosStatus;
                     $statusUpdated = true;
-                    
+
                     Log::info('Bridge ToS status transitioned via KYC link webhook', [
                         'integration_id' => $integration->id,
                         'link_id' => $linkId,
@@ -758,7 +819,7 @@ class BridgeWebhookController extends Controller
                 if ($newKycStatus) {
                     $integration->kyc_status = $newKycStatus;
                     $statusUpdated = true;
-                    
+
                     Log::info('Bridge KYC status transitioned via KYC link webhook', [
                         'integration_id' => $integration->id,
                         'link_id' => $linkId,
@@ -772,8 +833,8 @@ class BridgeWebhookController extends Controller
                 $newKycStatus = $this->normalizeStatus($kycStatus);
                 if ($oldKycStatus !== $newKycStatus) {
                     $integration->kyc_status = $newKycStatus;
-                $statusUpdated = true;
-                    
+                    $statusUpdated = true;
+
                     Log::info('Bridge KYC status updated from event_object (KYC link)', [
                         'integration_id' => $integration->id,
                         'link_id' => $linkId,
@@ -782,7 +843,7 @@ class BridgeWebhookController extends Controller
                     ]);
                 }
             }
-            
+
             // Also check for KYB status in event_object (for business customers)
             if (isset($eventObject['kyb_status'])) {
                 $newKybStatus = $this->normalizeStatus($eventObject['kyb_status']);
@@ -791,7 +852,7 @@ class BridgeWebhookController extends Controller
                     if ($oldKybStatus !== $newKybStatus) {
                         $integration->kyb_status = $newKybStatus;
                         $statusUpdated = true;
-                        
+
                         Log::info('Bridge KYB status updated from KYC link event_object', [
                             'integration_id' => $integration->id,
                             'link_id' => $linkId,
@@ -817,13 +878,13 @@ class BridgeWebhookController extends Controller
                 $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
                     ->where('bridge_customer_id', $integration->bridge_customer_id)
                     ->first();
-                
+
                 if ($submission && $kycStatus) {
                     $submissionStatus = $this->normalizeStatus($kycStatus);
                     if (in_array($submissionStatus, ['approved', 'rejected', 'under_review', 'awaiting_ubo', 'awaiting_questionnaire', 'incomplete'])) {
                         $submission->submission_status = $submissionStatus;
                         $submission->save();
-                        
+
                         Log::info('Bridge KYB/KYC submission status updated from KYC link webhook', [
                             'submission_id' => $submission->id,
                             'new_status' => $submissionStatus,
@@ -851,7 +912,7 @@ class BridgeWebhookController extends Controller
             // For individuals, only kyc_status needs to be approved
             $isApproved = false;
             $isBusiness = $integration->integratable_type === Organization::class;
-            
+
             if ($isBusiness) {
                 // For businesses, ONLY KYB must be approved (not KYC)
                 $isApproved = $integration->kyb_status === 'approved';
@@ -901,19 +962,19 @@ class BridgeWebhookController extends Controller
         ]);
 
         // Find transactions by Bridge transfer ID
-        $transactions = Transaction::where(function($query) use ($transferId) {
+        $transactions = Transaction::where(function ($query) use ($transferId) {
             $query->whereJsonContains('meta->bridge_transfer_id', $transferId)
-                  ->orWhereJsonContains('meta->transfer_id', $transferId);
+                ->orWhereJsonContains('meta->transfer_id', $transferId);
         })->get();
 
         if ($transactions->isEmpty()) {
             // Try to find by source/destination wallet IDs from transfer object
             $sourceWalletId = $eventObject['source']['bridge_wallet_id'] ?? null;
             $destinationWalletId = $eventObject['destination']['bridge_wallet_id'] ?? null;
-            
+
             if ($sourceWalletId || $destinationWalletId) {
                 // Try to find transactions by wallet IDs
-                $transactions = Transaction::where(function($query) use ($sourceWalletId, $destinationWalletId) {
+                $transactions = Transaction::where(function ($query) use ($sourceWalletId, $destinationWalletId) {
                     if ($sourceWalletId) {
                         $query->whereJsonContains('meta->bridge_wallet_id', $sourceWalletId);
                     }
@@ -921,7 +982,7 @@ class BridgeWebhookController extends Controller
                         $query->orWhereJsonContains('meta->bridge_wallet_id', $destinationWalletId);
                     }
                 })->where('created_at', '>=', now()->subHours(24)) // Within last 24 hours
-                  ->get();
+                    ->get();
             }
 
             if ($transactions->isEmpty()) {
@@ -976,10 +1037,10 @@ class BridgeWebhookController extends Controller
                         $user = $transaction->user;
                         $amount = (float) $transaction->amount;
                         $fee = (float) ($transaction->fee ?? 0);
-                        
+
                         // Refund amount + fee to sender
                         $user->increment('balance', $amount + $fee);
-                        
+
                         Log::info('Bridge transfer failed/cancelled: Balance refunded to sender', [
                             'user_id' => $user->id,
                             'amount' => $amount,
@@ -993,7 +1054,7 @@ class BridgeWebhookController extends Controller
                         // Remove balance from recipient if transfer failed
                         $user = $transaction->user;
                         $amount = (float) $transaction->amount;
-                        
+
                         // Only deduct if balance was previously added
                         if ($transaction->getOriginal('processed_at')) {
                             $user->decrement('balance', $amount);
@@ -1014,7 +1075,7 @@ class BridgeWebhookController extends Controller
                 $meta['bridge_update_at'] = now()->toIso8601String();
                 $meta['bridge_changes'] = $changes;
                 $meta['bridge_event_type'] = $eventType;
-                
+
                 // Store receipt if available
                 if (isset($eventObject['receipt'])) {
                     $meta['bridge_receipt'] = $eventObject['receipt'];
@@ -1038,6 +1099,8 @@ class BridgeWebhookController extends Controller
                 'mapped_status' => $mappedStatus,
                 'transaction_count' => $transactions->count(),
                 'event_type' => $eventType,
+                'transaction_ids' => $transactions->pluck('id')->toArray(),
+                'transaction_statuses' => $transactions->pluck('status')->unique()->toArray(),
             ]);
         });
     }
@@ -1186,7 +1249,7 @@ class BridgeWebhookController extends Controller
         if ($cardAccountId && $customerId) {
             try {
                 $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-                
+
                 if ($integration) {
                     $cardWallet = CardWallet::where('bridge_integration_id', $integration->id)
                         ->where('bridge_card_account_id', $cardAccountId)
@@ -1296,7 +1359,7 @@ class BridgeWebhookController extends Controller
         if ($cardAccountId && $customerId) {
             try {
                 $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-                
+
                 if ($integration) {
                     $cardWallet = CardWallet::where('bridge_integration_id', $integration->id)
                         ->where('bridge_card_account_id', $cardAccountId)
@@ -1393,7 +1456,7 @@ class BridgeWebhookController extends Controller
         if ($type === 'payment_processed' && $customerId && $amount) {
             try {
                 $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-                
+
                 if ($integration) {
                     $user = $integration->integratable;
                     if ($user && $integration->integratable_type === Organization::class) {
@@ -1402,7 +1465,7 @@ class BridgeWebhookController extends Controller
 
                     if ($user) {
                         $depositAmount = (float) $amount;
-                        
+
                         // Check if transaction already exists
                         $existingTransaction = Transaction::where('user_id', $user->id)
                             ->where('type', 'deposit')
@@ -1470,7 +1533,7 @@ class BridgeWebhookController extends Controller
         if ($walletId && $customerId) {
             try {
                 $integration = BridgeIntegration::where('bridge_customer_id', $customerId)->first();
-                
+
                 if ($integration) {
                     $wallet = BridgeWallet::where('bridge_integration_id', $integration->id)
                         ->where('bridge_wallet_id', $walletId)
@@ -1610,30 +1673,63 @@ class BridgeWebhookController extends Controller
 
     /**
      * Map Bridge transfer state to transaction status
+     * 
+     * Bridge transfer states (per Bridge.xyz API docs):
+     * - awaiting_funds: Transfer is waiting for funds to be deposited
+     * - payment_submitted: Payment has been submitted but not yet processed
+     * - payment_processed: Payment has been processed and completed
+     * - funds_received: Funds have been received
+     * - in_review: Transfer is under review
+     * - completed: Transfer is fully completed
+     * - failed: Transfer failed
+     * - returned: Transfer was returned
+     * - refunded: Transfer was refunded
+     * - cancelled/canceled: Transfer was cancelled
      */
     private function mapBridgeTransferStateToStatus(?string $state): string
     {
         if (!$state) {
+            Log::warning('Bridge transfer state is null, defaulting to pending');
             return 'pending';
         }
 
-        $state = strtolower($state);
+        $state = strtolower(trim($state));
 
         $stateMap = [
+            // Completed states
             'payment_processed' => 'completed',
             'completed' => 'completed',
-            'funds_received' => 'pending',
-            'payment_submitted' => 'pending',
+            'funds_received' => 'completed', // Funds received means transfer is complete
+            
+            // Pending states
             'awaiting_funds' => 'pending',
+            'payment_submitted' => 'pending',
             'in_review' => 'pending',
+            'processing' => 'pending',
+            'pending' => 'pending',
+            
+            // Failed states
             'failed' => 'failed',
             'returned' => 'failed',
             'refunded' => 'failed',
+            'error' => 'failed',
+            
+            // Cancelled states
             'canceled' => 'cancelled',
             'cancelled' => 'cancelled',
         ];
 
-        return $stateMap[$state] ?? 'pending';
+        $mappedStatus = $stateMap[$state] ?? 'pending';
+        
+        // Log unmapped states for debugging
+        if (!isset($stateMap[$state])) {
+            Log::warning('Bridge transfer state not mapped, defaulting to pending', [
+                'state' => $state,
+                'mapped_status' => $mappedStatus,
+            ]);
+        }
+
+        return $mappedStatus;
     }
 
     /**
@@ -1659,21 +1755,21 @@ class BridgeWebhookController extends Controller
     public function createWalletVirtualAccountAndCardAccount(BridgeIntegration $integration, string $customerId, ?string $linkId = null): void
     {
         $customerId = $integration->bridge_customer_id;
-        
+
         if (!$customerId) {
             Log::warning('Cannot create wallet/virtual account/card account: missing customer ID', [
                 'integration_id' => $integration->id,
             ]);
             return;
         }
-        
+
         // Refresh integration to ensure we have the latest statuses from database
         $integration->refresh();
-        
+
         // For business accounts, ONLY kyb_status must be approved (not KYC)
         // For individual accounts, only kyc_status needs to be approved
         $isBusiness = $integration->integratable_type === \App\Models\Organization::class;
-        
+
         Log::info('Checking if account is approved for resource creation', [
             'integration_id' => $integration->id,
             'customer_id' => $customerId,
@@ -1681,7 +1777,7 @@ class BridgeWebhookController extends Controller
             'kyb_status' => $integration->kyb_status,
             'kyc_status' => $integration->kyc_status,
         ]);
-        
+
         if ($isBusiness) {
             // Business account: ONLY KYB status needs to be approved (not KYC)
             if ($integration->kyb_status !== 'approved') {
@@ -1704,7 +1800,7 @@ class BridgeWebhookController extends Controller
                 return;
             }
         }
-        
+
         Log::info('Account is approved - proceeding with resource creation', [
             'integration_id' => $integration->id,
             'customer_id' => $customerId,
@@ -1729,7 +1825,7 @@ class BridgeWebhookController extends Controller
                 if ($walletResult['success'] && isset($walletResult['data'])) {
                     $walletData = $walletResult['data'];
                     $walletId = $walletData['id'] ?? null;
-                    
+
                     // Create wallet record in database
                     $wallet = BridgeWallet::create([
                         'bridge_integration_id' => $integration->id,
@@ -1798,7 +1894,7 @@ class BridgeWebhookController extends Controller
             // Check if virtual account already exists
             $virtualAccountsResult = $this->bridgeService->getVirtualAccounts($customerId);
             $hasVirtualAccount = false;
-            
+
             $existingVirtualAccounts = [];
             if ($virtualAccountsResult['success'] && isset($virtualAccountsResult['data']['data'])) {
                 $existingVirtualAccounts = $virtualAccountsResult['data']['data'];
@@ -1815,7 +1911,7 @@ class BridgeWebhookController extends Controller
                         'currency' => 'usdc',
                         'address' => $this->bridgeService->generateEthereumAddress(), // Auto-generated dummy address
                     ];
-                    
+
                     $virtualAccountResult = $this->bridgeService->createVirtualAccount($customerId, $source, $destination);
                 } elseif ($walletId) {
                     // Production mode with wallet: Create virtual account linked to wallet
@@ -1831,27 +1927,27 @@ class BridgeWebhookController extends Controller
                         'payment_rail' => 'ach_push',
                         'currency' => 'usd',
                     ];
-                    
+
                     $virtualAccountResult = $this->bridgeService->createVirtualAccount($customerId, $source, $destination);
                 }
 
                 if ($virtualAccountResult['success'] && isset($virtualAccountResult['data'])) {
                     $virtualAccountData = $virtualAccountResult['data'];
                     $virtualAccountId = $virtualAccountData['id'] ?? null;
-                    
+
                     // Store virtual account in bridge_wallets table
                     if ($virtualAccountId) {
                         // Check if virtual account already exists in database
                         $existingVirtualAccountWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
                             ->where('virtual_account_id', $virtualAccountId)
                             ->first();
-                        
+
                         if (!$existingVirtualAccountWallet) {
                             // Extract address from virtual account data
                             $virtualAccountAddress = $virtualAccountData['destination']['address'] ?? null;
                             $chain = $virtualAccountData['destination']['payment_rail'] ?? ($this->bridgeService->isSandbox() ? 'ethereum' : 'solana');
-                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdb');
-                            
+                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdc');
+
                             // Create or update bridge_wallets record for virtual account
                             BridgeWallet::updateOrCreate(
                                 [
@@ -1870,7 +1966,7 @@ class BridgeWebhookController extends Controller
                                     'last_balance_sync' => now(),
                                 ]
                             );
-                            
+
                             Log::info('Bridge virtual account stored in bridge_wallets table', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
@@ -1886,7 +1982,7 @@ class BridgeWebhookController extends Controller
                                 'wallet_address' => $virtualAccountData['destination']['address'] ?? $existingVirtualAccountWallet->wallet_address,
                                 'last_balance_sync' => now(),
                             ]);
-                            
+
                             Log::info('Bridge virtual account updated in bridge_wallets table', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
@@ -1894,7 +1990,7 @@ class BridgeWebhookController extends Controller
                             ]);
                         }
                     }
-                    
+
                     Log::info('Bridge virtual account auto-created on approval', [
                         'integration_id' => $integration->id,
                         'customer_id' => $customerId,
@@ -1914,18 +2010,18 @@ class BridgeWebhookController extends Controller
                 if (count($existingVirtualAccounts) > 0) {
                     $virtualAccountData = $existingVirtualAccounts[0];
                     $virtualAccountId = $virtualAccountData['id'] ?? null;
-                    
+
                     if ($virtualAccountId) {
                         $existingVirtualAccountWallet = BridgeWallet::where('bridge_integration_id', $integration->id)
                             ->where('virtual_account_id', $virtualAccountId)
                             ->first();
-                        
+
                         if (!$existingVirtualAccountWallet) {
                             // Store existing virtual account in bridge_wallets table
                             $virtualAccountAddress = $virtualAccountData['destination']['address'] ?? null;
                             $chain = $virtualAccountData['destination']['payment_rail'] ?? ($this->bridgeService->isSandbox() ? 'ethereum' : 'solana');
-                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdb');
-                            
+                            $currency = $virtualAccountData['destination']['currency'] ?? ($this->bridgeService->isSandbox() ? 'usdc' : 'usdc');
+
                             BridgeWallet::updateOrCreate(
                                 [
                                     'bridge_integration_id' => $integration->id,
@@ -1943,7 +2039,7 @@ class BridgeWebhookController extends Controller
                                     'last_balance_sync' => now(),
                                 ]
                             );
-                            
+
                             Log::info('Bridge existing virtual account stored in bridge_wallets table', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
@@ -1953,7 +2049,7 @@ class BridgeWebhookController extends Controller
                         }
                     }
                 }
-                
+
                 Log::info('Bridge virtual account already exists, skipping creation', [
                     'integration_id' => $integration->id,
                     'customer_id' => $customerId,
@@ -1969,13 +2065,59 @@ class BridgeWebhookController extends Controller
         }
 
         // 3. Create Card Account (works in both sandbox and production)
+        // Note: Cards product must be enabled in Bridge dashboard for sandbox
         try {
             // Check if card account already exists in Bridge
             $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
             $existingCardAccount = null;
             $cardAccountData = null;
-            
-            if ($cardAccountsResult['success'] && isset($cardAccountsResult['data']['data'])) {
+            $cardsEnabled = true;
+
+            // Check if cards product is enabled
+            if (!$cardAccountsResult['success']) {
+                $errorMessage = $cardAccountsResult['error'] ?? '';
+                $errorCode = $cardAccountsResult['response']['code'] ?? '';
+
+                // Check if error is about cards not being enabled
+                if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
+                    // Try to enable cards product automatically (only in sandbox)
+                    if ($this->bridgeService->isSandbox()) {
+                        Log::info('Cards product not enabled - attempting to enable automatically', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'environment' => 'sandbox',
+                        ]);
+
+                        $enableResult = $this->bridgeService->enableCardsProduct();
+
+                        if ($enableResult['success']) {
+                            Log::info('Cards product enabled successfully - retrying card account operations', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                            ]);
+
+                            // Retry getting card accounts after enabling
+                            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+                            $cardsEnabled = $cardAccountsResult['success'];
+                        } else {
+                            $cardsEnabled = false;
+                            Log::warning('Failed to enable cards product automatically', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'error' => $enableResult['error'] ?? 'Unknown error',
+                            ]);
+                        }
+                    } else {
+                        // In production, cards must be enabled manually
+                        $cardsEnabled = false;
+                        Log::info('Cards product not enabled for production account - must be enabled manually', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'environment' => 'production',
+                        ]);
+                    }
+                }
+            } elseif ($cardAccountsResult['success'] && isset($cardAccountsResult['data']['data'])) {
                 $cardAccounts = $cardAccountsResult['data']['data'];
                 if (count($cardAccounts) > 0) {
                     // Use the first card account (or primary if available)
@@ -1989,103 +2131,420 @@ class BridgeWebhookController extends Controller
                 ->where('is_primary', true)
                 ->first();
 
-            if (!$existingCardAccount) {
+            // Only proceed with card account creation if cards product is enabled
+            if (!$cardsEnabled) {
+                Log::info('Skipping card account creation - cards product not enabled', [
+                    'integration_id' => $integration->id,
+                    'customer_id' => $customerId,
+                ]);
+            } elseif (!$existingCardAccount) {
                 // Card accounts require date of birth - check appropriately for business vs individual accounts
                 $shouldCreateCardAccount = true;
-                
+
                 if ($isBusiness) {
-                    // For business accounts, check if associated person (control person) has birth_date
-                    $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
-                    $hasAssociatedPersonWithDob = false;
+                    // For business accounts, Bridge requires:
+                    // 1. Business customer must have approved "cards" endorsement
+                    // 2. Associated person (control person) must have: first_name, last_name, and birth_date
                     
-                    if ($associatedPersonsResult['success'] && !empty($associatedPersonsResult['data'])) {
-                        foreach ($associatedPersonsResult['data'] as $associatedPerson) {
-                            if (!empty($associatedPerson['birth_date'] ?? null)) {
-                                $hasAssociatedPersonWithDob = true;
+                    // Check if business customer has cards endorsement
+                    $customerResult = $this->bridgeService->getCustomer($customerId);
+                    $hasCardsEndorsement = false;
+                    
+                    if ($customerResult['success'] && isset($customerResult['data'])) {
+                        $customer = $customerResult['data'];
+                        $endorsements = $customer['endorsements'] ?? [];
+                        
+                        foreach ($endorsements as $endorsement) {
+                            $endorsementName = strtolower($endorsement['name'] ?? '');
+                            $endorsementStatus = strtolower($endorsement['status'] ?? '');
+                            
+                            // Check if cards endorsement exists and is approved
+                            if ($endorsementName === 'cards' && $endorsementStatus === 'approved') {
+                                $hasCardsEndorsement = true;
                                 break;
                             }
                         }
                     }
                     
-                    // If no associated person with DOB, try to get from database and update Bridge
-                    if (!$hasAssociatedPersonWithDob) {
-                        // Get control person from database
-                        $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
-                            ->where('bridge_customer_id', $customerId)
-                            ->first();
+                    if (!$hasCardsEndorsement) {
+                        // Check if cards endorsement exists but is not approved (pending, under_review, etc.)
+                        $cardsEndorsementExists = false;
+                        $cardsEndorsementStatus = null;
                         
-                        if ($submission) {
-                            $controlPerson = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)
-                                ->whereNotNull('birth_date')
-                                ->first();
+                        foreach ($endorsements as $endorsement) {
+                            $endorsementName = strtolower($endorsement['name'] ?? '');
+                            if ($endorsementName === 'cards') {
+                                $cardsEndorsementExists = true;
+                                $cardsEndorsementStatus = strtolower($endorsement['status'] ?? '');
+                                break;
+                            }
+                        }
+                        
+                        // If cards endorsement doesn't exist, request it
+                        if (!$cardsEndorsementExists) {
+                            Log::info('Requesting cards endorsement for business account', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                            ]);
                             
-                            if ($controlPerson && $controlPerson->bridge_associated_person_id) {
-                                // Update associated person in Bridge with birth_date from database
-                                $updateResult = $this->bridgeService->updateAssociatedPerson(
-                                    $customerId,
-                                    $controlPerson->bridge_associated_person_id,
-                                    [
-                                        'birth_date' => $controlPerson->birth_date->format('Y-m-d'),
-                                    ]
-                                );
+                            $endorsementResult = $this->bridgeService->requestEndorsement($customerId, [
+                                'endorsement_type' => 'cards',
+                            ]);
+                            
+                            if ($endorsementResult['success']) {
+                                Log::info('Cards endorsement requested successfully', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'endorsement_data' => $endorsementResult['data'] ?? null,
+                                ]);
+                            } else {
+                                Log::warning('Failed to request cards endorsement', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'error' => $endorsementResult['error'] ?? 'Unknown error',
+                                ]);
+                            }
+                        } else {
+                            Log::info('Cards endorsement exists but not approved yet', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'endorsement_status' => $cardsEndorsementStatus,
+                                'note' => 'Cards endorsement is pending approval. Card account will be created once approved.',
+                            ]);
+                        }
+                        
+                        $shouldCreateCardAccount = false;
+                        Log::info('Skipping card account creation for business account - cards endorsement not approved', [
+                            'integration_id' => $integration->id,
+                            'customer_id' => $customerId,
+                            'endorsement_exists' => $cardsEndorsementExists,
+                            'endorsement_status' => $cardsEndorsementStatus,
+                            'note' => 'Business customer must have approved "cards" endorsement to create card accounts',
+                        ]);
+                    } else {
+                        // Check if associated person (control person) has all required fields
+                        // Bridge requires: first_name, last_name, and birth_date for card account creation
+                        $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
+                        $hasAssociatedPersonWithDob = false;
+                        $hasRequiredFields = false;
+
+                        if ($associatedPersonsResult['success'] && !empty($associatedPersonsResult['data'])) {
+                            foreach ($associatedPersonsResult['data'] as $associatedPerson) {
+                                // Check if associated person has all required fields for card account
+                                $hasBirthDate = !empty($associatedPerson['birth_date'] ?? null);
+                                $hasFirstName = !empty($associatedPerson['first_name'] ?? null);
+                                $hasLastName = !empty($associatedPerson['last_name'] ?? null);
                                 
-                                if ($updateResult['success']) {
+                                if ($hasBirthDate && $hasFirstName && $hasLastName) {
                                     $hasAssociatedPersonWithDob = true;
-                                    Log::info('Updated associated person with birth_date from database', [
-                                        'integration_id' => $integration->id,
-                                        'customer_id' => $customerId,
-                                        'associated_person_id' => $controlPerson->bridge_associated_person_id,
-                                        'birth_date' => $controlPerson->birth_date->format('Y-m-d'),
-                                    ]);
-                                } else {
-                                    Log::warning('Failed to update associated person with birth_date', [
-                                        'integration_id' => $integration->id,
-                                        'customer_id' => $customerId,
-                                        'associated_person_id' => $controlPerson->bridge_associated_person_id,
-                                        'error' => $updateResult['error'] ?? 'Unknown error',
-                                    ]);
+                                    $hasRequiredFields = true;
+                                    break;
+                                } elseif ($hasBirthDate) {
+                                    // Has birth_date but missing first_name or last_name
+                                    $hasAssociatedPersonWithDob = true; // We'll update the missing fields
                                 }
                             }
                         }
-                    }
-                    
-                    if (!$hasAssociatedPersonWithDob) {
-                        $shouldCreateCardAccount = false;
-                        Log::info('Skipping card account creation for business account - no associated person with date of birth', [
-                            'integration_id' => $integration->id,
-                            'customer_id' => $customerId,
-                        ]);
+
+                        // If no associated person with all required fields, try to get from database and update Bridge
+                        // Also update if we have birth_date but missing first_name or last_name
+                        if (!$hasRequiredFields) {
+                            // Get control person from database
+                            $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                                ->where('bridge_customer_id', $customerId)
+                                ->first();
+
+                            $birthDate = null;
+                            $associatedPersonId = null;
+                            $controlPerson = null;
+
+                            if ($submission) {
+                                // First try to get control person from control_persons table
+                                // Get the control person even if birth_date is null, we need first_name and last_name
+                                $controlPerson = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)
+                                    ->whereNotNull('bridge_associated_person_id')
+                                    ->first();
+
+                                if ($controlPerson) {
+                                    $associatedPersonId = $controlPerson->bridge_associated_person_id;
+                                    
+                                    // Get birth_date if available
+                                    if ($controlPerson->birth_date) {
+                                        $birthDate = $controlPerson->birth_date->format('Y-m-d');
+                                    } else {
+                                        // Fallback: Try to get birth_date from submission_data
+                                        if ($submission->submission_data) {
+                                            $submissionData = is_array($submission->submission_data)
+                                                ? $submission->submission_data
+                                                : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+
+                                            // Check for control_person data in submission_data
+                                            $controlPersonData = $submissionData['control_person'] ?? null;
+                                            if ($controlPersonData && isset($controlPersonData['birth_date'])) {
+                                                $birthDateRaw = $controlPersonData['birth_date'];
+
+                                                if (is_string($birthDateRaw)) {
+                                                    try {
+                                                        $birthDateObj = new \DateTime($birthDateRaw);
+                                                        $birthDate = $birthDateObj->format('Y-m-d');
+                                                    } catch (\Exception $e) {
+                                                        Log::warning('Failed to parse birth_date from submission_data for control person', [
+                                                            'integration_id' => $integration->id,
+                                                            'customer_id' => $customerId,
+                                                            'birth_date_string' => $birthDateRaw,
+                                                            'error' => $e->getMessage(),
+                                                        ]);
+                                                    }
+                                                } elseif ($birthDateRaw instanceof \DateTime || $birthDateRaw instanceof \Carbon\Carbon) {
+                                                    $birthDate = $birthDateRaw->format('Y-m-d');
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // If we have associated_person_id and control person, update Bridge with all required fields
+                                // For card accounts, Bridge requires: first_name, last_name, and birth_date on associated person
+                                if ($associatedPersonId && $controlPerson) {
+                                    // Prepare update data with all required fields for card account creation
+                                    $updateData = [];
+                                    
+                                    // Add birth_date if available (required)
+                                    if ($birthDate) {
+                                        $updateData['birth_date'] = $birthDate;
+                                    }
+                                    
+                                    // Add first_name if available (required for card accounts)
+                                    if ($controlPerson->first_name) {
+                                        $updateData['first_name'] = $controlPerson->first_name;
+                                    }
+                                    
+                                    // Add last_name if available (required for card accounts)
+                                    if ($controlPerson->last_name) {
+                                        $updateData['last_name'] = $controlPerson->last_name;
+                                    }
+                                    
+                                    // Only update if we have at least birth_date (minimum requirement)
+                                    if (!empty($updateData) && isset($updateData['birth_date'])) {
+                                        // Update associated person in Bridge with all available required fields
+                                        $updateResult = $this->bridgeService->updateAssociatedPerson(
+                                            $customerId,
+                                            $associatedPersonId,
+                                            $updateData
+                                        );
+
+                                        if ($updateResult['success']) {
+                                            $hasAssociatedPersonWithDob = true;
+                                            
+                                            // Check if we now have all required fields
+                                            if (isset($updateData['first_name']) && isset($updateData['last_name'])) {
+                                                $hasRequiredFields = true;
+                                            }
+                                            
+                                            Log::info('Updated associated person with required fields for card account', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'associated_person_id' => $associatedPersonId,
+                                                'birth_date' => $updateData['birth_date'] ?? null,
+                                                'first_name' => $updateData['first_name'] ?? null,
+                                                'last_name' => $updateData['last_name'] ?? null,
+                                                'has_all_required_fields' => $hasRequiredFields,
+                                                'source' => 'control_persons_table',
+                                            ]);
+                                        } else {
+                                            Log::warning('Failed to update associated person with required fields', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'associated_person_id' => $associatedPersonId,
+                                                'update_data' => $updateData,
+                                                'error' => $updateResult['error'] ?? 'Unknown error',
+                                            ]);
+                                        }
+                                    } else {
+                                        Log::warning('Cannot update associated person - missing birth_date', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'associated_person_id' => $associatedPersonId,
+                                            'has_birth_date' => !empty($birthDate),
+                                            'has_first_name' => !empty($controlPerson->first_name),
+                                            'has_last_name' => !empty($controlPerson->last_name),
+                                        ]);
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Final check: Ensure we have all required fields before creating card account
+                        if (!$hasRequiredFields) {
+                            $shouldCreateCardAccount = false;
+                            Log::info('Skipping card account creation for business account - associated person missing required fields', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                                'has_cards_endorsement' => $hasCardsEndorsement,
+                                'has_associated_person' => $hasAssociatedPersonWithDob,
+                                'has_all_required_fields' => $hasRequiredFields,
+                                'note' => 'Associated person must have first_name, last_name, and birth_date for card account creation',
+                            ]);
+                        }
                     }
                 } else {
                     // For individual accounts, check if customer has date of birth
                     $customerResult = $this->bridgeService->getCustomer($customerId);
                     if ($customerResult['success'] && isset($customerResult['data'])) {
                         $customer = $customerResult['data'];
-                        $hasDateOfBirth = !empty($customer['date_of_birth'] ?? null);
-                        
+                        $hasDateOfBirth = !empty($customer['birth_date'] ?? null);
+
+                        // If Bridge doesn't have birth_date, try to get it from submission_data and update Bridge
                         if (!$hasDateOfBirth) {
+                            // Get submission from bridge_kyc_kyb_submissions table
+                            $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                                ->where('bridge_customer_id', $customerId)
+                                ->where('type', 'kyc') // Individual customer
+                                ->first();
+
+                            $birthDate = null;
+
+                            if ($submission && $submission->submission_data) {
+                                $submissionData = is_array($submission->submission_data)
+                                    ? $submission->submission_data
+                                    : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+
+                                // Get birth_date from submission_data
+                                $birthDate = $submissionData['birth_date'] ?? null;
+
+                                // If birth_date is a string, try to parse it
+                                if ($birthDate && is_string($birthDate)) {
+                                    try {
+                                        $birthDateObj = new \DateTime($birthDate);
+                                        $birthDate = $birthDateObj->format('Y-m-d');
+                                    } catch (\Exception $e) {
+                                        Log::warning('Failed to parse birth_date from submission_data', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'birth_date_string' => $birthDate,
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                        $birthDate = null;
+                                    }
+                                } elseif ($birthDate instanceof \DateTime || $birthDate instanceof \Carbon\Carbon) {
+                                    $birthDate = $birthDate->format('Y-m-d');
+                                }
+                            }
+
+                            if ($birthDate) {
+                                // Update Bridge customer with birth_date from submission_data
+                                $updateResult = $this->bridgeService->updateCustomer($customerId, [
+                                    'birth_date' => $birthDate,
+                                ]);
+
+                                if ($updateResult['success']) {
+                                    $hasDateOfBirth = true;
+                                    Log::info('Updated individual customer with birth_date from submission_data', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'submission_id' => $submission->id ?? null,
+                                        'birth_date' => $birthDate,
+                                    ]);
+                                } else {
+                                    Log::warning('Failed to update individual customer with birth_date from submission_data', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'submission_id' => $submission->id ?? null,
+                                        'birth_date' => $birthDate,
+                                        'error' => $updateResult['error'] ?? 'Unknown error',
+                                    ]);
+                                }
+                            }
+
+                            if (!$hasDateOfBirth) {
+                                $shouldCreateCardAccount = false;
+                                Log::info('Skipping card account creation - customer does not have date of birth on file', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'submission_id' => $submission->id ?? null,
+                                    'has_submission' => $submission ? true : false,
+                                    'has_submission_data' => $submission && $submission->submission_data ? true : false,
+                                    'has_birth_date_in_submission' => isset($submissionData['birth_date']),
+                                ]);
+                            }
+                        }
+                    } else {
+                        // If we can't get customer from Bridge, try to update with submission_data anyway
+                        $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                            ->where('bridge_customer_id', $customerId)
+                            ->where('type', 'kyc') // Individual customer
+                            ->first();
+
+                        $birthDate = null;
+
+                        if ($submission && $submission->submission_data) {
+                            $submissionData = is_array($submission->submission_data)
+                                ? $submission->submission_data
+                                : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+
+                            $birthDate = $submissionData['birth_date'] ?? null;
+
+                            // If birth_date is a string, try to parse it
+                            if ($birthDate && is_string($birthDate)) {
+                                try {
+                                    $birthDateObj = new \DateTime($birthDate);
+                                    $birthDate = $birthDateObj->format('Y-m-d');
+                                } catch (\Exception $e) {
+                                    $birthDate = null;
+                                }
+                            } elseif ($birthDate instanceof \DateTime || $birthDate instanceof \Carbon\Carbon) {
+                                $birthDate = $birthDate->format('Y-m-d');
+                            }
+                        }
+
+                        if ($birthDate) {
+                            // Try to update Bridge customer with birth_date from submission_data
+                            $updateResult = $this->bridgeService->updateCustomer($customerId, [
+                                'birth_date' => $birthDate,
+                            ]);
+
+                            if ($updateResult['success']) {
+                                $hasDateOfBirth = true;
+                                Log::info('Updated individual customer with birth_date from submission_data (customer fetch failed)', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'submission_id' => $submission->id ?? null,
+                                    'birth_date' => $birthDate,
+                                ]);
+                            } else {
+                                $shouldCreateCardAccount = false;
+                                Log::warning('Failed to update individual customer with birth_date from submission_data and could not fetch customer', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'submission_id' => $submission->id ?? null,
+                                    'birth_date' => $birthDate,
+                                    'error' => $updateResult['error'] ?? 'Unknown error',
+                                ]);
+                            }
+                        } else {
                             $shouldCreateCardAccount = false;
-                            Log::info('Skipping card account creation - customer does not have date of birth on file', [
+                            Log::info('Skipping card account creation - cannot get customer from Bridge and no birth_date in submission_data', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
+                                'has_submission' => $submission ? true : false,
                             ]);
                         }
                     }
                 }
-                
+
                 if ($shouldCreateCardAccount) {
                     // Create card account - Bridge.xyz API may auto-create, but we explicitly create it
                     // POST /customers/{customerId}/card_accounts
                     // Determine chain and currency based on environment
                     $isSandbox = $this->bridgeService->isSandbox();
                     $chain = $isSandbox ? 'ethereum' : 'solana';
-                    $currency = $isSandbox ? 'usdc' : 'usdb';
-                    
+                    $currency = $isSandbox ? 'usdc' : 'usdc';
+
                     $cardData = [
                         'chain' => $chain,
                         'currency' => $currency,
                     ];
-                    
+
                     $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
 
                     if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
@@ -2094,9 +2553,55 @@ class BridgeWebhookController extends Controller
                         // Card account creation may fail if not available or already exists
                         // This is acceptable per Bridge.xyz docs
                         $errorMessage = $cardAccountResult['error'] ?? $cardAccountResult['message'] ?? 'Card account may be auto-created';
-                        
-                        // Check if error is about missing date of birth
-                        if (stripos($errorMessage, 'date of birth') !== false) {
+                        $errorCode = $cardAccountResult['response']['code'] ?? '';
+
+                        // Check if error is about cards not being enabled
+                        if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
+                            // Try to enable cards product automatically (only in sandbox)
+                            if ($this->bridgeService->isSandbox()) {
+                                Log::info('Card account creation failed - attempting to enable cards product', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'environment' => 'sandbox',
+                                ]);
+
+                                $enableResult = $this->bridgeService->enableCardsProduct();
+
+                                if ($enableResult['success']) {
+                                    Log::info('Cards product enabled - retrying card account creation', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                    ]);
+
+                                    // Retry creating card account after enabling
+                                    $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+
+                                    if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
+                                        $cardAccountData = $cardAccountResult['data'];
+                                    } else {
+                                        Log::warning('Card account creation still failed after enabling cards product', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'error' => $cardAccountResult['error'] ?? 'Unknown error',
+                                        ]);
+                                    }
+                                } else {
+                                    Log::warning('Failed to enable cards product during card account creation', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'error' => $enableResult['error'] ?? 'Unknown error',
+                                    ]);
+                                }
+                            } else {
+                                Log::info('Card account creation skipped - cards product not enabled in production', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'environment' => 'production',
+                                    'note' => 'Enable cards product in Bridge dashboard to create card accounts',
+                                ]);
+                            }
+                        } elseif (stripos($errorMessage, 'date of birth') !== false) {
+                            // Check if error is about missing date of birth
                             Log::info('Card account creation skipped - customer does not have date of birth', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
@@ -2108,12 +2613,15 @@ class BridgeWebhookController extends Controller
                                 'success' => $cardAccountResult['success'] ?? false,
                                 'message' => $errorMessage,
                             ]);
-                        }
-                        
-                        // Try to fetch card accounts again in case Bridge auto-created it
-                        $retryResult = $this->bridgeService->getCardAccounts($customerId);
-                        if ($retryResult['success'] && isset($retryResult['data']['data']) && count($retryResult['data']['data']) > 0) {
-                            $cardAccountData = $retryResult['data']['data'][0];
+
+                            // Only try to fetch card accounts again if cards are enabled
+                            // (avoiding another error if cards product is not enabled)
+                            if ($cardsEnabled) {
+                                $retryResult = $this->bridgeService->getCardAccounts($customerId);
+                                if ($retryResult['success'] && isset($retryResult['data']['data']) && count($retryResult['data']['data']) > 0) {
+                                    $cardAccountData = $retryResult['data']['data'][0];
+                                }
+                            }
                         }
                     }
                 }
@@ -2122,7 +2630,7 @@ class BridgeWebhookController extends Controller
             // Store card account data in card_wallets table if we have data and it doesn't exist
             if ($cardAccountData && !$existingCardWallet) {
                 $cardAccountId = $cardAccountData['id'] ?? null;
-                
+
                 if ($cardAccountId) {
                     // Extract card information from Bridge response
                     $cardNumber = $cardAccountData['card_number'] ?? $cardAccountData['last_four'] ?? null;
@@ -2165,7 +2673,7 @@ class BridgeWebhookController extends Controller
                 // Update existing card wallet if we have new data
                 if ($cardAccountData) {
                     $cardAccountId = $cardAccountData['id'] ?? null;
-                    
+
                     // Only update if we have the same card account ID or if it's missing
                     if (!$existingCardWallet->bridge_card_account_id || $existingCardWallet->bridge_card_account_id === $cardAccountId) {
                         $existingCardWallet->update([
@@ -2198,13 +2706,13 @@ class BridgeWebhookController extends Controller
                 ]);
             }
         } catch (\Exception $e) {
-                    Log::error('Exception while auto-creating Bridge card account on approval', [
-                        'integration_id' => $integration->id,
-                        'customer_id' => $customerId,
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString(),
-                    ]);
-                }
+            Log::error('Exception while auto-creating Bridge card account on approval', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+        }
 
         // 4. Create Liquidation Addresses for crypto deposits (works in both sandbox and production)
         // Create common liquidation addresses: USDC on Solana and Ethereum
@@ -2212,7 +2720,7 @@ class BridgeWebhookController extends Controller
             // Get primary wallet address (for production) or use virtual account address (for sandbox)
             $destinationAddress = null;
             $destinationPaymentRail = null;
-            
+
             if ($existingWallet && $existingWallet->wallet_address) {
                 // Production: Use wallet address
                 $destinationAddress = $existingWallet->wallet_address;
@@ -2238,7 +2746,7 @@ class BridgeWebhookController extends Controller
 
                 // Determine liquidation address configurations based on environment
                 $isSandbox = $this->bridgeService->isSandbox();
-                
+
                 if ($isSandbox) {
                     // Sandbox: Only create Ethereum liquidation addresses (per Bridge.xyz docs)
                     // Sandbox uses Ethereum payment rail with USDC currency
@@ -2248,8 +2756,8 @@ class BridgeWebhookController extends Controller
                 } else {
                     // Production: Create liquidation addresses for common chains
                     $liquidationConfigs = [
-                        ['chain' => 'solana', 'currency' => 'usdc', 'destination_payment_rail' => 'solana', 'destination_currency' => 'usdb'],
-                        ['chain' => 'ethereum', 'currency' => 'usdc', 'destination_payment_rail' => 'ethereum', 'destination_currency' => 'usdb'],
+                        ['chain' => 'solana', 'currency' => 'usdc', 'destination_payment_rail' => 'solana', 'destination_currency' => 'usdc'],
+                        ['chain' => 'ethereum', 'currency' => 'usdc', 'destination_payment_rail' => 'ethereum', 'destination_currency' => 'usdc'],
                     ];
                 }
 
@@ -2274,7 +2782,7 @@ class BridgeWebhookController extends Controller
 
                             if ($liquidationResult['success'] && isset($liquidationResult['data'])) {
                                 $liquidationData = $liquidationResult['data'];
-                                
+
                                 // Store liquidation address in database
                                 LiquidationAddress::updateOrCreate(
                                     [
@@ -2409,7 +2917,7 @@ class BridgeWebhookController extends Controller
                 $submissions = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
                     ->where('bridge_customer_id', $customerId)
                     ->get();
-                
+
                 foreach ($submissions as $submission) {
                     // Update submission status to indicate customer was deleted
                     $submissionData = $submission->submission_data ?? [];
@@ -2429,7 +2937,7 @@ class BridgeWebhookController extends Controller
                     'customer_id' => $customerId,
                     'submission_count' => $submissions->count(),
                 ]);
-                
+
                 // Note: control_persons and associated_persons are kept (cascade delete would remove them if we deleted submissions)
                 // verification_documents are also kept for audit trail
 
@@ -2447,7 +2955,7 @@ class BridgeWebhookController extends Controller
                 $integration->kyc_link_url = null;
                 $integration->kyb_link_url = null;
                 $integration->kyc_link_id = null; // Clear KYC link ID if exists
-                
+
                 // Update metadata to record deletion
                 $metadata = $integration->bridge_metadata ?? [];
                 if (is_string($metadata)) {
@@ -2457,7 +2965,7 @@ class BridgeWebhookController extends Controller
                 $metadata['customer_deleted_at'] = now()->toIso8601String();
                 $metadata['deleted_customer_id'] = $customerId;
                 $integration->bridge_metadata = $metadata;
-                
+
                 $integration->save();
 
                 Log::info('Cleared Bridge customer data from integration', [
@@ -2473,7 +2981,6 @@ class BridgeWebhookController extends Controller
                     'deleted_liquidation_addresses' => $deletedLiquidationAddresses,
                     'updated_submissions' => $submissions->count(),
                 ]);
-
             } catch (\Exception $e) {
                 Log::error('Exception while processing Bridge customer deletion', [
                     'integration_id' => $integration->id,

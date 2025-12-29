@@ -367,10 +367,12 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
     Route::post('/bridge/external-account', [App\Http\Controllers\BridgeWalletController::class, 'createExternalAccount'])->name('bridge.external-account.create');
     Route::get('/bridge/external-accounts', [App\Http\Controllers\BridgeWalletController::class, 'getExternalAccounts'])->name('bridge.external-accounts');
     Route::post('/bridge/transfer-from-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferFromExternalAccount'])->name('bridge.transfer-from-external');
+    Route::post('/bridge/transfer-to-external', [App\Http\Controllers\BridgeWalletController::class, 'createTransferToExternalAccount'])->name('bridge.transfer-to-external');
     Route::get('/bridge/deposit-instructions', [App\Http\Controllers\BridgeWalletController::class, 'getDepositInstructions'])->name('bridge.deposit-instructions');
     Route::get('/bridge/deposit-qr-code', [App\Http\Controllers\BridgeWalletController::class, 'getDepositQrCode'])->name('bridge.deposit-qr-code');
 
     // Card Account Routes
+    Route::get('/bridge/card-account', [App\Http\Controllers\BridgeWalletController::class, 'getCardAccount'])->name('bridge.card-account.get');
     Route::post('/bridge/card-account', [App\Http\Controllers\BridgeWalletController::class, 'createCardAccount'])->name('bridge.card-account.create');
 
     // Liquidation Address Routes (for crypto deposits)

@@ -1,6 +1,6 @@
 // Shared types for wallet components
 
-export type ActionView = 'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external'
+export type ActionView = 'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external' | 'withdraw_to_external' | 'virtual_card'
 export type ActiveTab = 'account' | 'activity'
 export type SuccessType = 'send' | 'receive' | 'swap' | 'addMoney' | null
 export type PaymentMethod = 'ach' | 'wire'

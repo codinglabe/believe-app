@@ -23,7 +23,10 @@ import {
     ConnectWallet,
     CreateWallet,
     ExternalAccounts,
+    AddBankAccount,
     TransferFromExternal,
+    WithdrawToExternal,
+    VirtualCard,
     KYCForm,
     KYBForm,
     SplashScreen,
@@ -68,7 +71,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
     const [copied, setCopied] = useState(false)
     const [activeTab, setActiveTab] = useState<'account' | 'activity'>('account')
-    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external'>('main')
+    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external' | 'withdraw_to_external' | 'virtual_card'>('main')
     const [externalAccounts, setExternalAccounts] = useState<Array<{
         id: string;
         account_number: string;
@@ -79,6 +82,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     }>>([])
     const [isLoadingExternalAccounts, setIsLoadingExternalAccounts] = useState(false)
     const [transferAmount, setTransferAmount] = useState('')
+    const [withdrawAmount, setWithdrawAmount] = useState('')
     const [selectedExternalAccount, setSelectedExternalAccount] = useState<string>('')
     const [sendAmount, setSendAmount] = useState('')
     const [addMoneyAmount, setAddMoneyAmount] = useState('')
@@ -465,11 +469,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     const previousStep = kybStep
 
                     // CRITICAL: Check has_control_person FIRST - this is the source of truth
-                    console.log('KYB Step Check:', {
-                        has_control_person: statusData.has_control_person,
-                        kyb_step: statusData.kyb_step,
-                        controlPersonSubmitted: controlPersonSubmitted,
-                    })
 
                     if (statusData.has_control_person) {
                         // Control person EXISTS in database - set state immediately
@@ -495,17 +494,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     controlPersonFields.includes(field) || field.startsWith('control_person.')
                                 )
 
-                            console.log('Control person exists but step is/was control_person', {
-                                backend_step: statusData.kyb_step,
-                                current_step: kybStep,
-                                hasRejectedDocs,
-                                hasRequestedFields,
-                                hasControlPersonRequestedFields,
-                            })
-
                             // If rejected docs OR requested fields for control_person, stay on control_person step
                             if (hasRejectedDocs || hasControlPersonRequestedFields) {
-                                console.log('Control person exists but has rejected docs or requested fields for control_person - staying on control_person for re-upload')
                                 setKybStep('control_person')
                                 setControlPersonSubmitted(false) // Show form for re-upload
                                 return // Exit early
@@ -1050,9 +1040,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [])
 
-    // Fetch wallet activity when Activity tab is active
+    // Fetch wallet activity when main view is active
     useEffect(() => {
-        if (!isOpen || activeTab !== 'activity') return
+        if (!isOpen || actionView !== 'main') return
 
         const fetchActivities = async (page: number = 1, append: boolean = false) => {
             if (append) {
@@ -1096,11 +1086,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
         }
 
-        // Reset and fetch first page when tab is opened
+        // Reset and fetch first page when main view is shown
         setCurrentPage(1)
         setHasMoreActivities(false)
         fetchActivities(1, false)
-    }, [isOpen, activeTab])
+    }, [isOpen, actionView])
 
     // Handle scroll to load more activities
     const handleActivityScroll = (e: React.UIEvent<HTMLDivElement>) => {
@@ -1170,7 +1160,27 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
             const data = await response.json()
             if (data.success && data.data) {
-                setExternalAccounts(Array.isArray(data.data) ? data.data : [])
+                // Handle nested structure: { success: true, data: { count: X, data: [...] } }
+                let accounts = []
+                if (Array.isArray(data.data)) {
+                    // Direct array
+                    accounts = data.data
+                } else if (data.data && Array.isArray(data.data.data)) {
+                    // Nested structure: data.data.data
+                    accounts = data.data.data
+                }
+                
+                // Map to frontend format if needed
+                accounts = accounts.map((account: any) => ({
+                    id: account.id || '',
+                    account_number: account.account?.last_4 || account.last_4 || '0000',
+                    routing_number: account.account?.routing_number || '',
+                    account_type: account.account?.checking_or_savings || 'checking',
+                    account_holder_name: account.account_name || account.account_owner_name || '',
+                    status: account.active ? 'verified' : 'pending',
+                }))
+                
+                setExternalAccounts(accounts)
             } else {
                 setExternalAccounts([])
             }
@@ -1188,6 +1198,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         account_number: string;
         account_type: 'checking' | 'savings';
         account_holder_name: string;
+        bank_name: string;
+        first_name: string;
+        last_name: string;
+        street_line_1: string;
+        city: string;
+        state: string;
+        postal_code: string;
+        country: string;
     }) => {
         setIsLoading(true)
         try {
@@ -1295,6 +1313,89 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         } catch (error) {
             console.error('Failed to transfer from external account:', error)
             showErrorToast('Failed to initiate transfer. Please try again.')
+        } finally {
+            setIsLoading(false)
+        }
+    }
+
+    // Withdraw to external account
+    const handleWithdrawToExternal = async () => {
+        if (!selectedExternalAccount || !withdrawAmount || parseFloat(withdrawAmount) <= 0) {
+            showErrorToast('Please select an account and enter a valid amount')
+            return
+        }
+
+        if (!hasWallet) {
+            showErrorToast('Wallet is required for withdrawals')
+            return
+        }
+
+        if (walletBalance === null || parseFloat(withdrawAmount) > walletBalance) {
+            showErrorToast('Insufficient balance for withdrawal')
+            return
+        }
+
+        setIsLoading(true)
+        try {
+            // Get wallet ID from status
+            let walletId = null
+            if (bridgeInitialized) {
+                const statusResponse = await fetch('/wallet/bridge/status', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': getCsrfToken(),
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-store',
+                })
+
+                if (statusResponse.ok) {
+                    const statusData = await statusResponse.json()
+                    if (statusData.success && statusData.wallet_id) {
+                        walletId = statusData.wallet_id
+                    }
+                }
+            }
+
+            if (!walletId) {
+                showErrorToast('Wallet not found. Please create a wallet first.')
+                return
+            }
+
+            const response = await fetch('/wallet/bridge/transfer-to-external', {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+                body: JSON.stringify({
+                    external_account_id: selectedExternalAccount,
+                    wallet_id: walletId,
+                    amount: parseFloat(withdrawAmount),
+                    currency: 'USD',
+                    payment_rail: 'ach', // Default to ACH, can be made configurable
+                }),
+            })
+
+            const data = await response.json()
+            if (data.success) {
+                showSuccessToast('Withdrawal initiated successfully!')
+                setWithdrawAmount('')
+                setSelectedExternalAccount('')
+                setActionView('main')
+                await checkBridgeAndFetchBalance()
+            } else {
+                showErrorToast(data.message || 'Failed to initiate withdrawal')
+            }
+        } catch (error) {
+            console.error('Failed to withdraw to external account:', error)
+            showErrorToast('Failed to initiate withdrawal. Please try again.')
         } finally {
             setIsLoading(false)
         }
@@ -1429,8 +1530,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     // Non-critical errors, wallet creation was successful
                 }
 
-                // Ensure we're showing the wallet screen by switching to account tab
-                setActiveTab('account')
+                // Ensure we're showing the wallet screen by switching to main view
                 setActionView('main')
             } else {
                 showErrorToast(data.message || 'Failed to create wallet/virtual account')
@@ -1558,12 +1658,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 // Load KYB step progress from backend
                 if (statusData.kyb_step && statusData.verification_type === 'kyb') {
                     // CRITICAL: Check has_control_person FIRST - same logic as checkBridgeAndFetchBalance
-                    console.log('handleConnectWallet - KYB Step Check:', {
-                        has_control_person: statusData.has_control_person,
-                        kyb_step: statusData.kyb_step,
-                        current_kybStep: kybStep,
-                    })
-
                     if (statusData.has_control_person) {
                         // Control person EXISTS in database - set state immediately
                         setControlPersonSubmitted(true)
@@ -2707,6 +2801,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
     // Fetch deposit instructions when addMoney view is shown - always fetch fresh (no cache)
     useEffect(() => {
+        if (actionView === 'external_accounts') {
+            fetchExternalAccounts()
+        }
+    }, [actionView])
+
+    useEffect(() => {
         if (actionView === 'addMoney') {
             const fetchDepositInstructions = async () => {
                 setIsLoadingDepositInstructions(true)
@@ -2854,7 +2954,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             setShowSuccess(true)
 
             // Refresh activities to show the new transaction
-            if (activeTab === 'activity') {
+            if (actionView === 'main') {
                 try {
                     const activityResponse = await fetch(`/wallet/activity?page=1&per_page=5&t=${Date.now()}`, {
                         method: 'GET',
@@ -3111,7 +3211,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 actionView === 'swap' ? 'Swap' :
                                                     actionView === 'addMoney' ? 'Deposit' :
                                                         actionView === 'external_accounts' ? 'Bank Accounts' :
-                                                            actionView === 'transfer_from_external' ? 'Transfer from Bank' : 'Account'}
+                                                            actionView === 'transfer_from_external' ? 'Transfer from Bank' :
+                                                                actionView === 'withdraw_to_external' ? 'Withdraw to Bank' :
+                                                                actionView === 'virtual_card' ? 'Virtual Card' : 'Account'}
                                     </span>
                                 </div>
                                 <button
@@ -3133,76 +3235,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             )}
                         </div>
 
-                        {/* Tabs - Rounded animated style - Only show on main view */}
-                        {actionView === 'main' && (
-                            <div className="relative flex gap-2 p-1 bg-muted/30 mx-4 mt-2 rounded-lg">
-                                {/* Animated background indicator */}
-                                <motion.div
-                                    className="absolute inset-y-1 rounded-md bg-gradient-to-r from-purple-600 to-blue-600 shadow-md"
-                                    initial={false}
-                                    animate={{
-                                        x: activeTab === 'account' ? 0 : '100%',
-                                    }}
-                                    transition={{
-                                        type: 'spring',
-                                        stiffness: 300,
-                                        damping: 30,
-                                    }}
-                                    style={{
-                                        width: 'calc(50% - 0.25rem)',
-                                    }}
-                                />
-
-                                <motion.button
-                                    onClick={() => setActiveTab('account')}
-                                    className={`relative flex-1 px-4 py-2.5 text-sm font-medium rounded-md z-10 ${activeTab === 'account'
-                                            ? 'text-white'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
-                                    <motion.span
-                                        animate={{
-                                            scale: activeTab === 'account' ? 1.05 : 1,
-                                        }}
-                                        transition={{
-                                            type: 'spring',
-                                            stiffness: 400,
-                                            damping: 25,
-                                        }}
-                                        className="flex items-center justify-center gap-1.5"
-                                    >
-                                        Account
-                                    </motion.span>
-                                </motion.button>
-
-                                <motion.button
-                                    onClick={() => setActiveTab('activity')}
-                                    className={`relative flex-1 px-4 py-2.5 text-sm font-medium rounded-md z-10 ${activeTab === 'activity'
-                                            ? 'text-white'
-                                            : 'text-muted-foreground hover:text-foreground'
-                                        }`}
-                                    whileHover={{ scale: 1.02 }}
-                                    whileTap={{ scale: 0.98 }}
-                                >
-                                    <motion.span
-                                        animate={{
-                                            scale: activeTab === 'activity' ? 1.05 : 1,
-                                        }}
-                                        transition={{
-                                            type: 'spring',
-                                            stiffness: 400,
-                                            damping: 25,
-                                        }}
-                                        className="flex items-center justify-center gap-1.5"
-                                    >
-                                        <Activity className="h-4 w-4" />
-                                        Activity
-                                    </motion.span>
-                                </motion.button>
-                            </div>
-                        )}
 
                         {/* Content */}
                         <div className="flex-1 overflow-y-auto overflow-x-hidden relative flex flex-col min-h-0 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
@@ -3230,7 +3262,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                     </AnimatePresence>
 
                                     {/* Balance Display - Show at top for all action views */}
-                                    {(actionView === 'send' || actionView === 'receive' || actionView === 'swap' || actionView === 'addMoney' || actionView === 'transfer_from_external') && !showSuccess && (
+                                    {(actionView === 'send' || actionView === 'receive' || actionView === 'swap' || actionView === 'addMoney' || actionView === 'transfer_from_external' || actionView === 'withdraw_to_external') && !showSuccess && (
                                         walletBalance === null && isLoading ? (
                                             <BalanceSkeleton />
                                         ) : (
@@ -3306,6 +3338,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 isLoading={isLoadingExternalAccounts}
                                                 onRefresh={fetchExternalAccounts}
                                                 onLinkAccount={handleLinkExternalAccount}
+                                                onWithdraw={() => {
+                                                    setActionView('withdraw_to_external')
+                                                    setSelectedExternalAccount('')
+                                                    setWithdrawAmount('')
+                                                }}
                                             />
                                         )
                                     ) : !showSuccess && actionView === 'transfer_from_external' ? (
@@ -3318,6 +3355,26 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             onAccountChange={setSelectedExternalAccount}
                                             onAmountChange={setTransferAmount}
                                             onTransfer={handleTransferFromExternal}
+                                        />
+                                    ) : !showSuccess && actionView === 'withdraw_to_external' ? (
+                                        <WithdrawToExternal
+                                            key="withdraw-to-external"
+                                            externalAccounts={externalAccounts}
+                                            selectedExternalAccount={selectedExternalAccount}
+                                            withdrawAmount={withdrawAmount}
+                                            walletBalance={walletBalance}
+                                            isLoading={isLoading}
+                                            onAccountChange={setSelectedExternalAccount}
+                                            onAmountChange={setWithdrawAmount}
+                                            onWithdraw={handleWithdrawToExternal}
+                                        />
+                                    ) : !showSuccess && actionView === 'virtual_card' ? (
+                                        <VirtualCard
+                                            cardNumber="4532 •••• •••• 1234"
+                                            cardholderName={auth?.user?.name?.toUpperCase() || 'CARDHOLDER'}
+                                            expiryDate="12/25"
+                                            cvv="123"
+                                            onBack={() => setActionView('main')}
                                         />
                                     ) : !showSuccess && actionView === 'receive' ? (
                                         isLoadingReceiveData ? (
@@ -3354,7 +3411,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 onPaymentMethodChange={setSelectedPaymentMethod}
                                             />
                                         )
-                                    ) : activeTab === 'account' ? (
+                                    ) : actionView === 'main' ? (
                                         (() => {
                                             // Show skeleton while initial loading
                                             if (isInitialLoading || (isLoading && walletBalance === null && walletAddress === null)) {
@@ -6048,29 +6105,25 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                         </div>
                                                     </div>
                                                 )}
-
-                                                {/* Network/Status */}
-                                                <div className="flex items-center justify-between p-2 text-xs">
-                                                    <span className="text-muted-foreground">Network</span>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <div className="h-2 w-2 bg-green-500 rounded-full"></div>
-                                                        <span className="font-medium">Organization Wallet</span>
-                                                    </div>
-                                                </div>
                                             </div>
                                         )
-                                    ) : (
-                                        isLoadingActivities && activities.length === 0 ? (
-                                            <ActivitySkeleton />
-                                        ) : (
-                                            <ActivityList
-                                                activities={activities}
-                                                isLoading={isLoadingActivities}
-                                                hasMore={hasMoreActivities}
-                                                isLoadingMore={isLoadingMore}
-                                                onScroll={handleActivityScroll}
-                                            />
-                                        )
+                                    ) : null}
+
+                                    {/* Activity - Always show at bottom when on main view */}
+                                    {actionView === 'main' && (
+                                        <div>
+                                            {isLoadingActivities && activities.length === 0 ? (
+                                                <ActivitySkeleton />
+                                            ) : (
+                                                <ActivityList
+                                                    activities={activities}
+                                                    isLoading={isLoadingActivities}
+                                                    hasMore={hasMoreActivities}
+                                                    isLoadingMore={isLoadingMore}
+                                                    onScroll={handleActivityScroll}
+                                                />
+                                            )}
+                                        </div>
                                     )}
                                 </motion.div>
                             )}

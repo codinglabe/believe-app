@@ -14,6 +14,7 @@ use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 
 class DeleteBridgeData extends Command
 {
@@ -34,7 +35,7 @@ class DeleteBridgeData extends Command
      *
      * @var string
      */
-    protected $description = 'Delete Bridge-related data from multiple tables (associated_persons, control_persons, bridge_integrations, bridge_kyc_kyb_submissions, bridge_wallets, verification_documents, liquidation_addresses)';
+    protected $description = 'Delete Bridge-related data from multiple tables and their associated files from storage (associated_persons, control_persons, bridge_integrations, bridge_kyc_kyb_submissions, bridge_wallets, verification_documents, liquidation_addresses)';
 
     /**
      * Execute the console command.
@@ -173,7 +174,34 @@ class DeleteBridgeData extends Command
                     $this->info('  Truncating control_persons...');
                     DB::table('control_persons')->truncate();
                     
-                    $this->info('  Truncating verification_documents...');
+                    $this->info('  Deleting verification_documents and their files...');
+                    // Get all file paths before truncating
+                    $verificationDocs = DB::table('verification_documents')->select('file_path')->whereNotNull('file_path')->get();
+                    
+                    // Delete physical files
+                    $deletedFiles = 0;
+                    foreach ($verificationDocs as $doc) {
+                        if ($doc->file_path) {
+                            try {
+                                $fullPath = 'public/' . $doc->file_path;
+                                if (Storage::exists($fullPath)) {
+                                    Storage::delete($fullPath);
+                                    $deletedFiles++;
+                                }
+                            } catch (\Exception $e) {
+                                Log::warning('Failed to delete verification document file during truncate', [
+                                    'file_path' => $doc->file_path,
+                                    'error' => $e->getMessage(),
+                                ]);
+                            }
+                        }
+                    }
+                    
+                    if ($deletedFiles > 0) {
+                        $this->info("    Deleted {$deletedFiles} file(s) from storage");
+                    }
+                    
+                    // Now truncate the table
                     DB::table('verification_documents')->truncate();
                     
                     $this->info('  Truncating bridge_kyc_kyb_submissions...');
@@ -227,10 +255,33 @@ class DeleteBridgeData extends Command
                         }
 
                         // 3. Delete verification_documents (references bridge_kyc_kyb_submissions)
+                        // Also delete the physical files from storage
                         if (!empty($submissionIds)) {
+                            $verificationDocs = VerificationDocument::whereIn('bridge_kyc_kyb_submission_id', $submissionIds)->get();
+                            
+                            // Delete physical files before deleting database records
+                            foreach ($verificationDocs as $doc) {
+                                if ($doc->file_path) {
+                                    try {
+                                        // Delete from storage (file_path is relative to storage/app/public)
+                                        $fullPath = 'public/' . $doc->file_path;
+                                        if (Storage::exists($fullPath)) {
+                                            Storage::delete($fullPath);
+                                            $this->line("    Deleted file: {$doc->file_path}");
+                                        }
+                                    } catch (\Exception $e) {
+                                        $this->warn("    Warning: Could not delete file {$doc->file_path}: " . $e->getMessage());
+                                        Log::warning('Failed to delete verification document file', [
+                                            'file_path' => $doc->file_path,
+                                            'error' => $e->getMessage(),
+                                        ]);
+                                    }
+                                }
+                            }
+                            
                             $deletedDocs = VerificationDocument::whereIn('bridge_kyc_kyb_submission_id', $submissionIds)->delete();
                             $deletedCounts['verification_documents'] += $deletedDocs;
-                            $this->info("  Deleted {$deletedDocs} verification document(s)");
+                            $this->info("  Deleted {$deletedDocs} verification document(s) and their files");
                         }
 
                         // 4. Delete bridge_kyc_kyb_submissions (references bridge_integrations)

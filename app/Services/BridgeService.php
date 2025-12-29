@@ -24,7 +24,7 @@ class BridgeService
     {
         // Load credentials from database first, then fall back to env
         $bridgeConfig = PaymentMethod::getConfig('bridge');
-        
+
         // Determine environment
         if ($environment !== null) {
             $this->environment = trim(strtolower($environment));
@@ -96,6 +96,16 @@ class BridgeService
     }
 
     /**
+     * Get the current environment
+     * 
+     * @return string
+     */
+    public function getEnvironment(): string
+    {
+        return $this->environment;
+    }
+
+    /**
      * Make authenticated request to Bridge API
      * 
      * @param string $method HTTP method (GET, POST, PUT, DELETE)
@@ -119,16 +129,21 @@ class BridgeService
 
             $headers = [
                 'Api-Key' => $this->apiKey,
-                'Content-Type' => 'application/json',
                 'Accept' => 'application/json',
             ];
+
+            // Only set Content-Type for requests that have a body (POST, PUT, PATCH, DELETE with body)
+            // GET requests should not have Content-Type: application/json as they don't have a body
+            if (strtoupper($method) !== 'GET') {
+                $headers['Content-Type'] = 'application/json';
+            }
 
             // Add Idempotency-Key for POST requests (required by Bridge API)
             // This ensures duplicate requests are handled safely
             if ($useIdempotency || strtoupper($method) === 'POST') {
                 $idempotencyKey = $customIdempotencyKey ?? Str::uuid()->toString();
                 $headers['Idempotency-Key'] = $idempotencyKey;
-                
+
                 Log::debug('Bridge API Request with Idempotency Key', [
                     'method' => $method,
                     'url' => $url,
@@ -142,11 +157,28 @@ class BridgeService
                 'data' => $data, // Log the data being sent for debugging
             ]);
 
-            $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
+            // For GET requests, use query parameters instead of body
+            // GET requests should not have a request body
+            if (strtoupper($method) === 'GET') {
+                // Build HTTP client - explicitly don't set Content-Type for GET
+                $httpClient = Http::withHeaders($headers);
+
+                // For GET requests with query parameters
+                if (!empty($data)) {
+                    // Laravel's HTTP client automatically uses data as query parameters for GET
+                    $response = $httpClient->get($url, $data);
+                } else {
+                    // No data - make pure GET request with no body and no query params
+                    $response = $httpClient->get($url);
+                }
+            } else {
+                // For POST, PUT, DELETE, etc., send data as JSON body
+                $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
+            }
 
             $statusCode = $response->status();
             $body = $response->json();
-            
+
             // Log response for debugging (especially for GET requests)
             if (strtoupper($method) === 'GET' && strpos($endpoint, 'virtual_accounts') !== false) {
                 Log::info('Bridge API Virtual Accounts Response', [
@@ -251,6 +283,20 @@ class BridgeService
     }
 
     /**
+     * Request an endorsement for a customer
+     * 
+     * Per Bridge.xyz API docs: POST /customers/{customerId}/endorsements
+     * 
+     * @param string $customerId Bridge customer ID
+     * @param array $endorsementData Endorsement data (e.g., ['endorsement_type' => 'cards'])
+     * @return array Response with endorsement data or error
+     */
+    public function requestEndorsement(string $customerId, array $endorsementData): array
+    {
+        return $this->makeRequest('POST', "/customers/{$customerId}/endorsements", $endorsementData);
+    }
+
+    /**
      * Get Terms of Service link for a customer
      * 
      * @param string $email Customer email
@@ -260,21 +306,21 @@ class BridgeService
     public function getTosLink(string $email, ?string $redirectUri = null): array
     {
         $data = ['email' => $email];
-        
+
         Log::info('Bridge Service: getTosLink called', [
             'email' => $email,
             'redirect_uri' => $redirectUri ?? 'null (not provided)',
             'request_data' => $data,
         ]);
-        
+
         $result = $this->makeRequest('POST', '/customers/tos_links', $data);
-        
+
         // Append redirect_uri if provided
         if ($result['success'] && $redirectUri && isset($result['data']['url'])) {
             $urlBefore = $result['data']['url'];
             $separator = strpos($result['data']['url'], '?') !== false ? '&' : '?';
             $result['data']['url'] .= $separator . 'redirect_uri=' . urlencode($redirectUri);
-            
+
             Log::info('Bridge Service: Added redirect_uri to TOS URL', [
                 'url_before' => $urlBefore,
                 'url_after' => $result['data']['url'],
@@ -288,7 +334,7 @@ class BridgeService
                 'tos_url' => $result['data']['url'] ?? 'N/A',
             ]);
         }
-        
+
         return $result;
     }
 
@@ -326,14 +372,14 @@ class BridgeService
         // But we can also try a dedicated endpoint if Bridge has one
         // For now, we'll get them from the customer data
         $customerResult = $this->getCustomer($customerId);
-        
+
         if ($customerResult['success'] && isset($customerResult['data']['associated_persons'])) {
             return [
                 'success' => true,
                 'data' => $customerResult['data']['associated_persons'],
             ];
         }
-        
+
         return [
             'success' => true,
             'data' => [],
@@ -382,18 +428,18 @@ class BridgeService
     {
         // POST /v0/kyc_links with full_name, email, type
         $result = $this->makeRequest('POST', '/kyc_links', $data);
-        
+
         // Handle duplicate_record error - Bridge returns existing KYC link in the response
         if (!$result['success'] && isset($result['response']['code']) && $result['response']['code'] === 'duplicate_record') {
             $existingLink = $result['response']['existing_kyc_link'] ?? null;
-            
+
             if ($existingLink) {
                 Log::info('Bridge KYC Link already exists, using existing link', [
                     'kyc_link_id' => $existingLink['id'] ?? null,
                     'customer_id' => $existingLink['customer_id'] ?? null,
                     'email' => $existingLink['email'] ?? null,
                 ]);
-                
+
                 // Return as success with the existing link data
                 return [
                     'success' => true,
@@ -402,7 +448,7 @@ class BridgeService
                 ];
             }
         }
-        
+
         return $result;
     }
 
@@ -427,19 +473,19 @@ class BridgeService
             $response = Http::withHeaders([
                 'Api-Key' => $this->apiKey,
             ])->get("{$this->baseUrl}/customers/{$customerId}/kyc_link");
-            
+
             if ($response->successful()) {
                 return ['success' => true, 'data' => $response->json()];
             }
-            
+
             Log::warning('Failed to get customer KYC link', [
                 'customer_id' => $customerId,
                 'status' => $response->status(),
                 'response' => $response->body(),
             ]);
-            
+
             return [
-                'success' => false, 
+                'success' => false,
                 'error' => $response->body(),
                 'status' => $response->status(),
             ];
@@ -463,7 +509,7 @@ class BridgeService
         try {
             // Parse the KYC link URL to extract parameters
             // Example: https://bridge.withpersona.com/verify?fields[developer_id]=xxx&fields[email_address]=xxx&fields[iqt_token]=xxx&environment-id=xxx&inquiry-template-id=xxx&reference-id=xxx
-            
+
             $parsedUrl = parse_url($kycLinkUrl);
             if (!$parsedUrl || !isset($parsedUrl['query'])) {
                 Log::warning('Invalid KYC link URL format', ['url' => $kycLinkUrl]);
@@ -471,7 +517,7 @@ class BridgeService
             }
 
             parse_str($parsedUrl['query'], $params);
-            
+
             // Extract required parameters
             $iqtToken = $params['fields']['iqt_token'] ?? null;
             $environmentId = $params['environment-id'] ?? null;
@@ -488,7 +534,7 @@ class BridgeService
 
             // Determine environment (sandbox or production)
             $environment = $this->baseUrl === 'https://api.sandbox.bridge.xyz/v0' ? 'sandbox' : 'production';
-            
+
             // Build widget URL
             $widgetUrl = 'https://bridge.withpersona.com/widget?' . http_build_query([
                 'environment' => $environment,
@@ -541,14 +587,6 @@ class BridgeService
     public function isSandbox(): bool
     {
         return $this->environment === 'sandbox';
-    }
-
-    /**
-     * Get the current environment
-     */
-    public function getEnvironment(): string
-    {
-        return $this->environment;
     }
 
     public function createWallet(string $customerId, string $chain = 'solana'): array
@@ -615,7 +653,7 @@ class BridgeService
      * PRODUCTION MODE:
      * - Requires valid wallet address you control (if using address-based payment rails)
      * - Can use bridge_wallet payment rail with bridge_wallet_id
-     * - Uses actual currency (USD/USDB)
+     * - Uses actual currency (USD/usdc)
      * 
      * IMPORTANT NOTES:
      * - Virtual accounts don't hold balances. To track funds:
@@ -636,18 +674,18 @@ class BridgeService
             if (!isset($destination['payment_rail']) || $destination['payment_rail'] === 'bridge_wallet') {
                 $destination['payment_rail'] = 'ethereum';
             }
-            
+
             // Auto-generate Ethereum address for sandbox if not provided
             // Per Bridge.xyz docs: Sandbox uses dummy data with auto-generated addresses
             if (!isset($destination['address'])) {
                 $destination['address'] = $this->generateEthereumAddress();
             }
-            
+
             // Set currency to usdc for Ethereum in sandbox (per Bridge.xyz docs)
-            if (!isset($destination['currency']) || $destination['currency'] === 'usdb') {
+            if (!isset($destination['currency']) || $destination['currency'] === 'usdc') {
                 $destination['currency'] = 'usdc';
             }
-            
+
             // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
@@ -720,6 +758,19 @@ class BridgeService
     // ==================== CARD ACCOUNTS ====================
 
     /**
+     * Enable cards product for sandbox environment
+     * This initializes the cards product in sandbox with default funding strategy
+     * 
+     * @return array Response indicating success or error
+     */
+    public function enableCardsProduct(): array
+    {
+        // Endpoint: POST /cards/enable
+        // This sets up the sandbox environment with default funding strategy
+        return $this->makeRequest('POST', '/cards/enable', []);
+    }
+
+    /**
      * Create a card account for a customer
      * 
      * @param string $customerId Bridge customer ID
@@ -760,11 +811,17 @@ class BridgeService
 
     /**
      * Create an external account (bank account)
+     * 
+     * @param string $customerId Bridge customer ID
+     * @param array $accountData Account data formatted according to Bridge API
+     * @param string|null $idempotencyKey Optional idempotency key for the request
+     * @return array
      */
-    public function createExternalAccount(string $customerId, array $accountData): array
+    public function createExternalAccount(string $customerId, array $accountData, ?string $idempotencyKey = null): array
     {
         // Correct endpoint: /customers/{customerId}/external_accounts
-        return $this->makeRequest('POST', "/customers/{$customerId}/external_accounts", $accountData);
+        // makeRequest automatically adds Idempotency-Key for POST requests, but we can pass a custom one
+        return $this->makeRequest('POST', "/customers/{$customerId}/external_accounts", $accountData, true, $idempotencyKey);
     }
 
     /**
@@ -788,28 +845,123 @@ class BridgeService
     /**
      * Create a transfer
      * 
-     * Per Bridge.xyz API documentation, transfer format:
+     * Per Bridge.xyz API documentation (https://apidocs.bridge.xyz/api-reference):
+     * 
+     * Transfer format examples:
+     * 
+     * Sandbox (Ethereum crypto-to-crypto):
+     * {
+     *   "amount": "100.00",
+     *   "on_behalf_of": "customer_id",
+     *   "source": {
+     *     "payment_rail": "ethereum",
+     *     "currency": "usdc",
+     *     "from_address": "0x..."
+     *   },
+     *   "destination": {
+     *     "payment_rail": "ethereum",
+     *     "currency": "usdc",
+     *     "to_address": "0x..."
+     *   }
+     * }
+     * 
+     * Production (Bridge wallet):
      * {
      *   "amount": "100.00",
      *   "on_behalf_of": "customer_id",
      *   "source": {
      *     "payment_rail": "bridge_wallet",
-     *     "currency": "usdb",
+     *     "currency": "usdc",
      *     "bridge_wallet_id": "wallet_id"
      *   },
      *   "destination": {
      *     "payment_rail": "bridge_wallet",
-     *     "currency": "usdb",
+     *     "currency": "usdc",
      *     "bridge_wallet_id": "wallet_id"
      *   }
      * }
      * 
      * @param array $transferData Transfer data with source and destination
+     * @param string|null $idempotencyKey Optional idempotency key for safe retries (auto-generated if not provided)
      * @return array Response with transfer data or error
      */
-    public function createTransfer(array $transferData): array
+    public function createTransfer(array $transferData, ?string $idempotencyKey = null): array
     {
-        return $this->makeRequest('POST', '/transfers', $transferData);
+        // Validate required fields per Bridge API requirements
+        if (empty($transferData['amount'])) {
+            return [
+                'success' => false,
+                'error' => 'Amount is required for transfers',
+                'error_code' => 'MISSING_AMOUNT',
+            ];
+        }
+
+        if (empty($transferData['on_behalf_of'])) {
+            return [
+                'success' => false,
+                'error' => 'on_behalf_of (customer ID) is required for transfers',
+                'error_code' => 'MISSING_ON_BEHALF_OF',
+            ];
+        }
+
+        if (empty($transferData['source']) || empty($transferData['destination'])) {
+            return [
+                'success' => false,
+                'error' => 'Both source and destination are required for transfers',
+                'error_code' => 'MISSING_SOURCE_OR_DESTINATION',
+            ];
+        }
+
+        // Validate source payment rail and required fields
+        $sourceRail = $transferData['source']['payment_rail'] ?? null;
+        if (!$sourceRail) {
+            return [
+                'success' => false,
+                'error' => 'Source payment_rail is required',
+                'error_code' => 'MISSING_SOURCE_PAYMENT_RAIL',
+            ];
+        }
+
+        // Validate destination payment rail and required fields
+        $destRail = $transferData['destination']['payment_rail'] ?? null;
+        if (!$destRail) {
+            return [
+                'success' => false,
+                'error' => 'Destination payment_rail is required',
+                'error_code' => 'MISSING_DESTINATION_PAYMENT_RAIL',
+            ];
+        }
+
+        // Log transfer creation attempt
+        Log::info('Creating Bridge transfer', [
+            'environment' => $this->isSandbox() ? 'sandbox' : 'production',
+            'amount' => $transferData['amount'] ?? null,
+            'on_behalf_of' => $transferData['on_behalf_of'] ?? null,
+            'source_payment_rail' => $sourceRail,
+            'destination_payment_rail' => $destRail,
+            'source_currency' => $transferData['source']['currency'] ?? null,
+            'destination_currency' => $transferData['destination']['currency'] ?? null,
+        ]);
+
+        // makeRequest automatically adds idempotency key for POST requests
+        // Pass custom idempotency key if provided
+        $result = $this->makeRequest('POST', '/transfers', $transferData, true, $idempotencyKey);
+
+        if ($result['success']) {
+            Log::info('Bridge transfer created successfully', [
+                'transfer_id' => $result['data']['id'] ?? null,
+                'state' => $result['data']['state'] ?? null,
+                'amount' => $transferData['amount'] ?? null,
+            ]);
+        } else {
+            Log::warning('Bridge transfer creation failed', [
+                'error' => $result['error'] ?? 'Unknown error',
+                'error_code' => $result['error_code'] ?? null,
+                'status' => $result['status'] ?? null,
+            ]);
+        }
+
+        return $result;
     }
 
     /**
@@ -822,7 +974,7 @@ class BridgeService
      * @param string $toCustomerId Destination customer ID (on_behalf_of)
      * @param string $toWalletId Destination wallet ID
      * @param float $amount Transfer amount
-     * @param string $currency Currency (default: USD, converted to USDB for bridge_wallet)
+     * @param string $currency Currency (default: USD, converted to usdc for bridge_wallet)
      * @return array Response with transfer data or error
      */
     public function createWalletToWalletTransfer(
@@ -835,79 +987,102 @@ class BridgeService
         ?string $fromAddress = null,
         ?string $toAddress = null
     ): array {
-        // Convert USD to USDB for bridge_wallet payment rail
-        $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency);
-        
+        // Convert USD to usdc for bridge_wallet payment rail
+        $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency);
+
         // In sandbox mode: Virtual accounts use ethereum payment rail, not bridge_wallet
         // In production mode: Both use bridge_wallet payment rail
         if ($this->isSandbox()) {
             // In sandbox: Virtual accounts are on ethereum chain
-            // Source must use ethereum payment rail with bridge_wallet_id (virtual_account_id)
-            // Destination can use ethereum with bridge_wallet_id or address
-            if (empty($fromWalletId)) {
+            // For ethereum payment rail, source must use virtual_account_id or address (NOT bridge_wallet_id)
+            // Destination can use virtual_account_id or address
+            if (empty($fromWalletId) && empty($fromAddress)) {
                 return [
                     'success' => false,
-                    'error' => 'Source wallet ID (virtual account ID) is required for transfers in sandbox mode.',
+                    'error' => 'Source wallet ID (virtual account ID) or address is required for transfers in sandbox mode.',
                     'error_code' => 'MISSING_SOURCE_WALLET_ID',
                 ];
             }
-            
-            // In sandbox, virtual accounts are on ethereum chain, so use ethereum payment rail
-            if (!empty($toWalletId)) {
-                // Both have virtual account IDs - use ethereum payment rail for both
-        $transferData = [
-            'amount' => number_format($amount, 2, '.', ''),
-                    'on_behalf_of' => $toCustomerId,
-                    'source' => [
-                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
-                        'currency' => 'usdc', // Sandbox uses USDC for Ethereum
-                        'bridge_wallet_id' => $fromWalletId, // Virtual account ID
-                    ],
-                    'destination' => [
-                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
-                        'currency' => 'usdc',
-                        'bridge_wallet_id' => $toWalletId, // Virtual account ID
-                    ],
-                ];
-            } elseif ($toAddress) {
-                // Destination has address - use ethereum for destination
-                $transferData = [
-                    'amount' => number_format($amount, 2, '.', ''),
-                    'on_behalf_of' => $toCustomerId,
-                    'source' => [
-                        'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
-                        'currency' => 'usdc',
-                        'bridge_wallet_id' => $fromWalletId, // Virtual account ID
-                    ],
-                    'destination' => [
-                        'payment_rail' => 'ethereum',
-                        'currency' => 'usdc',
-                        'address' => $toAddress,
-                    ],
-                ];
-            } else {
+
+            // For ethereum payment rail (crypto-to-crypto transfers), we MUST use 'from_address' and 'to_address' (NOT bridge_wallet_id or address)
+            // Get source address from virtual account if we have virtual account ID
+            $sourceAddress = $fromAddress;
+            if (empty($sourceAddress) && !empty($fromWalletId)) {
+                $virtualAccountResult = $this->getVirtualAccount($fromCustomerId, $fromWalletId);
+                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                    $sourceAddress = $virtualAccountResult['data']['destination']['address'];
+                } else {
+                    return [
+                        'success' => false,
+                        'error' => 'Could not retrieve source address from virtual account. Virtual account ID: ' . $fromWalletId,
+                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                    ];
+                }
+            }
+
+            if (empty($sourceAddress)) {
                 return [
                     'success' => false,
-                    'error' => 'Destination wallet ID (virtual account ID) or address is required for transfers in sandbox mode.',
-                    'error_code' => 'MISSING_DESTINATION',
+                    'error' => 'Source address is required for ethereum payment rail transfers in sandbox mode.',
+                    'error_code' => 'MISSING_SOURCE_ADDRESS',
                 ];
             }
+
+            // Get destination address from virtual account if we have virtual account ID
+            $destinationAddress = $toAddress;
+            if (empty($destinationAddress) && !empty($toWalletId)) {
+                $virtualAccountResult = $this->getVirtualAccount($toCustomerId, $toWalletId);
+                if ($virtualAccountResult['success'] && isset($virtualAccountResult['data']['destination']['address'])) {
+                    $destinationAddress = $virtualAccountResult['data']['destination']['address'];
+                } else {
+                    return [
+                        'success' => false,
+                        'error' => 'Could not retrieve destination address from virtual account. Virtual account ID: ' . $toWalletId,
+                        'error_code' => 'VIRTUAL_ACCOUNT_FETCH_FAILED',
+                    ];
+                }
+            }
+
+            if (empty($destinationAddress)) {
+                return [
+                    'success' => false,
+                    'error' => 'Destination address is required for ethereum payment rail transfers in sandbox mode.',
+                    'error_code' => 'MISSING_DESTINATION_ADDRESS',
+                ];
+            }
+
+            // In sandbox, virtual accounts are on ethereum chain
+            // For ethereum payment rail (crypto-to-crypto): MUST use 'from_address' and 'to_address' (NOT bridge_wallet_id or address)
+            $transferData = [
+                'amount' => number_format($amount, 2, '.', ''),
+                'on_behalf_of' => $toCustomerId,
+                'source' => [
+                    'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
+                    'currency' => 'usdc', // Sandbox uses USDC for Ethereum
+                    'from_address' => $sourceAddress, // For ethereum crypto-to-crypto transfers, use from_address
+                ],
+                'destination' => [
+                    'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
+                    'currency' => 'usdc',
+                    'to_address' => $destinationAddress, // For ethereum crypto-to-crypto transfers, use to_address
+                ],
+            ];
         } else {
             // Production mode: Use bridge_wallet payment rail for both
             $transferData = [
                 'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $toCustomerId,
-            'source' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $fromWalletId,
-            ],
-            'destination' => [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => $bridgeCurrency,
-                'bridge_wallet_id' => $toWalletId,
-            ],
-        ];
+                'source' => [
+                    'payment_rail' => 'bridge_wallet',
+                    'currency' => $bridgeCurrency,
+                    'bridge_wallet_id' => $fromWalletId,
+                ],
+                'destination' => [
+                    'payment_rail' => 'bridge_wallet',
+                    'currency' => $bridgeCurrency,
+                    'bridge_wallet_id' => $toWalletId,
+                ],
+            ];
         }
 
         return $this->createTransfer($transferData);
@@ -930,7 +1105,7 @@ class BridgeService
     }
 
     /**
-     * Create a transfer from external account to Bridge wallet (for USD top-up)
+     * Create a transfer from external account to Bridge wallet (for USD top-up/deposit)
      * 
      * @param string $customerId Bridge customer ID
      * @param string $externalAccountId External bank account ID
@@ -951,8 +1126,56 @@ class BridgeService
             ],
             'destination' => [
                 'payment_rail' => 'bridge_wallet',
-                'currency' => strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency),
+                'currency' => strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency),
                 'bridge_wallet_id' => $walletId,
+            ],
+        ];
+
+        return $this->createTransfer($transferData);
+    }
+
+    /**
+     * Create a transfer from Bridge wallet to external account (for withdrawal/payout)
+     * 
+     * Per Bridge.xyz API documentation:
+     * - Source: bridge_wallet payment rail with bridge_wallet_id
+     * - Destination: ach or wire payment rail with external_account_id
+     * 
+     * @param string $customerId Bridge customer ID
+     * @param string $walletId Bridge wallet ID
+     * @param string $externalAccountId External bank account ID
+     * @param float $amount Amount to withdraw
+     * @param string $currency Currency (default: USD)
+     * @param string $paymentRail Payment rail for withdrawal (default: 'ach', can be 'ach' or 'wire')
+     * @return array
+     */
+    public function createTransferToExternalAccount(string $customerId, string $walletId, string $externalAccountId, float $amount, string $currency = 'USD', string $paymentRail = 'ach'): array
+    {
+        // Convert USD to USDB for bridge_wallet payment rail
+        $bridgeCurrency = strtolower($currency) === 'usd' ? 'usdc' : strtolower($currency);
+        
+        // Validate payment rail
+        $validPaymentRails = ['ach', 'wire'];
+        if (!in_array(strtolower($paymentRail), $validPaymentRails)) {
+            return [
+                'success' => false,
+                'error' => 'Invalid payment rail. Must be "ach" or "wire"',
+                'error_code' => 'INVALID_PAYMENT_RAIL',
+            ];
+        }
+
+        $transferData = [
+            'amount' => number_format($amount, 2, '.', ''),
+            'on_behalf_of' => $customerId,
+            'source' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $walletId,
+            ],
+            'destination' => [
+                'payment_rail' => strtolower($paymentRail), // 'ach' or 'wire'
+                'currency' => strtolower($currency),
+                'external_account_id' => $externalAccountId,
             ],
         ];
 
@@ -979,19 +1202,16 @@ class BridgeService
 
         // In sandbox mode: Use dummy data per Bridge.xyz documentation
         // Sandbox uses Ethereum payment rail with auto-generated address and USDC currency
+        $destination = [
+            'currency' => 'usdc',
+        ];
+
         if ($this->isSandbox()) {
-            $destination = [
-                'payment_rail' => 'ethereum',
-                'currency' => 'usdc', // Sandbox uses USDC for Ethereum
-                'address' => $this->generateEthereumAddress(), // Auto-generated dummy address
-            ];
+            $destination['payment_rail'] = 'ethereum';
+            $destination['address'] = $this->generateEthereumAddress();
         } else {
-            // Production mode: Use actual bridge_wallet with wallet ID
-            $destination = [
-                'payment_rail' => 'bridge_wallet',
-                'currency' => strtolower($currency) === 'usd' ? 'usdb' : strtolower($currency),
-                'bridge_wallet_id' => $walletId,
-            ];
+            $destination['payment_rail'] = 'bridge_wallet';
+            $destination['bridge_wallet_id'] = $walletId;
         }
 
         return $this->createVirtualAccount($customerId, $source, $destination);
@@ -1021,7 +1241,7 @@ class BridgeService
         } else {
             $destination = [
                 'payment_rail' => $chain,
-                'currency' => 'usdb',
+                'currency' => 'usdc',
                 'bridge_wallet_id' => $walletId,
             ];
         }
@@ -1187,7 +1407,7 @@ class BridgeService
         try {
             // First, try to find existing webhook
             $webhooksResult = $this->getWebhooks();
-            
+
             if ($webhooksResult['success'] && isset($webhooksResult['data']['data'])) {
                 foreach ($webhooksResult['data']['data'] as $webhook) {
                     if (isset($webhook['url']) && $webhook['url'] === $webhookUrl) {
@@ -1204,7 +1424,7 @@ class BridgeService
                                 $webhookUrl,
                                 $webhook['event_categories'] ?? []
                             );
-                            
+
                             if ($activateResult['success']) {
                                 return $activateResult;
                             }

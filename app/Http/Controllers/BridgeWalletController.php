@@ -5905,6 +5905,81 @@ class BridgeWalletController extends Controller
     }
 
     /**
+     * Create transfer from Bridge wallet to external account (withdrawal/payout)
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function createTransferToExternalAccount(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            $integration = BridgeIntegration::with('primaryWallet')
+                ->where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge integration not found.',
+                ], 404);
+            }
+
+            if (!$integration->primaryWallet || !$integration->primaryWallet->bridge_wallet_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge wallet not found.',
+                ], 404);
+            }
+
+            $validated = $request->validate([
+                'external_account_id' => 'required|string',
+                'wallet_id' => 'required|string',
+                'amount' => 'required|numeric|min:0.01',
+                'currency' => 'nullable|string|in:USD,usd',
+                'payment_rail' => 'nullable|string|in:ach,wire',
+            ]);
+
+            $result = $this->bridgeService->createTransferToExternalAccount(
+                $integration->bridge_customer_id,
+                $validated['wallet_id'],
+                $validated['external_account_id'],
+                (float) $validated['amount'],
+                $validated['currency'] ?? 'USD',
+                $validated['payment_rail'] ?? 'ach'
+            );
+
+            if (!$result['success']) {
+                throw new \Exception($result['error'] ?? 'Failed to create withdrawal');
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Withdrawal initiated successfully',
+                'data' => $result['data'],
+            ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation failed',
+                'errors' => $e->errors(),
+            ], 422);
+        } catch (\Exception $e) {
+            Log::error('Withdrawal to external account error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to create withdrawal: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Get external accounts (bank accounts) for the current user/organization
      */
     public function getExternalAccounts(Request $request)
@@ -5934,9 +6009,50 @@ class BridgeWalletController extends Controller
                 throw new \Exception($result['error'] ?? 'Failed to get external accounts');
             }
 
+            // Bridge API returns: { success: true, data: { count: X, data: [...] } }
+            // makeRequest wraps the Bridge response in ['success' => true, 'data' => $body]
+            // So $result['data'] is the Bridge API response body: { count: X, data: [...] }
+            $bridgeResponse = $result['data'] ?? [];
+            
+            // Extract the actual accounts array from the nested structure
+            // Bridge returns: { count: 1, data: [...] }
+            $accounts = $bridgeResponse['data'] ?? [];
+            
+            // Ensure accounts is an array
+            if (!is_array($accounts)) {
+                $accounts = [];
+            }
+            
+            // Map Bridge API response to frontend format
+            $mappedAccounts = [];
+            foreach ($accounts as $account) {
+                if (!is_array($account)) {
+                    continue;
+                }
+                
+                // Get last_4 from nested account object or top level
+                $last4 = (string)($account['account']['last_4'] ?? $account['last_4'] ?? '');
+                // The frontend uses slice(-4), so we need at least 4 characters
+                // Since last_4 is already the last 4 digits, we can pad it or use it directly
+                // For display purposes, we'll use it as-is since it's already the last 4
+                $accountNumber = $last4 ?: '0000';
+                
+                $mappedAccount = [
+                    'id' => $account['id'] ?? '',
+                    'account_number' => $accountNumber,
+                    'routing_number' => (string)($account['account']['routing_number'] ?? ''),
+                    'account_type' => $account['account']['checking_or_savings'] ?? 'checking',
+                    // Bridge returns account_name or account_owner_name, prioritize account_name
+                    'account_holder_name' => $account['account_name'] ?? $account['account_owner_name'] ?? $account['account_holder_name'] ?? '',
+                    'status' => ($account['active'] ?? false) ? 'verified' : 'pending',
+                ];
+                
+                $mappedAccounts[] = $mappedAccount;
+            }
+
             return response()->json([
                 'success' => true,
-                'data' => $result['data'],
+                'data' => $mappedAccounts,
             ]);
         } catch (\Exception $e) {
             Log::error('Get external accounts error', ['error' => $e->getMessage()]);
@@ -5977,11 +6093,52 @@ class BridgeWalletController extends Controller
                 'account_data.account_number' => 'required|string',
                 'account_data.account_type' => 'required|string|in:checking,savings',
                 'account_data.account_holder_name' => 'required|string',
+                'account_data.bank_name' => 'required|string',
+                'account_data.first_name' => 'required|string',
+                'account_data.last_name' => 'required|string',
+                'account_data.street_line_1' => 'required|string',
+                'account_data.city' => 'required|string',
+                'account_data.state' => 'required|string',
+                'account_data.postal_code' => 'required|string',
+                'account_data.country' => 'required|string',
+            ]);
+
+            // Format data according to Bridge API requirements - all data from user input
+            $bridgeAccountData = [
+                'currency' => 'usd',
+                'account_type' => 'us',
+                'bank_name' => trim($validated['account_data']['bank_name']),
+                'account_name' => trim($validated['account_data']['account_holder_name']),
+                'first_name' => trim($validated['account_data']['first_name']),
+                'last_name' => trim($validated['account_data']['last_name']),
+                'account_owner_type' => $isOrgUser ? 'business' : 'individual',
+                'account_owner_name' => trim($validated['account_data']['account_holder_name']),
+                'account' => [
+                    'routing_number' => trim($validated['account_data']['routing_number']),
+                    'account_number' => trim($validated['account_data']['account_number']),
+                    'checking_or_savings' => $validated['account_data']['account_type'],
+                ],
+                'address' => [
+                    'street_line_1' => trim($validated['account_data']['street_line_1']),
+                    'country' => trim($validated['account_data']['country']),
+                    'state' => trim($validated['account_data']['state']),
+                    'city' => trim($validated['account_data']['city']),
+                    'postal_code' => trim($validated['account_data']['postal_code']),
+                ],
+            ];
+
+            // Generate idempotency key
+            $idempotencyKey = \Illuminate\Support\Str::uuid()->toString();
+
+            Log::info('Creating external account via Bridge API', [
+                'customer_id' => $integration->bridge_customer_id,
+                'account_owner_type' => $bridgeAccountData['account_owner_type'],
             ]);
 
             $result = $this->bridgeService->createExternalAccount(
                 $integration->bridge_customer_id,
-                $validated['account_data']
+                $bridgeAccountData,
+                $idempotencyKey
             );
 
             if (!$result['success']) {
@@ -6428,7 +6585,7 @@ class BridgeWalletController extends Controller
 
                 $destinationAddress = $primaryWallet->wallet_address;
                 $destinationPaymentRail = $primaryWallet->chain ?? 'solana';
-                $destinationCurrency = 'usdb'; // Production uses USDB for Bridge wallets
+                $destinationCurrency = 'usdc'; // Production uses usdc for Bridge wallets
             }
 
             // Validate request
@@ -6436,7 +6593,7 @@ class BridgeWalletController extends Controller
                 'chain' => 'required|string|in:solana,ethereum,base,polygon',
                 'currency' => 'required|string|in:usdc,usdt',
                 'destination_payment_rail' => 'required|string',
-                'destination_currency' => 'required|string|in:usdb,usdc',
+                'destination_currency' => 'required|string|in:usdc,usdc',
             ]);
 
             // Validate chain/currency combinations
@@ -6450,7 +6607,7 @@ class BridgeWalletController extends Controller
 
             // Override destination currency and payment rail based on environment
             // In sandbox, use the virtual account's destination settings (Ethereum + USDC)
-            // In production, use the validated values (can be Solana/Ethereum + USDB)
+            // In production, use the validated values (can be Solana/Ethereum + usdc)
             if ($isSandbox) {
                 // Sandbox: Always use Ethereum payment rail and USDC currency (per Bridge.xyz docs)
                 // Also, in sandbox, only Ethereum chain is supported
@@ -6545,6 +6702,73 @@ class BridgeWalletController extends Controller
     }
 
     /**
+     * Get card account for the user/organization
+     */
+    public function getCardAccount(Request $request)
+    {
+        try {
+            $user = Auth::user();
+            $isOrgUser = $user->hasRole(['organization', 'organization_pending']);
+
+            $entity = $isOrgUser ? $user->organization : $user;
+            $entityType = $isOrgUser ? Organization::class : User::class;
+
+            // Get integration
+            $integration = BridgeIntegration::where('integratable_id', $entity->id)
+                ->where('integratable_type', $entityType)
+                ->first();
+
+            if (!$integration || !$integration->bridge_customer_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Bridge integration not found',
+                    'has_card_account' => false,
+                ], 404);
+            }
+
+            $customerId = $integration->bridge_customer_id;
+
+            // Get card accounts
+            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+
+            if (!$cardAccountsResult['success']) {
+                return response()->json([
+                    'success' => false,
+                    'has_card_account' => false,
+                    'message' => 'Failed to check card account status',
+                ], 200);
+            }
+
+            // Extract card accounts array
+            $cardAccounts = is_array($cardAccountsResult['data']) && isset($cardAccountsResult['data']['data'])
+                ? $cardAccountsResult['data']['data']
+                : (is_array($cardAccountsResult['data']) ? $cardAccountsResult['data'] : []);
+
+            if (empty($cardAccounts) || !is_array($cardAccounts)) {
+                return response()->json([
+                    'success' => true,
+                    'has_card_account' => false,
+                    'data' => null,
+                ]);
+            }
+
+            // Return first card account
+            return response()->json([
+                'success' => true,
+                'has_card_account' => true,
+                'data' => $cardAccounts[0],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Get card account error', ['error' => $e->getMessage()]);
+            return response()->json([
+                'success' => false,
+                'has_card_account' => false,
+                'message' => 'Failed to get card account: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
      * Create a card account for the user/organization
      */
     public function createCardAccount(Request $request)
@@ -6573,6 +6797,60 @@ class BridgeWalletController extends Controller
             // Check if card account already exists
             $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
             
+            // Check if cards product is enabled
+            if (!$cardAccountsResult['success']) {
+                $errorMessage = $cardAccountsResult['error'] ?? '';
+                $errorCode = $cardAccountsResult['response']['code'] ?? '';
+                
+                // Check if error is about cards not being enabled
+                if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
+                    // Try to enable cards product automatically (only in sandbox)
+                    if ($this->bridgeService->isSandbox()) {
+                        Log::info('Cards product not enabled - attempting to enable automatically', [
+                            'user_id' => Auth::id(),
+                            'customer_id' => $customerId,
+                            'environment' => 'sandbox',
+                        ]);
+                        
+                        $enableResult = $this->bridgeService->enableCardsProduct();
+                        
+                        if ($enableResult['success']) {
+                            Log::info('Cards product enabled successfully - retrying card account operations', [
+                                'user_id' => Auth::id(),
+                                'customer_id' => $customerId,
+                            ]);
+                            
+                            // Retry getting card accounts after enabling
+                            $cardAccountsResult = $this->bridgeService->getCardAccounts($customerId);
+                            
+                            // If still fails, return error
+                            if (!$cardAccountsResult['success']) {
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => 'Cards product enabled but card account retrieval still failed. Please try again.',
+                                    'error_code' => 'cards_enabled_but_failed',
+                                ], 500);
+                            }
+                        } else {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Failed to enable cards product automatically. Please enable it in Bridge dashboard.',
+                                'error_code' => 'cards_enable_failed',
+                                'help_url' => 'https://apidocs.bridge.xyz/docs/cards-sandbox#setup',
+                            ], 500);
+                        }
+                    } else {
+                        // In production, cards must be enabled manually
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Cards product is not enabled for your account. Please enable it in Bridge dashboard to use card accounts.',
+                            'error_code' => 'cards_not_enabled',
+                            'help_url' => 'https://apidocs.bridge.xyz/docs/cards-sandbox#setup',
+                        ], 400);
+                    }
+                }
+            }
+            
             if ($cardAccountsResult['success'] && !empty($cardAccountsResult['data'])) {
                 $cardAccounts = is_array($cardAccountsResult['data']) && isset($cardAccountsResult['data']['data'])
                     ? $cardAccountsResult['data']['data']
@@ -6592,9 +6870,65 @@ class BridgeWalletController extends Controller
             $cardAccountResult = $this->bridgeService->createCardAccount($customerId, []);
 
             if (!$cardAccountResult['success']) {
+                $errorMessage = $cardAccountResult['error'] ?? 'Failed to create card account';
+                $errorCode = $cardAccountResult['response']['code'] ?? '';
+                
+                // Check if error is about cards not being enabled
+                if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
+                    // Try to enable cards product automatically (only in sandbox)
+                    if ($this->bridgeService->isSandbox()) {
+                        Log::info('Card account creation failed - attempting to enable cards product', [
+                            'user_id' => Auth::id(),
+                            'customer_id' => $customerId,
+                            'environment' => 'sandbox',
+                        ]);
+                        
+                        $enableResult = $this->bridgeService->enableCardsProduct();
+                        
+                        if ($enableResult['success']) {
+                            Log::info('Cards product enabled - retrying card account creation', [
+                                'user_id' => Auth::id(),
+                                'customer_id' => $customerId,
+                            ]);
+                            
+                            // Retry creating card account after enabling
+                            $cardAccountResult = $this->bridgeService->createCardAccount($customerId, []);
+                            
+                            if ($cardAccountResult['success']) {
+                                return response()->json([
+                                    'success' => true,
+                                    'message' => 'Card account created successfully after enabling cards product',
+                                    'data' => $cardAccountResult['data'],
+                                ]);
+                            } else {
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => 'Cards product enabled but card account creation still failed. Please try again.',
+                                    'error_code' => 'cards_enabled_but_creation_failed',
+                                ], 500);
+                            }
+                        } else {
+                            return response()->json([
+                                'success' => false,
+                                'message' => 'Failed to enable cards product automatically. Please enable it in Bridge dashboard.',
+                                'error_code' => 'cards_enable_failed',
+                                'help_url' => 'https://apidocs.bridge.xyz/docs/cards-sandbox#setup',
+                            ], 500);
+                        }
+                    } else {
+                        // In production, cards must be enabled manually
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Cards product is not enabled for your account. Please enable it in Bridge dashboard to create card accounts.',
+                            'error_code' => 'cards_not_enabled',
+                            'help_url' => 'https://apidocs.bridge.xyz/docs/cards-sandbox#setup',
+                        ], 400);
+                    }
+                }
+                
                 return response()->json([
                     'success' => false,
-                    'message' => $cardAccountResult['error'] ?? 'Failed to create card account',
+                    'message' => $errorMessage,
                 ], 500);
             }
 
