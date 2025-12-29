@@ -196,6 +196,17 @@ Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubContr
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 
+// Service Chat Routes
+Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->name('service-hub.chat.')->group(function () {
+    Route::post('/{slug}/chat', [App\Http\Controllers\ServiceHubController::class, 'createOrGetServiceChat'])->name('create-or-get');
+    Route::get('/chat/{chatId}/messagesget', [App\Http\Controllers\ServiceHubController::class, 'getServiceChatMessages'])->name('messages');
+    Route::post('/chat/{chatId}/messages', [App\Http\Controllers\ServiceHubController::class, 'sendServiceChatMessage'])->name('send-message');
+    Route::get('/chats', [App\Http\Controllers\ServiceHubController::class, 'getServiceChats'])->name('list');
+    Route::get('/chats/unreadcountget', [App\Http\Controllers\ServiceHubController::class, 'getUnreadCount'])->name('unread-count');
+    Route::get('/chats/list', [App\Http\Controllers\ServiceHubController::class, 'chats'])->name('chats');
+});
+Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
+
 // Cart routes (protected)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/cart', [CartController::class, 'index'])->name('cart.index');
@@ -1306,6 +1317,19 @@ Route::prefix('admin/email-packages')
         Route::get('/{emailPackage}/edit', [App\Http\Controllers\Admin\EmailPackageController::class, 'edit'])->name('edit');
         Route::put('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'update'])->name('update');
         Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Service Categories Management
+Route::prefix('admin/service-categories')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.service-categories.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'store'])->name('store');
+        Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
+        Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Promotional Banners Management

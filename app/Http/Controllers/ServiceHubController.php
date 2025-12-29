@@ -10,10 +10,13 @@ use App\Models\GigFavorite;
 use App\Models\ServiceOrder;
 use App\Models\ServiceReview;
 use App\Models\ServiceSellerProfile;
+use App\Models\ServiceChat;
+use App\Models\ServiceChatMessage;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -122,16 +125,28 @@ class ServiceHubController extends Controller
 
         // Get user favorites if authenticated
         $favoriteIds = [];
+        $totalUnread = 0;
         if (Auth::check()) {
             $favoriteIds = GigFavorite::where('user_id', Auth::id())
                 ->pluck('gig_id')
                 ->toArray();
+
+            // Calculate total unread messages for service chats
+            $chats = ServiceChat::where(function ($query) {
+                $query->where('buyer_id', Auth::id())
+                    ->orWhere('seller_id', Auth::id());
+            })->get();
+
+            $totalUnread = $chats->sum(function ($chat) {
+                return $chat->unreadCountForUser(Auth::id());
+            });
         }
 
         return Inertia::render('frontend/service-hub/index', [
             'gigs' => $gigs,
             'categories' => $categories,
             'favoriteIds' => $favoriteIds,
+            'totalUnread' => $totalUnread,
             'filters' => [
                 'search' => $request->get('search', ''),
                 'category' => $request->get('category', 'all'),
@@ -180,6 +195,9 @@ class ServiceHubController extends Controller
             'full_description' => 'nullable|string',
             'tags' => 'nullable|array',
             'tags.*' => 'string|max:50',
+            'faqs' => 'nullable|array',
+            'faqs.*.question' => 'required|string|max:255',
+            'faqs.*.answer' => 'required|string|max:1000',
             'packages' => 'required|array|min:1',
             'packages.*.name' => 'required|string|max:100',
             'packages.*.price' => 'required|numeric|min:0',
@@ -192,6 +210,19 @@ class ServiceHubController extends Controller
         ]);
 
         try {
+            // Format FAQs
+            $faqs = [];
+            if (isset($validated['faqs']) && is_array($validated['faqs'])) {
+                foreach ($validated['faqs'] as $faq) {
+                    if (!empty($faq['question']) && !empty($faq['answer'])) {
+                        $faqs[] = [
+                            'question' => $faq['question'],
+                            'answer' => $faq['answer'],
+                        ];
+                    }
+                }
+            }
+
             $gig = Gig::create([
                 'user_id' => Auth::id(),
                 'category_id' => $validated['category_id'],
@@ -199,6 +230,7 @@ class ServiceHubController extends Controller
                 'description' => $validated['description'],
                 'full_description' => $validated['full_description'] ?? null,
                 'tags' => $validated['tags'] ?? [],
+                'faqs' => $faqs,
                 'price' => $validated['packages'][0]['price'] ?? 0,
                 'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
                 'status' => 'active',
@@ -313,6 +345,7 @@ class ServiceHubController extends Controller
             'reviews' => $gig->reviews_count,
             'category' => $gig->category->name ?? '',
             'tags' => $gig->tags ?? [],
+            'faqs' => $gig->faqs ?? [],
             'images' => $images,
             'packages' => $packages,
             'seller' => [
@@ -966,5 +999,346 @@ class ServiceHubController extends Controller
 
         return redirect()->route('service-hub.seller.profile', $user->id)
             ->with('success', 'Seller profile updated successfully!');
+    }
+
+    public function createOrGetServiceChat(Request $request, $slug)
+    {
+        $gig = Gig::where('slug', $slug)->firstOrFail();
+        $buyerId = Auth::id();
+        $sellerId = $gig->user_id;
+
+        if ($buyerId === $sellerId) {
+            return response()->json(['error' => 'You cannot chat with yourself.'], 403);
+        }
+
+        // Find or create service chat
+        $serviceChat = ServiceChat::firstOrCreate(
+            [
+                'buyer_id' => $buyerId,
+                'seller_id' => $sellerId,
+            ],
+            [
+                'buyer_read' => true,
+                'seller_read' => false,
+            ]
+        );
+
+        // Load relationships
+        $serviceChat->load([
+            'buyer:id,name,image',
+            'seller:id,name,image',
+            'latestMessage.user:id,name,image',
+        ]);
+
+        return response()->json([
+            'chat' => [
+                'id' => $serviceChat->id,
+                'buyer' => [
+                    'id' => $serviceChat->buyer->id,
+                    'name' => $serviceChat->buyer->name,
+                    'avatar' => $serviceChat->buyer->image ? Storage::url($serviceChat->buyer->image) : null,
+                ],
+                'seller' => [
+                    'id' => $serviceChat->seller->id,
+                    'name' => $serviceChat->seller->name,
+                    'avatar' => $serviceChat->seller->image ? Storage::url($serviceChat->seller->image) : null,
+                ],
+                'last_message' => $serviceChat->latestMessage->first() ? [
+                    'message' => $serviceChat->latestMessage->first()->message,
+                    'created_at' => $serviceChat->latestMessage->first()->created_at->toISOString(),
+                    'user' => [
+                        'id' => $serviceChat->latestMessage->first()->user->id,
+                        'name' => $serviceChat->latestMessage->first()->user->name,
+                    ],
+                ] : null,
+                'unread_count' => $serviceChat->unreadCountForUser($buyerId),
+            ],
+        ]);
+    }
+
+    public function getServiceChatMessages(Request $request, $chatId)
+    {
+        $serviceChat = ServiceChat::with(['buyer', 'seller'])
+            ->where(function ($query) {
+                $query->where('buyer_id', Auth::id())
+                    ->orWhere('seller_id', Auth::id());
+            })
+            ->findOrFail($chatId);
+
+        $allMessages = ServiceChatMessage::where('service_chat_id', $chatId)
+            ->orderBy('created_at', 'asc')
+            ->get();
+
+        Log::info('ServiceChat Messages Query', [
+            'chat_id' => $chatId,
+            'total_messages' => $allMessages->count(),
+            'message_ids' => $allMessages->pluck('id')->toArray(),
+            'auth_id' => Auth::id(),
+        ]);
+
+        $messages = $allMessages->map(function ($message) {
+                // Load user directly
+                $user = \App\Models\User::select('id', 'name', 'image')->find($message->user_id);
+
+                Log::info('Processing message', [
+                    'message_id' => $message->id,
+                    'user_id' => $message->user_id,
+                    'has_user' => $user !== null,
+                    'is_mine' => $message->user_id === Auth::id(),
+                ]);
+
+                return [
+                    'id' => $message->id,
+                    'user_id' => $message->user_id,
+                    'user' => $user ? [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'avatar' => $user->image ? Storage::url($user->image) : null,
+                    ] : null,
+                    'message' => $message->message,
+                    'attachments' => $message->attachments ?? [],
+                    'created_at' => $message->created_at->toISOString(),
+                    'is_mine' => $message->user_id === Auth::id(),
+                ];
+            });
+
+        // Convert to array to ensure all messages are included
+        $messagesArray = $messages->values()->toArray();
+
+        Log::info('ServiceChat Messages Response', [
+            'total_messages_returned' => count($messagesArray),
+            'message_ids' => array_column($messagesArray, 'id'),
+        ]);
+
+        // Mark messages as read
+        if (Auth::id() === $serviceChat->buyer_id) {
+            $serviceChat->update(['buyer_read' => true]);
+        } else {
+            $serviceChat->update(['seller_read' => true]);
+        }
+
+        ServiceChatMessage::where('service_chat_id', $chatId)
+            ->where('user_id', '!=', Auth::id())
+            ->update(['is_read' => true]);
+
+        return response()->json(['messages' => $messagesArray]);
+    }
+
+    public function sendServiceChatMessage(Request $request, $chatId)
+    {
+        $serviceChat = ServiceChat::where(function ($query) {
+            $query->where('buyer_id', Auth::id())
+                ->orWhere('seller_id', Auth::id());
+        })->findOrFail($chatId);
+
+        $request->validate([
+            'message' => 'required|string|max:2000',
+            'attachments.*' => 'nullable|file|max:10240',
+        ]);
+
+        $attachmentsData = [];
+        if ($request->hasFile('attachments')) {
+            foreach ($request->file('attachments') as $file) {
+                $path = $file->store('service_chat_attachments', 'public');
+                $attachmentsData[] = [
+                    'name' => $file->getClientOriginalName(),
+                    'url' => Storage::url($path),
+                    'type' => $file->getClientMimeType(),
+                    'size' => $file->getSize(),
+                ];
+            }
+        }
+
+        $message = ServiceChatMessage::create([
+            'service_chat_id' => $chatId,
+            'user_id' => Auth::id(),
+            'message' => $request->input('message'),
+            'attachments' => $attachmentsData,
+            'is_read' => false,
+        ]);
+
+        // Update chat last message time and read status
+        $isBuyer = Auth::id() === $serviceChat->buyer_id;
+        $serviceChat->update([
+            'last_message_at' => now(),
+            $isBuyer ? 'buyer_read' : 'seller_read' => true,
+            !$isBuyer ? 'buyer_read' : 'seller_read' => false,
+        ]);
+
+        // Reload the message with user relationship to ensure it's fresh
+        $message->refresh();
+        $message->load(['user' => function ($query) {
+            $query->select('id', 'name', 'image');
+        }]);
+
+        // Ensure user is loaded - if not, load it again
+        if (!$message->user) {
+            $message->load('user:id,name,image');
+        }
+
+        // Double check user exists
+        if (!$message->user) {
+            \Illuminate\Support\Facades\Log::error('Message created but user not found', [
+                'message_id' => $message->id,
+                'user_id' => $message->user_id,
+                'chat_id' => $chatId,
+            ]);
+            return response()->json(['error' => 'User not found for message'], 500);
+        }
+
+        return response()->json([
+            'message' => [
+                'id' => $message->id,
+                'user_id' => $message->user_id,
+                'user' => [
+                    'id' => $message->user->id,
+                    'name' => $message->user->name,
+                    'avatar' => $message->user->image ? Storage::url($message->user->image) : null,
+                ],
+                'message' => $message->message,
+                'attachments' => $message->attachments ?? [],
+                'created_at' => $message->created_at->toISOString(),
+                'is_mine' => true,
+            ],
+        ]);
+    }
+
+    public function getServiceChats(Request $request)
+    {
+        $chats = ServiceChat::with([
+            'buyer:id,name,image',
+            'seller:id,name,image',
+            'latestMessage.user:id,name,image',
+        ])
+            ->where(function ($query) {
+                $query->where('buyer_id', Auth::id())
+                    ->orWhere('seller_id', Auth::id());
+            })
+            ->orderBy('last_message_at', 'desc')
+            ->get()
+            ->map(function ($chat) {
+                $latestMessage = $chat->latestMessage->first();
+                $otherUser = Auth::id() === $chat->buyer_id ? $chat->seller : $chat->buyer;
+
+                return [
+                    'id' => $chat->id,
+                    'other_user' => [
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'avatar' => $otherUser->image ? Storage::url($otherUser->image) : null,
+                    ],
+                    'last_message' => $latestMessage ? [
+                        'message' => $latestMessage->message,
+                        'created_at' => $latestMessage->created_at->toISOString(),
+                        'user' => [
+                            'id' => $latestMessage->user->id,
+                            'name' => $latestMessage->user->name,
+                        ],
+                    ] : null,
+                    'unread_count' => $chat->unreadCountForUser(Auth::id()),
+                    'updated_at' => $chat->updated_at->toISOString(),
+                ];
+            });
+
+        $totalUnread = array_sum(array_column($chats->toArray(), 'unread_count'));
+
+        return response()->json([
+            'chats' => $chats,
+            'total_unread' => $totalUnread,
+        ]);
+    }
+
+    public function getUnreadCount(Request $request)
+    {
+
+        if (!Auth::check()) {
+            return response()->json(['total_unread' => 0]);
+        }
+
+        $chats = ServiceChat::where(function ($query) {
+            $query->where('buyer_id', Auth::id())
+                ->orWhere('seller_id', Auth::id());
+        })->get();
+
+        $totalUnread = $chats->sum(function ($chat) {
+            return $chat->unreadCountForUser(Auth::id());
+        });
+
+        return response()->json([
+            'total_unread' => $totalUnread,
+        ]);
+    }
+
+    public function chats(Request $request): Response
+    {
+        $chats = ServiceChat::with([
+            'buyer:id,name,image',
+            'seller:id,name,image',
+            'latestMessage.user:id,name,image',
+        ])
+            ->where(function ($query) {
+                $query->where('buyer_id', Auth::id())
+                    ->orWhere('seller_id', Auth::id());
+            })
+            ->orderBy('last_message_at', 'desc')
+            ->get()
+            ->map(function ($chat) {
+                $latestMessage = $chat->latestMessage->first();
+                $otherUser = Auth::id() === $chat->buyer_id ? $chat->seller : $chat->buyer;
+
+                return [
+                    'id' => $chat->id,
+                    'other_user' => [
+                        'id' => $otherUser->id,
+                        'name' => $otherUser->name,
+                        'avatar' => $otherUser->image ? Storage::url($otherUser->image) : null,
+                    ],
+                    'last_message' => $latestMessage ? [
+                        'message' => $latestMessage->message,
+                        'created_at' => $latestMessage->created_at->toISOString(),
+                        'user' => [
+                            'id' => $latestMessage->user->id,
+                            'name' => $latestMessage->user->name,
+                        ],
+                    ] : null,
+                    'unread_count' => $chat->unreadCountForUser(Auth::id()),
+                    'updated_at' => $chat->updated_at->toISOString(),
+                ];
+            });
+
+        $totalUnread = array_sum(array_column($chats->toArray(), 'unread_count'));
+
+        return Inertia::render('frontend/service-hub/chats', [
+            'chats' => $chats,
+            'total_unread' => $totalUnread,
+        ]);
+    }
+
+    public function serviceChat(Request $request, $chatId)
+    {
+        $serviceChat = ServiceChat::with([
+            'buyer:id,name,image',
+            'seller:id,name,image',
+        ])
+            ->where(function ($query) {
+                $query->where('buyer_id', Auth::id())
+                    ->orWhere('seller_id', Auth::id());
+            })
+            ->findOrFail($chatId);
+
+        $otherUser = Auth::id() === $serviceChat->buyer_id ? $serviceChat->seller : $serviceChat->buyer;
+
+        $chatData = [
+            'id' => $serviceChat->id,
+            'other_user' => [
+                'id' => $otherUser->id,
+                'name' => $otherUser->name,
+                'avatar' => $otherUser->image ? Storage::url($otherUser->image) : null,
+            ],
+        ];
+
+        return Inertia::render('frontend/service-hub/chat', [
+            'chat' => $chatData,
+        ]);
     }
 }

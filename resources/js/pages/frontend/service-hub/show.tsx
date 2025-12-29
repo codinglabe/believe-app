@@ -40,6 +40,7 @@ interface Gig {
   reviews: number
   category: string
   tags: string[]
+  faqs?: Array<{ question: string; answer: string }>
   images: string[]
   packages: Array<{
     id: number
@@ -75,16 +76,39 @@ interface PageProps extends Record<string, unknown> {
 }
 
 export default function ServiceShow() {
-  const { gig, recentReviews, isFavorite: initialIsFavorite } = usePage<PageProps>().props
+  const { gig, recentReviews, isFavorite: initialIsFavorite, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
 
   const defaultPackage = gig.packages.length > 1 ? gig.packages[1] : gig.packages[0]
   const [selectedPackage, setSelectedPackage] = useState(defaultPackage)
   const [selectedImage, setSelectedImage] = useState(0)
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite)
+  const [unreadCount, setUnreadCount] = useState(0)
 
   useEffect(() => {
     setSelectedPackage(defaultPackage)
   }, [gig.id])
+
+  // Fetch unread count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await fetch("/service-hub/chats/unreadcountget")
+        if (response.ok) {
+          const data = await response.json()
+          setUnreadCount(data.total_unread || 0)
+        }
+      } catch (error) {
+        console.error("Error fetching unread count:", error)
+      }
+    }
+
+    if (auth?.user) {
+      fetchUnreadCount()
+      // Refresh every 10 seconds
+      const interval = setInterval(fetchUnreadCount, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [auth?.user])
 
   const toggleFavorite = async () => {
     try {
@@ -124,6 +148,17 @@ export default function ServiceShow() {
                 <Badge variant="secondary">{gig.category}</Badge>
               </div>
               <div className="flex items-center gap-2">
+                <Link href="/service-hub/chats/list">
+                  <Button variant="ghost" size="sm" className="gap-2 relative">
+                    <MessageCircle className="h-4 w-4" />
+                    View Chats
+                    {unreadCount > 0 && (
+                      <Badge variant="default" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-blue-600 text-white rounded-full">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </Link>
                 <Button
                   variant="ghost"
                   size="icon"
@@ -219,7 +254,36 @@ export default function ServiceShow() {
                               View Profile
                             </Button>
                           </Link>
-                          <Button variant="outline" size="sm">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              if (!auth?.user) {
+                                router.visit('/login');
+                                return;
+                              }
+                              try {
+                                const response = await fetch(`/service-hub/${gig.slug}/chat`, {
+                                  method: 'POST',
+                                  headers: {
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                  },
+                                  credentials: 'same-origin',
+                                });
+                                if (response.ok) {
+                                  const data = await response.json();
+                                  if (data.chat) {
+                                    router.visit(`/service-hub/chat/${data.chat.id}`);
+                                  }
+                                } else if (response.status === 401) {
+                                  router.visit('/login');
+                                }
+                              } catch (error) {
+                                console.error('Error creating chat:', error);
+                              }
+                            }}
+                          >
                             <MessageCircle className="mr-2 h-4 w-4" />
                             Contact
                           </Button>
@@ -293,9 +357,31 @@ export default function ServiceShow() {
                   <TabsContent value="faq" className="mt-6">
                     <Card className="border shadow-sm">
                       <CardContent className="pt-6 space-y-4">
-                        <div className="text-center py-8 text-muted-foreground">
-                          <p>No FAQ available for this service.</p>
-                        </div>
+                        {!gig.faqs || gig.faqs.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>No FAQ available for this service.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {gig.faqs.map((faq, index) => (
+                              <motion.div
+                                key={index}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.1 }}
+                                className="border rounded-lg p-4 hover:shadow-md transition-shadow"
+                              >
+                                <h4 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                                  <span className="text-blue-600">Q{index + 1}:</span>
+                                  {faq.question}
+                                </h4>
+                                <p className="text-muted-foreground pl-6 whitespace-pre-wrap">
+                                  {faq.answer}
+                                </p>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
