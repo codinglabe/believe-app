@@ -183,6 +183,8 @@ Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHu
 Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order/success', function () {

@@ -23,6 +23,7 @@ import {
   Sparkles,
   Package,
   Zap,
+  Edit,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -73,10 +74,11 @@ interface PageProps extends Record<string, unknown> {
   gig: Gig
   recentReviews: Review[]
   isFavorite: boolean
+  isOwner?: boolean
 }
 
 export default function ServiceShow() {
-  const { gig, recentReviews, isFavorite: initialIsFavorite, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
+  const { gig, recentReviews, isFavorite: initialIsFavorite, isOwner = false, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
 
   const defaultPackage = gig.packages.length > 1 ? gig.packages[1] : gig.packages[0]
   const [selectedPackage, setSelectedPackage] = useState(defaultPackage)
@@ -254,39 +256,48 @@ export default function ServiceShow() {
                               View Profile
                             </Button>
                           </Link>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={async () => {
-                              if (!auth?.user) {
-                                router.visit('/login');
-                                return;
-                              }
-                              try {
-                                const response = await fetch(`/service-hub/${gig.slug}/chat`, {
-                                  method: 'POST',
-                                  headers: {
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                  },
-                                  credentials: 'same-origin',
-                                });
-                                if (response.ok) {
-                                  const data = await response.json();
-                                  if (data.chat) {
-                                    router.visit(`/service-hub/chat/${data.chat.id}`);
-                                  }
-                                } else if (response.status === 401) {
+                          {isOwner ? (
+                            <Link href={`/service-hub/${gig.slug}/edit`}>
+                              <Button variant="outline" size="sm">
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit Service
+                              </Button>
+                            </Link>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                if (!auth?.user) {
                                   router.visit('/login');
+                                  return;
                                 }
-                              } catch (error) {
-                                console.error('Error creating chat:', error);
-                              }
-                            }}
-                          >
-                            <MessageCircle className="mr-2 h-4 w-4" />
-                            Contact
-                          </Button>
+                                try {
+                                  const response = await fetch(`/service-hub/${gig.slug}/chat`, {
+                                    method: 'POST',
+                                    headers: {
+                                      'Content-Type': 'application/json',
+                                      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                    },
+                                    credentials: 'same-origin',
+                                  });
+                                  if (response.ok) {
+                                    const data = await response.json();
+                                    if (data.chat) {
+                                      router.visit(`/service-hub/chat/${data.chat.id}`);
+                                    }
+                                  } else if (response.status === 401) {
+                                    router.visit('/login');
+                                  }
+                                } catch (error) {
+                                  console.error('Error creating chat:', error);
+                                }
+                              }}
+                            >
+                              <MessageCircle className="mr-2 h-4 w-4" />
+                              Contact
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>

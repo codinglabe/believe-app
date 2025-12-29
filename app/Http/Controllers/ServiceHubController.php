@@ -267,6 +267,193 @@ class ServiceHubController extends Controller
         }
     }
 
+    public function edit(Request $request, $slug): Response|RedirectResponse
+    {
+        $gig = Gig::with(['category', 'packages', 'images'])
+            ->where('slug', $slug)
+            ->firstOrFail();
+
+        // Check if user owns this service
+        if ($gig->user_id !== Auth::id()) {
+            abort(403, 'You do not have permission to edit this service.');
+        }
+
+        $categories = ServiceCategory::where('is_active', true)
+            ->orderBy('sort_order')
+            ->get();
+
+        // Format existing images
+        $existingImages = $gig->images->map(function ($image) {
+            return [
+                'id' => $image->id,
+                'url' => Storage::url($image->image_path),
+                'path' => $image->image_path,
+            ];
+        })->toArray();
+
+        // Format packages
+        $packages = $gig->packages->map(function ($package) {
+            return [
+                'id' => $package->id,
+                'name' => $package->name,
+                'price' => (float) $package->price,
+                'deliveryTime' => $package->delivery_time,
+                'description' => $package->description ?? '',
+                'features' => $package->features ?? [],
+            ];
+        })->toArray();
+
+        return Inertia::render('frontend/service-hub/edit', [
+            'gig' => [
+                'id' => $gig->id,
+                'slug' => $gig->slug,
+                'title' => $gig->title,
+                'category_id' => $gig->category_id,
+                'description' => $gig->description,
+                'fullDescription' => $gig->full_description ?? '',
+                'tags' => $gig->tags ?? [],
+                'faqs' => $gig->faqs ?? [],
+                'images' => $existingImages,
+                'packages' => $packages,
+            ],
+            'categories' => $categories,
+        ]);
+    }
+
+    public function update(Request $request, $slug): RedirectResponse
+    {
+        $gig = Gig::where('slug', $slug)->firstOrFail();
+
+        // Check if user owns this service
+        if ($gig->user_id !== Auth::id()) {
+            abort(403, 'You do not have permission to update this service.');
+        }
+
+        $validated = $request->validate([
+            'title' => 'required|string|max:255',
+            'category_id' => 'required|exists:service_categories,id',
+            'description' => 'required|string|max:500',
+            'full_description' => 'nullable|string',
+            'tags' => 'nullable|array',
+            'tags.*' => 'string|max:50',
+            'faqs' => 'nullable|array',
+            'faqs.*.question' => 'required|string|max:255',
+            'faqs.*.answer' => 'required|string|max:1000',
+            'packages' => 'required|array|min:1',
+            'packages.*.name' => 'required|string|max:100',
+            'packages.*.price' => 'required|numeric|min:0',
+            'packages.*.delivery_time' => 'required|string',
+            'packages.*.description' => 'nullable|string',
+            'packages.*.features' => 'nullable|array',
+            'packages.*.features.*' => 'string|max:255',
+            'images' => 'nullable|array|max:5',
+            'images.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'existing_images' => 'nullable|array',
+            'existing_images.*' => 'nullable|string',
+            'deleted_images' => 'nullable|array',
+            'deleted_images.*' => 'nullable|integer',
+        ]);
+
+        try {
+            // Format FAQs
+            $faqs = [];
+            if (isset($validated['faqs']) && is_array($validated['faqs'])) {
+                foreach ($validated['faqs'] as $faq) {
+                    if (!empty($faq['question']) && !empty($faq['answer'])) {
+                        $faqs[] = [
+                            'question' => $faq['question'],
+                            'answer' => $faq['answer'],
+                        ];
+                    }
+                }
+            }
+
+            // Update gig
+            $gig->update([
+                'category_id' => $validated['category_id'],
+                'title' => $validated['title'],
+                'description' => $validated['description'],
+                'full_description' => $validated['full_description'] ?? null,
+                'tags' => $validated['tags'] ?? [],
+                'faqs' => $faqs,
+                'price' => $validated['packages'][0]['price'] ?? 0,
+                'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
+            ]);
+
+            // Handle deleted images
+            if (isset($validated['deleted_images']) && is_array($validated['deleted_images'])) {
+                foreach ($validated['deleted_images'] as $imageId) {
+                    $image = GigImage::find($imageId);
+                    if ($image && $image->gig_id === $gig->id) {
+                        Storage::disk('public')->delete($image->image_path);
+                        $image->delete();
+                    }
+                }
+            }
+
+            // Handle new images
+            $existingImageCount = count($validated['existing_images'] ?? []);
+            $newImageIndex = $existingImageCount;
+            if ($request->hasFile('images')) {
+                foreach ($request->file('images') as $index => $image) {
+                    $imagePath = $image->store('gigs/' . $gig->id, 'public');
+                    GigImage::create([
+                        'gig_id' => $gig->id,
+                        'image_path' => $imagePath,
+                        'is_primary' => $existingImageCount === 0 && $index === 0,
+                        'sort_order' => $newImageIndex + $index,
+                    ]);
+                }
+            }
+
+            // Update packages
+            $packageIds = [];
+            foreach ($validated['packages'] as $index => $packageData) {
+                if (isset($packageData['id'])) {
+                    // Update existing package
+                    $package = GigPackage::where('id', $packageData['id'])
+                        ->where('gig_id', $gig->id)
+                        ->first();
+                    if ($package) {
+                        $package->update([
+                            'name' => $packageData['name'],
+                            'price' => $packageData['price'],
+                            'delivery_time' => $packageData['delivery_time'],
+                            'description' => $packageData['description'] ?? null,
+                            'features' => $packageData['features'] ?? [],
+                            'is_popular' => $index === 1,
+                            'sort_order' => $index,
+                        ]);
+                        $packageIds[] = $package->id;
+                    }
+                } else {
+                    // Create new package
+                    $package = GigPackage::create([
+                        'gig_id' => $gig->id,
+                        'name' => $packageData['name'],
+                        'price' => $packageData['price'],
+                        'delivery_time' => $packageData['delivery_time'],
+                        'description' => $packageData['description'] ?? null,
+                        'features' => $packageData['features'] ?? [],
+                        'is_popular' => $index === 1,
+                        'sort_order' => $index,
+                    ]);
+                    $packageIds[] = $package->id;
+                }
+            }
+
+            // Delete packages that are no longer in the list
+            GigPackage::where('gig_id', $gig->id)
+                ->whereNotIn('id', $packageIds)
+                ->delete();
+
+            return redirect()->route('service-hub.show', $gig->slug)
+                ->with('success', 'Service updated successfully!');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to update service: ' . $e->getMessage()]);
+        }
+    }
+
     public function show(Request $request, $slug): Response
     {
         $gig = Gig::with([
@@ -357,10 +544,14 @@ class ServiceHubController extends Controller
             ],
         ];
 
+        // Check if current user is the owner
+        $isOwner = Auth::check() && $gig->user_id === Auth::id();
+
         return Inertia::render('frontend/service-hub/show', [
             'gig' => $gigData,
             'recentReviews' => $recentReviews,
             'isFavorite' => $isFavorite,
+            'isOwner' => $isOwner,
         ]);
     }
 

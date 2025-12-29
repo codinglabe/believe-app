@@ -63,10 +63,10 @@ export default function ServiceChat() {
   const shouldScrollToBottomRef = useRef(true)
 
   const isNearBottom = () => {
-    if (!messagesContainerRef.current) return true
-    const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
-    const threshold = 150 // pixels from bottom
-    return scrollHeight - scrollTop - clientHeight < threshold
+    // if (!messagesContainerRef.current) return true
+    // const { scrollTop, scrollHeight, clientHeight } = messagesContainerRef.current
+    // const threshold = 150 // pixels from bottom
+    // return scrollHeight - scrollTop - clientHeight < threshold
   }
 
   const scrollToBottom = (smooth = true) => {
@@ -77,9 +77,9 @@ export default function ServiceChat() {
 
   const loadMessages = async (preserveScroll = false) => {
     try {
-      const wasNearBottom = preserveScroll ? isNearBottom() : false
-      const previousScrollHeight = messagesContainerRef.current?.scrollHeight || 0
-      const previousScrollTop = messagesContainerRef.current?.scrollTop || 0
+     const wasNearBottom = preserveScroll ? isNearBottom() : false
+    //   const previousScrollHeight = messagesContainerRef.current?.scrollHeight || 0
+    //   const previousScrollTop = messagesContainerRef.current?.scrollTop || 0
 
       const response = await fetch(`/service-hub/chat/${chat.id}/messagesget`)
       if (!response.ok) {
@@ -128,17 +128,17 @@ export default function ServiceChat() {
       if (preserveScroll) {
         if (wasNearBottom) {
           // User was near bottom, scroll to bottom after new messages
-          setTimeout(() => scrollToBottom(true), 100)
+        //   setTimeout(() => scrollToBottom(true), 100)
         } else {
           // User was scrolling up, maintain exact scroll position
-          setTimeout(() => {
-            if (messagesContainerRef.current) {
-              const newScrollHeight = messagesContainerRef.current.scrollHeight
-              const scrollDiff = newScrollHeight - previousScrollHeight
-              // Maintain relative position
-              messagesContainerRef.current.scrollTop = previousScrollTop + scrollDiff
-            }
-          }, 0)
+        //   setTimeout(() => {
+        //     if (messagesContainerRef.current) {
+        //       const newScrollHeight = messagesContainerRef.current.scrollHeight
+        //       const scrollDiff = newScrollHeight - previousScrollHeight
+        //       // Maintain relative position
+        //       messagesContainerRef.current.scrollTop = previousScrollTop + scrollDiff
+        //     }
+        //   }, 0)
         }
       }
     } catch (error) {
@@ -184,11 +184,11 @@ export default function ServiceChat() {
     if (!container) return
 
     const handleScroll = () => {
-      shouldScrollToBottomRef.current = isNearBottom()
+    //   shouldScrollToBottomRef.current = isNearBottom()
     }
 
-    container.addEventListener('scroll', handleScroll)
-    return () => container.removeEventListener('scroll', handleScroll)
+    // container.addEventListener('scroll', handleScroll)
+    // return () => container.removeEventListener('scroll', handleScroll)
   }, [])
 
   const handleSendMessage = async () => {
