@@ -47,7 +47,7 @@ import { WalletPopup } from "@/components/WalletPopup"
 import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscriptionModal"
 
 // Extending SharedData interface to include wallet_balance
-interface SharedData {
+interface SharedData extends Record<string, unknown> {
   auth: {
     user: {
       id: number
@@ -64,6 +64,10 @@ interface SharedData {
       balance?: string // Added wallet_balance
       reward_points?: number // Added reward_points
       role?: string // Ensure role is also present
+      service_seller_profile?: {
+        id: number
+        verification_status?: string
+      } | null // Added service_seller_profile
     }
   }
 }
@@ -210,7 +214,7 @@ export default function Navbar() {
   const handleWalletClick = () => {
     // Check if user is a regular user (supporter)
     const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
-    
+
     if (isRegularUser) {
       // For regular users, check subscription status
       // If hasSubscription is null, we're still loading - allow access for now
@@ -222,7 +226,7 @@ export default function Navbar() {
       }
       // If hasSubscription is true or null, proceed to wallet popup
     }
-    
+
     // Has subscription or is organization user, show wallet popup
     setShowWalletPopup(true)
   }
@@ -412,6 +416,23 @@ export default function Navbar() {
                           <span>Dashboard</span>
                         </Link>
                       </DropdownMenuItem>
+                    )}
+                    {auth?.user?.service_seller_profile && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href={route("service-hub.seller.profile", auth.user.id)}>
+                            <User className="mr-2 h-4 w-4" />
+                            <span>Seller Profile</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={route("service-hub.seller-orders")}>
+                            <Store className="mr-2 h-4 w-4" />
+                            <span>Seller Dashboard</span>
+                          </Link>
+                        </DropdownMenuItem>
+
+                      </>
                     )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
@@ -627,6 +648,23 @@ export default function Navbar() {
                           </Button>
                         </Link>
                       )}
+                      {auth?.user?.service_seller_profile && (
+                        <>
+                         <Link href={route("service-hub.seller.profile", auth.user.id)}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <User className="mr-2 h-4 w-4" />
+                              Seller Profile
+                            </Button>
+                          </Link>
+                          <Link href={route("service-hub.seller-orders")}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <Store className="mr-2 h-4 w-4" />
+                              Seller Dashboard
+                            </Button>
+                          </Link>
+
+                        </>
+                      )}
                       <Button
                         variant="ghost"
                         className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
@@ -679,11 +717,11 @@ export default function Navbar() {
 }
 
 // Render modals outside nav to avoid z-index issues
-export function NavbarModals({ 
-  showWalletPopup, 
-  showSubscriptionModal, 
-  onWalletClose, 
-  onSubscriptionClose 
+export function NavbarModals({
+  showWalletPopup,
+  showSubscriptionModal,
+  onWalletClose,
+  onSubscriptionClose
 }: {
   showWalletPopup: boolean
   showSubscriptionModal: boolean

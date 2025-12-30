@@ -475,9 +475,10 @@ class ServiceHubController extends Controller
             abort(404);
         }
 
-        // Get recent reviews
+        // Get recent reviews (only buyer reviews)
         $recentReviews = ServiceReview::with('user:id,name,image')
             ->where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
             ->orderBy('created_at', 'desc')
             ->limit(3)
             ->get()
@@ -520,6 +521,11 @@ class ServiceHubController extends Controller
             ];
         })->toArray();
 
+        // Calculate buyer reviews count (only buyer reviews should be counted)
+        $buyerReviewsCount = ServiceReview::where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
+            ->count();
+
         // Format gig data
         $gigData = [
             'id' => $gig->id,
@@ -530,7 +536,7 @@ class ServiceHubController extends Controller
             'price' => (float) $gig->price,
             'deliveryTime' => $gig->delivery_time,
             'rating' => (float) $gig->rating,
-            'reviews' => $gig->reviews_count,
+            'reviews' => $buyerReviewsCount, // Use actual buyer reviews count
             'category' => $gig->category->name ?? '',
             'tags' => $gig->tags ?? [],
             'faqs' => $gig->faqs ?? [],
@@ -542,6 +548,7 @@ class ServiceHubController extends Controller
                 'avatar' => $gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->profile_image
                     ? Storage::url($gig->user->serviceSellerProfile->profile_image)
                     : ($gig->user->image ? Storage::url($gig->user->image) : null),
+                'phone' => $gig->user->serviceSellerProfile ? $gig->user->serviceSellerProfile->phone : null,
             ],
         ];
 
@@ -1177,19 +1184,42 @@ class ServiceHubController extends Controller
     {
         $gig = Gig::with('category')->where('slug', $slug)->firstOrFail();
 
-        $reviews = ServiceReview::with('user:id,name,image')
+        $query = ServiceReview::with('user:id,name,image')
             ->where('gig_id', $gig->id)
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->where('reviewer_type', 'buyer');
 
-        // Calculate rating distribution
+        // Handle sorting
+        $sortBy = $request->get('sort_by', 'most_recent');
+        switch ($sortBy) {
+            case 'most_helpful':
+                $query->orderBy('helpful_count', 'desc')->orderBy('created_at', 'desc');
+                break;
+            case 'highest_rated':
+                $query->orderBy('rating', 'desc')->orderBy('created_at', 'desc');
+                break;
+            case 'lowest_rated':
+                $query->orderBy('rating', 'asc')->orderBy('created_at', 'desc');
+                break;
+            case 'most_recent':
+            default:
+                $query->orderBy('created_at', 'desc');
+                break;
+        }
+
+        $reviews = $query->paginate(10);
+
+        // Calculate rating distribution (only for buyer reviews)
         $ratingDistribution = [];
+        $totalBuyerReviews = ServiceReview::where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
+            ->count();
+
         for ($i = 5; $i >= 1; $i--) {
             $count = ServiceReview::where('gig_id', $gig->id)
+                ->where('reviewer_type', 'buyer')
                 ->where('rating', $i)
                 ->count();
-            $total = $reviews->total();
-            $ratingDistribution[$i] = $total > 0 ? round(($count / $total) * 100, 1) : 0;
+            $ratingDistribution[$i] = $totalBuyerReviews > 0 ? round(($count / $totalBuyerReviews) * 100, 1) : 0;
         }
 
         // Format gig data
@@ -1212,7 +1242,7 @@ class ServiceHubController extends Controller
                 'rating' => $review->rating,
                 'comment' => $review->comment,
                 'date' => $review->created_at->diffForHumans(),
-                'helpful' => 0, // Can be added later if helpful feature is implemented
+                'helpful' => $review->helpful_count ?? 0,
                 'verified' => $review->is_verified ?? false,
             ];
         })->toArray();

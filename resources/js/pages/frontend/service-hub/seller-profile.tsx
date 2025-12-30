@@ -34,6 +34,7 @@ import {
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
+import { showErrorToast } from "@/lib/toast"
 
 interface Seller {
   id: number
@@ -103,7 +104,7 @@ interface PageProps extends Record<string, unknown> {
 }
 
 export default function SellerProfile() {
-  const { seller, sellerProfile, services = [], stats, recentReviews = [], isOwner = false } = usePage<PageProps>().props
+  const { seller, sellerProfile, services = [], stats, recentReviews = [], isOwner = false, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
   const [isFavorite, setIsFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState("services")
 
@@ -222,14 +223,29 @@ export default function SellerProfile() {
                           </Link>
                         ) : (
                           <>
-                            <Button className="bg-blue-600 hover:bg-blue-700">
+                            <Button
+                              className="bg-blue-600 hover:bg-blue-700"
+                              onClick={() => {
+                                if (!auth?.user) {
+                                  router.visit('/login');
+                                  return;
+                                }
+                                if (!sellerProfile?.phone) {
+                                  showErrorToast('Seller phone number is not available');
+                                  return;
+                                }
+                                // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
+                                const phoneNumber = sellerProfile.phone.replace(/[\s\-\(\)]/g, '');
+                                // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
+                                const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
+                                // Open WhatsApp with the phone number
+                                window.open(`https://wa.me/${whatsappNumber}`, '_blank');
+                              }}
+                            >
                               <MessageCircle className="mr-2 h-4 w-4" />
                               Contact Seller
                             </Button>
-                            <Button variant="outline">
-                              <Mail className="mr-2 h-4 w-4" />
-                              Send Message
-                            </Button>
+
                           </>
                         )}
                       </div>
