@@ -48,7 +48,7 @@ import { UserWalletSubscriptionModal } from "@/components/UserWalletSubscription
 import { BelievePointsDisplay } from "@/components/believe-points-display"
 
 // Extending SharedData interface to include wallet_balance
-interface SharedData {
+interface SharedData extends Record<string, unknown> {
   auth: {
     user: {
       id: number
@@ -66,6 +66,10 @@ interface SharedData {
       reward_points?: number // Added reward_points
       believe_points?: number // Added believe_points
       role?: string // Ensure role is also present
+      service_seller_profile?: {
+        id: number
+        verification_status?: string
+      } | null // Added service_seller_profile
     }
   }
 }
@@ -424,6 +428,23 @@ export default function Navbar() {
                         </Link>
                       </DropdownMenuItem>
                     )}
+                    {auth?.user?.service_seller_profile && (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href={route("service-hub.seller.profile", auth.user.id)}>
+                            <User className="mr-2 h-4 w-4" />
+                            <span>Seller Profile</span>
+                          </Link>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem asChild>
+                          <Link href={route("service-hub.seller-orders")}>
+                            <Store className="mr-2 h-4 w-4" />
+                            <span>Seller Dashboard</span>
+                          </Link>
+                        </DropdownMenuItem>
+
+                      </>
+                    )}
                     <DropdownMenuSeparator />
                     <DropdownMenuItem asChild>
                       <Link method="post" className="w-full" href={route("logout")} onClick={handleLogout}>
@@ -645,6 +666,23 @@ export default function Navbar() {
                             Dashboard
                           </Button>
                         </Link>
+                      )}
+                      {auth?.user?.service_seller_profile && (
+                        <>
+                         <Link href={route("service-hub.seller.profile", auth.user.id)}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <User className="mr-2 h-4 w-4" />
+                              Seller Profile
+                            </Button>
+                          </Link>
+                          <Link href={route("service-hub.seller-orders")}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <Store className="mr-2 h-4 w-4" />
+                              Seller Dashboard
+                            </Button>
+                          </Link>
+
+                        </>
                       )}
                       <Button
                         variant="ghost"

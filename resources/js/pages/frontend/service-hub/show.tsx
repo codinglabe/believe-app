@@ -8,6 +8,18 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+import { Input } from "@/components/frontend/ui/input"
+import { Label } from "@/components/frontend/ui/label"
+import { Textarea } from "@/components/frontend/ui/textarea"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import {
   Star,
   Clock,
   Check,
@@ -23,6 +35,8 @@ import {
   Sparkles,
   Package,
   Zap,
+  Edit,
+  Handshake,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -40,6 +54,7 @@ interface Gig {
   reviews: number
   category: string
   tags: string[]
+  faqs?: Array<{ question: string; answer: string }>
   images: string[]
   packages: Array<{
     id: number
@@ -54,6 +69,7 @@ interface Gig {
     id: number
     name: string
     avatar: string | null
+    phone: string | null
   }
 }
 
@@ -68,23 +84,67 @@ interface Review {
   date: string
 }
 
+interface SellerGig {
+  id: number
+  slug: string
+  title: string
+  description: string
+  price: number
+  image: string | null
+}
+
 interface PageProps extends Record<string, unknown> {
   gig: Gig
   recentReviews: Review[]
   isFavorite: boolean
+  isOwner?: boolean
+  sellerGigs?: SellerGig[]
 }
 
 export default function ServiceShow() {
-  const { gig, recentReviews, isFavorite: initialIsFavorite } = usePage<PageProps>().props
+  const { gig, recentReviews, isFavorite: initialIsFavorite, isOwner = false, sellerGigs = [], auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
 
   const defaultPackage = gig.packages.length > 1 ? gig.packages[1] : gig.packages[0]
   const [selectedPackage, setSelectedPackage] = useState(defaultPackage)
   const [selectedImage, setSelectedImage] = useState(0)
   const [isFavorite, setIsFavorite] = useState(initialIsFavorite)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [showOfferModal, setShowOfferModal] = useState(false)
+  const [selectedGigForOffer, setSelectedGigForOffer] = useState<SellerGig | null>(null)
+  const [offerForm, setOfferForm] = useState({
+    title: "",
+    description: "",
+    price: "",
+    delivery_time: "3 days",
+    requirements: "",
+  })
+  const [isCreatingOffer, setIsCreatingOffer] = useState(false)
 
   useEffect(() => {
     setSelectedPackage(defaultPackage)
   }, [gig.id])
+
+  // Fetch unread count
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await fetch("/service-hub/chats/unreadcountget")
+        if (response.ok) {
+          const data = await response.json()
+          setUnreadCount(data.total_unread || 0)
+        }
+      } catch (error) {
+        console.error("Error fetching unread count:", error)
+      }
+    }
+
+    if (auth?.user) {
+      fetchUnreadCount()
+      // Refresh every 10 seconds
+      const interval = setInterval(fetchUnreadCount, 10000)
+      return () => clearInterval(interval)
+    }
+  }, [auth?.user])
 
   const toggleFavorite = async () => {
     try {
@@ -104,7 +164,7 @@ export default function ServiceShow() {
   }
 
   const handleOrder = () => {
-    router.visit(`/service-hub/order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
+    router.visit(`/service-hub/create-order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
   }
 
   return (
@@ -124,6 +184,17 @@ export default function ServiceShow() {
                 <Badge variant="secondary">{gig.category}</Badge>
               </div>
               <div className="flex items-center gap-2">
+                {/* <Link href="/service-hub/chats/list">
+                  <Button variant="ghost" size="sm" className="gap-2 relative">
+                    <MessageCircle className="h-4 w-4" />
+                    View Chats
+                    {unreadCount > 0 && (
+                      <Badge variant="default" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-blue-600 text-white rounded-full">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </Link> */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -219,10 +290,49 @@ export default function ServiceShow() {
                               View Profile
                             </Button>
                           </Link>
-                          <Button variant="outline" size="sm">
-                            <MessageCircle className="mr-2 h-4 w-4" />
-                            Contact
-                          </Button>
+                          {isOwner ? (
+                            <>
+                              {/* <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => setShowOfferModal(true)}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <Handshake className="mr-2 h-4 w-4" />
+                                Create Offer
+                              </Button> */}
+                              <Link href={`/service-hub/${gig.slug}/edit`}>
+                                <Button variant="outline" size="sm">
+                                  <Edit className="mr-2 h-4 w-4" />
+                                  Edit Service
+                                </Button>
+                              </Link>
+                            </>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                if (!auth?.user) {
+                                  router.visit('/login');
+                                  return;
+                                }
+                                if (!gig.seller.phone) {
+                                  showErrorToast('Seller phone number is not available');
+                                  return;
+                                }
+                                // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
+                                const phoneNumber = gig.seller.phone.replace(/[\s\-\(\)]/g, '');
+                                // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
+                                const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
+                                // Open WhatsApp with the phone number
+                                window.open(`https://wa.me/${whatsappNumber}`, '_blank');
+                              }}
+                            >
+                              <MessageCircle className="mr-2 h-4 w-4" />
+                              Contact
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -240,7 +350,7 @@ export default function ServiceShow() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="description">Description</TabsTrigger>
                     <TabsTrigger value="reviews">Reviews ({gig.reviews.toLocaleString()})</TabsTrigger>
-                    <TabsTrigger value="faq">FAQ</TabsTrigger>
+                    <TabsTrigger value="faq">FAQ ({gig.faqs?.length || 0})</TabsTrigger>
                   </TabsList>
                   <TabsContent value="description" className="mt-6">
                     <Card className="border shadow-sm">
@@ -293,9 +403,31 @@ export default function ServiceShow() {
                   <TabsContent value="faq" className="mt-6">
                     <Card className="border shadow-sm">
                       <CardContent className="pt-6 space-y-4">
-                        <div className="text-center py-8 text-muted-foreground">
-                          <p>No FAQ available for this service.</p>
-                        </div>
+                        {!gig.faqs || gig.faqs.length === 0 ? (
+                          <div className="text-center py-8 text-muted-foreground">
+                            <p>No FAQ available for this service.</p>
+                          </div>
+                        ) : (
+                          <div className="space-y-4">
+                            {gig.faqs.map((faq, index) => (
+                              <motion.div
+                                key={index}
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: index * 0.1 }}
+                                className="border rounded-lg p-4 hover:shadow-md transition-shadow"
+                              >
+                                <h4 className="font-semibold text-lg mb-2 flex items-center gap-2">
+                                  <span className="text-blue-600">Q{index + 1}:</span>
+                                  {faq.question}
+                                </h4>
+                                <p className="text-muted-foreground pl-6 whitespace-pre-wrap">
+                                  {faq.answer}
+                                </p>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
                       </CardContent>
                     </Card>
                   </TabsContent>
@@ -390,17 +522,19 @@ export default function ServiceShow() {
                                 <Clock className="h-4 w-4" />
                                 <span>Delivery in {pkg.deliveryTime}</span>
                               </div>
-                              <Button
-                                onClick={() => {
-                                  setSelectedPackage(pkg)
-                                  handleOrder()
-                                }}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                size="lg"
-                              >
-                                <Package className="mr-2 h-5 w-5" />
-                                Continue with {pkg.name} (${pkg.price})
-                              </Button>
+                              {!isOwner && (
+                                <Button
+                                  onClick={() => {
+                                    setSelectedPackage(pkg)
+                                    handleOrder()
+                                  }}
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                  size="lg"
+                                >
+                                  <Package className="mr-2 h-5 w-5" />
+                                  Continue with {pkg.name} (${pkg.price})
+                                </Button>
+                              )}
                             </div>
                           </motion.div>
                         </TabsContent>
@@ -432,6 +566,234 @@ export default function ServiceShow() {
           </div>
         </div>
       </div>
+
+      {/* Create Custom Offer Modal */}
+      <Dialog open={showOfferModal} onOpenChange={(open) => {
+        setShowOfferModal(open)
+        if (!open) {
+          setSelectedGigForOffer(null)
+          setOfferForm({
+            title: "",
+            description: "",
+            price: "",
+            delivery_time: "3 days",
+            requirements: "",
+          })
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Handshake className="h-5 w-5" />
+              Create Custom Offer
+            </DialogTitle>
+            <DialogDescription>
+              {!selectedGigForOffer
+                ? "Select a service to create an offer for"
+                : "Fill in the offer details"}
+            </DialogDescription>
+          </DialogHeader>
+
+          {!selectedGigForOffer ? (
+            // Step 1: Select Gig
+            <div className="space-y-4 py-4">
+              {sellerGigs.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <p>You don't have any active services yet.</p>
+                  <Link href="/service-hub/create" className="text-primary hover:underline mt-2 inline-block">
+                    Create your first service
+                  </Link>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 max-h-[400px] overflow-y-auto">
+                  {sellerGigs.map((sellerGig) => (
+                    <button
+                      key={sellerGig.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedGigForOffer(sellerGig)
+                        setOfferForm({
+                          title: sellerGig.title,
+                          description: sellerGig.description,
+                          price: sellerGig.price.toString(),
+                          delivery_time: "3 days",
+                          requirements: "",
+                        })
+                      }}
+                      className="flex items-center gap-4 p-4 border rounded-lg hover:bg-muted transition-colors text-left"
+                    >
+                      {sellerGig.image && (
+                        <img
+                          src={sellerGig.image}
+                          alt={sellerGig.title}
+                          className="w-20 h-20 object-cover rounded"
+                        />
+                      )}
+                      <div className="flex-1">
+                        <h4 className="font-semibold">{sellerGig.title}</h4>
+                        <p className="text-sm text-muted-foreground line-clamp-2">{sellerGig.description}</p>
+                        <p className="text-sm font-medium mt-1">${sellerGig.price}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : (
+            // Step 2: Offer Form
+            <div className="space-y-4 py-4">
+              <div className="p-3 bg-muted rounded-lg flex items-center gap-3">
+                {selectedGigForOffer.image && (
+                  <img
+                    src={selectedGigForOffer.image}
+                    alt={selectedGigForOffer.title}
+                    className="w-12 h-12 object-cover rounded"
+                  />
+                )}
+                <div className="flex-1">
+                  <p className="text-sm font-medium">{selectedGigForOffer.title}</p>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedGigForOffer(null)}
+                    className="text-xs text-primary hover:underline"
+                  >
+                    Change service
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="offer_title">Offer Title *</Label>
+                <Input
+                  id="offer_title"
+                  placeholder="e.g., Custom Logo Design Package"
+                  value={offerForm.title}
+                  onChange={(e) => setOfferForm({ ...offerForm, title: e.target.value })}
+                  required
+                />
+              </div>
+              <div>
+                <Label htmlFor="offer_description">Description *</Label>
+                <Textarea
+                  id="offer_description"
+                  placeholder="Describe what you'll deliver..."
+                  value={offerForm.description}
+                  onChange={(e) => setOfferForm({ ...offerForm, description: e.target.value })}
+                  rows={4}
+                  required
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="offer_price">Price ($) *</Label>
+                  <Input
+                    id="offer_price"
+                    type="number"
+                    min="5"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={offerForm.price}
+                    onChange={(e) => setOfferForm({ ...offerForm, price: e.target.value })}
+                    required
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="offer_delivery">Delivery Time *</Label>
+                  <Input
+                    id="offer_delivery"
+                    placeholder="e.g., 3 days, 1 week"
+                    value={offerForm.delivery_time}
+                    onChange={(e) => setOfferForm({ ...offerForm, delivery_time: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="offer_requirements">Requirements (Optional)</Label>
+                <Textarea
+                  id="offer_requirements"
+                  placeholder="Any specific requirements or instructions..."
+                  value={offerForm.requirements}
+                  onChange={(e) => setOfferForm({ ...offerForm, requirements: e.target.value })}
+                  rows={3}
+                />
+              </div>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                if (selectedGigForOffer) {
+                  setSelectedGigForOffer(null)
+                } else {
+                  setShowOfferModal(false)
+                }
+              }}
+              disabled={isCreatingOffer}
+            >
+              {selectedGigForOffer ? "Back" : "Cancel"}
+            </Button>
+            {selectedGigForOffer && (
+              <Button
+                onClick={async () => {
+                  if (!offerForm.title || !offerForm.description || !offerForm.price || !offerForm.delivery_time) {
+                    showErrorToast("Please fill in all required fields")
+                    return
+                  }
+
+                  setIsCreatingOffer(true)
+                  try {
+                    const response = await fetch(`/service-hub/${selectedGigForOffer.slug}/create-offer`, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                      },
+                      credentials: 'same-origin',
+                      body: JSON.stringify({
+                        buyer_id: 0, // Will be set from chat context later
+                        title: offerForm.title,
+                        description: offerForm.description,
+                        price: parseFloat(offerForm.price),
+                        delivery_time: offerForm.delivery_time,
+                        requirements: offerForm.requirements || null,
+                      }),
+                    })
+
+                    const data = await response.json()
+
+                    if (response.ok) {
+                      showSuccessToast(data.message || "Custom offer created successfully!")
+                      setShowOfferModal(false)
+                      setSelectedGigForOffer(null)
+                      setOfferForm({
+                        title: "",
+                        description: "",
+                        price: "",
+                        delivery_time: "3 days",
+                        requirements: "",
+                      })
+                    } else {
+                      showErrorToast(data.error || "Failed to create offer")
+                    }
+                  } catch (error) {
+                    console.error('Error creating offer:', error)
+                    showErrorToast("Failed to create offer. Please try again.")
+                  } finally {
+                    setIsCreatingOffer(false)
+                  }
+                }}
+                disabled={isCreatingOffer}
+                className="bg-green-600 hover:bg-green-700"
+              >
+                {isCreatingOffer ? "Creating..." : "Create Offer"}
+              </Button>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </FrontendLayout>
   )
 }

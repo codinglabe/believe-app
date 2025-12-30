@@ -22,7 +22,7 @@ import {
   Check,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
@@ -32,12 +32,37 @@ interface Category {
   slug: string
 }
 
+interface ExistingImage {
+  id: number
+  url: string
+  path: string
+}
+
 interface PageProps extends Record<string, unknown> {
+  gig: {
+    id: number
+    slug: string
+    title: string
+    category_id: number
+    description: string
+    fullDescription: string
+    tags: string[]
+    faqs: Array<{ question: string; answer: string }>
+    images: ExistingImage[]
+    packages: Array<{
+      id?: number
+      name: string
+      price: number
+      deliveryTime: string
+      description: string
+      features: string[]
+    }>
+  }
   categories: Category[]
 }
 
 interface Package {
-  id: number
+  id?: number
   name: string
   price: number
   deliveryTime: string
@@ -45,8 +70,8 @@ interface Package {
   features: string[]
 }
 
-export default function CreateService() {
-  const { categories, errors: backendErrors } = usePage<PageProps & { errors?: Record<string, string | string[]> }>().props
+export default function EditService() {
+  const { gig, categories, errors: backendErrors } = usePage<PageProps & { errors?: Record<string, string | string[]> }>().props
 
   // Helper function to get error message for a field
   const getError = (fieldName: string): string | null => {
@@ -57,26 +82,143 @@ export default function CreateService() {
   }
 
   const [formData, setFormData] = useState({
-    title: "",
-    category_id: "",
-    description: "",
-    fullDescription: "",
-    tags: [] as string[],
+    title: gig.title || "",
+    category_id: gig.category_id?.toString() || "",
+    description: gig.description || "",
+    fullDescription: gig.fullDescription || "",
+    tags: gig.tags || [],
     images: [] as File[],
-    faqs: [] as Array<{ question: string; answer: string }>,
+    faqs: gig.faqs || [] as Array<{ question: string; answer: string }>,
   })
-  const [packages, setPackages] = useState<Package[]>([
-    {
-      id: 1,
-      name: "Basic",
-      price: 0,
-      deliveryTime: "3 days",
-      description: "",
-      features: [""],
-    },
-  ])
+  const [existingImages, setExistingImages] = useState<ExistingImage[]>(gig.images || [])
+  const [deletedImages, setDeletedImages] = useState<number[]>([])
+  const [packages, setPackages] = useState<Package[]>(
+    gig.packages && gig.packages.length > 0
+      ? gig.packages.map((pkg) => ({
+          id: pkg.id,
+          name: pkg.name,
+          price: pkg.price,
+          deliveryTime: pkg.deliveryTime,
+          description: pkg.description || "",
+          features: pkg.features && pkg.features.length > 0 ? pkg.features : [""],
+        }))
+      : [
+          {
+            id: 1,
+            name: "Basic",
+            price: 0,
+            deliveryTime: "3 days",
+            description: "",
+            features: [""],
+          },
+        ]
+  )
   const [newTag, setNewTag] = useState("")
   const [newFeature, setNewFeature] = useState<{ packageId: number; feature: string } | null>(null)
+
+  const handleAddTag = () => {
+    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
+      setFormData({
+        ...formData,
+        tags: [...formData.tags, newTag.trim()],
+      })
+      setNewTag("")
+    }
+  }
+
+  const handleRemoveTag = (tag: string) => {
+    setFormData({
+      ...formData,
+      tags: formData.tags.filter((t) => t !== tag),
+    })
+  }
+
+  const handleAddPackage = () => {
+    const newId = packages.length > 0 ? Math.max(...packages.map((p) => p.id || 0)) + 1 : 1
+    setPackages([
+      ...packages,
+      {
+        id: newId,
+        name: "",
+        price: 0,
+        deliveryTime: "3 days",
+        description: "",
+        features: [""],
+      },
+    ])
+  }
+
+  const handleRemovePackage = (id: number | undefined) => {
+    if (packages.length > 1) {
+      setPackages(packages.filter((p) => p.id !== id))
+    }
+  }
+
+  const handleUpdatePackage = (id: number | undefined, field: keyof Package, value: any) => {
+    setPackages(
+      packages.map((pkg) => (pkg.id === id ? { ...pkg, [field]: value } : pkg))
+    )
+  }
+
+  const handleAddFeature = (packageId: number | undefined) => {
+    setPackages(
+      packages.map((pkg) =>
+        pkg.id === packageId ? { ...pkg, features: [...pkg.features, ""] } : pkg
+      )
+    )
+  }
+
+  const handleRemoveFeature = (packageId: number | undefined, featureIndex: number) => {
+    setPackages(
+      packages.map((pkg) =>
+        pkg.id === packageId
+          ? { ...pkg, features: pkg.features.filter((_, i) => i !== featureIndex) }
+          : pkg
+      )
+    )
+  }
+
+  const handleUpdateFeature = (
+    packageId: number | undefined,
+    featureIndex: number,
+    value: string
+  ) => {
+    setPackages(
+      packages.map((pkg) =>
+        pkg.id === packageId
+          ? {
+              ...pkg,
+              features: pkg.features.map((f, i) => (i === featureIndex ? value : f)),
+            }
+          : pkg
+      )
+    )
+  }
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    const totalImages = existingImages.length + formData.images.length + files.length
+    if (totalImages > 5) {
+      showErrorToast("You can only upload up to 5 images")
+      return
+    }
+    setFormData({
+      ...formData,
+      images: [...formData.images, ...files],
+    })
+  }
+
+  const handleRemoveImage = (index: number) => {
+    setFormData({
+      ...formData,
+      images: formData.images.filter((_, i) => i !== index),
+    })
+  }
+
+  const handleRemoveExistingImage = (imageId: number) => {
+    setExistingImages(existingImages.filter((img) => img.id !== imageId))
+    setDeletedImages([...deletedImages, imageId])
+  }
 
   const handleAddFAQ = () => {
     setFormData({
@@ -101,100 +243,6 @@ export default function CreateService() {
     })
   }
 
-  const handleAddTag = () => {
-    if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
-      setFormData({
-        ...formData,
-        tags: [...formData.tags, newTag.trim()],
-      })
-      setNewTag("")
-    }
-  }
-
-  const handleRemoveTag = (tag: string) => {
-    setFormData({
-      ...formData,
-      tags: formData.tags.filter((t) => t !== tag),
-    })
-  }
-
-  const handleAddPackage = () => {
-    setPackages([
-      ...packages,
-      {
-        id: packages.length + 1,
-        name: "",
-        price: 0,
-        deliveryTime: "3 days",
-        description: "",
-        features: [""],
-      },
-    ])
-  }
-
-  const handleRemovePackage = (id: number) => {
-    if (packages.length > 1) {
-      setPackages(packages.filter((p) => p.id !== id))
-    }
-  }
-
-  const handleUpdatePackage = (id: number, field: keyof Package, value: any) => {
-    setPackages(
-      packages.map((pkg) => (pkg.id === id ? { ...pkg, [field]: value } : pkg))
-    )
-  }
-
-  const handleAddFeature = (packageId: number) => {
-    setPackages(
-      packages.map((pkg) =>
-        pkg.id === packageId
-          ? { ...pkg, features: [...pkg.features, ""] }
-          : pkg
-      )
-    )
-  }
-
-  const handleUpdateFeature = (packageId: number, index: number, value: string) => {
-    setPackages(
-      packages.map((pkg) =>
-        pkg.id === packageId
-          ? {
-              ...pkg,
-              features: pkg.features.map((f, i) => (i === index ? value : f)),
-            }
-          : pkg
-      )
-    )
-  }
-
-  const handleRemoveFeature = (packageId: number, index: number) => {
-    setPackages(
-      packages.map((pkg) =>
-        pkg.id === packageId
-          ? { ...pkg, features: pkg.features.filter((_, i) => i !== index) }
-          : pkg
-      )
-    )
-  }
-
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files) {
-      const newImages = Array.from(files)
-      setFormData({
-        ...formData,
-        images: [...formData.images, ...newImages],
-      })
-    }
-  }
-
-  const handleRemoveImage = (index: number) => {
-    setFormData({
-      ...formData,
-      images: formData.images.filter((_, i) => i !== index),
-    })
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     // Validate form
@@ -208,7 +256,7 @@ export default function CreateService() {
       return
     }
 
-    if (formData.images.length === 0) {
+    if (existingImages.length + formData.images.length === 0) {
       showErrorToast("Please upload at least one image")
       return
     }
@@ -239,6 +287,9 @@ export default function CreateService() {
 
     // Append packages
     packages.forEach((pkg, index) => {
+      if (pkg.id) {
+        formDataToSubmit.append(`packages[${index}][id]`, pkg.id.toString())
+      }
       formDataToSubmit.append(`packages[${index}][name]`, pkg.name)
       formDataToSubmit.append(`packages[${index}][price]`, pkg.price.toString())
       formDataToSubmit.append(`packages[${index}][delivery_time]`, pkg.deliveryTime)
@@ -253,16 +304,27 @@ export default function CreateService() {
       })
     })
 
-    // Append images
+    // Append existing images
+    existingImages.forEach((img) => {
+      formDataToSubmit.append('existing_images[]', img.path)
+    })
+
+    // Append deleted images
+    deletedImages.forEach((imgId) => {
+      formDataToSubmit.append('deleted_images[]', imgId.toString())
+    })
+
+    // Append new images
     formData.images.forEach((image) => {
       formDataToSubmit.append('images[]', image)
     })
 
     // Submit to backend
-    router.post('/service-hub', formDataToSubmit, {
+    formDataToSubmit.append('_method', 'PUT')
+    router.post(`/service-hub/${gig.slug}`, formDataToSubmit, {
       forceFormData: true,
       onSuccess: () => {
-        showSuccessToast("Service created successfully!")
+        showSuccessToast("Service updated successfully!")
       },
       onError: (errors) => {
         // Field-level errors are displayed below each input field
@@ -276,31 +338,33 @@ export default function CreateService() {
 
   return (
     <FrontendLayout>
-      <Head title="Create Service - Service Hub" />
+      <Head title="Edit Service - Service Hub" />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
           <div className="container mx-auto px-4 py-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <Link href="/service-hub">
+                <Link href={`/service-hub/${gig.slug}`}>
                   <Button variant="ghost" size="icon">
                     <ArrowLeft className="h-5 w-5" />
                   </Button>
                 </Link>
                 <div>
-                  <h1 className="text-2xl font-bold">Create Your Service</h1>
-                  <p className="text-sm text-muted-foreground">Share your skills and start earning</p>
+                  <h1 className="text-2xl font-bold">Edit Your Service</h1>
+                  <p className="text-sm text-muted-foreground">Update your service details</p>
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Button variant="outline" onClick={() => router.visit("/service-hub")}>
-                  <Eye className="mr-2 h-4 w-4" />
-                  Preview
-                </Button>
+                <Link href={`/service-hub/${gig.slug}`}>
+                  <Button variant="outline">
+                    <Eye className="mr-2 h-4 w-4" />
+                    Preview
+                  </Button>
+                </Link>
                 <Button onClick={handleSubmit}>
                   <Save className="mr-2 h-4 w-4" />
-                  Publish Service
+                  Update Service
                 </Button>
               </div>
             </div>
@@ -308,7 +372,7 @@ export default function CreateService() {
         </div>
 
         <div className="container mx-auto px-4 py-8">
-          <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-8">
+          <form onSubmit={handleSubmit} className="space-y-6">
             {/* Basic Information */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -316,40 +380,39 @@ export default function CreateService() {
             >
               <Card>
                 <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Sparkles className="h-5 w-5" />
-                    Basic Information
-                  </CardTitle>
+                  <CardTitle>Basic Information</CardTitle>
                   <CardDescription>Tell us about your service</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-6">
+                <CardContent className="space-y-4">
                   <div>
-                    <Label htmlFor="title">
-                      Service Title <span className="text-red-500">*</span>
-                    </Label>
+                    <Label htmlFor="title">Service Title *</Label>
                     <Input
                       id="title"
                       placeholder="e.g., Professional Logo Design"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      className="mt-2"
+                      required
                     />
+                    {getError('title') && (
+                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                        {getError('title')}
+                      </p>
+                    )}
                   </div>
 
                   <div>
-                    <Label htmlFor="category_id">
-                      Category <span className="text-red-500">*</span>
-                    </Label>
+                    <Label htmlFor="category">Category *</Label>
                     <select
-                      id="category_id"
+                      id="category"
+                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       value={formData.category_id}
                       onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                      className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError('category_id') ? 'border-red-500' : ''}`}
+                      required
                     >
                       <option value="">Select a category</option>
-                      {categories.map((cat) => (
-                        <option key={cat.id} value={cat.id}>
-                          {cat.name}
+                      {categories.map((category) => (
+                        <option key={category.id} value={category.id}>
+                          {category.name}
                         </option>
                       ))}
                     </select>
@@ -361,17 +424,19 @@ export default function CreateService() {
                   </div>
 
                   <div>
-                    <Label htmlFor="description">
-                      Short Description <span className="text-red-500">*</span>
-                    </Label>
+                    <Label htmlFor="description">Short Description *</Label>
                     <Textarea
                       id="description"
-                      placeholder="A brief description of your service (appears in search results)"
+                      placeholder="Brief description of your service (max 500 characters)"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      className={`mt-2 ${getError('description') ? 'border-red-500' : ''}`}
+                      maxLength={500}
                       rows={3}
+                      required
                     />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {formData.description.length}/500 characters
+                    </p>
                     {getError('description') && (
                       <p className="text-sm text-red-600 dark:text-red-400 mt-1">
                         {getError('description')}
@@ -383,10 +448,9 @@ export default function CreateService() {
                     <Label htmlFor="fullDescription">Full Description</Label>
                     <Textarea
                       id="fullDescription"
-                      placeholder="Detailed description of what you offer, process, and what clients will receive"
+                      placeholder="Detailed description of your service..."
                       value={formData.fullDescription}
                       onChange={(e) => setFormData({ ...formData, fullDescription: e.target.value })}
-                      className={`mt-2 ${getError('full_description') ? 'border-red-500' : ''}`}
                       rows={8}
                     />
                     {getError('full_description') && (
@@ -398,36 +462,36 @@ export default function CreateService() {
 
                   <div>
                     <Label>Tags</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input
-                        placeholder="Add a tag"
-                        value={newTag}
-                        onChange={(e) => setNewTag(e.target.value)}
-                        onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
-                      />
-                      <Button type="button" onClick={handleAddTag}>
-                        <Plus className="h-4 w-4" />
-                      </Button>
-                    </div>
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      {formData.tags.map((tag) => (
-                        <Badge key={tag} variant="secondary" className="gap-2">
+                    <div className="flex gap-2 flex-wrap mb-2">
+                      {formData.tags.map((tag, index) => (
+                        <Badge key={index} variant="secondary" className="gap-2">
                           {tag}
                           <button
                             type="button"
                             onClick={() => handleRemoveTag(tag)}
-                            className="hover:text-destructive"
+                            className="ml-1 hover:text-destructive"
                           >
                             <X className="h-3 w-3" />
                           </button>
                         </Badge>
                       ))}
                     </div>
-                    {getError('tags') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('tags')}
-                      </p>
-                    )}
+                    <div className="flex gap-2">
+                      <Input
+                        placeholder="Add a tag"
+                        value={newTag}
+                        onChange={(e) => setNewTag(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault()
+                            handleAddTag()
+                          }
+                        }}
+                      />
+                      <Button type="button" onClick={handleAddTag}>
+                        Add
+                      </Button>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -442,12 +506,30 @@ export default function CreateService() {
               <Card>
                 <CardHeader>
                   <CardTitle>Service Images</CardTitle>
-                  <CardDescription>Upload images showcasing your work (up to 5 images)</CardDescription>
+                  <CardDescription>Upload images showcasing your work (up to 5 images total)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {/* Existing Images */}
+                    {existingImages.map((image) => (
+                      <div key={image.id} className="relative aspect-video group">
+                        <img
+                          src={image.url}
+                          alt={`Service image ${image.id}`}
+                          className="w-full h-full object-cover rounded-lg"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveExistingImage(image.id)}
+                          className="absolute top-2 right-2 p-1 bg-background/80 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                    {/* New Images */}
                     {formData.images.map((image, index) => (
-                      <div key={index} className="relative aspect-video group">
+                      <div key={`new-${index}`} className="relative aspect-video group">
                         <img
                           src={URL.createObjectURL(image)}
                           alt={`Service image ${index + 1}`}
@@ -462,7 +544,7 @@ export default function CreateService() {
                         </button>
                       </div>
                     ))}
-                    {formData.images.length < 5 && (
+                    {existingImages.length + formData.images.length < 5 && (
                       <label className="aspect-video border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
                         <div className="text-center">
                           <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
@@ -512,7 +594,7 @@ export default function CreateService() {
                 <CardContent className="space-y-6">
                   {packages.map((pkg, index) => (
                     <motion.div
-                      key={pkg.id}
+                      key={pkg.id || index}
                       initial={{ opacity: 0, x: -20 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: index * 0.1 }}
@@ -531,99 +613,63 @@ export default function CreateService() {
                           </Button>
                         )}
                       </div>
-
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <Label>
-                            Package Name <span className="text-red-500">*</span>
-                          </Label>
+                          <Label>Package Name *</Label>
                           <Input
                             placeholder="e.g., Basic, Standard, Premium"
                             value={pkg.name}
-                            onChange={(e) => handleUpdatePackage(pkg.id, "name", e.target.value)}
-                            className={`mt-2 ${getError(`packages.${index}.name`) ? 'border-red-500' : ''}`}
+                            onChange={(e) => handleUpdatePackage(pkg.id, 'name', e.target.value)}
+                            required
                           />
-                          {getError(`packages.${index}.name`) && (
-                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                              {getError(`packages.${index}.name`)}
-                            </p>
-                          )}
                         </div>
                         <div>
-                          <Label>
-                            Price ($) <span className="text-red-500">*</span>
+                          <Label className="flex items-center gap-2">
+                            <DollarSign className="h-4 w-4" />
+                            Price ($) *
                           </Label>
                           <Input
                             type="number"
-                            placeholder="0"
+                            placeholder="0.00"
+                            min="0"
+                            step="0.01"
                             value={pkg.price}
-                            onChange={(e) => handleUpdatePackage(pkg.id, "price", Number(e.target.value))}
-                            className={`mt-2 ${getError(`packages.${index}.price`) ? 'border-red-500' : ''}`}
+                            onChange={(e) => handleUpdatePackage(pkg.id, 'price', parseFloat(e.target.value) || 0)}
+                            required
                           />
-                          {getError(`packages.${index}.price`) && (
-                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                              {getError(`packages.${index}.price`)}
-                            </p>
-                          )}
                         </div>
                         <div>
-                          <Label>
-                            Delivery Time <span className="text-red-500">*</span>
+                          <Label className="flex items-center gap-2">
+                            <Clock className="h-4 w-4" />
+                            Delivery Time *
                           </Label>
-                          <select
-                            value={pkg.deliveryTime}
-                            onChange={(e) => handleUpdatePackage(pkg.id, "deliveryTime", e.target.value)}
-                            className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError(`packages.${index}.delivery_time`) ? 'border-red-500' : ''}`}
-                          >
-                            <option value="1 day">1 day</option>
-                            <option value="2 days">2 days</option>
-                            <option value="3 days">3 days</option>
-                            <option value="5 days">5 days</option>
-                            <option value="7 days">7 days</option>
-                            <option value="14 days">14 days</option>
-                          </select>
-                          {getError(`packages.${index}.delivery_time`) && (
-                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                              {getError(`packages.${index}.delivery_time`)}
-                            </p>
-                          )}
-                        </div>
-                        <div>
-                          <Label>Description</Label>
                           <Input
-                            placeholder="Brief description of this package"
-                            value={pkg.description}
-                            onChange={(e) => handleUpdatePackage(pkg.id, "description", e.target.value)}
-                            className={`mt-2 ${getError(`packages.${index}.description`) ? 'border-red-500' : ''}`}
+                            placeholder="e.g., 3 days, 1 week"
+                            value={pkg.deliveryTime}
+                            onChange={(e) => handleUpdatePackage(pkg.id, 'deliveryTime', e.target.value)}
+                            required
                           />
-                          {getError(`packages.${index}.description`) && (
-                            <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                              {getError(`packages.${index}.description`)}
-                            </p>
-                          )}
                         </div>
                       </div>
-
+                      <div>
+                        <Label>Package Description</Label>
+                        <Textarea
+                          placeholder="Describe what's included in this package..."
+                          value={pkg.description}
+                          onChange={(e) => handleUpdatePackage(pkg.id, 'description', e.target.value)}
+                          rows={2}
+                        />
+                      </div>
                       <div>
                         <Label>Features</Label>
-                        <div className="space-y-2 mt-2">
+                        <div className="space-y-2">
                           {pkg.features.map((feature, featureIndex) => (
                             <div key={featureIndex} className="flex gap-2">
-                              <div className="flex-1">
-                                <Input
-                                  placeholder="Feature description"
-                                  value={feature}
-                                  onChange={(e) =>
-                                    handleUpdateFeature(pkg.id, featureIndex, e.target.value)
-                                  }
-                                  className={getError(`packages.${index}.features.${featureIndex}`) ? 'border-red-500' : ''}
-                                />
-                                {getError(`packages.${index}.features.${featureIndex}`) && (
-                                  <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                                    {getError(`packages.${index}.features.${featureIndex}`)}
-                                  </p>
-                                )}
-                              </div>
+                              <Input
+                                placeholder={`Feature ${featureIndex + 1}`}
+                                value={feature}
+                                onChange={(e) => handleUpdateFeature(pkg.id, featureIndex, e.target.value)}
+                              />
                               {pkg.features.length > 1 && (
                                 <Button
                                   type="button"
@@ -741,14 +787,14 @@ export default function CreateService() {
               transition={{ delay: 0.3 }}
               className="flex justify-end gap-4"
             >
-              <Link href="/service-hub">
+              <Link href={`/service-hub/${gig.slug}`}>
                 <Button type="button" variant="outline">
                   Cancel
                 </Button>
               </Link>
               <Button type="submit" size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600">
                 <Save className="mr-2 h-5 w-5" />
-                Publish Service
+                Update Service
               </Button>
             </motion.div>
           </form>

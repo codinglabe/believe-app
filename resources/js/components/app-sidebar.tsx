@@ -57,7 +57,8 @@ import {
     Bell,
     Send,
     Store,
-    CreditCard
+    CreditCard,
+    FolderOpen
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -714,6 +715,50 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'About Page',
                 href: '/admin/about',
                 icon: Info,
+                role: "admin"
+            },
+            {
+                title: 'Billing / Plans',
+                icon: CreditCard,
+                items: [
+                    {
+                        title: 'Plans Management',
+                        href: '/admin/plans',
+                        icon: Sparkles,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Wallet Plans Management',
+                        href: '/admin/wallet-plans',
+                        icon: Wallet,
+                        permission: "wallet.plan.read"
+                    },
+                    {
+                        title: 'Email Packages',
+                        href: '/admin/email-packages',
+                        icon: Mail,
+                        role: "admin"
+                    },
+                    {
+                        title: 'Reward Points',
+                        href: '/admin/reward-points',
+                        icon: Gift,
+                        permission: "reward.point.manage"
+                    },
+                ],
+                permission: "wallet.plan.read"
+            },
+            // Additional settings items
+            {
+                title: 'About Page',
+                href: '/admin/about',
+                icon: Info,
+                role: "admin"
+            },
+            {
+                title: 'Service Categories',
+                href: '/admin/service-categories',
+                icon: FolderOpen,
                 role: "admin"
             },
             {

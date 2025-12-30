@@ -25,6 +25,8 @@ class ServiceOrder extends Model
         'special_instructions',
         'status',
         'payment_status',
+        'stripe_response',
+        'stripe_session_id',
         'delivered_at',
         'completed_at',
         'cancelled_at',
@@ -37,6 +39,7 @@ class ServiceOrder extends Model
         'platform_fee' => 'decimal:2',
         'seller_earnings' => 'decimal:2',
         'deliverables' => 'array',
+        'stripe_response' => 'array',
         'delivered_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
@@ -93,11 +96,27 @@ class ServiceOrder extends Model
     }
 
     /**
-     * Get the review for this order.
+     * Get the buyer review for this order.
+     */
+    public function buyerReview(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ServiceReview::class, 'order_id', 'id')->where('reviewer_type', 'buyer');
+    }
+
+    /**
+     * Get the seller review for this order.
+     */
+    public function sellerReview(): \Illuminate\Database\Eloquent\Relations\HasOne
+    {
+        return $this->hasOne(ServiceReview::class, 'order_id', 'id')->where('reviewer_type', 'seller');
+    }
+
+    /**
+     * Get the review for this order (backward compatibility - returns buyer review).
      */
     public function review(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
-        return $this->hasOne(ServiceReview::class, 'order_id', 'id');
+        return $this->buyerReview();
     }
 
     /**

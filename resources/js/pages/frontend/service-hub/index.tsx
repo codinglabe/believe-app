@@ -32,6 +32,9 @@ import {
   Timer,
   Award,
   ChevronDown,
+  MessageCircle,
+  Package,
+  ShoppingBag,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -72,6 +75,7 @@ interface PageProps extends Record<string, unknown> {
   }
   categories: Category[]
   favoriteIds: number[]
+  totalUnread?: number
   filters: {
     search: string
     category: string
@@ -92,12 +96,13 @@ const sortOptions = [
 ]
 
 export default function ServiceHubIndex() {
-  const { gigs, categories, favoriteIds, filters: initialFilters } = usePage<PageProps>().props
+  const { gigs, categories, favoriteIds, totalUnread: initialUnreadCount = 0, filters: initialFilters } = usePage<PageProps>().props
 
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
   const [selectedCategory, setSelectedCategory] = useState(initialFilters.category || "all")
   const [sortBy, setSortBy] = useState(initialFilters.sort_by || "best_selling")
   const [showFilters, setShowFilters] = useState(false)
+  const [unreadCount, setUnreadCount] = useState(0)
   const [priceRange, setPriceRange] = useState({
     min: initialFilters.price_min || 0,
     max: initialFilters.price_max || 1000
@@ -166,7 +171,29 @@ export default function ServiceHubIndex() {
     priceRange.min > 0 || priceRange.max < 1000 ||
     deliveryTime !== null || minRating > 0
 
-  const toggleFavorite = async (slug: string) => {
+  // Fetch unread count (refresh periodically)
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
+      try {
+        const response = await fetch("/service-hub/chats/unreadcountget")
+        if (response.ok) {
+          const data = await response.json()
+          setUnreadCount(data.total_unread || 0)
+
+          console.log("Unread count:", data.total_unread)
+          console.log("Response:", unreadCount)
+        }
+      } catch (error) {
+        console.error("Error fetching unread count:", error)
+      }
+    }
+
+    // Refresh every 10 seconds
+    const interval = setInterval(fetchUnreadCount, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const toggleFavorite = async (slug: string, gigId: number) => {
     try {
       const response = await fetch(`/service-hub/${slug}/favorite`, {
         method: 'POST',
@@ -178,9 +205,9 @@ export default function ServiceHubIndex() {
       })
       const data = await response.json()
       if (data.favorited) {
-        favoriteIds.push(id)
+        favoriteIds.push(gigId)
       } else {
-        const index = favoriteIds.indexOf(id)
+        const index = favoriteIds.indexOf(gigId)
         if (index > -1) favoriteIds.splice(index, 1)
       }
       router.reload({ only: ['favoriteIds'] })
@@ -219,6 +246,41 @@ export default function ServiceHubIndex() {
     <FrontendLayout>
       <Head title="Service Hub - Find Professional Services" />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
+        {/* Header */}
+        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
+          <div className="container mx-auto px-4 py-4">
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <h1 className="text-xl font-bold">Service Hub</h1>
+              </div>
+              <div className="flex items-center gap-2">
+                {/* <Link href="/service-hub/chats/list">
+                  <Button variant="ghost" size="sm" className="gap-2 relative">
+                    <MessageCircle className="hs-4 w-4" />
+                    View Chats
+                    {unreadCount > 0 && (
+                      <Badge variant="default" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-blue-600 text-white rounded-full">
+                        {unreadCount > 99 ? '99+' : unreadCount}
+                      </Badge>
+                    )}
+                  </Button>
+                </Link> */}
+                <Link href="/service-hub/my-orders">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <Package className="h-4 w-4" />
+                    My Orders
+                  </Button>
+                </Link>
+                <Link href="/service-hub/seller-orders">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <ShoppingBag className="h-4 w-4" />
+                    My Sales
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
         {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -289,6 +351,38 @@ export default function ServiceHubIndex() {
         </motion.div>
 
         <div className="container mx-auto px-4 py-8">
+          {/* Action Buttons */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold">Available Services</h2>
+              <Badge variant="secondary">{gigs.total} services</Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* <Link href="/service-hub/chats/list">
+                <Button variant="outline" className="gap-2 relative">
+                  <MessageCircle className="h-4 w-4" />
+                  View Chats
+                  {unreadCount > 0 && (
+                    <Badge variant="default" className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-xs bg-blue-600 text-white rounded-full">
+                      {unreadCount > 99 ? '99+' : unreadCount}
+                    </Badge>
+                  )}
+                </Button>
+              </Link> */}
+              <Link href="/service-hub/my-orders">
+                <Button variant="outline" className="gap-2">
+                  <Package className="h-4 w-4" />
+                  My Orders
+                </Button>
+              </Link>
+              <Link href="/service-hub/seller-orders">
+                <Button variant="outline" className="gap-2">
+                  <ShoppingBag className="h-4 w-4" />
+                  My Sales
+                </Button>
+              </Link>
+            </div>
+          </div>
           <div className="flex flex-col lg:flex-row gap-8">
             {/* Sidebar Filters */}
             <motion.aside
@@ -624,7 +718,7 @@ export default function ServiceHubIndex() {
                               className="absolute top-2 right-2 bg-background/80 backdrop-blur-sm hover:bg-background"
                               onClick={(e) => {
                                 e.preventDefault()
-                                toggleFavorite(service.slug)
+                                toggleFavorite(service.slug, service.id)
                               }}
                             >
                               <Heart

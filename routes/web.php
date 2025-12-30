@@ -183,18 +183,46 @@ Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHu
 Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/order/success', function () {
-    return Inertia::render('frontend/service-hub/order-success');
-})->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/{slug}/create-offer', [App\Http\Controllers\ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/accept', [App\Http\Controllers\ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/offers/{offerId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
+// Keep old URL for backward compatibility
+Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->middleware(['auth', 'EnsureEmailIsVerified']);
+// Create order route
+Route::get('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+// Separate route for Stripe checkout session creation
+Route::post('/service-hub/checkout/create-session', [App\Http\Controllers\ServiceHubController::class, 'createCheckoutSession'])->name('service-hub.checkout.create-session')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/order/success', [App\Http\Controllers\ServiceHubController::class, 'orderSuccess'])->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
 Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
 Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/seller-orders', [App\Http\Controllers\ServiceHubController::class, 'sellerOrders'])->name('service-hub.seller-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/orders/{orderId}', [App\Http\Controllers\ServiceHubController::class, 'orderDetail'])->name('service-hub.order.detail')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/deliver', [App\Http\Controllers\ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/accept-delivery', [App\Http\Controllers\ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/complete', [App\Http\Controllers\ServiceHubController::class, 'completeOrder'])->name('service-hub.order.complete')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/approve', [App\Http\Controllers\ServiceHubController::class, 'approveOrder'])->name('service-hub.order.approve')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectOrder'])->name('service-hub.order.reject')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/favorite', [App\Http\Controllers\ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers\ServiceHubController::class, 'sellerReviewStore'])->name('service-hub.order.seller-review')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
+
+// Service Chat Routes
+Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->name('service-hub.chat.')->group(function () {
+    Route::post('/{slug}/chat', [App\Http\Controllers\ServiceHubController::class, 'createOrGetServiceChat'])->name('create-or-get');
+    Route::get('/chat/{chatId}/messagesget', [App\Http\Controllers\ServiceHubController::class, 'getServiceChatMessages'])->name('messages');
+    Route::post('/chat/{chatId}/messages', [App\Http\Controllers\ServiceHubController::class, 'sendServiceChatMessage'])->name('send-message');
+    Route::get('/chats', [App\Http\Controllers\ServiceHubController::class, 'getServiceChats'])->name('list');
+    Route::get('/chats/unreadcountget', [App\Http\Controllers\ServiceHubController::class, 'getUnreadCount'])->name('unread-count');
+    Route::get('/chats/list', [App\Http\Controllers\ServiceHubController::class, 'chats'])->name('chats');
+});
+Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Cart routes (protected)
 // Believe Points Routes
@@ -1328,6 +1356,19 @@ Route::prefix('admin/email-packages')
         Route::get('/{emailPackage}/edit', [App\Http\Controllers\Admin\EmailPackageController::class, 'edit'])->name('edit');
         Route::put('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'update'])->name('update');
         Route::delete('/{emailPackage}', [App\Http\Controllers\Admin\EmailPackageController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Service Categories Management
+Route::prefix('admin/service-categories')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.service-categories.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'store'])->name('store');
+        Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
+        Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
     });
 
 // Admin Promotional Banners Management

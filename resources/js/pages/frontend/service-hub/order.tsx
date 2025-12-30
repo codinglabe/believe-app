@@ -30,7 +30,8 @@ import {
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
-import { showSuccessToast } from "@/lib/toast"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import axios from "axios"
 
 interface Gig {
   id: number
@@ -64,7 +65,7 @@ export default function ServiceOrder() {
   const [orderData, setOrderData] = useState({
     requirements: "",
     specialInstructions: "",
-    paymentMethod: "wallet",
+    paymentMethod: "card",
   })
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
@@ -83,21 +84,57 @@ export default function ServiceOrder() {
     e.preventDefault()
     setIsProcessing(true)
 
-    router.post('/service-hub/order', {
-      gig_id: gig.id,
-      package_id: selectedPackage.id,
-      requirements: orderData.requirements,
-      special_instructions: orderData.specialInstructions || null,
-      payment_method: orderData.paymentMethod,
-    }, {
-      onSuccess: () => {
-        showSuccessToast("Order placed successfully!")
-        router.visit('/service-hub/order/success')
-      },
-      onError: () => {
+    // alert(orderData.paymentMethod);
+
+    // For wallet payments, use Inertia router
+    if (orderData.paymentMethod === 'wallet') {
+      router.post('/service-hub/create-order', {
+        gig_id: gig.id,
+        package_id: selectedPackage.id,
+        requirements: orderData.requirements,
+        special_instructions: orderData.specialInstructions || null,
+        payment_method: orderData.paymentMethod,
+      }, {
+        onSuccess: () => {
+          showSuccessToast("Order placed successfully!")
+          router.visit('/service-hub/order/success')
+        },
+        onError: (errors) => {
+          setIsProcessing(false)
+          console.error('Order submission error:', errors)
+        },
+      })
+      return
+    }
+
+    // For card payments: Create order and Stripe checkout session in one call
+    if (orderData.paymentMethod === 'card') {
+      try {
+        // Create order and Stripe checkout session in one step
+        const checkoutResponse = await axios.post('/service-hub/checkout/create-session', {
+          gig_id: gig.id,
+          package_id: selectedPackage.id,
+          requirements: orderData.requirements,
+          special_instructions: orderData.specialInstructions || null,
+        })
+
+        if (checkoutResponse.data.success && checkoutResponse.data.url) {
+          // Redirect to Stripe checkout
+          window.location.href = checkoutResponse.data.url
+        } else {
+          setIsProcessing(false)
+          showErrorToast("Failed to create payment session. Please try again.")
+        }
+      } catch (error: any) {
         setIsProcessing(false)
-      },
-    })
+        if (error.response?.data?.error) {
+          showErrorToast(error.response.data.error)
+        } else {
+          console.error('Checkout error:', error)
+          showErrorToast("Failed to process order. Please try again.")
+        }
+      }
+    }
   }
 
   return (
@@ -347,7 +384,7 @@ export default function ServiceOrder() {
                     </CardHeader>
                     <CardContent className="pt-6">
                       <div className="space-y-3">
-                        <motion.label
+                        {/* <motion.label
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           className={`flex items-center gap-4 p-5 rounded-xl border-2 cursor-pointer transition-all ${
@@ -378,7 +415,7 @@ export default function ServiceOrder() {
                           {orderData.paymentMethod === "wallet" && (
                             <CheckCircle2 className="h-6 w-6 text-primary" />
                           )}
-                        </motion.label>
+                        </motion.label> */}
                         <motion.label
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
@@ -392,10 +429,7 @@ export default function ServiceOrder() {
                             type="radio"
                             name="paymentMethod"
                             value="card"
-                            checked={orderData.paymentMethod === "card"}
-                            onChange={(e) =>
-                              setOrderData({ ...orderData, paymentMethod: e.target.value })
-                            }
+                            checked={true}
                             className="h-5 w-5 text-primary"
                           />
                           <div className="p-3 rounded-lg bg-purple-500/10">
