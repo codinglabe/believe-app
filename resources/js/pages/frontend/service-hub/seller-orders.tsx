@@ -451,7 +451,7 @@ export default function SellerOrders() {
                                   Contact Buyer
                                 </Button>
                               </Link>
-                              {order.canDeliver && (
+                              {order.canDeliver && order.status !== 'pending' && (
                                 <Link href={`/service-hub/orders/${order.id}`}>
                                   <Button
                                     size="sm"

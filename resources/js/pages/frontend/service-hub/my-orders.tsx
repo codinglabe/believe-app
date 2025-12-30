@@ -51,6 +51,8 @@ interface Order {
   paymentStatus: string
   orderDate: string
   deliveryDate: string
+  cancelledAt: string | null
+  cancellationReason: string | null
   requirements: string
   deliverables: Array<{ name: string; url: string; type: string }>
   canReview: boolean
@@ -319,6 +321,51 @@ export default function MyOrders() {
                               </div>
                             </div>
 
+                            {/* Approval/Rejection Status */}
+                            {order.status === 'cancelled' && order.cancellationReason && (
+                              <div className="mb-4 p-3 bg-red-50 dark:bg-red-950/20 rounded-lg border border-red-200 dark:border-red-800">
+                                <div className="flex items-center gap-2 mb-2">
+                                  <XCircle className="h-4 w-4 text-red-600" />
+                                  <span className="text-sm font-semibold text-red-700 dark:text-red-300">
+                                    Order Rejected by Seller
+                                  </span>
+                                </div>
+                                {order.cancelledAt && (
+                                  <p className="text-xs text-muted-foreground mb-2">
+                                    Rejected on {new Date(order.cancelledAt).toLocaleString()}
+                                  </p>
+                                )}
+                                <div className="p-2 bg-white dark:bg-gray-900 rounded border border-red-200 dark:border-red-800">
+                                  <p className="text-xs font-semibold text-red-700 dark:text-red-300 mb-1">
+                                    Rejection Reason:
+                                  </p>
+                                  <p className="text-sm text-red-600 dark:text-red-400">
+                                    {order.cancellationReason}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                            {order.status === 'in_progress' && (
+                              <div className="mb-4 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                  <span className="text-sm font-semibold text-green-700 dark:text-green-300">
+                                    Order Approved by Seller - Seller is now working on your order
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                            {['delivered', 'completed'].includes(order.status) && (
+                              <div className="mb-4 p-3 bg-green-50 dark:bg-green-950/20 rounded-lg border border-green-200 dark:border-green-800">
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 className="h-4 w-4 text-green-600" />
+                                  <span className="text-sm font-semibold text-green-700 dark:text-green-300">
+                                    Order Approved by Seller
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
                             {/* Requirements Preview */}
                             {order.requirements && (
                               <div className="mb-4 p-3 bg-muted/50 rounded-lg">
@@ -386,8 +433,9 @@ export default function MyOrders() {
                               )}
                               {order.canCancel && (
                                 <Button
-                                  variant="destructive text-white"
+                                  variant="destructive"
                                   size="sm"
+                                  className="bg-red-600 hover:bg-red-700 text-white"
                                   onClick={() => handleCancel(order.id)}
                                 >
                                   <XCircle className="mr-2 h-4 w-4" />
