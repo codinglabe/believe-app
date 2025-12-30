@@ -607,7 +607,20 @@ class ServiceHubController extends Controller
             ->where('status', 'active')
             ->findOrFail($gigId);
 
+        // Security check: Prevent users from purchasing their own services
+        $user = Auth::user();
+        if ($user && $gig->user_id === $user->id) {
+            return redirect()->route('service-hub.show', $gig->slug)
+                ->with('error', 'You cannot purchase your own service.');
+        }
+
+        // Validate that the package belongs to this gig
         $package = $packageId ? GigPackage::findOrFail($packageId) : $gig->packages->first();
+
+        if ($packageId && $package->gig_id !== $gig->id) {
+            return redirect()->route('service-hub.show', $gig->slug)
+                ->with('error', 'Invalid package selected for this service.');
+        }
 
         // Format gig data
         $primaryImage = $gig->images->where('is_primary', true)->first()
@@ -645,9 +658,35 @@ class ServiceHubController extends Controller
 
     public function orderStore(Request $request)
     {
+        $user = Auth::user();
+
         $validated = $request->validate([
-            'gig_id' => 'required|exists:gigs,id',
-            'package_id' => 'required|exists:gig_packages,id',
+            'gig_id' => [
+                'required',
+                'exists:gigs,id',
+                function ($attribute, $value, $fail) use ($user) {
+                    $gig = Gig::find($value);
+                    if ($gig && $gig->user_id === $user->id) {
+                        $fail('You cannot purchase your own service.');
+                    }
+                    if ($gig && $gig->status !== 'active') {
+                        $fail('This service is not available for purchase.');
+                    }
+                },
+            ],
+            'package_id' => [
+                'required',
+                'exists:gig_packages,id',
+                function ($attribute, $value, $fail) use ($request) {
+                    $gigId = $request->input('gig_id');
+                    if ($gigId) {
+                        $package = GigPackage::find($value);
+                        if ($package && $package->gig_id != $gigId) {
+                            $fail('The selected package does not belong to this service.');
+                        }
+                    }
+                },
+            ],
             'requirements' => 'required|string',
             'special_instructions' => 'nullable|string',
             'payment_method' => 'required|in:wallet,card',
@@ -656,7 +695,6 @@ class ServiceHubController extends Controller
         try {
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
-            $user = Auth::user();
 
             // Calculate fees
             $platformFee = $package->price * 0.05; // 5% platform fee
@@ -718,9 +756,35 @@ class ServiceHubController extends Controller
 
     public function createCheckoutSession(Request $request)
     {
+        $user = Auth::user();
+
         $validated = $request->validate([
-            'gig_id' => 'required|exists:gigs,id',
-            'package_id' => 'required|exists:gig_packages,id',
+            'gig_id' => [
+                'required',
+                'exists:gigs,id',
+                function ($attribute, $value, $fail) use ($user) {
+                    $gig = Gig::find($value);
+                    if ($gig && $gig->user_id === $user->id) {
+                        $fail('You cannot purchase your own service.');
+                    }
+                    if ($gig && $gig->status !== 'active') {
+                        $fail('This service is not available for purchase.');
+                    }
+                },
+            ],
+            'package_id' => [
+                'required',
+                'exists:gig_packages,id',
+                function ($attribute, $value, $fail) use ($request) {
+                    $gigId = $request->input('gig_id');
+                    if ($gigId) {
+                        $package = GigPackage::find($value);
+                        if ($package && $package->gig_id != $gigId) {
+                            $fail('The selected package does not belong to this service.');
+                        }
+                    }
+                },
+            ],
             'requirements' => 'required|string',
             'special_instructions' => 'nullable|string',
         ]);
@@ -728,7 +792,6 @@ class ServiceHubController extends Controller
         try {
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
-            $user = Auth::user();
 
             // Calculate fees
             $platformFee = $package->price * 0.05; // 5% platform fee
