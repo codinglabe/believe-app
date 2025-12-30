@@ -19,10 +19,13 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
 use Stripe\Stripe;
 use Stripe\Checkout\Session as StripeSession;
+use App\Mail\OrderPlacedNotification;
+use App\Mail\OrderCompletedNotification;
 
 class ServiceHubController extends Controller
 {
@@ -674,6 +677,17 @@ class ServiceHubController extends Controller
                 'payment_status' => $validated['payment_method'] === 'wallet' ? 'paid' : 'pending',
             ]);
 
+            // Send email notification to seller
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order placed email to seller', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             // Handle wallet payment
             if ($validated['payment_method'] === 'wallet') {
                 // TODO: Deduct from wallet balance
@@ -736,6 +750,17 @@ class ServiceHubController extends Controller
                 'status' => 'pending',
                 'payment_status' => 'pending',
             ]);
+
+            // Send email notification to seller
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order placed email to seller', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             // Step 2: Create Stripe checkout session
 
@@ -1133,6 +1158,17 @@ class ServiceHubController extends Controller
         try {
             $order->markAsCompleted();
 
+            // Send email notification to buyer
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->buyer->email)->send(new OrderCompletedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order completed email to buyer', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return redirect()->route('service-hub.order.detail', $order->id)
                 ->with('success', 'Order completed! You can now leave a review.');
         } catch (\Exception $e) {
@@ -1252,6 +1288,17 @@ class ServiceHubController extends Controller
                             'stripe_session_id' => $sessionId,
                         ]);
                         $paymentStatus = 'paid';
+
+                        // Send email notification to seller when payment is confirmed
+                        try {
+                            $order->load(['seller', 'buyer', 'gig']);
+                            Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+                        } catch (\Exception $e) {
+                            Log::error('Failed to send order placed email to seller after payment confirmation', [
+                                'order_id' => $order->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
                     }
                 } elseif (isset($session->metadata->order_id)) {
                     // Store Stripe response even if payment is not completed yet
@@ -2350,5 +2397,248 @@ class ServiceHubController extends Controller
         $offer->reject();
 
         return back()->with('success', 'Offer rejected.');
+    }
+
+    /**
+     * Test email notifications with detailed debugging
+     * Usage: /service-hub/test-email?order_id=1&type=placed
+     *        /service-hub/test-email?order_id=1&type=completed
+     */
+    public function testEmailNotifications(Request $request)
+    {
+        try {
+            $type = $request->get('type', 'placed'); // 'placed' or 'completed'
+            $orderId = $request->get('order_id');
+            $showConfig = $request->get('show_config', false);
+
+            // Show mail configuration for debugging
+            if ($showConfig) {
+                $smtpConfig = config('mail.mailers.smtp');
+                $testConnection = $request->get('test_connection', false);
+
+                $response = [
+                    'mail_config' => [
+                        'default_mailer' => config('mail.default'),
+                        'from_address' => config('mail.from.address'),
+                        'from_name' => config('mail.from.name'),
+                        'mail_host' => $smtpConfig['host'],
+                        'mail_port' => $smtpConfig['port'],
+                        'mail_username' => $smtpConfig['username'] ? '***set***' : 'not set',
+                        'mail_password' => $smtpConfig['password'] ? '***set***' : 'not set',
+                        'mail_encryption' => $smtpConfig['encryption'] ?? 'not set',
+                        'env_mail_mailer' => env('MAIL_MAILER'),
+                        'env_mail_from' => env('MAIL_FROM_ADDRESS'),
+                    ],
+                    'note' => 'If MAIL_MAILER=log, emails are written to storage/logs/laravel.log instead of being sent',
+                ];
+
+                // Test SMTP connection if requested
+                if ($testConnection && config('mail.default') === 'smtp') {
+                    try {
+                        // Try to send a test email to verify SMTP connection
+                        $testEmail = 'test@example.com';
+                        Mail::raw('SMTP Connection Test', function ($message) use ($testEmail) {
+                            $message->to($testEmail)
+                                    ->subject('SMTP Test');
+                        });
+
+                        $response['smtp_test'] = [
+                            'status' => 'success',
+                            'message' => 'SMTP configuration appears valid (test email attempted)',
+                            'note' => 'Check if test email was actually sent to verify connection',
+                        ];
+                    } catch (\Exception $e) {
+                        $response['smtp_test'] = [
+                            'status' => 'failed',
+                            'error' => $e->getMessage(),
+                            'class' => get_class($e),
+                        ];
+                    }
+                }
+
+                return response()->json($response);
+            }
+
+            if (!$orderId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Order ID is required. Use ?order_id=1&type=placed or ?order_id=1&type=completed',
+                    'usage' => [
+                        'test_placed' => '/service-hub/test-email?order_id=1&type=placed',
+                        'test_completed' => '/service-hub/test-email?order_id=1&type=completed',
+                        'show_config' => '/service-hub/test-email?show_config=1',
+                    ],
+                ], 400);
+            }
+
+            $order = ServiceOrder::with(['seller', 'buyer', 'gig'])->find($orderId);
+
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Order #{$orderId} not found",
+                ], 404);
+            }
+
+            // Validate order has required relationships
+            if (!$order->seller || !$order->buyer || !$order->gig) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Order is missing required relationships (seller, buyer, or gig)',
+                    'order_data' => [
+                        'has_seller' => $order->seller ? true : false,
+                        'has_buyer' => $order->buyer ? true : false,
+                        'has_gig' => $order->gig ? true : false,
+                    ],
+                ], 400);
+            }
+
+            $emailSent = false;
+            $emailTo = '';
+            $emailSubject = '';
+            $mailError = null;
+
+            if ($type === 'placed') {
+                // Test OrderPlacedNotification (to seller)
+                $emailTo = $order->seller->email;
+
+                Log::info('Testing OrderPlacedNotification email', [
+                    'order_id' => $order->id,
+                    'to' => $emailTo,
+                    'mailer' => config('mail.default'),
+                ]);
+
+                try {
+                    $mailable = new OrderPlacedNotification($order);
+                    $emailSubject = $mailable->envelope()->subject;
+
+                    // Use Mail::send() with error handling
+                    Mail::to($emailTo)->send($mailable);
+                    $emailSent = true;
+
+                    Log::info('OrderPlacedNotification email sent successfully', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'subject' => $emailSubject,
+                        'mailer' => config('mail.default'),
+                    ]);
+                } catch (\Exception $mailException) {
+                    // Check if it's an SMTP/transport error
+                    $errorMessage = $mailException->getMessage();
+                    if (str_contains($errorMessage, 'SMTP') || str_contains($errorMessage, 'transport') || str_contains($errorMessage, 'connection')) {
+                        $mailError = 'SMTP/Transport Error: ' . $errorMessage;
+                    } else {
+                        $mailError = $errorMessage;
+                    }
+                    $mailError = $mailException->getMessage();
+                    Log::error('Failed to send OrderPlacedNotification email', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'error' => $mailException->getMessage(),
+                        'class' => get_class($mailException),
+                        'trace' => $mailException->getTraceAsString(),
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => $emailSent,
+                    'message' => $emailSent
+                        ? "Order placed email sent successfully to seller: {$emailTo}"
+                        : "Failed to send email: {$mailError}",
+                    'debug' => [
+                        'email_to' => $emailTo,
+                        'email_subject' => $emailSubject,
+                        'mailer_used' => config('mail.default'),
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'seller_name' => $order->seller->name,
+                        'buyer_name' => $order->buyer->name,
+                        'service_title' => $order->gig->title,
+                    ],
+                    'note' => config('mail.default') === 'log'
+                        ? 'Emails are being logged to storage/logs/laravel.log (not actually sent). Check the log file for email content.'
+                        : 'Email should be sent via ' . config('mail.default') . '. Check your inbox and spam folder.',
+                    'error' => $mailError,
+                ]);
+            } elseif ($type === 'completed') {
+                // Test OrderCompletedNotification (to buyer)
+                $emailTo = $order->buyer->email;
+
+                Log::info('Testing OrderCompletedNotification email', [
+                    'order_id' => $order->id,
+                    'to' => $emailTo,
+                    'mailer' => config('mail.default'),
+                ]);
+
+                try {
+                    $mailable = new OrderCompletedNotification($order);
+                    $emailSubject = $mailable->envelope()->subject;
+
+                    // Use Mail::send() with error handling
+                    Mail::to($emailTo)->send($mailable);
+                    $emailSent = true;
+
+                    Log::info('OrderCompletedNotification email sent successfully', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'subject' => $emailSubject,
+                        'mailer' => config('mail.default'),
+                    ]);
+                } catch (\Exception $mailException) {
+                    // Check if it's an SMTP/transport error
+                    $errorMessage = $mailException->getMessage();
+                    if (str_contains($errorMessage, 'SMTP') || str_contains($errorMessage, 'transport') || str_contains($errorMessage, 'connection')) {
+                        $mailError = 'SMTP/Transport Error: ' . $errorMessage;
+                    } else {
+                        $mailError = $errorMessage;
+                    }
+                    $mailError = $mailException->getMessage();
+                    Log::error('Failed to send OrderCompletedNotification email', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'error' => $mailException->getMessage(),
+                        'class' => get_class($mailException),
+                        'trace' => $mailException->getTraceAsString(),
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => $emailSent,
+                    'message' => $emailSent
+                        ? "Order completed email sent successfully to buyer: {$emailTo}"
+                        : "Failed to send email: {$mailError}",
+                    'debug' => [
+                        'email_to' => $emailTo,
+                        'email_subject' => $emailSubject,
+                        'mailer_used' => config('mail.default'),
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'seller_name' => $order->seller->name,
+                        'buyer_name' => $order->buyer->name,
+                        'service_title' => $order->gig->title,
+                    ],
+                    'note' => config('mail.default') === 'log'
+                        ? 'Emails are being logged to storage/logs/laravel.log (not actually sent). Check the log file for email content.'
+                        : 'Email should be sent via ' . config('mail.default') . '. Check your inbox and spam folder.',
+                    'error' => $mailError,
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Invalid type. Use 'placed' or 'completed'",
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Email test failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
+            ], 500);
+        }
     }
 }
