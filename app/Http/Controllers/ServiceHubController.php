@@ -13,6 +13,7 @@ use App\Models\ServiceSellerProfile;
 use App\Models\ServiceChat;
 use App\Models\ServiceChatMessage;
 use App\Models\CustomOffer;
+use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
@@ -20,6 +21,8 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
+use Stripe\Stripe;
+use Stripe\Checkout\Session as StripeSession;
 
 class ServiceHubController extends Controller
 {
@@ -637,7 +640,7 @@ class ServiceHubController extends Controller
         ]);
     }
 
-    public function orderStore(Request $request): \Illuminate\Http\RedirectResponse
+    public function orderStore(Request $request)
     {
         $validated = $request->validate([
             'gig_id' => 'required|exists:gigs,id',
@@ -650,6 +653,7 @@ class ServiceHubController extends Controller
         try {
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
+            $user = Auth::user();
 
             // Calculate fees
             $platformFee = $package->price * 0.05; // 5% platform fee
@@ -657,7 +661,7 @@ class ServiceHubController extends Controller
 
             $order = ServiceOrder::create([
                 'gig_id' => $gig->id,
-                'buyer_id' => Auth::id(),
+                'buyer_id' => $user->id,
                 'seller_id' => $gig->user_id,
                 'package_id' => $package->id,
                 'package_type' => $package->name,
@@ -670,12 +674,144 @@ class ServiceHubController extends Controller
                 'payment_status' => $validated['payment_method'] === 'wallet' ? 'paid' : 'pending',
             ]);
 
-            // TODO: Handle payment processing here
+            // Handle wallet payment
+            if ($validated['payment_method'] === 'wallet') {
+                // TODO: Deduct from wallet balance
+                return redirect()->route('service-hub.order.success')
+                    ->with('order_id', $order->id);
+            }
 
-            return redirect()->route('service-hub.order.success')
-                ->with('order_id', $order->id);
+            // For card payments, return order ID so frontend can create checkout session
+            // Check if this is an Inertia request
+            if ($request->header('X-Inertia')) {
+                return back()->with('order_id', $order->id);
+            }
+
+            // For API requests, return JSON with order ID
+            return response()->json([
+                'success' => true,
+                'order_id' => $order->id,
+                'message' => 'Order created successfully. Please create checkout session.',
+            ]);
         } catch (\Exception $e) {
+            Log::error('Service order creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return back()->withErrors(['error' => 'Failed to place order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function createCheckoutSession(Request $request)
+    {
+        $validated = $request->validate([
+            'gig_id' => 'required|exists:gigs,id',
+            'package_id' => 'required|exists:gig_packages,id',
+            'requirements' => 'required|string',
+            'special_instructions' => 'nullable|string',
+        ]);
+
+        try {
+            $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
+            $package = GigPackage::findOrFail($validated['package_id']);
+            $user = Auth::user();
+
+            // Calculate fees
+            $platformFee = $package->price * 0.05; // 5% platform fee
+            $sellerEarnings = $package->price - $platformFee;
+            $totalAmount = $package->price + $platformFee;
+
+            // Step 1: Create the order
+            $order = ServiceOrder::create([
+                'gig_id' => $gig->id,
+                'buyer_id' => $user->id,
+                'seller_id' => $gig->user_id,
+                'package_id' => $package->id,
+                'package_type' => $package->name,
+                'amount' => $package->price,
+                'platform_fee' => $platformFee,
+                'seller_earnings' => $sellerEarnings,
+                'requirements' => $validated['requirements'],
+                'special_instructions' => $validated['special_instructions'] ?? null,
+                'status' => 'pending',
+                'payment_status' => 'pending',
+            ]);
+
+            // Step 2: Create Stripe checkout session
+
+            // Get Stripe credentials from database or fallback to .env
+            $stripeEnv = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to .env
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
+
+            // Get Stripe credentials from database or fallback to .env
+            $stripeEnv = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to .env
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
+
+            // Create Stripe checkout session
+            $lineItems = [
+                [
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => $gig->title . ' - ' . $package->name,
+                            'description' => 'Service Order: ' . $gig->title,
+                        ],
+                        'unit_amount' => (int)($totalAmount * 100), // Convert to cents
+                    ],
+                    'quantity' => 1,
+                ],
+            ];
+
+            $session = StripeSession::create([
+                'payment_method_types' => ['card'],
+                'line_items' => $lineItems,
+                'mode' => 'payment',
+                'customer_email' => $user->email,
+                'success_url' => route('service-hub.order.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => route('service-hub.order') . '?serviceId=' . $gig->id . '&packageId=' . $package->id,
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'gig_id' => $gig->id,
+                    'package_id' => $package->id,
+                    'type' => 'service_order',
+                ],
+            ]);
+
+            // Store Stripe session ID in order when checkout session is created
+            $order->update([
+                'stripe_session_id' => $session->id,
+            ]);
+
+            // Return JSON response with checkout URL
+            return response()->json([
+                'success' => true,
+                'url' => $session->url,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stripe checkout session creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'gig_id' => $validated['gig_id'] ?? null,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to create checkout session: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -811,6 +947,8 @@ class ServiceHubController extends Controller
                 'specialInstructions' => $order->special_instructions,
                 'deliverables' => $order->deliverables ?? [],
                 'canDeliver' => in_array($order->status, ['pending', 'in_progress']),
+                'canApprove' => $order->status === 'pending',
+                'canReject' => $order->status === 'pending',
             ];
         });
 
@@ -998,6 +1136,141 @@ class ServiceHubController extends Controller
     public function completeOrder(Request $request, $orderId): RedirectResponse
     {
         return $this->acceptDelivery($request, $orderId);
+    }
+
+    public function approveOrder(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the seller
+        if ($order->seller_id !== Auth::id()) {
+            abort(403, 'Only the seller can approve this order.');
+        }
+
+        // Check if order is pending
+        if ($order->status !== 'pending') {
+            return back()->withErrors(['error' => 'Only pending orders can be approved.']);
+        }
+
+        try {
+            $order->update([
+                'status' => 'in_progress',
+            ]);
+
+            return redirect()->route('service-hub.seller-orders')
+                ->with('success', 'Order approved successfully! You can now start working on it.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to approve order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function rejectOrder(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the seller
+        if ($order->seller_id !== Auth::id()) {
+            abort(403, 'Only the seller can reject this order.');
+        }
+
+        // Check if order is pending
+        if ($order->status !== 'pending') {
+            return back()->withErrors(['error' => 'Only pending orders can be rejected.']);
+        }
+
+        $validated = $request->validate([
+            'rejection_reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $order->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $validated['rejection_reason'] ?? 'Rejected by seller',
+            ]);
+
+            // If payment was made, handle refund logic here if needed
+            // For now, we'll just cancel the order
+
+            return redirect()->route('service-hub.seller-orders')
+                ->with('success', 'Order rejected successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to reject order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function orderSuccess(Request $request): Response
+    {
+        $sessionId = $request->get('session_id');
+        $orderId = null;
+        $paymentStatus = 'pending';
+
+        if ($sessionId) {
+            try {
+                // Get Stripe credentials
+                $stripeEnv = StripeConfigService::getEnvironment();
+                $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+                if ($credentials && !empty($credentials['secret_key'])) {
+                    Stripe::setApiKey($credentials['secret_key']);
+                } else {
+                    Stripe::setApiKey(config('services.stripe.secret'));
+                }
+
+                // Retrieve session from Stripe
+                $session = StripeSession::retrieve($sessionId);
+
+                // Convert Stripe session object to array for storage
+                $stripeResponse = [
+                    'session_id' => $session->id,
+                    'payment_status' => $session->payment_status,
+                    'payment_intent' => $session->payment_intent,
+                    'customer_email' => $session->customer_email,
+                    'amount_total' => $session->amount_total,
+                    'currency' => $session->currency,
+                    'metadata' => $session->metadata ? (array) $session->metadata : null,
+                    'created' => $session->created,
+                    'retrieved_at' => now()->toIso8601String(),
+                ];
+
+                if ($session->payment_status === 'paid' && isset($session->metadata->order_id)) {
+                    $orderId = $session->metadata->order_id;
+                    $order = ServiceOrder::find($orderId);
+
+                    if ($order && $order->buyer_id === Auth::id()) {
+                        // Update order payment status and store Stripe response
+                        $order->update([
+                            'payment_status' => 'paid',
+                            'stripe_response' => $stripeResponse,
+                            'stripe_session_id' => $sessionId,
+                        ]);
+                        $paymentStatus = 'paid';
+                    }
+                } elseif (isset($session->metadata->order_id)) {
+                    // Store Stripe response even if payment is not completed yet
+                    $orderId = $session->metadata->order_id;
+                    $order = ServiceOrder::find($orderId);
+
+                    if ($order && $order->buyer_id === Auth::id()) {
+                        $order->update([
+                            'stripe_response' => $stripeResponse,
+                            'stripe_session_id' => $sessionId,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Stripe session retrieval failed', [
+                    'session_id' => $sessionId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return Inertia::render('frontend/service-hub/order-success', [
+            'order_id' => $orderId,
+            'payment_status' => $paymentStatus,
+            'session_id' => $sessionId,
+        ]);
     }
 
     public function sellerProfile(Request $request, $id): Response

@@ -386,7 +386,7 @@ export default function MyOrders() {
                               )}
                               {order.canCancel && (
                                 <Button
-                                  variant="destructive"
+                                  variant="destructive text-white"
                                   size="sm"
                                   onClick={() => handleCancel(order.id)}
                                 >

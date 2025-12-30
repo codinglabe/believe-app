@@ -164,7 +164,7 @@ export default function ServiceShow() {
   }
 
   const handleOrder = () => {
-    router.visit(`/service-hub/order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
+    router.visit(`/service-hub/create-order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
   }
 
   return (

@@ -7,6 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/frontend/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/frontend/ui/dialog"
+import { Textarea } from "@/components/frontend/ui/textarea"
 import {
   ArrowLeft,
   Package,
@@ -25,6 +27,8 @@ import {
   Filter,
   Search,
   Upload,
+  Check,
+  X,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -58,6 +62,8 @@ interface Order {
   specialInstructions: string | null
   deliverables: Array<{ name: string; url: string; type: string }>
   canDeliver: boolean
+  canApprove: boolean
+  canReject: boolean
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -147,6 +153,51 @@ export default function SellerOrders() {
       month: "short",
       day: "numeric",
     })
+  }
+
+  const [processingOrder, setProcessingOrder] = useState<number | null>(null)
+  const [showRejectModal, setShowRejectModal] = useState<number | null>(null)
+  const [rejectionReason, setRejectionReason] = useState("")
+
+  const handleApprove = async (orderId: number) => {
+    setProcessingOrder(orderId)
+    try {
+      await router.post(`/service-hub/orders/${orderId}/approve`, {}, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setProcessingOrder(null)
+        },
+        onError: () => {
+          setProcessingOrder(null)
+        },
+      })
+    } catch (error) {
+      setProcessingOrder(null)
+    }
+  }
+
+  const handleReject = async (orderId: number) => {
+    if (!rejectionReason.trim()) {
+      return
+    }
+    setProcessingOrder(orderId)
+    try {
+      await router.post(`/service-hub/orders/${orderId}/reject`, {
+        rejection_reason: rejectionReason,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setProcessingOrder(null)
+          setShowRejectModal(null)
+          setRejectionReason("")
+        },
+        onError: () => {
+          setProcessingOrder(null)
+        },
+      })
+    } catch (error) {
+      setProcessingOrder(null)
+    }
   }
 
   return (
@@ -351,6 +402,37 @@ export default function SellerOrders() {
 
                             {/* Actions */}
                             <div className="flex flex-wrap items-center gap-3 pt-4 border-t">
+                              {order.canApprove && (
+                                <>
+                                  <Button
+                                    size="sm"
+                                    className="bg-green-600 hover:bg-green-700"
+                                    onClick={() => handleApprove(order.id)}
+                                    disabled={processingOrder === order.id}
+                                  >
+                                    {processingOrder === order.id ? (
+                                      <>
+                                        <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                                        Processing...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Check className="mr-2 h-4 w-4" />
+                                        Approve Order
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="destructive text-white"
+                                    onClick={() => setShowRejectModal(order.id)}
+                                    disabled={processingOrder === order.id}
+                                  >
+                                    <X className="mr-2 h-4 w-4" />
+                                    Reject Order
+                                  </Button>
+                                </>
+                              )}
                               <Link href={`/service-hub/orders/${order.id}`}>
                                 <Button variant="default" size="sm">
                                   <Eye className="mr-2 h-4 w-4" />
@@ -417,6 +499,62 @@ export default function SellerOrders() {
             </div>
           </div>
         </div>
+
+        {/* Reject Order Modal */}
+        <Dialog open={showRejectModal !== null} onOpenChange={(open) => !open && setShowRejectModal(null)}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Reject Order</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to reject this order? Please provide a reason (optional).
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div>
+                <label htmlFor="rejection-reason" className="text-sm font-medium mb-2 block">
+                  Rejection Reason (Optional)
+                </label>
+                <Textarea
+                  id="rejection-reason"
+                  placeholder="Enter reason for rejecting this order..."
+                  value={rejectionReason}
+                  onChange={(e) => setRejectionReason(e.target.value)}
+                  rows={4}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowRejectModal(null)
+                  setRejectionReason("")
+                }}
+                disabled={processingOrder !== null}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="destructive text-white"
+                onClick={() => showRejectModal && handleReject(showRejectModal)}
+                disabled={processingOrder !== null}
+              >
+                {processingOrder !== null ? (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  <>
+                    <X className="mr-2 h-4 w-4" />
+                    Reject Order
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </FrontendLayout>
   )
