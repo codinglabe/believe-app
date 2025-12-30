@@ -110,10 +110,12 @@ class Gig extends Model
 
     public function updateRating()
     {
-        $avgRating = $this->reviews()->avg('rating');
+        // Only count buyer reviews for rating and count
+        $buyerReviews = $this->reviews()->where('reviewer_type', 'buyer');
+        $avgRating = $buyerReviews->avg('rating');
         $this->update([
-            'rating' => round($avgRating, 2),
-            'reviews_count' => $this->reviews()->count(),
+            'rating' => round($avgRating ?? 0, 2),
+            'reviews_count' => $buyerReviews->count(),
         ]);
     }
 }

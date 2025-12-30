@@ -364,7 +364,7 @@ export default function ServiceChat() {
                   </div>
                 </div>
               </div>
-              {isSeller && sellerGigs.length > 0 && (
+              {/* {isSeller && sellerGigs.length > 0 && (
                 <Button
                   onClick={() => setShowOfferModal(true)}
                   className="bg-green-600 hover:bg-green-700"
@@ -372,7 +372,7 @@ export default function ServiceChat() {
                   <Handshake className="mr-2 h-4 w-4" />
                   Create Offer
                 </Button>
-              )}
+              )} */}
             </div>
           </div>
         </div>

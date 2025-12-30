@@ -13,13 +13,19 @@ use App\Models\ServiceSellerProfile;
 use App\Models\ServiceChat;
 use App\Models\ServiceChatMessage;
 use App\Models\CustomOffer;
+use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
 use Inertia\Inertia;
 use Inertia\Response;
+use Stripe\Stripe;
+use Stripe\Checkout\Session as StripeSession;
+use App\Mail\OrderPlacedNotification;
+use App\Mail\OrderCompletedNotification;
 
 class ServiceHubController extends Controller
 {
@@ -475,9 +481,10 @@ class ServiceHubController extends Controller
             abort(404);
         }
 
-        // Get recent reviews
+        // Get recent reviews (only buyer reviews)
         $recentReviews = ServiceReview::with('user:id,name,image')
             ->where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
             ->orderBy('created_at', 'desc')
             ->limit(3)
             ->get()
@@ -520,6 +527,11 @@ class ServiceHubController extends Controller
             ];
         })->toArray();
 
+        // Calculate buyer reviews count (only buyer reviews should be counted)
+        $buyerReviewsCount = ServiceReview::where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
+            ->count();
+
         // Format gig data
         $gigData = [
             'id' => $gig->id,
@@ -530,7 +542,7 @@ class ServiceHubController extends Controller
             'price' => (float) $gig->price,
             'deliveryTime' => $gig->delivery_time,
             'rating' => (float) $gig->rating,
-            'reviews' => $gig->reviews_count,
+            'reviews' => $buyerReviewsCount, // Use actual buyer reviews count
             'category' => $gig->category->name ?? '',
             'tags' => $gig->tags ?? [],
             'faqs' => $gig->faqs ?? [],
@@ -542,6 +554,7 @@ class ServiceHubController extends Controller
                 'avatar' => $gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->profile_image
                     ? Storage::url($gig->user->serviceSellerProfile->profile_image)
                     : ($gig->user->image ? Storage::url($gig->user->image) : null),
+                'phone' => $gig->user->serviceSellerProfile ? $gig->user->serviceSellerProfile->phone : null,
             ],
         ];
 
@@ -630,7 +643,7 @@ class ServiceHubController extends Controller
         ]);
     }
 
-    public function orderStore(Request $request): \Illuminate\Http\RedirectResponse
+    public function orderStore(Request $request)
     {
         $validated = $request->validate([
             'gig_id' => 'required|exists:gigs,id',
@@ -643,6 +656,7 @@ class ServiceHubController extends Controller
         try {
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
+            $user = Auth::user();
 
             // Calculate fees
             $platformFee = $package->price * 0.05; // 5% platform fee
@@ -650,7 +664,7 @@ class ServiceHubController extends Controller
 
             $order = ServiceOrder::create([
                 'gig_id' => $gig->id,
-                'buyer_id' => Auth::id(),
+                'buyer_id' => $user->id,
                 'seller_id' => $gig->user_id,
                 'package_id' => $package->id,
                 'package_type' => $package->name,
@@ -663,12 +677,166 @@ class ServiceHubController extends Controller
                 'payment_status' => $validated['payment_method'] === 'wallet' ? 'paid' : 'pending',
             ]);
 
-            // TODO: Handle payment processing here
+            // Send email notification to seller
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order placed email to seller', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
-            return redirect()->route('service-hub.order.success')
-                ->with('order_id', $order->id);
+            // Handle wallet payment
+            if ($validated['payment_method'] === 'wallet') {
+                // TODO: Deduct from wallet balance
+                return redirect()->route('service-hub.order.success')
+                    ->with('order_id', $order->id);
+            }
+
+            // For card payments, return order ID so frontend can create checkout session
+            // Check if this is an Inertia request
+            if ($request->header('X-Inertia')) {
+                return back()->with('order_id', $order->id);
+            }
+
+            // For API requests, return JSON with order ID
+            return response()->json([
+                'success' => true,
+                'order_id' => $order->id,
+                'message' => 'Order created successfully. Please create checkout session.',
+            ]);
         } catch (\Exception $e) {
+            Log::error('Service order creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return back()->withErrors(['error' => 'Failed to place order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function createCheckoutSession(Request $request)
+    {
+        $validated = $request->validate([
+            'gig_id' => 'required|exists:gigs,id',
+            'package_id' => 'required|exists:gig_packages,id',
+            'requirements' => 'required|string',
+            'special_instructions' => 'nullable|string',
+        ]);
+
+        try {
+            $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
+            $package = GigPackage::findOrFail($validated['package_id']);
+            $user = Auth::user();
+
+            // Calculate fees
+            $platformFee = $package->price * 0.05; // 5% platform fee
+            $sellerEarnings = $package->price - $platformFee;
+            $totalAmount = $package->price + $platformFee;
+
+            // Step 1: Create the order
+            $order = ServiceOrder::create([
+                'gig_id' => $gig->id,
+                'buyer_id' => $user->id,
+                'seller_id' => $gig->user_id,
+                'package_id' => $package->id,
+                'package_type' => $package->name,
+                'amount' => $package->price,
+                'platform_fee' => $platformFee,
+                'seller_earnings' => $sellerEarnings,
+                'requirements' => $validated['requirements'],
+                'special_instructions' => $validated['special_instructions'] ?? null,
+                'status' => 'pending',
+                'payment_status' => 'pending',
+            ]);
+
+            // Send email notification to seller
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order placed email to seller', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
+            // Step 2: Create Stripe checkout session
+
+            // Get Stripe credentials from database or fallback to .env
+            $stripeEnv = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to .env
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
+
+            // Get Stripe credentials from database or fallback to .env
+            $stripeEnv = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to .env
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
+
+            // Create Stripe checkout session
+            $lineItems = [
+                [
+                    'price_data' => [
+                        'currency' => 'usd',
+                        'product_data' => [
+                            'name' => $gig->title . ' - ' . $package->name,
+                            'description' => 'Service Order: ' . $gig->title,
+                        ],
+                        'unit_amount' => (int)($totalAmount * 100), // Convert to cents
+                    ],
+                    'quantity' => 1,
+                ],
+            ];
+
+            $session = StripeSession::create([
+                'payment_method_types' => ['card'],
+                'line_items' => $lineItems,
+                'mode' => 'payment',
+                'customer_email' => $user->email,
+                'success_url' => route('service-hub.order.success') . '?session_id={CHECKOUT_SESSION_ID}',
+                'cancel_url' => route('service-hub.order') . '?serviceId=' . $gig->id . '&packageId=' . $package->id,
+                'metadata' => [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'gig_id' => $gig->id,
+                    'package_id' => $package->id,
+                    'type' => 'service_order',
+                ],
+            ]);
+
+            // Store Stripe session ID in order when checkout session is created
+            $order->update([
+                'stripe_session_id' => $session->id,
+            ]);
+
+            // Return JSON response with checkout URL
+            return response()->json([
+                'success' => true,
+                'url' => $session->url,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Stripe checkout session creation failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'gig_id' => $validated['gig_id'] ?? null,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to create checkout session: ' . $e->getMessage(),
+            ], 500);
         }
     }
 
@@ -728,6 +896,8 @@ class ServiceHubController extends Controller
                 'paymentStatus' => $order->payment_status,
                 'orderDate' => $order->created_at->format('Y-m-d'),
                 'deliveryDate' => $order->created_at->copy()->addDays(3)->format('Y-m-d'), // TODO: Calculate from package delivery time
+                'cancelledAt' => $order->cancelled_at ? $order->cancelled_at->format('Y-m-d H:i') : null,
+                'cancellationReason' => $order->cancellation_reason,
                 'requirements' => $order->requirements,
                 'deliverables' => $order->deliverables ?? [],
                 'canReview' => $order->status === 'completed' && !ServiceReview::where('order_id', $order->id)->exists(),
@@ -804,6 +974,8 @@ class ServiceHubController extends Controller
                 'specialInstructions' => $order->special_instructions,
                 'deliverables' => $order->deliverables ?? [],
                 'canDeliver' => in_array($order->status, ['pending', 'in_progress']),
+                'canApprove' => $order->status === 'pending',
+                'canReject' => $order->status === 'pending',
             ];
         });
 
@@ -877,12 +1049,17 @@ class ServiceHubController extends Controller
             'orderDate' => $order->created_at->format('Y-m-d H:i'),
             'deliveredAt' => $order->delivered_at ? $order->delivered_at->format('Y-m-d H:i') : null,
             'completedAt' => $order->completed_at ? $order->completed_at->format('Y-m-d H:i') : null,
+            'cancelledAt' => $order->cancelled_at ? $order->cancelled_at->format('Y-m-d H:i') : null,
+            'cancellationReason' => $order->cancellation_reason,
             'requirements' => $order->requirements,
             'specialInstructions' => $order->special_instructions,
             'deliverables' => $order->deliverables ?? [],
             'canDeliver' => $isSeller && in_array($order->status, ['pending', 'in_progress']),
             'canAcceptDelivery' => $isBuyer && $order->status === 'delivered',
             'canComplete' => $isBuyer && $order->status === 'delivered',
+            'canApprove' => $isSeller && $order->status === 'pending',
+            'canReject' => $isSeller && $order->status === 'pending',
+            'canCancel' => in_array($order->status, ['pending', 'in_progress']),
             'canReview' => $isBuyer && $order->status === 'completed' && !$order->buyerReview,
             'canSellerReview' => $isSeller && $order->status === 'completed' && $order->buyerReview && !$order->sellerReview,
             'hasBuyerReview' => $order->buyerReview ? [
@@ -981,6 +1158,17 @@ class ServiceHubController extends Controller
         try {
             $order->markAsCompleted();
 
+            // Send email notification to buyer
+            try {
+                $order->load(['seller', 'buyer', 'gig']);
+                Mail::to($order->buyer->email)->send(new OrderCompletedNotification($order));
+            } catch (\Exception $e) {
+                Log::error('Failed to send order completed email to buyer', [
+                    'order_id' => $order->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+
             return redirect()->route('service-hub.order.detail', $order->id)
                 ->with('success', 'Order completed! You can now leave a review.');
         } catch (\Exception $e) {
@@ -991,6 +1179,152 @@ class ServiceHubController extends Controller
     public function completeOrder(Request $request, $orderId): RedirectResponse
     {
         return $this->acceptDelivery($request, $orderId);
+    }
+
+    public function approveOrder(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the seller
+        if ($order->seller_id !== Auth::id()) {
+            abort(403, 'Only the seller can approve this order.');
+        }
+
+        // Check if order is pending
+        if ($order->status !== 'pending') {
+            return back()->withErrors(['error' => 'Only pending orders can be approved.']);
+        }
+
+        try {
+            $order->update([
+                'status' => 'in_progress',
+            ]);
+
+            return redirect()->route('service-hub.seller-orders')
+                ->with('success', 'Order approved successfully! You can now start working on it.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to approve order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function rejectOrder(Request $request, $orderId): RedirectResponse
+    {
+        $order = ServiceOrder::findOrFail($orderId);
+
+        // Check if user is the seller
+        if ($order->seller_id !== Auth::id()) {
+            abort(403, 'Only the seller can reject this order.');
+        }
+
+        // Check if order is pending
+        if ($order->status !== 'pending') {
+            return back()->withErrors(['error' => 'Only pending orders can be rejected.']);
+        }
+
+        $validated = $request->validate([
+            'rejection_reason' => 'nullable|string|max:500',
+        ]);
+
+        try {
+            $order->update([
+                'status' => 'cancelled',
+                'cancelled_at' => now(),
+                'cancellation_reason' => $validated['rejection_reason'] ?? 'Rejected by seller',
+            ]);
+
+            // If payment was made, handle refund logic here if needed
+            // For now, we'll just cancel the order
+
+            return redirect()->route('service-hub.seller-orders')
+                ->with('success', 'Order rejected successfully.');
+        } catch (\Exception $e) {
+            return back()->withErrors(['error' => 'Failed to reject order: ' . $e->getMessage()]);
+        }
+    }
+
+    public function orderSuccess(Request $request): Response
+    {
+        $sessionId = $request->get('session_id');
+        $orderId = null;
+        $paymentStatus = 'pending';
+
+        if ($sessionId) {
+            try {
+                // Get Stripe credentials
+                $stripeEnv = StripeConfigService::getEnvironment();
+                $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+                if ($credentials && !empty($credentials['secret_key'])) {
+                    Stripe::setApiKey($credentials['secret_key']);
+                } else {
+                    Stripe::setApiKey(config('services.stripe.secret'));
+                }
+
+                // Retrieve session from Stripe
+                $session = StripeSession::retrieve($sessionId);
+
+                // Convert Stripe session object to array for storage
+                $stripeResponse = [
+                    'session_id' => $session->id,
+                    'payment_status' => $session->payment_status,
+                    'payment_intent' => $session->payment_intent,
+                    'customer_email' => $session->customer_email,
+                    'amount_total' => $session->amount_total,
+                    'currency' => $session->currency,
+                    'metadata' => $session->metadata ? (array) $session->metadata : null,
+                    'created' => $session->created,
+                    'retrieved_at' => now()->toIso8601String(),
+                ];
+
+                if ($session->payment_status === 'paid' && isset($session->metadata->order_id)) {
+                    $orderId = $session->metadata->order_id;
+                    $order = ServiceOrder::find($orderId);
+
+                    if ($order && $order->buyer_id === Auth::id()) {
+                        // Update order payment status and store Stripe response
+                        $order->update([
+                            'payment_status' => 'paid',
+                            'stripe_response' => $stripeResponse,
+                            'stripe_session_id' => $sessionId,
+                        ]);
+                        $paymentStatus = 'paid';
+
+                        // Send email notification to seller when payment is confirmed
+                        try {
+                            $order->load(['seller', 'buyer', 'gig']);
+                            Mail::to($order->seller->email)->send(new OrderPlacedNotification($order));
+                        } catch (\Exception $e) {
+                            Log::error('Failed to send order placed email to seller after payment confirmation', [
+                                'order_id' => $order->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+                } elseif (isset($session->metadata->order_id)) {
+                    // Store Stripe response even if payment is not completed yet
+                    $orderId = $session->metadata->order_id;
+                    $order = ServiceOrder::find($orderId);
+
+                    if ($order && $order->buyer_id === Auth::id()) {
+                        $order->update([
+                            'stripe_response' => $stripeResponse,
+                            'stripe_session_id' => $sessionId,
+                        ]);
+                    }
+                }
+            } catch (\Exception $e) {
+                Log::error('Stripe session retrieval failed', [
+                    'session_id' => $sessionId,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return Inertia::render('frontend/service-hub/order-success', [
+            'order_id' => $orderId,
+            'payment_status' => $paymentStatus,
+            'session_id' => $sessionId,
+        ]);
     }
 
     public function sellerProfile(Request $request, $id): Response
@@ -1177,19 +1511,42 @@ class ServiceHubController extends Controller
     {
         $gig = Gig::with('category')->where('slug', $slug)->firstOrFail();
 
-        $reviews = ServiceReview::with('user:id,name,image')
+        $query = ServiceReview::with('user:id,name,image')
             ->where('gig_id', $gig->id)
-            ->orderBy('created_at', 'desc')
-            ->paginate(10);
+            ->where('reviewer_type', 'buyer');
 
-        // Calculate rating distribution
+        // Handle sorting
+        $sortBy = $request->get('sort_by', 'most_recent');
+        switch ($sortBy) {
+            case 'most_helpful':
+                $query->orderBy('helpful_count', 'desc')->orderBy('created_at', 'desc');
+                break;
+            case 'highest_rated':
+                $query->orderBy('rating', 'desc')->orderBy('created_at', 'desc');
+                break;
+            case 'lowest_rated':
+                $query->orderBy('rating', 'asc')->orderBy('created_at', 'desc');
+                break;
+            case 'most_recent':
+            default:
+                $query->orderBy('created_at', 'desc');
+                break;
+        }
+
+        $reviews = $query->paginate(10);
+
+        // Calculate rating distribution (only for buyer reviews)
         $ratingDistribution = [];
+        $totalBuyerReviews = ServiceReview::where('gig_id', $gig->id)
+            ->where('reviewer_type', 'buyer')
+            ->count();
+
         for ($i = 5; $i >= 1; $i--) {
             $count = ServiceReview::where('gig_id', $gig->id)
+                ->where('reviewer_type', 'buyer')
                 ->where('rating', $i)
                 ->count();
-            $total = $reviews->total();
-            $ratingDistribution[$i] = $total > 0 ? round(($count / $total) * 100, 1) : 0;
+            $ratingDistribution[$i] = $totalBuyerReviews > 0 ? round(($count / $totalBuyerReviews) * 100, 1) : 0;
         }
 
         // Format gig data
@@ -1212,7 +1569,7 @@ class ServiceHubController extends Controller
                 'rating' => $review->rating,
                 'comment' => $review->comment,
                 'date' => $review->created_at->diffForHumans(),
-                'helpful' => 0, // Can be added later if helpful feature is implemented
+                'helpful' => $review->helpful_count ?? 0,
                 'verified' => $review->is_verified ?? false,
             ];
         })->toArray();
@@ -2040,5 +2397,248 @@ class ServiceHubController extends Controller
         $offer->reject();
 
         return back()->with('success', 'Offer rejected.');
+    }
+
+    /**
+     * Test email notifications with detailed debugging
+     * Usage: /service-hub/test-email?order_id=1&type=placed
+     *        /service-hub/test-email?order_id=1&type=completed
+     */
+    public function testEmailNotifications(Request $request)
+    {
+        try {
+            $type = $request->get('type', 'placed'); // 'placed' or 'completed'
+            $orderId = $request->get('order_id');
+            $showConfig = $request->get('show_config', false);
+
+            // Show mail configuration for debugging
+            if ($showConfig) {
+                $smtpConfig = config('mail.mailers.smtp');
+                $testConnection = $request->get('test_connection', false);
+
+                $response = [
+                    'mail_config' => [
+                        'default_mailer' => config('mail.default'),
+                        'from_address' => config('mail.from.address'),
+                        'from_name' => config('mail.from.name'),
+                        'mail_host' => $smtpConfig['host'],
+                        'mail_port' => $smtpConfig['port'],
+                        'mail_username' => $smtpConfig['username'] ? '***set***' : 'not set',
+                        'mail_password' => $smtpConfig['password'] ? '***set***' : 'not set',
+                        'mail_encryption' => $smtpConfig['encryption'] ?? 'not set',
+                        'env_mail_mailer' => env('MAIL_MAILER'),
+                        'env_mail_from' => env('MAIL_FROM_ADDRESS'),
+                    ],
+                    'note' => 'If MAIL_MAILER=log, emails are written to storage/logs/laravel.log instead of being sent',
+                ];
+
+                // Test SMTP connection if requested
+                if ($testConnection && config('mail.default') === 'smtp') {
+                    try {
+                        // Try to send a test email to verify SMTP connection
+                        $testEmail = 'test@example.com';
+                        Mail::raw('SMTP Connection Test', function ($message) use ($testEmail) {
+                            $message->to($testEmail)
+                                    ->subject('SMTP Test');
+                        });
+
+                        $response['smtp_test'] = [
+                            'status' => 'success',
+                            'message' => 'SMTP configuration appears valid (test email attempted)',
+                            'note' => 'Check if test email was actually sent to verify connection',
+                        ];
+                    } catch (\Exception $e) {
+                        $response['smtp_test'] = [
+                            'status' => 'failed',
+                            'error' => $e->getMessage(),
+                            'class' => get_class($e),
+                        ];
+                    }
+                }
+
+                return response()->json($response);
+            }
+
+            if (!$orderId) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Order ID is required. Use ?order_id=1&type=placed or ?order_id=1&type=completed',
+                    'usage' => [
+                        'test_placed' => '/service-hub/test-email?order_id=1&type=placed',
+                        'test_completed' => '/service-hub/test-email?order_id=1&type=completed',
+                        'show_config' => '/service-hub/test-email?show_config=1',
+                    ],
+                ], 400);
+            }
+
+            $order = ServiceOrder::with(['seller', 'buyer', 'gig'])->find($orderId);
+
+            if (!$order) {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Order #{$orderId} not found",
+                ], 404);
+            }
+
+            // Validate order has required relationships
+            if (!$order->seller || !$order->buyer || !$order->gig) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Order is missing required relationships (seller, buyer, or gig)',
+                    'order_data' => [
+                        'has_seller' => $order->seller ? true : false,
+                        'has_buyer' => $order->buyer ? true : false,
+                        'has_gig' => $order->gig ? true : false,
+                    ],
+                ], 400);
+            }
+
+            $emailSent = false;
+            $emailTo = '';
+            $emailSubject = '';
+            $mailError = null;
+
+            if ($type === 'placed') {
+                // Test OrderPlacedNotification (to seller)
+                $emailTo = $order->seller->email;
+
+                Log::info('Testing OrderPlacedNotification email', [
+                    'order_id' => $order->id,
+                    'to' => $emailTo,
+                    'mailer' => config('mail.default'),
+                ]);
+
+                try {
+                    $mailable = new OrderPlacedNotification($order);
+                    $emailSubject = $mailable->envelope()->subject;
+
+                    // Use Mail::send() with error handling
+                    Mail::to($emailTo)->send($mailable);
+                    $emailSent = true;
+
+                    Log::info('OrderPlacedNotification email sent successfully', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'subject' => $emailSubject,
+                        'mailer' => config('mail.default'),
+                    ]);
+                } catch (\Exception $mailException) {
+                    // Check if it's an SMTP/transport error
+                    $errorMessage = $mailException->getMessage();
+                    if (str_contains($errorMessage, 'SMTP') || str_contains($errorMessage, 'transport') || str_contains($errorMessage, 'connection')) {
+                        $mailError = 'SMTP/Transport Error: ' . $errorMessage;
+                    } else {
+                        $mailError = $errorMessage;
+                    }
+                    $mailError = $mailException->getMessage();
+                    Log::error('Failed to send OrderPlacedNotification email', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'error' => $mailException->getMessage(),
+                        'class' => get_class($mailException),
+                        'trace' => $mailException->getTraceAsString(),
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => $emailSent,
+                    'message' => $emailSent
+                        ? "Order placed email sent successfully to seller: {$emailTo}"
+                        : "Failed to send email: {$mailError}",
+                    'debug' => [
+                        'email_to' => $emailTo,
+                        'email_subject' => $emailSubject,
+                        'mailer_used' => config('mail.default'),
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'seller_name' => $order->seller->name,
+                        'buyer_name' => $order->buyer->name,
+                        'service_title' => $order->gig->title,
+                    ],
+                    'note' => config('mail.default') === 'log'
+                        ? 'Emails are being logged to storage/logs/laravel.log (not actually sent). Check the log file for email content.'
+                        : 'Email should be sent via ' . config('mail.default') . '. Check your inbox and spam folder.',
+                    'error' => $mailError,
+                ]);
+            } elseif ($type === 'completed') {
+                // Test OrderCompletedNotification (to buyer)
+                $emailTo = $order->buyer->email;
+
+                Log::info('Testing OrderCompletedNotification email', [
+                    'order_id' => $order->id,
+                    'to' => $emailTo,
+                    'mailer' => config('mail.default'),
+                ]);
+
+                try {
+                    $mailable = new OrderCompletedNotification($order);
+                    $emailSubject = $mailable->envelope()->subject;
+
+                    // Use Mail::send() with error handling
+                    Mail::to($emailTo)->send($mailable);
+                    $emailSent = true;
+
+                    Log::info('OrderCompletedNotification email sent successfully', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'subject' => $emailSubject,
+                        'mailer' => config('mail.default'),
+                    ]);
+                } catch (\Exception $mailException) {
+                    // Check if it's an SMTP/transport error
+                    $errorMessage = $mailException->getMessage();
+                    if (str_contains($errorMessage, 'SMTP') || str_contains($errorMessage, 'transport') || str_contains($errorMessage, 'connection')) {
+                        $mailError = 'SMTP/Transport Error: ' . $errorMessage;
+                    } else {
+                        $mailError = $errorMessage;
+                    }
+                    $mailError = $mailException->getMessage();
+                    Log::error('Failed to send OrderCompletedNotification email', [
+                        'order_id' => $order->id,
+                        'to' => $emailTo,
+                        'error' => $mailException->getMessage(),
+                        'class' => get_class($mailException),
+                        'trace' => $mailException->getTraceAsString(),
+                    ]);
+                }
+
+                return response()->json([
+                    'success' => $emailSent,
+                    'message' => $emailSent
+                        ? "Order completed email sent successfully to buyer: {$emailTo}"
+                        : "Failed to send email: {$mailError}",
+                    'debug' => [
+                        'email_to' => $emailTo,
+                        'email_subject' => $emailSubject,
+                        'mailer_used' => config('mail.default'),
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'seller_name' => $order->seller->name,
+                        'buyer_name' => $order->buyer->name,
+                        'service_title' => $order->gig->title,
+                    ],
+                    'note' => config('mail.default') === 'log'
+                        ? 'Emails are being logged to storage/logs/laravel.log (not actually sent). Check the log file for email content.'
+                        : 'Email should be sent via ' . config('mail.default') . '. Check your inbox and spam folder.',
+                    'error' => $mailError,
+                ]);
+            } else {
+                return response()->json([
+                    'success' => false,
+                    'error' => "Invalid type. Use 'placed' or 'completed'",
+                ], 400);
+            }
+        } catch (\Exception $e) {
+            Log::error('Email test failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => config('app.debug') ? $e->getTraceAsString() : null,
+            ], 500);
+        }
     }
 }

@@ -34,6 +34,8 @@ import {
   X,
   Plus,
   Send,
+  Check,
+  Sparkles,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
@@ -75,12 +77,17 @@ interface Order {
   orderDate: string
   deliveredAt: string | null
   completedAt: string | null
+  cancelledAt: string | null
+  cancellationReason: string | null
   requirements: string
   specialInstructions: string | null
   deliverables: Array<{ name: string; url: string; type?: string }>
   canDeliver: boolean
   canAcceptDelivery: boolean
   canComplete: boolean
+  canApprove: boolean
+  canReject: boolean
+  canCancel: boolean
   canReview: boolean
   canSellerReview: boolean
   hasBuyerReview: {
@@ -134,6 +141,8 @@ export default function OrderDetail() {
   const [showDeliverModal, setShowDeliverModal] = useState(false)
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [showSellerReviewModal, setShowSellerReviewModal] = useState(false)
+  const [showRejectModal, setShowRejectModal] = useState(false)
+  const [rejectionReason, setRejectionReason] = useState("")
   const [deliverables, setDeliverables] = useState<Array<{ description: string; file: File | null; url?: string; type?: string }>>([
     { description: "", file: null }
   ])
@@ -247,6 +256,95 @@ export default function OrderDetail() {
     }
   }
 
+  const handleApprove = async () => {
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${order.id}/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+      })
+
+      if (response.ok) {
+        showSuccessToast("Order approved successfully! You can now start working on it.")
+        router.reload()
+      } else {
+        const data = await response.json()
+        showErrorToast(data.error || "Failed to approve order")
+      }
+    } catch (error) {
+      showErrorToast("Failed to approve order")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleReject = async () => {
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${order.id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          rejection_reason: rejectionReason,
+        }),
+      })
+
+      if (response.ok) {
+        showSuccessToast("Order rejected successfully.")
+        setShowRejectModal(false)
+        setRejectionReason("")
+        router.reload()
+      } else {
+        const data = await response.json()
+        showErrorToast(data.error || "Failed to reject order")
+      }
+    } catch (error) {
+      showErrorToast("Failed to reject order")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleCancel = async () => {
+    if (!confirm("Are you sure you want to cancel this order?")) {
+      return
+    }
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${order.id}/reject`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          rejection_reason: 'Cancelled by user',
+        }),
+      })
+
+      if (response.ok) {
+        showSuccessToast("Order cancelled successfully.")
+        router.reload()
+      } else {
+        const data = await response.json()
+        showErrorToast(data.error || "Failed to cancel order")
+      }
+    } catch (error) {
+      showErrorToast("Failed to cancel order")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleSubmitReview = async () => {
     if (!review.comment.trim()) {
       showErrorToast("Please write a review comment")
@@ -347,6 +445,69 @@ export default function OrderDetail() {
                   </div>
                 </CardContent>
               </Card>
+
+              {/* Approval/Rejection Status for Buyers */}
+              {isBuyer && (
+                <>
+                  {order.status === 'cancelled' && order.cancellationReason && (
+                    <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
+                          <XCircle className="h-5 w-5" />
+                          Order Rejected by Seller
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="space-y-2">
+                          {order.cancelledAt && (
+                            <p className="text-sm text-muted-foreground">
+                              Rejected on {new Date(order.cancelledAt).toLocaleString()}
+                            </p>
+                          )}
+                          <div className="p-3 bg-white dark:bg-gray-900 rounded-lg border border-red-200 dark:border-red-800">
+                            <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-1">
+                              Rejection Reason:
+                            </p>
+                            <p className="text-sm text-red-600 dark:text-red-400">
+                              {order.cancellationReason}
+                            </p>
+                          </div>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {order.status === 'in_progress' && (
+                    <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                          <CheckCircle2 className="h-5 w-5" />
+                          Order Approved by Seller
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                          The seller has approved your order and is now working on it. You will be notified when the order is delivered.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                  {['delivered', 'completed'].includes(order.status) && (
+                    <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
+                      <CardHeader>
+                        <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
+                          <CheckCircle2 className="h-5 w-5" />
+                          Order Approved by Seller
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <p className="text-sm text-green-600 dark:text-green-400">
+                          Your order was approved by the seller and is progressing through the delivery process.
+                        </p>
+                      </CardContent>
+                    </Card>
+                  )}
+                </>
+              )}
 
               {/* Requirements */}
               {order.requirements && (
@@ -587,7 +748,46 @@ export default function OrderDetail() {
                   <CardTitle>Actions</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {order.canDeliver && (
+                  {order.canApprove && (
+                    <Button
+                      className="w-full bg-green-600 hover:bg-green-700"
+                      onClick={handleApprove}
+                      disabled={isSubmitting}
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                          Processing...
+                        </>
+                      ) : (
+                        <>
+                          <Check className="mr-2 h-4 w-4" />
+                          Approve Order
+                        </>
+                      )}
+                    </Button>
+                  )}
+                  {order.canReject && (
+                    <Button
+                      className="w-full bg-red-600 hover:bg-red-700"
+                      onClick={() => setShowRejectModal(true)}
+                      disabled={isSubmitting}
+                    >
+                      <X className="mr-2 h-4 w-4" />
+                      Reject Order
+                    </Button>
+                  )}
+                  {order.canCancel && !order.canApprove && !order.canReject && (
+                    <Button
+                      className="w-full bg-red-600 hover:bg-red-700"
+                      onClick={handleCancel}
+                      disabled={isSubmitting}
+                    >
+                      <XCircle className="mr-2 h-4 w-4" />
+                      {isSubmitting ? "Processing..." : "Cancel Order"}
+                    </Button>
+                  )}
+                  {order.canDeliver && order.status !== 'pending' && (
                     <Button
                       className="w-full bg-green-600 hover:bg-green-700"
                       onClick={() => setShowDeliverModal(true)}
@@ -857,6 +1057,63 @@ export default function OrderDetail() {
               className="bg-purple-600 hover:bg-purple-700"
             >
               {isSubmitting ? "Submitting..." : "Submit Review"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Order Modal */}
+      <Dialog open={showRejectModal} onOpenChange={setShowRejectModal}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Reject Order</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reject this order? Please provide a reason (optional).
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="rejection-reason" className="text-sm font-medium mb-2 block">
+                Rejection Reason (Optional)
+              </Label>
+              <Textarea
+                id="rejection-reason"
+                placeholder="Enter reason for rejecting this order..."
+                value={rejectionReason}
+                onChange={(e) => setRejectionReason(e.target.value)}
+                rows={4}
+                className="w-full"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowRejectModal(false)
+                setRejectionReason("")
+              }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleReject}
+              disabled={isSubmitting}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isSubmitting ? (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <X className="mr-2 h-4 w-4" />
+                  Reject Order
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -69,6 +69,7 @@ interface Gig {
     id: number
     name: string
     avatar: string | null
+    phone: string | null
   }
 }
 
@@ -163,7 +164,7 @@ export default function ServiceShow() {
   }
 
   const handleOrder = () => {
-    router.visit(`/service-hub/order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
+    router.visit(`/service-hub/create-order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
   }
 
   return (
@@ -183,7 +184,7 @@ export default function ServiceShow() {
                 <Badge variant="secondary">{gig.category}</Badge>
               </div>
               <div className="flex items-center gap-2">
-                <Link href="/service-hub/chats/list">
+                {/* <Link href="/service-hub/chats/list">
                   <Button variant="ghost" size="sm" className="gap-2 relative">
                     <MessageCircle className="h-4 w-4" />
                     View Chats
@@ -193,7 +194,7 @@ export default function ServiceShow() {
                       </Badge>
                     )}
                   </Button>
-                </Link>
+                </Link> */}
                 <Button
                   variant="ghost"
                   size="icon"
@@ -291,7 +292,7 @@ export default function ServiceShow() {
                           </Link>
                           {isOwner ? (
                             <>
-                              <Button
+                              {/* <Button
                                 variant="default"
                                 size="sm"
                                 onClick={() => setShowOfferModal(true)}
@@ -299,7 +300,7 @@ export default function ServiceShow() {
                               >
                                 <Handshake className="mr-2 h-4 w-4" />
                                 Create Offer
-                              </Button>
+                              </Button> */}
                               <Link href={`/service-hub/${gig.slug}/edit`}>
                                 <Button variant="outline" size="sm">
                                   <Edit className="mr-2 h-4 w-4" />
@@ -311,31 +312,21 @@ export default function ServiceShow() {
                             <Button
                               variant="outline"
                               size="sm"
-                              onClick={async () => {
+                              onClick={() => {
                                 if (!auth?.user) {
                                   router.visit('/login');
                                   return;
                                 }
-                                try {
-                                  const response = await fetch(`/service-hub/${gig.slug}/chat`, {
-                                    method: 'POST',
-                                    headers: {
-                                      'Content-Type': 'application/json',
-                                      'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                    },
-                                    credentials: 'same-origin',
-                                  });
-                                  if (response.ok) {
-                                    const data = await response.json();
-                                    if (data.chat) {
-                                      router.visit(`/service-hub/chat/${data.chat.id}`);
-                                    }
-                                  } else if (response.status === 401) {
-                                    router.visit('/login');
-                                  }
-                                } catch (error) {
-                                  console.error('Error creating chat:', error);
+                                if (!gig.seller.phone) {
+                                  showErrorToast('Seller phone number is not available');
+                                  return;
                                 }
+                                // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
+                                const phoneNumber = gig.seller.phone.replace(/[\s\-\(\)]/g, '');
+                                // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
+                                const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
+                                // Open WhatsApp with the phone number
+                                window.open(`https://wa.me/${whatsappNumber}`, '_blank');
                               }}
                             >
                               <MessageCircle className="mr-2 h-4 w-4" />
@@ -359,7 +350,7 @@ export default function ServiceShow() {
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="description">Description</TabsTrigger>
                     <TabsTrigger value="reviews">Reviews ({gig.reviews.toLocaleString()})</TabsTrigger>
-                    <TabsTrigger value="faq">FAQ</TabsTrigger>
+                    <TabsTrigger value="faq">FAQ ({gig.faqs?.length || 0})</TabsTrigger>
                   </TabsList>
                   <TabsContent value="description" className="mt-6">
                     <Card className="border shadow-sm">
@@ -531,17 +522,19 @@ export default function ServiceShow() {
                                 <Clock className="h-4 w-4" />
                                 <span>Delivery in {pkg.deliveryTime}</span>
                               </div>
-                              <Button
-                                onClick={() => {
-                                  setSelectedPackage(pkg)
-                                  handleOrder()
-                                }}
-                                className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                                size="lg"
-                              >
-                                <Package className="mr-2 h-5 w-5" />
-                                Continue with {pkg.name} (${pkg.price})
-                              </Button>
+                              {!isOwner && (
+                                <Button
+                                  onClick={() => {
+                                    setSelectedPackage(pkg)
+                                    handleOrder()
+                                  }}
+                                  className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+                                  size="lg"
+                                >
+                                  <Package className="mr-2 h-5 w-5" />
+                                  Continue with {pkg.name} (${pkg.price})
+                                </Button>
+                              )}
                             </div>
                           </motion.div>
                         </TabsContent>

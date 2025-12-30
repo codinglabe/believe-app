@@ -188,11 +188,14 @@ Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::cl
 Route::post('/service-hub/{slug}/create-offer', [App\Http\Controllers\ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/offers/{offerId}/accept', [App\Http\Controllers\ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/offers/{offerId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::post('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
-Route::get('/service-hub/order/success', function () {
-    return Inertia::render('frontend/service-hub/order-success');
-})->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
+// Keep old URL for backward compatibility
+Route::get('/service-hub/order', [App\Http\Controllers\ServiceHubController::class, 'order'])->middleware(['auth', 'EnsureEmailIsVerified']);
+// Create order route
+Route::get('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'order'])->name('service-hub.order')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
+// Separate route for Stripe checkout session creation
+Route::post('/service-hub/checkout/create-session', [App\Http\Controllers\ServiceHubController::class, 'createCheckoutSession'])->name('service-hub.checkout.create-session')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/order/success', [App\Http\Controllers\ServiceHubController::class, 'orderSuccess'])->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
 Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');
 Route::get('/service-hub/my-orders', [App\Http\Controllers\ServiceHubController::class, 'myOrders'])->name('service-hub.my-orders')->middleware(['auth', 'EnsureEmailIsVerified']);
@@ -201,9 +204,12 @@ Route::get('/service-hub/orders/{orderId}', [App\Http\Controllers\ServiceHubCont
 Route::post('/service-hub/orders/{orderId}/deliver', [App\Http\Controllers\ServiceHubController::class, 'deliverOrder'])->name('service-hub.order.deliver')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/orders/{orderId}/accept-delivery', [App\Http\Controllers\ServiceHubController::class, 'acceptDelivery'])->name('service-hub.order.accept-delivery')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/orders/{orderId}/complete', [App\Http\Controllers\ServiceHubController::class, 'completeOrder'])->name('service-hub.order.complete')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/approve', [App\Http\Controllers\ServiceHubController::class, 'approveOrder'])->name('service-hub.order.approve')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/orders/{orderId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectOrder'])->name('service-hub.order.reject')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/favorite', [App\Http\Controllers\ServiceHubController::class, 'toggleFavorite'])->name('service-hub.favorite')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviewsStore'])->name('service-hub.reviews.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers\ServiceHubController::class, 'sellerReviewStore'])->name('service-hub.order.seller-review')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 

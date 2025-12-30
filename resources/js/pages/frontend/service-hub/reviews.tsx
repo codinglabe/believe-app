@@ -62,10 +62,27 @@ interface PageProps extends Record<string, unknown> {
 export default function ServiceReviews() {
   const { gig, reviews, ratingDistribution } = usePage<PageProps>().props
 
+  // Get sort_by from URL params
+  const getUrlParams = () => new URLSearchParams(window.location.search)
+  const [sortBy, setSortBy] = useState(getUrlParams().get('sort_by') || 'most_recent')
+
   const [rating, setRating] = useState(5)
   const [comment, setComment] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [helpfulReviews, setHelpfulReviews] = useState<number[]>([])
+
+  const handleSortChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newSortBy = e.target.value
+    setSortBy(newSortBy)
+
+    router.get(`/service-hub/${gig.slug}/reviews`, {
+      sort_by: newSortBy,
+    }, {
+      preserveState: true,
+      preserveScroll: true,
+      replace: true,
+    })
+  }
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,7 +91,7 @@ export default function ServiceReviews() {
     setIsSubmitting(true)
 
     // Get order_id from URL params or use a default - you may need to pass this from the controller
-    const urlParams = new URLSearchParams(window.location.search)
+    const urlParams = getUrlParams()
     const orderId = urlParams.get('order_id')
 
     if (!orderId) {
@@ -204,11 +221,15 @@ export default function ServiceReviews() {
                   <h2 className="text-2xl font-bold">All Reviews</h2>
                   <div className="flex items-center gap-2">
                     <span className="text-sm text-muted-foreground">Sort by:</span>
-                    <select className="px-3 py-2 rounded-md border bg-background text-sm">
-                      <option>Most Recent</option>
-                      <option>Most Helpful</option>
-                      <option>Highest Rated</option>
-                      <option>Lowest Rated</option>
+                    <select
+                      value={sortBy}
+                      onChange={handleSortChange}
+                      className="px-3 py-2 rounded-md border bg-background text-sm cursor-pointer"
+                    >
+                      <option value="most_recent">Most Recent</option>
+                      <option value="most_helpful">Most Helpful</option>
+                      <option value="highest_rated">Highest Rated</option>
+                      <option value="lowest_rated">Lowest Rated</option>
                     </select>
                   </div>
                 </div>

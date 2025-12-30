@@ -254,9 +254,9 @@ export default function ServiceHubIndex() {
                 <h1 className="text-xl font-bold">Service Hub</h1>
               </div>
               <div className="flex items-center gap-2">
-                <Link href="/service-hub/chats/list">
+                {/* <Link href="/service-hub/chats/list">
                   <Button variant="ghost" size="sm" className="gap-2 relative">
-                    <MessageCircle className="h-4 w-4" />
+                    <MessageCircle className="hs-4 w-4" />
                     View Chats
                     {unreadCount > 0 && (
                       <Badge variant="default" className="absolute -top-1 -right-1 h-4 w-4 p-0 flex items-center justify-center text-[10px] bg-blue-600 text-white rounded-full">
@@ -264,7 +264,7 @@ export default function ServiceHubIndex() {
                       </Badge>
                     )}
                   </Button>
-                </Link>
+                </Link> */}
                 <Link href="/service-hub/my-orders">
                   <Button variant="ghost" size="sm" className="gap-2">
                     <Package className="h-4 w-4" />
@@ -358,7 +358,7 @@ export default function ServiceHubIndex() {
               <Badge variant="secondary">{gigs.total} services</Badge>
             </div>
             <div className="flex items-center gap-2">
-              <Link href="/service-hub/chats/list">
+              {/* <Link href="/service-hub/chats/list">
                 <Button variant="outline" className="gap-2 relative">
                   <MessageCircle className="h-4 w-4" />
                   View Chats
@@ -368,7 +368,7 @@ export default function ServiceHubIndex() {
                     </Badge>
                   )}
                 </Button>
-              </Link>
+              </Link> */}
               <Link href="/service-hub/my-orders">
                 <Button variant="outline" className="gap-2">
                   <Package className="h-4 w-4" />

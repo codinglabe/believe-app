@@ -57,7 +57,7 @@ class HandleInertiaRequests extends Middleware
 
         // Only load organization relationship if user is not a LivestockUser
         if ($user && !$isLivestockDomain && !($user instanceof \App\Models\LivestockUser)) {
-            $user->load("organization");
+            $user->load("organization", "serviceSellerProfile");
         }
         // Only access roles if user is not a LivestockUser (User model has roles via Spatie Permission)
         $role = null;
@@ -137,6 +137,10 @@ class HandleInertiaRequests extends Middleware
                             'joined' => $user->created_at->format('F Y'),
                             'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
                             'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
+                        ] : null,
+                        'service_seller_profile' => $user->serviceSellerProfile ? [
+                            'id' => $user->serviceSellerProfile->id,
+                            'verification_status' => $user->serviceSellerProfile->verification_status,
                         ] : null,
                     ];
                 }
