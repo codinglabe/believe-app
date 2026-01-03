@@ -24,6 +24,7 @@ class GiftCard extends Model
         'currency',
         'is_sent',
         'status',
+        'payment_method',
         'stripe_payment_intent_id',
         'stripe_session_id',
         'phaze_disbursement_id',

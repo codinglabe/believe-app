@@ -231,6 +231,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->
     Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
     Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
     Route::get('/cancel', [App\Http\Controllers\BelievePointController::class, 'cancel'])->name('cancel');
+    Route::get('/refunds', [App\Http\Controllers\BelievePointController::class, 'refunds'])->name('refunds');
+    Route::post('/refunds/{purchaseId}', [App\Http\Controllers\BelievePointController::class, 'refund'])->name('refund');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {

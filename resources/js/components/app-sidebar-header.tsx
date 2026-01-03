@@ -13,7 +13,6 @@ import { useEffect, useState } from 'react';
 import { route } from 'ziggy-js';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
-import { BelievePointsDisplay } from './believe-points-display';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
     const { isImpersonating, auth } = usePage<{
@@ -124,15 +123,6 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 {/* Notification Bell */}
                 {auth?.user?.id && (
                     <NotificationBell userId={auth.user.id} />
-                )}
-
-                {/* Believe Points Display - Visible for all authenticated users */}
-                {auth?.user?.id && auth.user.believe_points !== undefined && (
-                    <BelievePointsDisplay
-                        balance={auth.user.believe_points || 0}
-                        variant="compact"
-                        showLabel={false}
-                    />
                 )}
 
                 {/* Wallet Balance Display for Organization Users - Always visible */}

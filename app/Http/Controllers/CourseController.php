@@ -277,11 +277,11 @@ class CourseController extends BaseController
     public function store(Request $request)
     {
         $this->authorizePermission($request, 'course.create');
-        
+
         $type = $request->input('type', 'course');
         $typeLabel = $type === 'course' ? 'course' : 'event';
         $typeLabelCapital = $type === 'course' ? 'Course' : 'Event';
-        
+
         $validated = $request->validate([
             // Basic Information
             'name' => 'required|string|max:255|unique:courses,name',
@@ -379,7 +379,19 @@ class CourseController extends BaseController
         // Handle image upload
         $imagePath = null;
         if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('course_images', 'public');
+            try {
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                \Illuminate\Support\Facades\Log::info('Course image uploaded', [
+                    'path' => $imagePath,
+                    'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to upload course image: ' . $e->getMessage());
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
+            }
         }
 
         // Generate slug from name
@@ -550,11 +562,11 @@ class CourseController extends BaseController
         // For free courses, users can enroll directly
         // Allow enrollment for 'available' and 'almost_full' statuses
         // Only block if: user is enrolled, course is full, course has started, or user is creator
-        $canEnroll = !$hasActiveEnrollment 
-            && $status !== 'full' 
-            && $status !== 'started' 
+        $canEnroll = !$hasActiveEnrollment
+            && $status !== 'full'
+            && $status !== 'started'
             && $status !== 'unavailable';
-        
+
         // Log for debugging (remove in production)
         \Log::debug('Course Enrollment Check', [
             'course_id' => $course->id,
@@ -836,11 +848,24 @@ class CourseController extends BaseController
         // Handle image upload
         $imagePath = $course->image;
         if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($course->image && Storage::disk('public')->exists($course->image)) {
-                Storage::disk('public')->delete($course->image);
+            try {
+                // Delete old image if exists
+                if ($course->image && Storage::disk('public')->exists($course->image)) {
+                    Storage::disk('public')->delete($course->image);
+                }
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                Log::info('Course image updated', [
+                    'course_id' => $course->id,
+                    'path' => $imagePath,
+                    'exists' => Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Failed to update course image: ' . $e->getMessage());
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
             }
-            $imagePath = $request->file('image')->store('course_images', 'public');
         }
 
         // Update slug if name changed

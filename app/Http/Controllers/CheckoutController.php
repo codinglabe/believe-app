@@ -8,6 +8,7 @@ use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\OrderShippingInfo;
 use App\Models\TempOrder;
+use App\Models\Transaction;
 use App\Services\PrintifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -469,7 +470,8 @@ class CheckoutController extends Controller
     {
         $validated = $request->validate([
             'temp_order_id' => 'required|exists:temp_orders,id',
-            'payment_intent_id' => 'required|string',
+            'payment_intent_id' => 'nullable|string',
+            'payment_method' => 'nullable|string|in:stripe,believe_points',
         ]);
 
         $user = auth()->user();
@@ -477,12 +479,41 @@ class CheckoutController extends Controller
             ->with('cart.items.product')
             ->findOrFail($validated['temp_order_id']);
 
+        $paymentMethod = $validated['payment_method'] ?? 'stripe';
+        $paymentIntent = null;
+
         DB::beginTransaction();
         try {
-            $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id']);
+            // Handle Believe Points payment
+            if ($paymentMethod === 'believe_points') {
+                $pointsRequired = $tempOrder->total_amount; // 1$ = 1 believe point
+                $user->refresh(); // Get latest balance
 
-            if ($paymentIntent->status !== 'succeeded') {
-                return response()->json(['error' => 'Payment not completed'], 400);
+                if ($user->believe_points < $pointsRequired) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points."
+                    ], 400);
+                }
+
+                // Deduct points
+                if (!$user->deductBelievePoints($pointsRequired)) {
+                    DB::rollBack();
+                    return response()->json([
+                        'error' => 'Failed to deduct Believe Points. Please try again.'
+                    ], 500);
+                }
+            } else {
+                // Validate Stripe payment
+                if (!isset($validated['payment_intent_id'])) {
+                    return response()->json(['error' => 'Payment intent ID is required for Stripe payments'], 400);
+                }
+
+                $paymentIntent = PaymentIntent::retrieve($validated['payment_intent_id']);
+
+                if ($paymentIntent->status !== 'succeeded') {
+                    return response()->json(['error' => 'Payment not completed'], 400);
+                }
             }
 
             // COMMENTED OUT: Donation calculation removed for Printify products
@@ -544,8 +575,9 @@ class CheckoutController extends Controller
                 'total_amount' => $tempOrder->total_amount,
                 'status' => 'processing',
                 'payment_status' => 'paid',
+                'payment_method' => $paymentMethod,
                 'paid_at' => now(),
-                'stripe_payment_intent_id' => $paymentIntent->id,
+                'stripe_payment_intent_id' => $paymentMethod === 'stripe' ? (isset($paymentIntent) ? $paymentIntent->id : null) : null,
                 'printify_order_id' => $tempOrder->printify_order_id,
             ]);
 
@@ -624,6 +656,27 @@ class CheckoutController extends Controller
             //     'organization_count' => count($organizationDonations),
             //     'organization_donations' => $organizationDonations
             // ]);
+
+            // Create transaction record for Believe Points payment
+            if ($paymentMethod === 'believe_points') {
+                Transaction::record([
+                    'user_id' => $user->id,
+                    'related_id' => $order->id,
+                    'related_type' => Order::class,
+                    'type' => 'purchase',
+                    'status' => Transaction::STATUS_COMPLETED,
+                    'amount' => $tempOrder->total_amount,
+                    'fee' => 0,
+                    'currency' => 'USD',
+                    'payment_method' => 'believe_points',
+                    'meta' => [
+                        'order_id' => $order->id,
+                        'believe_points_used' => $pointsRequired,
+                        'printify_order_id' => $tempOrder->printify_order_id,
+                    ],
+                    'processed_at' => now(),
+                ]);
+            }
 
             // Clear cart
             $tempOrder->cart->items()->delete();

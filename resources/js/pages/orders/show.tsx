@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link, router, usePage } from '@inertiajs/react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -166,6 +166,8 @@ interface ProfitCalculation {
 }
 
 export default function Show({ order, userRole }: Props) {
+    const page = usePage<{ flash?: { success?: string; error?: string } }>();
+    const flash = page.props.flash || {};
     const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
     const [loading, setLoading] = useState(false);
     const [ProfitCalculation, setProfitCalculation] = useState<ProfitCalculation | null>(null);
@@ -173,6 +175,16 @@ export default function Show({ order, userRole }: Props) {
     useEffect(() => {
         calculateProfit();
     }, [order]);
+
+    // Handle flash messages
+    useEffect(() => {
+        if (flash.success) {
+            showSuccessToast(flash.success);
+        }
+        if (flash.error) {
+            showErrorToast(flash.error);
+        }
+    }, [flash.success, flash.error]);
 
     const calculateProfit = () => {
         // REVENUE BREAKDOWN
@@ -231,21 +243,20 @@ export default function Show({ order, userRole }: Props) {
 
     const handleCancelOrder = async () => {
         setLoading(true);
-        try {
-            const response = await router.post(route('orders.cancel', order.id));
-
-            if (response.data.success) {
-                showSuccessToast(response.data.message || 'Order cancelled successfully');
-                router.reload();
-            } else {
-                showErrorToast(response.data.error || 'Failed to cancel order');
+        router.post(route('orders.cancel', order.id), {}, {
+            preserveScroll: true,
+            onSuccess: () => {
+                setCancelDialogOpen(false);
+                router.reload({ only: ['order'] });
+            },
+            onError: (errors) => {
+                console.error('Cancel order errors:', errors);
+                showErrorToast(errors.error || 'Failed to cancel order');
+            },
+            onFinish: () => {
+                setLoading(false);
             }
-        } catch (error: any) {
-            showErrorToast(error.response?.data?.error || 'Failed to cancel order');
-        } finally {
-            setLoading(false);
-            setCancelDialogOpen(false);
-        }
+        });
     }
 
     const getStatusColor = (status: string) => {

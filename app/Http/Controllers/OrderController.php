@@ -305,59 +305,92 @@ class OrderController extends Controller
         try {
             $cancelResponse = $this->printifyService->cancelOrder($order->printify_order_id);
 
-            if (isset($cancelResponse['status']) && $cancelResponse['status'] === 'canceled') {
-                // Process Stripe refund
+            \Log::info('Printify cancel response received', [
+                'order_id' => $order->id,
+                'printify_order_id' => $order->printify_order_id,
+                'response_status' => $cancelResponse['status'] ?? 'not_set',
+                'response' => $cancelResponse
+            ]);
+
+            // Check if cancellation was successful (status can be 'canceled' or 'cancelled')
+            $isCancelled = isset($cancelResponse['status']) &&
+                          (strtolower($cancelResponse['status']) === 'canceled' ||
+                           strtolower($cancelResponse['status']) === 'cancelled');
+
+            if ($isCancelled) {
+                // Process refund (Stripe or Believe Points)
                 $refundResult = $this->processRefund($order);
 
                 if (!$refundResult['success']) {
-                    return response()->json([
+                    \Log::error('Refund failed after Printify cancellation', [
+                        'order_id' => $order->id,
+                        'refund_result' => $refundResult
+                    ]);
+                    return redirect()->back()->withErrors([
                         'error' => 'Order cancelled in Printify but refund failed: ' . $refundResult['message']
-                    ], 400);
+                    ]);
                 }
 
                 // Update local order status
-                $order->update([
+                $updateData = [
                     'status' => 'cancelled',
                     'printify_status' => 'cancelled',
-                    'payment_status' => 'refunded', // Update payment status
+                    'payment_status' => 'refunded',
                     'refunded_at' => now(),
-                    'stripe_refund_id' => $refundResult['refund_id'] ?? null
+                ];
+
+                // Only set stripe_refund_id if it's a Stripe refund
+                $paymentMethod = $order->payment_method;
+                if (!$paymentMethod) {
+                    // Try to detect from refund result
+                    $paymentMethod = isset($refundResult['points_refunded']) ? 'believe_points' : 'stripe';
+                }
+
+                if ($paymentMethod === 'stripe' && isset($refundResult['refund_id'])) {
+                    $updateData['stripe_refund_id'] = $refundResult['refund_id'];
+                }
+
+                $order->update($updateData);
+
+                \Log::info('Order cancelled and refund processed successfully', [
+                    'order_id' => $order->id,
+                    'payment_method' => $paymentMethod,
+                    'refund_result' => $refundResult
                 ]);
 
                 return redirect()->back()->with([
                     'success' => true,
-                    'message' => 'Order cancelled and refund processed successfully',
-                    'order' => $cancelResponse,
-                    'refund' => $refundResult
+                    'message' => 'Order cancelled and refund processed successfully'
                 ]);
             }
 
-            return response()->json([
-                'error' => 'Failed to cancel order in Printify'
-            ], 400);
+            \Log::warning('Printify cancellation response status not recognized', [
+                'order_id' => $order->id,
+                'response_status' => $cancelResponse['status'] ?? 'not_set',
+                'response' => $cancelResponse
+            ]);
+
+            return redirect()->back()->withErrors([
+                'error' => 'Failed to cancel order in Printify. Unexpected response status.'
+            ]);
 
         } catch (\Exception $e) {
-            \Log::error('Error cancelling Printify order: ' . $e->getMessage());
-            return response()->json([
+            \Log::error('Error cancelling Printify order: ' . $e->getMessage(), [
+                'order_id' => $order->id,
+                'exception' => $e
+            ]);
+            return redirect()->back()->withErrors([
                 'error' => 'Failed to cancel order: ' . $e->getMessage()
-            ], 500);
+            ]);
         }
     }
 
     /**
-     * Process Stripe refund for an order
+     * Process refund for an order (Stripe or Believe Points)
      */
     private function processRefund(Order $order)
     {
         try {
-            // Check if order has a Stripe payment intent
-            if (!$order->stripe_payment_intent_id) {
-                return [
-                    'success' => false,
-                    'message' => 'No Stripe payment intent found for this order'
-                ];
-            }
-
             // Check if refund was already processed
             if ($order->payment_status === 'refunded') {
                 return [
@@ -366,30 +399,149 @@ class OrderController extends Controller
                 ];
             }
 
+            // Determine payment method
+            $paymentMethod = $order->payment_method;
 
-            // Create refund using Stripe
-            $refund = Refund::create([
-                'payment_intent' => $order->stripe_payment_intent_id,
-                'amount' => $order->total_amount * 100, // Uncomment for partial refunds
-                'reason' => 'requested_by_customer', // Optional: requested_by_customer, duplicate, fraudulent
+            // If payment_method is not set, try to detect from transaction records or Stripe payment intent
+            if (!$paymentMethod) {
+                // First, check if Stripe payment intent exists
+                if ($order->stripe_payment_intent_id) {
+                    $paymentMethod = 'stripe';
+                } else {
+                    // No Stripe payment intent, check transaction records
+                    $transaction = \App\Models\Transaction::where('related_id', $order->id)
+                        ->where('related_type', \App\Models\Order::class)
+                        ->where('type', 'purchase')
+                        ->first();
+
+                    if ($transaction && $transaction->payment_method) {
+                        $paymentMethod = $transaction->payment_method;
+                    } else {
+                        // No Stripe payment intent and no transaction record with payment_method
+                        // Assume it's Believe Points (for backward compatibility with old orders)
+                        $paymentMethod = 'believe_points';
+                        \Log::info('Payment method not found, defaulting to Believe Points', [
+                            'order_id' => $order->id,
+                            'has_stripe_intent' => !empty($order->stripe_payment_intent_id),
+                            'has_transaction' => !empty($transaction),
+                        ]);
+                    }
+                }
+            }
+
+            \Log::info('Processing refund with detected payment method', [
+                'order_id' => $order->id,
+                'payment_method' => $paymentMethod,
+                'has_stripe_intent' => !empty($order->stripe_payment_intent_id),
             ]);
 
+            // Handle Believe Points refund
+            if ($paymentMethod === 'believe_points') {
+                \Log::info('Processing Believe Points refund', [
+                    'order_id' => $order->id,
+                    'user_id' => $order->user_id,
+                    'amount' => $order->total_amount,
+                ]);
 
-            // Check refund status
-            if ($refund->status === 'succeeded' || $refund->status === 'pending') {
+                $user = $order->user;
+                if (!$user) {
+                    return [
+                        'success' => false,
+                        'message' => 'User not found for this order'
+                    ];
+                }
+
+                // Refund points back to user's balance
+                $pointsToRefund = $order->total_amount; // 1$ = 1 believe point
+                $user->increment('believe_points', $pointsToRefund);
+
+                \Log::info('Believe Points refunded', [
+                    'order_id' => $order->id,
+                    'user_id' => $user->id,
+                    'points_refunded' => $pointsToRefund,
+                    'new_balance' => $user->believe_points,
+                ]);
+
+                // Create transaction record for refund
+                \App\Models\Transaction::record([
+                    'user_id' => $user->id,
+                    'related_id' => $order->id,
+                    'related_type' => \App\Models\Order::class,
+                    'type' => 'refund',
+                    'status' => \App\Models\Transaction::STATUS_COMPLETED,
+                    'amount' => $order->total_amount,
+                    'fee' => 0,
+                    'currency' => 'USD',
+                    'payment_method' => 'believe_points',
+                    'meta' => [
+                        'order_id' => $order->id,
+                        'believe_points_refunded' => $pointsToRefund,
+                        'refund_reason' => 'order_cancelled',
+                    ],
+                    'processed_at' => now(),
+                ]);
+
                 return [
                     'success' => true,
-                    'message' => 'Refund processed successfully',
-                    'refund_id' => $refund->id,
-                    'refund_status' => $refund->status,
-                    'refund_amount' => $refund->amount / 100 // Convert back from cents
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => 'Refund failed with status: ' . $refund->status
+                    'message' => 'Believe Points refund processed successfully',
+                    'refund_id' => 'believe_points_refund_' . $order->id,
+                    'refund_status' => 'succeeded',
+                    'refund_amount' => $order->total_amount,
+                    'points_refunded' => $pointsToRefund,
                 ];
             }
+
+            // Handle Stripe refund
+            if ($paymentMethod === 'stripe') {
+                // Check if order has a Stripe payment intent
+                if (!$order->stripe_payment_intent_id) {
+                    return [
+                        'success' => false,
+                        'message' => 'No Stripe payment intent found for this order'
+                    ];
+                }
+
+                \Log::info('Processing Stripe refund', [
+                    'order_id' => $order->id,
+                    'payment_intent_id' => $order->stripe_payment_intent_id,
+                    'amount' => $order->total_amount,
+                ]);
+
+                // Create refund using Stripe via Cashier
+                $stripe = \Laravel\Cashier\Cashier::stripe();
+                $refund = $stripe->refunds->create([
+                    'payment_intent' => $order->stripe_payment_intent_id,
+                    'amount' => (int)($order->total_amount * 100), // Convert to cents
+                    'reason' => 'requested_by_customer',
+                ]);
+
+                // Check refund status
+                if ($refund->status === 'succeeded' || $refund->status === 'pending') {
+                    \Log::info('Stripe refund successful', [
+                        'order_id' => $order->id,
+                        'refund_id' => $refund->id,
+                        'refund_status' => $refund->status,
+                    ]);
+
+                    return [
+                        'success' => true,
+                        'message' => 'Stripe refund processed successfully',
+                        'refund_id' => $refund->id,
+                        'refund_status' => $refund->status,
+                        'refund_amount' => $refund->amount / 100 // Convert back from cents
+                    ];
+                } else {
+                    return [
+                        'success' => false,
+                        'message' => 'Refund failed with status: ' . $refund->status
+                    ];
+                }
+            }
+
+            return [
+                'success' => false,
+                'message' => 'Unknown payment method: ' . $paymentMethod
+            ];
 
         } catch (\Stripe\Exception\ApiErrorException $e) {
             \Log::error('Stripe refund error: ' . $e->getMessage());

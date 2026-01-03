@@ -5,7 +5,9 @@ import { loadStripe } from "@stripe/stripe-js"
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js"
 import axios from "axios"
 import { useState, useEffect } from "react"
+import { usePage } from "@inertiajs/react"
 import { showErrorToast, showInfoToast, showSuccessToast } from "../../lib/toast"
+import { Coins, CreditCard } from "lucide-react"
 
 // Add this function to check if Stripe.js loaded
 const stripePromise = (() => {
@@ -78,6 +80,10 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
   const stripe = useStripe()
   const elements = useElements()
   const [stripeLoaded, setStripeLoaded] = useState(false)
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
+  const page = usePage()
+  const auth = (page.props as any).auth
+  const currentBalance = parseFloat(auth?.user?.believe_points) || 0
 
   // State for current amounts
   const [currentTaxAmount, setCurrentTaxAmount] = useState(step2Data.taxAmount)
@@ -94,6 +100,21 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
   const [paymentIntentData, setPaymentIntentData] = useState<any>(null)
   const [paymentError, setPaymentError] = useState("")
   const [cardComplete, setCardComplete] = useState(false)
+
+  // Calculate points required based on current total (updates after tax calculation)
+  const pointsRequired = currentTotalAmount
+  const hasEnoughPoints = currentBalance >= pointsRequired
+
+  // Update points check when total amount changes
+  useEffect(() => {
+    if (paymentMethod === 'believe_points' && currentTotalAmount > 0) {
+      if (currentBalance < currentTotalAmount) {
+        setPaymentError(`Insufficient Believe Points. You need ${currentTotalAmount.toFixed(2)} points but only have ${currentBalance.toFixed(2)} points.`)
+      } else {
+        setPaymentError("")
+      }
+    }
+  }, [currentTotalAmount, currentBalance, paymentMethod])
 
   const [selectedShippingMethod, setSelectedShippingMethod] = useState(
     step2Data.shippingMethods[0]?.id || "standard"
@@ -140,6 +161,112 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
     e.preventDefault()
     setPaymentError("")
 
+    // Handle Believe Points payment (skip Stripe validation)
+    if (paymentMethod === 'believe_points') {
+      console.log('Believe Points payment initiated', {
+        currentBalance,
+        pointsRequired,
+        hasEnoughPoints,
+        isTaxCalculated,
+        currentTotalAmount,
+        paymentStep
+      })
+
+      setPaymentError("")
+
+      try {
+        // STEP 1: Calculate tax & shipping first if not calculated (same as Stripe flow)
+        if (!isTaxCalculated || paymentStep === 'initial') {
+          console.log('Step 1: Calculating tax & shipping for Believe Points payment...')
+          setPaymentStep('calculating')
+          setTaxCalculationMessage("Calculating tax and final amounts...")
+
+          const intentResponse = await axios.post("/checkout/payment-intent", {
+            temp_order_id: step2Data.tempOrderId,
+            shipping_method: selectedShippingMethod,
+          })
+
+          if (!intentResponse.data.success) {
+            throw new Error(intentResponse.data.error || "Failed to calculate amounts")
+          }
+
+          // Update amounts from response
+          const finalAmount = intentResponse.data.amount || currentTotalAmount
+          const finalTaxAmount = intentResponse.data.tax_amount || 0
+          const finalShippingCost = intentResponse.data.shipping_cost || currentShippingCost
+
+          console.log('Tax & shipping calculated:', {
+            finalAmount,
+            finalTaxAmount,
+            finalShippingCost,
+            currentBalance
+          })
+
+          // Update state with calculated amounts
+          setCurrentTaxAmount(finalTaxAmount)
+          setCurrentShippingCost(finalShippingCost)
+          setCurrentTotalAmount(finalAmount)
+          setIsTaxCalculated(true)
+          setTaxCalculationMessage(`Tax calculated: $${finalTaxAmount.toFixed(2)}`)
+
+          // Check if user has enough points after tax calculation
+          if (currentBalance < finalAmount) {
+            setPaymentStep('initial')
+            throw new Error(`Insufficient Believe Points. You need ${finalAmount.toFixed(2)} points but only have ${currentBalance.toFixed(2)} points.`)
+          }
+
+          // Move to ready state (same as Stripe flow)
+          setPaymentStep('ready')
+          console.log('Step 1 complete: Tax calculated, moving to ready state')
+          return // Exit here, user will click again to confirm
+        }
+
+        // STEP 2: Confirm payment (only when step is 'ready')
+        if (paymentStep === 'ready') {
+          console.log('Step 2: Confirming Believe Points payment...')
+          setPaymentStep('processing')
+
+          // Final check before payment
+          if (currentBalance < currentTotalAmount) {
+            setPaymentStep('ready')
+            throw new Error(`Insufficient Believe Points. You need ${currentTotalAmount.toFixed(2)} points but only have ${currentBalance.toFixed(2)} points.`)
+          }
+
+          console.log('Confirming payment with:', {
+            tempOrderId: step2Data.tempOrderId,
+            amount: currentTotalAmount,
+            pointsRequired: currentTotalAmount,
+            currentBalance
+          })
+
+          // Confirm payment with Believe Points
+          const confirmResponse = await axios.post("/checkout/confirm", {
+            temp_order_id: step2Data.tempOrderId,
+            payment_method: 'believe_points',
+          })
+
+          console.log('Believe Points payment response:', confirmResponse.data)
+
+          if (confirmResponse.data.success) {
+            showSuccessToast("Payment successful! Your order has been created.")
+            setTimeout(() => {
+              window.location.href = confirmResponse.data.redirect || '/profile/orders'
+            }, 2000)
+          } else {
+            throw new Error(confirmResponse.data.error || "Failed to confirm payment")
+          }
+        }
+      } catch (error: any) {
+        console.error('Believe Points payment error:', error)
+        const errorMessage = error.response?.data?.error || error.message || "Payment error occurred"
+        setPaymentError(errorMessage)
+        showErrorToast(errorMessage)
+        setPaymentStep('initial')
+      }
+      return
+    }
+
+    // Stripe payment validation (only for Stripe payments)
     if (!stripe || !elements) {
       setPaymentError("Payment system not ready. Please refresh the page.")
       return
@@ -156,7 +283,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
       return
     }
 
-    // FIRST CLICK: Calculate final amounts and create payment intent
+    // FIRST CLICK: Calculate final amounts and create payment intent (Stripe)
     if (paymentStep === 'initial') {
       setPaymentStep('calculating')
       setTaxCalculationMessage("Calculating tax and final amounts...")
@@ -245,6 +372,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
           const confirmResponse = await axios.post("/checkout/confirm", {
             temp_order_id: step2Data.tempOrderId,
             payment_intent_id: paymentIntent.id,
+            payment_method: 'stripe',
           })
 
           if (confirmResponse.data.success) {
@@ -289,6 +417,20 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
   }
 
   const isButtonDisabled = () => {
+    if (paymentMethod === 'believe_points') {
+      // Disable if processing
+      if (paymentStep === 'calculating' || paymentStep === 'processing') {
+        return true
+      }
+      // If tax is calculated and we don't have enough points, disable
+      if (isTaxCalculated && !hasEnoughPoints) {
+        return true
+      }
+      // Allow clicking in 'initial' or 'ready' state
+      // In 'initial': will calculate tax & shipping
+      // In 'ready': will confirm payment
+      return false
+    }
     return !stripeLoaded ||
            !stripe ||
            !cardComplete ||
@@ -367,7 +509,80 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
             )}
           </div>
 
+          {/* Payment Method Selection */}
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6 mb-6">
+            <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Payment Method</h3>
+
+            <div className="space-y-3">
+              {/* Stripe Payment */}
+              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                paymentMethod === 'stripe'
+                  ? 'border-blue-600 bg-blue-50 dark:bg-blue-900/20'
+                  : 'border-gray-300 dark:border-gray-600 hover:border-blue-400'
+              }`}>
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="stripe"
+                  checked={paymentMethod === 'stripe'}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  className="w-4 h-4 text-blue-600"
+                />
+                <CreditCard className="h-5 w-5 text-blue-600" />
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-900 dark:text-white">Pay with Card (Stripe)</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Secure payment via Stripe</div>
+                </div>
+              </label>
+
+              {/* Believe Points Payment */}
+              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                paymentMethod === 'believe_points'
+                  ? 'border-yellow-600 bg-yellow-50 dark:bg-yellow-900/20'
+                  : 'border-gray-300 dark:border-gray-600 hover:border-yellow-400'
+              } ${!hasEnoughPoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="believe_points"
+                  checked={paymentMethod === 'believe_points'}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  disabled={!hasEnoughPoints}
+                  className="w-4 h-4 text-yellow-600"
+                />
+                <Coins className="h-5 w-5 text-yellow-600" />
+                <div className="flex-1">
+                  <div className="font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+                    Pay with Believe Points
+                    {!hasEnoughPoints && (
+                      <span className="text-xs bg-red-100 dark:bg-red-900 text-red-700 dark:text-red-300 px-2 py-1 rounded">
+                        Insufficient
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                    Your balance: {currentBalance.toFixed(2)} points
+                    {hasEnoughPoints && (
+                      <span className="text-green-600 dark:text-green-400 ml-2">
+                        (You'll have {(currentBalance - pointsRequired).toFixed(2)} points remaining)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {paymentMethod === 'believe_points' && !hasEnoughPoints && (
+              <div className="mt-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-sm text-red-700 dark:text-red-300">
+                  You need {pointsRequired.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Payment */}
+          {paymentMethod === 'stripe' && (
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-200 dark:border-gray-700 p-6">
             <h3 className="text-lg font-bold text-gray-900 dark:text-white mb-4">Payment Details</h3>
 
@@ -413,6 +628,7 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
               </div>
             )}
           </div>
+          )}
 
           <div className="flex gap-4">
             <button
@@ -436,6 +652,18 @@ function Step2Form({ items, subtotal, donation_amount, step2Data, onBack }: Omit
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
                   {paymentStep === 'calculating' ? "Calculating..." : "Processing..."}
+                </>
+              ) : paymentMethod === 'believe_points' ? (
+                <>
+                  <Coins className="mr-2 h-5 w-5" />
+                  {paymentStep === 'initial'
+                    ? (isTaxCalculated
+                        ? `Pay ${currentTotalAmount.toFixed(2)} Points`
+                        : `Calculate & Pay ${currentTotalAmount.toFixed(2)} Points`)
+                    : paymentStep === 'ready'
+                    ? `Confirm Payment (${currentTotalAmount.toFixed(2)} Points)`
+                    : `Pay ${currentTotalAmount.toFixed(2)} Points`
+                  }
                 </>
               ) : (
                 getButtonText()
@@ -656,3 +884,4 @@ export default function Step2(props: Step2Props) {
     </Elements>
   )
 }
+

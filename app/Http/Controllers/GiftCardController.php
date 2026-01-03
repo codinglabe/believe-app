@@ -54,6 +54,25 @@ class GiftCardController extends Controller
         // Fetch brands from Phaze API (cached and optimized with cURL)
         $brands = $this->giftCardService->getGiftBrands($countryFilter, (int)$currentPage);
 
+        // Ensure brands is an array
+        if (!is_array($brands)) {
+            Log::warning('GiftCardController: getGiftBrands returned non-array', [
+                'country' => $countryFilter,
+                'currentPage' => $currentPage,
+                'type' => gettype($brands),
+            ]);
+            $brands = [];
+        }
+
+        // Log if no brands found for debugging
+        if (empty($brands)) {
+            Log::info('GiftCardController: No brands found', [
+                'country' => $countryFilter,
+                'currentPage' => $currentPage,
+                'search' => $search,
+            ]);
+        }
+
         // Apply search filter if provided (client-side filtering for better performance)
         if ($search && !empty($brands)) {
             $searchLower = strtolower($search);
@@ -391,6 +410,7 @@ class GiftCardController extends Controller
             'country' => 'required|string',
             'brand_name' => 'required|string',
             'currency' => 'nullable|string|size:3',
+            'payment_method' => 'nullable|string|in:stripe,believe_points',
         ]);
 
         try {
@@ -472,6 +492,7 @@ class GiftCardController extends Controller
 
             $purchaseAmount = $validated['amount'];
             $currency = $validated['currency'] ?? 'USD';
+            $paymentMethod = $validated['payment_method'] ?? 'stripe';
 
             // Get organization
             $organization = \App\Models\Organization::findOrFail($validated['organization_id']);
@@ -490,7 +511,336 @@ class GiftCardController extends Controller
                 ], 403);
             }
 
-            // Create Stripe checkout session
+            // Handle Believe Points payment
+            if ($paymentMethod === 'believe_points') {
+                $pointsRequired = $purchaseAmount; // 1$ = 1 believe point
+                $user->refresh(); // Get latest balance
+
+                if ($user->believe_points < $pointsRequired) {
+                    DB::rollBack();
+                    if ($isInertiaRequest) {
+                        return back()->withErrors([
+                            'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
+                        ]);
+                    }
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.",
+                    ], 400);
+                }
+
+                // Deduct points
+                if (!$user->deductBelievePoints($pointsRequired)) {
+                    DB::rollBack();
+                    if ($isInertiaRequest) {
+                        return back()->withErrors([
+                            'payment_method' => 'Failed to deduct Believe Points. Please try again.',
+                        ]);
+                    }
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to deduct Believe Points. Please try again.',
+                    ], 500);
+                }
+
+                // Fetch brand information for meta (same as Stripe flow)
+                $country = $validated['country'] ?? 'USA';
+                $brands = $this->giftCardService->getGiftBrands($country, 1);
+                $selectedBrand = collect($brands)->firstWhere('productId', (int)$validated['productId']);
+
+                // Process gift card purchase directly (skip Stripe)
+                $orderId = \Illuminate\Support\Str::uuid()->toString();
+                $phazePurchaseData = [
+                    'productId' => (int)$validated['productId'],
+                    'amount' => $purchaseAmount,
+                    'currency' => $currency,
+                    'orderId' => $orderId,
+                    'externalUserId' => (string)$user->id,
+                ];
+
+                $phazePurchaseResult = $this->giftCardService->purchaseGiftCard($phazePurchaseData);
+
+                Log::info('Phaze purchase result for Believe Points', [
+                    'result' => $phazePurchaseResult,
+                    'has_card_number' => isset($phazePurchaseResult['cardNumber']) || isset($phazePurchaseResult['card_number']),
+                    'card_number_keys' => array_keys($phazePurchaseResult ?? []),
+                ]);
+
+                if (!$phazePurchaseResult) {
+                    // Refund points if Phaze purchase fails
+                    $user->addBelievePoints($pointsRequired);
+                    DB::rollBack();
+
+                    // Get more specific error message from logs or Phaze response
+                    $errorMessage = 'Failed to purchase gift card from the provider. Your points have been refunded. Please try again later or contact support if the issue persists.';
+
+                    if ($isInertiaRequest) {
+                        return back()->withErrors([
+                            'payment_method' => $errorMessage,
+                        ]);
+                    }
+                    return response()->json([
+                        'success' => false,
+                        'message' => $errorMessage,
+                    ], 500);
+                }
+
+                // Check if Phaze returned an error in the response
+                if (isset($phazePurchaseResult['error']) || (isset($phazePurchaseResult['httpStatusCode']) && $phazePurchaseResult['httpStatusCode'] >= 400)) {
+                    // Refund points if Phaze purchase has error
+                    $user->addBelievePoints($pointsRequired);
+                    DB::rollBack();
+
+                    $phazeError = $phazePurchaseResult['error'] ?? 'Unknown error from gift card provider';
+                    $errorMessage = 'Gift card purchase failed: ' . $phazeError . '. Your points have been refunded.';
+
+                    Log::error('Phaze purchase returned error for Believe Points', [
+                        'phaze_error' => $phazeError,
+                        'phaze_response' => $phazePurchaseResult,
+                        'gift_card_data' => $phazePurchaseData,
+                    ]);
+
+                    if ($isInertiaRequest) {
+                        return back()->withErrors([
+                            'payment_method' => $errorMessage,
+                        ]);
+                    }
+                    return response()->json([
+                        'success' => false,
+                        'message' => $errorMessage,
+                    ], 500);
+                }
+
+                // Calculate commissions from Phaze response (same as Stripe flow)
+                // IMPORTANT: The commission amount from Phaze API is the TOTAL commission that should go to the organization
+                // Platform (Believe) takes 8% of this total commission, and the nonprofit gets the remaining 92%
+
+                $totalCommission = null;
+                $commissionPercentage = null;
+
+                // First, check if Phaze provides commission as a direct amount
+                if (isset($phazePurchaseResult['commission']) && is_numeric($phazePurchaseResult['commission'])) {
+                    $totalCommission = (float)$phazePurchaseResult['commission'];
+                } elseif (isset($phazePurchaseResult['phazeCommission']) && is_numeric($phazePurchaseResult['phazeCommission'])) {
+                    $totalCommission = (float)$phazePurchaseResult['phazeCommission'];
+                } elseif (isset($phazePurchaseResult['commissionAmount']) && is_numeric($phazePurchaseResult['commissionAmount'])) {
+                    $totalCommission = (float)$phazePurchaseResult['commissionAmount'];
+                }
+
+                // If we have a commission amount, calculate the percentage for reference
+                if ($totalCommission !== null && $totalCommission > 0 && $purchaseAmount > 0) {
+                    $commissionPercentage = ($totalCommission / $purchaseAmount) * 100;
+                }
+
+                // If no direct amount found, check for percentage (fallback)
+                if ($totalCommission === null) {
+                    $commissionPercentage = $phazePurchaseResult['commissionPercentage'] ??
+                                         $phazePurchaseResult['commission_percentage'] ??
+                                         null;
+
+                    if ($commissionPercentage !== null && is_numeric($commissionPercentage)) {
+                        // Commission is a percentage of the purchase amount
+                        $totalCommission = ($purchaseAmount * (float)$commissionPercentage) / 100;
+                    }
+                }
+
+                // Calculate platform and nonprofit commissions
+                // The totalCommission from Phaze is what the organization should receive
+                // Platform takes 8% of this total commission
+                // Nonprofit gets the remaining 92%
+                $platformCommissionPercentage = config('services.phaze.gift_card_platform_commission_percentage', 8);
+                $platformCommission = null;
+                $nonprofitCommission = null;
+
+                if ($totalCommission !== null && $totalCommission > 0) {
+                    // Platform takes 8% of the total commission (from Phaze)
+                    $platformCommission = ($totalCommission * $platformCommissionPercentage) / 100;
+                    // Nonprofit gets the rest (92% of the total commission)
+                    $nonprofitCommission = $totalCommission - $platformCommission;
+
+                    // Log commission calculation for debugging
+                    Log::info('Gift card commission calculated (Believe Points)', [
+                        'purchase_amount' => $purchaseAmount,
+                        'total_commission' => $totalCommission,
+                        'commission_percentage' => $commissionPercentage,
+                        'platform_commission_percentage' => $platformCommissionPercentage,
+                        'platform_commission' => $platformCommission,
+                        'nonprofit_commission' => $nonprofitCommission,
+                        'phaze_response_keys' => array_keys($phazePurchaseResult),
+                    ]);
+                } else {
+                    // Log when commission is not found or zero
+                    Log::warning('Gift card commission is zero or not found (Believe Points)', [
+                        'purchase_amount' => $purchaseAmount,
+                        'phaze_response' => $phazePurchaseResult,
+                    ]);
+                }
+
+                // Generate unique card number (same as Stripe flow)
+                $cardNumber = $this->generateCardNumber();
+
+                // Ensure brand name is set (same as Stripe flow)
+                $finalBrandName = $selectedBrand['productName'] ?? $validated['brand_name'];
+                if (empty($finalBrandName)) {
+                    $finalBrandName = 'Gift Card #' . ($validated['productId'] ?? 'Unknown');
+                }
+
+                // Create gift card record with all commission details (same structure as Stripe)
+                $giftCard = GiftCard::create([
+                    'user_id' => $user->id,
+                    'organization_id' => $validated['organization_id'],
+                    'card_number' => $cardNumber, // Generate card number first (like Stripe)
+                    'amount' => $purchaseAmount,
+                    'brand' => $finalBrandName, // Add brand field (same as Stripe)
+                    'brand_name' => $finalBrandName,
+                    'country' => $validated['country'] ?? null,
+                    'currency' => $currency,
+                    'status' => 'active',
+                    'payment_method' => 'believe_points',
+                    'purchased_at' => now(), // Mark as purchased
+                    'expires_at' => isset($phazePurchaseResult['expiresAt'])
+                        ? \Carbon\Carbon::parse($phazePurchaseResult['expiresAt'])
+                        : (isset($phazePurchaseResult['expires_at'])
+                            ? \Carbon\Carbon::parse($phazePurchaseResult['expires_at'])
+                            : now()->addYear()), // Default 1 year expiration (same as Stripe)
+                    'commission_percentage' => $commissionPercentage,
+                    'total_commission' => $totalCommission,
+                    'platform_commission' => $platformCommission,
+                    'nonprofit_commission' => $nonprofitCommission,
+                    'meta' => $selectedBrand ? [
+                        'productId' => $selectedBrand['productId'] ?? null,
+                        'productImage' => $selectedBrand['productImage'] ?? null,
+                        'denominations' => $selectedBrand['denominations'] ?? [],
+                        'valueRestrictions' => $selectedBrand['valueRestrictions'] ?? [],
+                        'productDescription' => $selectedBrand['productDescription'] ?? null,
+                        'termsAndConditions' => $selectedBrand['termsAndConditions'] ?? null,
+                        'howToUse' => $selectedBrand['howToUse'] ?? null,
+                        'expiryAndValidity' => $selectedBrand['expiryAndValidity'] ?? null,
+                        'discount' => $selectedBrand['discount'] ?? 0,
+                    ] : null,
+                ]);
+
+                // Update gift card with Phaze purchase details (same as Stripe flow)
+                $existingMeta = $giftCard->meta ?? [];
+                $updateData = [
+                    'external_id' => $phazePurchaseResult['id'] ?? null,
+                    'voucher' => $phazePurchaseResult['voucher'] ?? null,
+                    'phaze_disbursement_id' => $phazePurchaseResult['id'] ?? null,
+                    'code' => $phazePurchaseResult['code'] ?? null,
+                    'pin' => $phazePurchaseResult['pin'] ?? null,
+                    'meta' => array_merge($existingMeta, [
+                        'phaze_purchase' => $phazePurchaseResult, // Store full purchase response
+                        'orderId' => $orderId, // Store orderId for webhook matching
+                        'phaze_purchase_id' => $phazePurchaseResult['id'] ?? null,
+                        'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
+                        'phaze_initial_response' => $phazePurchaseResult, // Keep initial response
+                        'believe_points_used' => $pointsRequired,
+                        'commission_calculation' => [
+                            'commission_percentage' => $commissionPercentage,
+                            'total_commission' => $totalCommission,
+                            'platform_commission_percentage' => $platformCommissionPercentage,
+                            'platform_commission' => $platformCommission,
+                            'nonprofit_commission' => $nonprofitCommission,
+                        ],
+                    ]),
+                ];
+
+                // Update card_number if provided in Phaze response (same as Stripe flow)
+                if (isset($phazePurchaseResult['cardNumber']) && !empty($phazePurchaseResult['cardNumber'])) {
+                    $updateData['card_number'] = $phazePurchaseResult['cardNumber'];
+                    Log::info('Card number found in Phaze initial response (cardNumber)', [
+                        'gift_card_id' => $giftCard->id,
+                    ]);
+                } elseif (isset($phazePurchaseResult['card_number']) && !empty($phazePurchaseResult['card_number'])) {
+                    $updateData['card_number'] = $phazePurchaseResult['card_number'];
+                    Log::info('Card number found in Phaze initial response (card_number)', [
+                        'gift_card_id' => $giftCard->id,
+                    ]);
+                } else {
+                    // Card number not in initial response
+                    // Phaze API returns card_number when purchase status changes to "completed" via webhook
+                    // The initial response shows status "pending", so card_number will come later
+                    // We already have a generated card_number, so we keep it
+                    Log::info('Card number not in Phaze initial response (status: pending), will be updated via webhook when purchase completes', [
+                        'gift_card_id' => $giftCard->id,
+                        'phaze_purchase_id' => $phazePurchaseResult['id'] ?? null,
+                        'phaze_status' => $phazePurchaseResult['status'] ?? 'pending',
+                        'generated_card_number' => $cardNumber,
+                    ]);
+                }
+
+                // If Phaze returns voucher/card details, update them
+                if (isset($phazePurchaseResult['voucher'])) {
+                    $updateData['voucher'] = $phazePurchaseResult['voucher'];
+                }
+
+                // Update gift card with all Phaze response data
+                $giftCard->update($updateData);
+                Log::info('Gift card updated with Phaze response data (Believe Points)', [
+                    'gift_card_id' => $giftCard->id,
+                    'updated_fields' => array_keys($updateData),
+                ]);
+
+                // Create transaction record
+                $transactionMeta = [
+                    'gift_card_id' => $giftCard->id,
+                    'believe_points_used' => $pointsRequired,
+                    'phaze_order_id' => $phazePurchaseResult['orderId'] ?? null,
+                    'brand' => $validated['brand_name'],
+                ];
+
+                if ($phazePurchaseResult) {
+                    $transactionMeta['phaze_purchase_id'] = $phazePurchaseResult['id'] ?? null;
+                    $transactionMeta['phaze_status'] = $phazePurchaseResult['status'] ?? 'pending';
+                }
+
+                Transaction::record([
+                    'user_id' => $user->id,
+                    'related_id' => $giftCard->id,
+                    'related_type' => GiftCard::class,
+                    'type' => 'purchase',
+                    'status' => Transaction::STATUS_COMPLETED,
+                    'amount' => $purchaseAmount,
+                    'fee' => 0,
+                    'currency' => $currency,
+                    'payment_method' => 'believe_points',
+                    'transaction_id' => 'believe_points_gift_card_' . $giftCard->id,
+                    'meta' => $transactionMeta,
+                    'processed_at' => now(),
+                ]);
+
+                // Reload gift card to get latest status
+                $giftCard = $giftCard->fresh()->load(['user', 'organization']);
+
+                // Send email with PDF receipt (same as Stripe flow)
+                $recipientEmail = $giftCard->user ? $giftCard->user->email : $user->email;
+                if ($recipientEmail && $giftCard->status !== 'failed') {
+                    try {
+                        // For Believe Points, session is null
+                        \Illuminate\Support\Facades\Mail::to($recipientEmail)->send(
+                            new \App\Mail\GiftCardPurchaseReceipt($giftCard, null)
+                        );
+                        $giftCard->update(['is_sent' => true]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to send gift card receipt email (Believe Points): ' . $e->getMessage());
+                    }
+                }
+
+                DB::commit();
+
+                if ($isInertiaRequest) {
+                    // Redirect to success page with gift card ID for Believe Points purchases
+                    return redirect()->route('gift-cards.success', ['gift_card_id' => $giftCard->id])
+                        ->with('success', 'Gift card purchased successfully using Believe Points!');
+                }
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Gift card purchased successfully using Believe Points!',
+                    'redirect' => route('gift-cards.success', ['gift_card_id' => $giftCard->id]),
+                ]);
+            }
+
+            // Create Stripe checkout session (default payment method)
             $session = StripeSession::create([
                 'payment_method_types' => ['card'],
                 'line_items' => [[
@@ -595,10 +945,141 @@ class GiftCardController extends Controller
     public function success(Request $request)
     {
         $sessionId = $request->get('session_id');
+        $paymentMethod = $request->get('payment_method', 'stripe');
 
+        // Handle Believe Points payment (no Stripe session)
         if (!$sessionId) {
+            $user = auth()->user();
+            $giftCardId = $request->get('gift_card_id');
+
+            // Try to get gift card by ID first (if passed in redirect)
+            if ($giftCardId && $user) {
+                $giftCard = GiftCard::where('id', $giftCardId)
+                    ->where('user_id', $user->id)
+                    ->where('payment_method', 'believe_points')
+                    ->first();
+
+                if ($giftCard) {
+                    $giftCard->load(['user', 'organization']);
+
+                    // Get Phaze purchase details (same as show method)
+                    $phazePurchaseData = null;
+                    $phazeDisbursementData = null;
+
+                    // Try to get purchase details from stored purchase ID in meta
+                    $phazePurchaseId = $giftCard->meta['phaze_purchase']['id'] ??
+                                       $giftCard->meta['phaze_purchase_id'] ??
+                                       $giftCard->external_id ??
+                                       null;
+
+                    if ($phazePurchaseId) {
+                        $phazePurchaseData = $this->giftCardService->getPurchaseDetails($phazePurchaseId);
+                    }
+
+                    // If purchase data not available, use stored data from meta
+                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
+                        $phazePurchaseData = $giftCard->meta['phaze_purchase'];
+                    }
+
+                    // Also check for phaze_initial_response as fallback
+                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
+                        $phazePurchaseData = $giftCard->meta['phaze_initial_response'];
+                    }
+
+                    // If we still don't have purchase data but have external_id, try to construct basic info
+                    if (!$phazePurchaseData && $giftCard->external_id) {
+                        $phazePurchaseData = [
+                            'id' => $giftCard->external_id,
+                            'status' => $giftCard->meta['phaze_status'] ?? 'pending',
+                        ];
+                    }
+
+                    // Get disbursement status if available
+                    if ($giftCard->phaze_disbursement_id) {
+                        $phazeDisbursementData = $this->giftCardService->getDisbursementStatus($giftCard->phaze_disbursement_id);
+                    }
+
+                    return Inertia::render('GiftCards/Success', [
+                        'giftCard' => $giftCard,
+                        'sessionId' => null,
+                        'paymentMethod' => 'believe_points',
+                        'phazePurchaseData' => $phazePurchaseData,
+                        'phazeDisbursementData' => $phazeDisbursementData,
+                        'user' => [
+                            'name' => $giftCard->user->name ?? $user->name,
+                            'email' => $giftCard->user->email ?? $user->email,
+                        ],
+                    ]);
+                }
+            }
+
+            // Fallback: Get the most recent gift card purchase for the current user (Believe Points payment)
+            if ($user) {
+                $giftCard = GiftCard::where('user_id', $user->id)
+                    ->where('payment_method', 'believe_points')
+                    ->whereNull('stripe_session_id') // Only Believe Points purchases
+                    ->whereNotNull('purchased_at') // Only purchased cards
+                    ->orderBy('purchased_at', 'desc')
+                    ->first();
+
+                if ($giftCard && $giftCard->purchased_at && $giftCard->purchased_at->isAfter(now()->subMinutes(10))) {
+                    // Gift card was purchased within last 10 minutes (recent purchase)
+                    $giftCard->load(['user', 'organization']);
+
+                    // Get Phaze purchase details (same as show method)
+                    $phazePurchaseData = null;
+                    $phazeDisbursementData = null;
+
+                    // Try to get purchase details from stored purchase ID in meta
+                    $phazePurchaseId = $giftCard->meta['phaze_purchase']['id'] ??
+                                       $giftCard->meta['phaze_purchase_id'] ??
+                                       $giftCard->external_id ??
+                                       null;
+
+                    if ($phazePurchaseId) {
+                        $phazePurchaseData = $this->giftCardService->getPurchaseDetails($phazePurchaseId);
+                    }
+
+                    // If purchase data not available, use stored data from meta
+                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_purchase'])) {
+                        $phazePurchaseData = $giftCard->meta['phaze_purchase'];
+                    }
+
+                    // Also check for phaze_initial_response as fallback
+                    if (!$phazePurchaseData && isset($giftCard->meta['phaze_initial_response'])) {
+                        $phazePurchaseData = $giftCard->meta['phaze_initial_response'];
+                    }
+
+                    // If we still don't have purchase data but have external_id, try to construct basic info
+                    if (!$phazePurchaseData && $giftCard->external_id) {
+                        $phazePurchaseData = [
+                            'id' => $giftCard->external_id,
+                            'status' => $giftCard->meta['phaze_status'] ?? 'pending',
+                        ];
+                    }
+
+                    // Get disbursement status if available
+                    if ($giftCard->phaze_disbursement_id) {
+                        $phazeDisbursementData = $this->giftCardService->getDisbursementStatus($giftCard->phaze_disbursement_id);
+                    }
+
+                    return Inertia::render('GiftCards/Success', [
+                        'giftCard' => $giftCard,
+                        'sessionId' => null,
+                        'paymentMethod' => 'believe_points',
+                        'phazePurchaseData' => $phazePurchaseData,
+                        'phazeDisbursementData' => $phazeDisbursementData,
+                        'user' => [
+                            'name' => $giftCard->user->name ?? $user->name,
+                            'email' => $giftCard->user->email ?? $user->email,
+                        ],
+                    ]);
+                }
+            }
+
+            // If no session_id and no recent Believe Points purchase found, show error
             return redirect()->route('gift-cards.index')->withErrors([
-                'message' => 'Invalid payment session',
+                'message' => 'Invalid payment session. Please try purchasing again.',
             ]);
         }
 
@@ -660,6 +1141,7 @@ class GiftCardController extends Controller
                     'country' => $country,
                     'currency' => $currency,
                     'status' => 'active',
+                    'payment_method' => 'stripe',
                     'stripe_payment_intent_id' => $session->payment_intent ?? null,
                     'stripe_session_id' => $sessionId,
                     'purchased_at' => now(),
@@ -992,6 +1474,7 @@ class GiftCardController extends Controller
                 return Inertia::render('GiftCards/Success', [
                     'giftCard' => $giftCard,
                     'sessionId' => $sessionId,
+                    'paymentMethod' => 'stripe',
                     'user' => $giftCard->user ? [
                         'name' => $giftCard->user->name,
                         'email' => $giftCard->user->email,
@@ -1153,13 +1636,127 @@ class GiftCardController extends Controller
                                    $giftCardModel->external_id ??
                                    null;
 
-                if ($phazePurchaseId) {
-                    $phazePurchaseData = $this->giftCardService->getPurchaseDetails($phazePurchaseId);
+                // First, try to get stored data from meta (most reliable)
+                // This ensures we always show purchase information even if API is temporarily unavailable
+                if (isset($giftCardModel->meta['phaze_purchase']) && is_array($giftCardModel->meta['phaze_purchase'])) {
+                    $phazePurchaseData = $giftCardModel->meta['phaze_purchase'];
                 }
 
-                // If purchase data not available, use stored data from meta
-                if (!$phazePurchaseData && isset($giftCardModel->meta['phaze_purchase'])) {
-                    $phazePurchaseData = $giftCardModel->meta['phaze_purchase'];
+                // Also check for phaze_initial_response as fallback
+                if (!$phazePurchaseData && isset($giftCardModel->meta['phaze_initial_response']) && is_array($giftCardModel->meta['phaze_initial_response'])) {
+                    $phazePurchaseData = $giftCardModel->meta['phaze_initial_response'];
+                }
+
+                // Try to refresh from API if we have a purchase ID (optional - for latest status)
+                // But don't overwrite if API call fails - gracefully handle errors
+                if ($phazePurchaseId && $phazePurchaseData) {
+                    try {
+                        $apiPurchaseData = $this->giftCardService->getPurchaseDetails($phazePurchaseId);
+                        // Only use API data if it's valid, not an error, and has more information than stored data
+                        if ($apiPurchaseData &&
+                            is_array($apiPurchaseData) &&
+                            !empty($apiPurchaseData) &&
+                            !isset($apiPurchaseData['error']) &&
+                            !isset($apiPurchaseData['httpStatusCode']) &&
+                            !isset($apiPurchaseData['message'])) {
+                            // Merge API data with stored data (API data takes precedence for status updates)
+                            $phazePurchaseData = array_merge($phazePurchaseData, $apiPurchaseData);
+                        } elseif (isset($apiPurchaseData['error']) || isset($apiPurchaseData['message'])) {
+                            // Log API error but don't break - use stored data
+                            Log::warning('Phaze API error when refreshing purchase details', [
+                                'purchase_id' => $phazePurchaseId,
+                                'error' => $apiPurchaseData['error'] ?? $apiPurchaseData['message'] ?? 'Unknown error',
+                                'http_status' => $apiPurchaseData['httpStatusCode'] ?? null,
+                            ]);
+                            // Continue with stored data - don't overwrite
+                        }
+                    } catch (\Exception $e) {
+                        // Log exception but don't break - use stored data
+                        Log::warning('Exception when refreshing Phaze purchase details from API', [
+                            'purchase_id' => $phazePurchaseId,
+                            'error' => $e->getMessage(),
+                        ]);
+                        // Continue with stored data - don't overwrite
+                    }
+                }
+
+                // If we still don't have purchase data but have external_id, try to construct basic info
+                // Also merge any additional data from meta
+                if (!$phazePurchaseData && $giftCardModel->external_id) {
+                    $phazePurchaseData = [
+                        'id' => $giftCardModel->external_id,
+                        'status' => $giftCardModel->meta['phaze_status'] ?? 'pending',
+                    ];
+
+                    // Add orderId from meta if available
+                    if (isset($giftCardModel->meta['orderId'])) {
+                        $phazePurchaseData['orderId'] = $giftCardModel->meta['orderId'];
+                        $phazePurchaseData['orderID'] = $giftCardModel->meta['orderId']; // Also add orderID for compatibility
+                    }
+
+                    // Add productId from meta if available
+                    if (isset($giftCardModel->meta['productId'])) {
+                        $phazePurchaseData['productId'] = $giftCardModel->meta['productId'];
+                    }
+
+                    // Add voucher and card_number from gift card if available
+                    if ($giftCardModel->voucher) {
+                        $phazePurchaseData['voucher'] = $giftCardModel->voucher;
+                    }
+                    if ($giftCardModel->card_number) {
+                        $phazePurchaseData['cardNumber'] = $giftCardModel->card_number;
+                        $phazePurchaseData['card_number'] = $giftCardModel->card_number;
+                    }
+
+                    // Add amount and currency
+                    $phazePurchaseData['denomination'] = $giftCardModel->amount;
+                    $phazePurchaseData['baseCurrency'] = $giftCardModel->currency;
+                    $phazePurchaseData['currency'] = $giftCardModel->currency;
+
+                    // Add timestamps if available in meta
+                    if (isset($giftCardModel->meta['phaze_purchase']['createdAt'])) {
+                        $phazePurchaseData['createdAt'] = $giftCardModel->meta['phaze_purchase']['createdAt'];
+                    } elseif ($giftCardModel->purchased_at) {
+                        $phazePurchaseData['createdAt'] = $giftCardModel->purchased_at->toIso8601String();
+                    }
+
+                    if (isset($giftCardModel->meta['phaze_purchase']['updatedAt'])) {
+                        $phazePurchaseData['updatedAt'] = $giftCardModel->meta['phaze_purchase']['updatedAt'];
+                    }
+
+                    // Add externalUserId if available
+                    if (isset($giftCardModel->meta['phaze_purchase']['externalUserId'])) {
+                        $phazePurchaseData['externalUserId'] = $giftCardModel->meta['phaze_purchase']['externalUserId'];
+                    } elseif ($giftCardModel->user_id) {
+                        $phazePurchaseData['externalUserId'] = (string)$giftCardModel->user_id;
+                    }
+                }
+
+                // Ensure orderID/orderId compatibility for frontend
+                if ($phazePurchaseData && is_array($phazePurchaseData)) {
+                    // Ensure both orderId and orderID are set for compatibility
+                    if (isset($phazePurchaseData['orderId']) && !isset($phazePurchaseData['orderID'])) {
+                        $phazePurchaseData['orderID'] = $phazePurchaseData['orderId'];
+                    }
+                    if (isset($phazePurchaseData['orderID']) && !isset($phazePurchaseData['orderId'])) {
+                        $phazePurchaseData['orderId'] = $phazePurchaseData['orderID'];
+                    }
+
+                    // Also ensure cardNumber/card_number compatibility
+                    if (isset($phazePurchaseData['cardNumber']) && !isset($phazePurchaseData['card_number'])) {
+                        $phazePurchaseData['card_number'] = $phazePurchaseData['cardNumber'];
+                    }
+                    if (isset($phazePurchaseData['card_number']) && !isset($phazePurchaseData['cardNumber'])) {
+                        $phazePurchaseData['cardNumber'] = $phazePurchaseData['card_number'];
+                    }
+
+                    // Ensure baseCurrency/currency compatibility
+                    if (isset($phazePurchaseData['baseCurrency']) && !isset($phazePurchaseData['currency'])) {
+                        $phazePurchaseData['currency'] = $phazePurchaseData['baseCurrency'];
+                    }
+                    if (isset($phazePurchaseData['currency']) && !isset($phazePurchaseData['baseCurrency'])) {
+                        $phazePurchaseData['baseCurrency'] = $phazePurchaseData['currency'];
+                    }
                 }
 
                 // Get disbursement status if available
@@ -1527,3 +2124,4 @@ class GiftCardController extends Controller
         }
     }
 }
+

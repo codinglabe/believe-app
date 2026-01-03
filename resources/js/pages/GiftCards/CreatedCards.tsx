@@ -1,6 +1,6 @@
 "use client"
 
-import { Head, usePage, router, useForm } from "@inertiajs/react"
+import { Head, usePage, router, useForm, Link } from "@inertiajs/react"
 import { useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -16,7 +16,9 @@ import {
     Building2,
     AlertCircle,
     CheckCircle,
-    FileText
+    FileText,
+    ChevronLeft,
+    ChevronRight
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { format } from "date-fns"
@@ -56,6 +58,15 @@ interface CreatedCardsProps {
         last_page: number
         per_page: number
         total: number
+        from?: number
+        to?: number
+        links?: Array<{
+            url: string | null
+            label: string
+            active: boolean
+        }>
+        prev_page_url?: string | null
+        next_page_url?: string | null
     }
     organization: {
         id: number
@@ -386,12 +397,87 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                             </div>
                         )}
 
-                        {/* Pagination Info */}
-                        {giftCards.total > giftCards.per_page && (
-                            <div className="mt-6 text-center text-sm text-muted-foreground">
-                                Showing {((giftCards.current_page - 1) * giftCards.per_page) + 1} to{' '}
-                                {Math.min(giftCards.current_page * giftCards.per_page, giftCards.total)} of{' '}
-                                {giftCards.total} gift cards
+                        {/* Pagination */}
+                        {giftCards.last_page > 1 && (
+                            <div className="mt-6 pt-6 border-t flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div className="text-sm text-muted-foreground">
+                                    Showing <span className="font-semibold">{giftCards.from || 0}</span> to{' '}
+                                    <span className="font-semibold">{giftCards.to || 0}</span> of{' '}
+                                    <span className="font-semibold">{giftCards.total}</span> gift cards
+                                </div>
+
+                                <div className="flex items-center gap-2">
+                                    {/* Previous Button */}
+                                    {giftCards.prev_page_url && (
+                                        <Link href={giftCards.prev_page_url}>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex items-center gap-1"
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                                Previous
+                                            </Button>
+                                        </Link>
+                                    )}
+
+                                    {/* Page Numbers */}
+                                    {giftCards.links && giftCards.links.length > 0 && (
+                                        <div className="flex items-center gap-1">
+                                            {giftCards.links
+                                                .filter((link) => {
+                                                    // Only show numeric page numbers (not "Previous", "Next", etc.)
+                                                    const label = link.label?.trim() || '';
+                                                    return link.url && !isNaN(Number(label)) && label !== '';
+                                                })
+                                                .map((link, index) => {
+                                                    const pageNum = Number(link.label);
+                                                    return (
+                                                        <div key={`page-${pageNum}-${index}`}>
+                                                            {link.url ? (
+                                                                <Link href={link.url}>
+                                                                    <Button
+                                                                        variant={link.active ? "default" : "outline"}
+                                                                        size="sm"
+                                                                        className={`min-w-10 ${
+                                                                            link.active
+                                                                                ? "bg-primary text-primary-foreground"
+                                                                                : ""
+                                                                        }`}
+                                                                    >
+                                                                        {link.label}
+                                                                    </Button>
+                                                                </Link>
+                                                            ) : (
+                                                                <Button
+                                                                    variant="outline"
+                                                                    size="sm"
+                                                                    disabled
+                                                                    className="min-w-10"
+                                                                >
+                                                                    {link.label}
+                                                                </Button>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                })}
+                                        </div>
+                                    )}
+
+                                    {/* Next Button */}
+                                    {giftCards.next_page_url && (
+                                        <Link href={giftCards.next_page_url}>
+                                            <Button
+                                                variant="outline"
+                                                size="sm"
+                                                className="flex items-center gap-1"
+                                            >
+                                                Next
+                                                <ChevronRight className="h-4 w-4" />
+                                            </Button>
+                                        </Link>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </CardContent>

@@ -31,7 +31,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { usePage, Link, router, useForm } from "@inertiajs/react"
+import { usePage, Link, router } from "@inertiajs/react"
 
 interface Topic {
   id: number
@@ -134,18 +134,14 @@ export default function FrontendCourseShow({
 }: FrontendCourseShowProps) {
   const { auth } = usePage().props as any
 
-  const { data, setData, post, processing } = useForm({
-    terms_accepted: true,
-  })
-
   const handleEnroll = () => {
     if (!auth.user) {
       router.visit("/login")
       return
     }
 
-    // Show confirmation dialog
-    post(`/courses/${course.slug}/enroll`)
+    // Redirect to enrollment page where user can select payment method
+    router.visit(`/courses/${course.slug}/enroll`)
   }
 
   const handleCancelEnrollment = () => {
@@ -563,7 +559,7 @@ export default function FrontendCourseShow({
                           )}
                         </div>
                         <p className="text-gray-600 dark:text-gray-400">
-                          {course.pricing_type === "free" 
+                          {course.pricing_type === "free"
                             ? (course.type === "course" ? "No cost to enroll" : "No cost to register")
                             : "One-time payment"}
                         </p>
@@ -622,29 +618,26 @@ export default function FrontendCourseShow({
                             ) : (
                               <Button
                                 onClick={handleEnroll}
-                                disabled={processing}
                                 className="w-full bg-green-600 hover:bg-green-700 text-lg py-3"
                               >
                                 <Play className="mr-2 h-5 w-5" />
-                                {processing
-                                  ? "Processing..."
-                                  : `${course.type === "course" ? "Enroll" : "Register"} Now${course.pricing_type === "paid" ? ` - ${course.formatted_price}` : " - Free"}`}
+                                {`${course.type === "course" ? "Enroll" : "Register"} Now${course.pricing_type === "paid" ? ` - ${course.formatted_price}` : " - Free"}`}
                               </Button>
                             )}
                           </>
                         ) : (
                           <div className="text-center">
                             <Button disabled className="w-full" size="lg">
-                              {status === "full" 
+                              {status === "full"
                                 ? (course.type === "course" ? "Course Full" : "Event Full")
-                                : status === "unavailable" 
+                                : status === "unavailable"
                                   ? (course.type === "course" ? "Enrollment Unavailable" : "Registration Unavailable")
                                   : (course.type === "course" ? "Enrollment Closed" : "Registration Closed")}
                             </Button>
                             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-                              {status === "full" 
-                                ? "No spots available" 
-                                : status === "unavailable" 
+                              {status === "full"
+                                ? "No spots available"
+                                : status === "unavailable"
                                   ? (course.type === "course" ? "You are not authorized to enroll in this course" : "You are not authorized to register for this event")
                                   : (course.type === "course" ? "Enrollment has ended" : "Registration has ended")}
                             </p>

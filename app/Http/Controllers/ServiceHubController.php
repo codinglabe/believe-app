@@ -561,6 +561,15 @@ class ServiceHubController extends Controller
         // Check if current user is the owner
         $isOwner = Auth::check() && $gig->user_id === Auth::id();
 
+        // Check if current user has a successful/paid order with this seller
+        $hasSuccessfulOrder = false;
+        if (Auth::check() && !$isOwner) {
+            $hasSuccessfulOrder = ServiceOrder::where('buyer_id', Auth::id())
+                ->where('seller_id', $gig->user_id)
+                ->where('payment_status', 'paid')
+                ->exists();
+        }
+
         // Get seller's gigs for offer creation
         $sellerGigs = [];
         if ($isOwner) {
@@ -590,6 +599,7 @@ class ServiceHubController extends Controller
             'isFavorite' => $isFavorite,
             'isOwner' => $isOwner,
             'sellerGigs' => $sellerGigs,
+            'hasSuccessfulOrder' => $hasSuccessfulOrder,
         ]);
     }
 
@@ -1474,6 +1484,15 @@ class ServiceHubController extends Controller
             ];
         })->toArray();
 
+        // Check if current user has a successful/paid order with this seller
+        $hasSuccessfulOrder = false;
+        if (Auth::check()) {
+            $hasSuccessfulOrder = ServiceOrder::where('buyer_id', Auth::id())
+                ->where('seller_id', $seller->id)
+                ->where('payment_status', 'paid')
+                ->exists();
+        }
+
         return Inertia::render('frontend/service-hub/seller-profile', [
             'seller' => $sellerData,
             'sellerProfile' => $sellerProfile,
@@ -1489,6 +1508,7 @@ class ServiceHubController extends Controller
             ],
             'recentReviews' => $transformedReviews,
             'isOwner' => Auth::check() && Auth::id() == $seller->id,
+            'hasSuccessfulOrder' => $hasSuccessfulOrder,
         ]);
     }
 

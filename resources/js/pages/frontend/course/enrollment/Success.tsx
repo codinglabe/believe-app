@@ -50,10 +50,10 @@ interface Props {
   enrollment: Enrollment
   course: Course
   type: "free" | "paid"
+  paymentMethod?: "stripe" | "believe_points"
 }
 
-export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
-  console.log(course)
+export default function EnrollmentSuccess({ enrollment, course, type, paymentMethod = 'stripe' }: Props) {
   return (
     <FrontendLayout>
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 dark:from-gray-900 dark:to-gray-800 py-8">
@@ -74,7 +74,8 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
               </h1>
               <p className="text-lg text-gray-600 dark:text-gray-400 max-w-2xl mx-auto">
                 Congratulations! You have successfully enrolled in <strong>{course.name}</strong>.
-                {type === "paid" && " Your payment has been processed."}
+                {type === "paid" && paymentMethod === "stripe" && " Your payment has been processed."}
+                {type === "paid" && paymentMethod === "believe_points" && " Your enrollment was completed using Believe Points."}
               </p>
             </motion.div>
 
@@ -123,9 +124,17 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                                 <span className="ml-2 font-medium">${enrollment.amount_paid}</span>
                               </div>
                               <div>
-                                <span className="text-green-700 dark:text-green-300">Transaction ID:</span>
-                                <span className="ml-2 font-medium text-xs">{enrollment.transaction_id}</span>
+                                <span className="text-green-700 dark:text-green-300">Payment Method:</span>
+                                <span className="ml-2 font-medium">
+                                  {paymentMethod === "believe_points" ? "Believe Points" : "Credit Card (Stripe)"}
+                                </span>
                               </div>
+                              {paymentMethod === "stripe" && (
+                                <div>
+                                  <span className="text-green-700 dark:text-green-300">Transaction ID:</span>
+                                  <span className="ml-2 font-medium text-xs">{enrollment.transaction_id}</span>
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -178,9 +187,9 @@ export default function EnrollmentSuccess({ enrollment, course, type }: Props) {
                               <MapPin className="h-4 w-4 text-blue-600" />
                               <span>
                                 <strong>Meeting Link:</strong>{" "}
-                                <a 
-                                  href={course.meeting_link} 
-                                  target="_blank" 
+                                <a
+                                  href={course.meeting_link}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-blue-600 hover:underline"
                                 >

@@ -13,7 +13,8 @@ import {
     Copy,
     ArrowRight,
     Sparkles,
-    PartyPopper
+    PartyPopper,
+    Calendar
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
@@ -38,14 +39,17 @@ interface GiftCard {
 
 interface SuccessProps {
     giftCard: GiftCard
-    sessionId: string
+    sessionId: string | null
+    paymentMethod?: string
+    phazePurchaseData?: any
+    phazeDisbursementData?: any
     user?: {
         name: string
         email: string
     } | null
 }
 
-export default function SuccessPage({ giftCard, sessionId, user }: SuccessProps) {
+export default function SuccessPage({ giftCard, sessionId, paymentMethod, phazePurchaseData, phazeDisbursementData, user }: SuccessProps) {
     const [copied, setCopied] = useState(false)
 
     const formatCurrency = (amount: number) => {
@@ -442,6 +446,41 @@ export default function SuccessPage({ giftCard, sessionId, user }: SuccessProps)
                                                 }`}
                                             >
                                                 {copied ? '✓ Copied to clipboard!' : 'Click the copy button to copy this code'}
+                                            </motion.p>
+                                        </div>
+                                    )}
+
+                                    {/* Card Number - Show if available */}
+                                    {giftCard.card_number && (
+                                        <div className="space-y-3">
+                                            <Label className="text-base font-semibold block">Card Number</Label>
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex-1 p-5 rounded-xl bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800 dark:to-gray-900 font-mono text-xl font-bold text-center border-2 border-dashed border-primary/30 shadow-inner">
+                                                    {formatCardNumber(giftCard.card_number)}
+                                                </div>
+                                                <Button
+                                                    variant="outline"
+                                                    size="lg"
+                                                    className="h-14 w-14 p-0"
+                                                    onClick={() => copyToClipboard(giftCard.card_number!)}
+                                                >
+                                                    {copied ? (
+                                                        <CheckCircle className="h-5 w-5 text-green-600" />
+                                                    ) : (
+                                                        <Copy className="h-5 w-5" />
+                                                    )}
+                                                </Button>
+                                            </div>
+                                            <motion.p
+                                                initial={{ opacity: 0 }}
+                                                animate={{ opacity: 1 }}
+                                                className={`text-sm mt-2 text-center font-medium ${
+                                                    copied
+                                                        ? 'text-green-600 dark:text-green-400'
+                                                        : 'text-muted-foreground'
+                                                }`}
+                                            >
+                                                {copied ? '✓ Copied to clipboard!' : 'Click the copy button to copy this card number'}
                                             </motion.p>
                                         </div>
                                     )}

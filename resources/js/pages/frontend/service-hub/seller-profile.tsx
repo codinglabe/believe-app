@@ -101,10 +101,11 @@ interface PageProps extends Record<string, unknown> {
   stats: Stats
   recentReviews: Review[]
   isOwner?: boolean
+  hasSuccessfulOrder?: boolean
 }
 
 export default function SellerProfile() {
-  const { seller, sellerProfile, services = [], stats, recentReviews = [], isOwner = false, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
+  const { seller, sellerProfile, services = [], stats, recentReviews = [], isOwner = false, hasSuccessfulOrder = false, auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
   const [isFavorite, setIsFavorite] = useState(false)
   const [activeTab, setActiveTab] = useState("services")
 
@@ -223,28 +224,37 @@ export default function SellerProfile() {
                           </Link>
                         ) : (
                           <>
-                            <Button
-                              className="bg-blue-600 hover:bg-blue-700"
-                              onClick={() => {
-                                if (!auth?.user) {
-                                  router.visit('/login');
-                                  return;
-                                }
-                                if (!sellerProfile?.phone) {
-                                  showErrorToast('Seller phone number is not available');
-                                  return;
-                                }
-                                // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
-                                const phoneNumber = sellerProfile.phone.replace(/[\s\-\(\)]/g, '');
-                                // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
-                                const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
-                                // Open WhatsApp with the phone number
-                                window.open(`https://wa.me/${whatsappNumber}`, '_blank');
-                              }}
-                            >
-                              <MessageCircle className="mr-2 h-4 w-4" />
-                              Contact Seller
-                            </Button>
+                            {/* Only show WhatsApp contact if user has a successful order */}
+                            {hasSuccessfulOrder && sellerProfile?.phone ? (
+                              <Button
+                                className="bg-blue-600 hover:bg-blue-700"
+                                onClick={() => {
+                                  if (!sellerProfile?.phone) {
+                                    showErrorToast('Seller phone number is not available');
+                                    return;
+                                  }
+                                  // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
+                                  const phoneNumber = sellerProfile.phone.replace(/[\s\-\(\)]/g, '');
+                                  // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
+                                  const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
+                                  // Open WhatsApp with the phone number
+                                  window.open(`https://wa.me/${whatsappNumber}`, '_blank');
+                                }}
+                              >
+                                <MessageCircle className="mr-2 h-4 w-4" />
+                                Contact Seller
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="outline"
+                                disabled
+                                className="cursor-not-allowed opacity-60"
+                                title={!auth?.user ? "Please login to contact seller" : !hasSuccessfulOrder ? "You need to have a successful order with this seller to contact them" : "Seller contact not available"}
+                              >
+                                <MessageCircle className="mr-2 h-4 w-4" />
+                                Contact Seller
+                              </Button>
+                            )}
 
                           </>
                         )}

@@ -290,48 +290,13 @@ export default function ServiceShow() {
                               View Profile
                             </Button>
                           </Link>
-                          {isOwner ? (
-                            <>
-                              {/* <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => setShowOfferModal(true)}
-                                className="bg-green-600 hover:bg-green-700"
-                              >
-                                <Handshake className="mr-2 h-4 w-4" />
-                                Create Offer
-                              </Button> */}
-                              <Link href={`/service-hub/${gig.slug}/edit`}>
-                                <Button variant="outline" size="sm">
-                                  <Edit className="mr-2 h-4 w-4" />
-                                  Edit Service
-                                </Button>
-                              </Link>
-                            </>
-                          ) : (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => {
-                                if (!auth?.user) {
-                                  router.visit('/login');
-                                  return;
-                                }
-                                if (!gig.seller.phone) {
-                                  showErrorToast('Seller phone number is not available');
-                                  return;
-                                }
-                                // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
-                                const phoneNumber = gig.seller.phone.replace(/[\s\-\(\)]/g, '');
-                                // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
-                                const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
-                                // Open WhatsApp with the phone number
-                                window.open(`https://wa.me/${whatsappNumber}`, '_blank');
-                              }}
-                            >
-                              <MessageCircle className="mr-2 h-4 w-4" />
-                              Contact
-                            </Button>
+                          {isOwner && (
+                            <Link href={`/service-hub/${gig.slug}/edit`}>
+                              <Button variant="outline" size="sm">
+                                <Edit className="mr-2 h-4 w-4" />
+                                Edit Service
+                              </Button>
+                            </Link>
                           )}
                         </div>
                       </div>

@@ -120,22 +120,36 @@ class GiftCardService
             return null;
         }
 
-        if ($httpCode < 200 || $httpCode >= 300) {
-            Log::warning('Phaze API request failed', [
-                'http_code' => $httpCode,
-                'endpoint' => $endpoint,
-                'response_preview' => substr($response, 0, 200),
-            ]);
-            return null;
-        }
-
+        // Try to parse response even if HTTP code indicates error
         $data = json_decode($response, true);
         if (json_last_error() !== JSON_ERROR_NONE) {
             Log::error('Failed to parse Phaze API JSON response', [
                 'error' => json_last_error_msg(),
                 'endpoint' => $endpoint,
+                'http_code' => $httpCode,
             ]);
             return null;
+        }
+
+        // If HTTP code indicates error, return error data with httpStatusCode
+        if ($httpCode < 200 || $httpCode >= 300) {
+            Log::warning('Phaze API request failed', [
+                'http_code' => $httpCode,
+                'endpoint' => $endpoint,
+                'response_preview' => substr($response, 0, 200),
+                'error_data' => $data,
+            ]);
+
+            // Return error data with httpStatusCode so caller can check for errors
+            if (is_array($data)) {
+                $data['httpStatusCode'] = $httpCode;
+                return $data;
+            }
+
+            return [
+                'httpStatusCode' => $httpCode,
+                'error' => $response ? substr($response, 0, 200) : 'Unknown error',
+            ];
         }
 
         return $data;
@@ -464,7 +478,25 @@ class GiftCardService
                     }
                 }
 
+                // Check for API errors
                 if (!$response || !is_array($response)) {
+                    Log::warning('Phaze API brands request failed or returned invalid response', [
+                        'country' => $country,
+                        'currentPage' => $currentPage,
+                        'endpoint' => $endpoint,
+                        'response_type' => gettype($response),
+                    ]);
+                    return [];
+                }
+
+                // Check if response contains an error
+                if (isset($response['error']) || isset($response['message']) || (isset($response['httpStatusCode']) && $response['httpStatusCode'] >= 400)) {
+                    Log::warning('Phaze API brands request returned error', [
+                        'country' => $country,
+                        'currentPage' => $currentPage,
+                        'error' => $response['error'] ?? $response['message'] ?? 'Unknown error',
+                        'http_status' => $response['httpStatusCode'] ?? null,
+                    ]);
                     return [];
                 }
 
@@ -552,10 +584,20 @@ class GiftCardService
                     return $brands;
                 }
 
+                // Log if response structure is unexpected
+                Log::warning('Phaze API brands response missing brands array', [
+                    'country' => $country,
+                    'currentPage' => $currentPage,
+                    'response_keys' => is_array($response) ? array_keys($response) : 'not_array',
+                    'response_preview' => is_array($response) ? json_encode(array_slice($response, 0, 3)) : substr((string)$response, 0, 200),
+                ]);
+
                 return [];
             } catch (\Exception $e) {
                 Log::error('Error fetching gift card brands from Phaze API: ' . $e->getMessage(), [
                     'country' => $country,
+                    'currentPage' => $currentPage,
+                    'trace' => $e->getTraceAsString(),
                 ]);
                 return [];
             }

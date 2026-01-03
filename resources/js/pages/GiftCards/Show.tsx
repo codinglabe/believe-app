@@ -611,10 +611,10 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                                         <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.id}</p>
                                                     </div>
                                                 )}
-                                                {phazePurchaseData.orderID && (
+                                                {(phazePurchaseData.orderID || phazePurchaseData.orderId) && (
                                                     <div className="p-4 rounded-lg border dark:border-gray-700">
                                                         <p className="text-xs text-muted-foreground mb-1">Order ID</p>
-                                                        <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.orderID}</p>
+                                                        <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.orderID || phazePurchaseData.orderId}</p>
                                                     </div>
                                                 )}
                                                 {phazePurchaseData.status && (
@@ -643,10 +643,10 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                                         <p className="font-semibold dark:text-white">{formatCurrency(phazePurchaseData.denomination)}</p>
                                                     </div>
                                                 )}
-                                                {phazePurchaseData.baseCurrency && (
+                                                {(phazePurchaseData.baseCurrency || phazePurchaseData.currency) && (
                                                     <div className="p-4 rounded-lg border dark:border-gray-700">
                                                         <p className="text-xs text-muted-foreground mb-1">Currency</p>
-                                                        <p className="font-semibold dark:text-white">{phazePurchaseData.baseCurrency}</p>
+                                                        <p className="font-semibold dark:text-white">{phazePurchaseData.baseCurrency || phazePurchaseData.currency}</p>
                                                     </div>
                                                 )}
                                                 {phazePurchaseData.createdAt && (
@@ -702,10 +702,10 @@ export default function ShowPage({ giftCard, phazePurchaseData, phazeDisbursemen
                                                                 <span className="font-medium dark:text-white font-mono">{phazePurchaseData.voucher}</span>
                                                             </div>
                                                         )}
-                                                        {phazePurchaseData.cardNumber && (
+                                                        {(phazePurchaseData.cardNumber || phazePurchaseData.card_number) && (
                                                             <div className="flex justify-between">
                                                                 <span className="text-muted-foreground">Card Number:</span>
-                                                                <span className="font-medium dark:text-white font-mono">{formatCardNumber(phazePurchaseData.cardNumber)}</span>
+                                                                <span className="font-medium dark:text-white font-mono">{formatCardNumber(phazePurchaseData.cardNumber || phazePurchaseData.card_number)}</span>
                                                             </div>
                                                         )}
                                                         {phazePurchaseData.error && (

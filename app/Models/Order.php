@@ -21,6 +21,7 @@ class Order extends Model
         'organization_id',
         'status',
         'payment_status',
+        'payment_method',
         'stripe_payment_intent_id',
         'stripe_refund_id',
         'refunded_at',

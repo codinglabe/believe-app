@@ -14,6 +14,7 @@ import {
   MapPin,
   LinkIcon,
   Copy,
+  Coins,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,8 +23,9 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { Link, useForm } from "@inertiajs/react"
+import { Link, useForm, usePage } from "@inertiajs/react"
 import { type FormEventHandler, useState } from "react"
+import { Badge } from "@/components/ui/badge"
 
 interface Course {
   id: number
@@ -57,12 +59,22 @@ interface Props {
 }
 
 export default function FrontendCourseEnroll({ course }: Props) {
-  const [paymentMethod, setPaymentMethod] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
   const [copied, setCopied] = useState(false)
+  const page = usePage()
+  const auth = (page.props as any).auth
+  const currentBalance = parseFloat(auth?.user?.believe_points) || 0
+
   const { data, setData, post, processing, errors } = useForm({
     terms_accepted: false,
-    payment_method: "",
+    payment_method: 'stripe',
   })
+
+  // Update form data when payment method changes
+  const handlePaymentMethodChange = (method: 'stripe' | 'believe_points') => {
+    setPaymentMethod(method)
+    setData("payment_method", method)
+  }
 
   const submit: FormEventHandler = (e) => {
     e.preventDefault()
@@ -73,6 +85,9 @@ export default function FrontendCourseEnroll({ course }: Props) {
 
     post(`/courses/${course.slug}/enroll`)
   }
+
+  const pointsRequired = course.pricing_type === "paid" && course.course_fee ? parseFloat(course.course_fee.toString()) || 0 : 0
+  const hasEnoughPoints = currentBalance >= pointsRequired
 
   const copyMeetingLink = () => {
     if (course.meeting_link) {
@@ -142,37 +157,85 @@ export default function FrontendCourseEnroll({ course }: Props) {
                         {/* Payment Section for Paid Courses */}
                         {course.pricing_type === "paid" && (
                           <div className="space-y-4">
-                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Information</h3>
+                            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Payment Method</h3>
 
-                            <Alert>
-                              <Shield className="h-4 w-4" />
-                              <AlertDescription>
-                                Your payment information is secure and encrypted. We use Stripe for payment processing.
-                              </AlertDescription>
-                            </Alert>
-
-                            <div className="space-y-4">
-                              <div>
-                                <Label htmlFor="card-number">Card Number</Label>
-                                <Input id="card-number" placeholder="1234 5678 9012 3456" className="mt-1" />
-                              </div>
-
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <Label htmlFor="expiry">Expiry Date</Label>
-                                  <Input id="expiry" placeholder="MM/YY" className="mt-1" />
+                            {/* Payment Method Selection */}
+                            <div className="space-y-3">
+                              {/* Stripe Payment */}
+                              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'stripe'
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-input hover:border-primary/50'
+                              }`}>
+                                <input
+                                  type="radio"
+                                  name="payment_method"
+                                  value="stripe"
+                                  checked={paymentMethod === 'stripe'}
+                                  onChange={(e) => handlePaymentMethodChange(e.target.value as 'stripe' | 'believe_points')}
+                                  className="w-4 h-4 text-primary"
+                                />
+                                <CreditCard className="h-5 w-5" />
+                                <div className="flex-1">
+                                  <div className="font-semibold">Pay with Card (Stripe)</div>
+                                  <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
                                 </div>
-                                <div>
-                                  <Label htmlFor="cvc">CVC</Label>
-                                  <Input id="cvc" placeholder="123" className="mt-1" />
-                                </div>
-                              </div>
+                              </label>
 
-                              <div>
-                                <Label htmlFor="cardholder-name">Cardholder Name</Label>
-                                <Input id="cardholder-name" placeholder="John Doe" className="mt-1" />
-                              </div>
+                              {/* Believe Points Payment */}
+                              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                paymentMethod === 'believe_points'
+                                  ? 'border-primary bg-primary/10'
+                                  : 'border-input hover:border-primary/50'
+                              } ${!hasEnoughPoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                <input
+                                  type="radio"
+                                  name="payment_method"
+                                  value="believe_points"
+                                  checked={paymentMethod === 'believe_points'}
+                                  onChange={(e) => handlePaymentMethodChange(e.target.value as 'stripe' | 'believe_points')}
+                                  disabled={!hasEnoughPoints}
+                                  className="w-4 h-4 text-primary"
+                                />
+                                <Coins className="h-5 w-5 text-yellow-600" />
+                                <div className="flex-1">
+                                  <div className="font-semibold flex items-center gap-2">
+                                    Pay with Believe Points
+                                    {!hasEnoughPoints && (
+                                      <Badge variant="destructive" className="text-xs">
+                                        Insufficient
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                    Your balance: {currentBalance.toFixed(2)} points
+                                    {hasEnoughPoints && (
+                                      <span className="text-green-600 ml-2">
+                                        (You'll have {(currentBalance - pointsRequired).toFixed(2)} points remaining)
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              </label>
                             </div>
+
+                            {paymentMethod === 'believe_points' && !hasEnoughPoints && (
+                              <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>
+                                  You need {pointsRequired.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                                </AlertDescription>
+                              </Alert>
+                            )}
+
+                            {paymentMethod === 'stripe' && (
+                              <Alert>
+                                <Shield className="h-4 w-4" />
+                                <AlertDescription>
+                                  Your payment information is secure and encrypted. We use Stripe for payment processing.
+                                </AlertDescription>
+                              </Alert>
+                            )}
                           </div>
                         )}
 
@@ -213,15 +276,22 @@ export default function FrontendCourseEnroll({ course }: Props) {
                           type="submit"
                           className="w-full bg-green-600 hover:bg-green-700"
                           size="lg"
-                          disabled={processing || !data.terms_accepted}
+                          disabled={processing || !data.terms_accepted || (course.pricing_type === "paid" && paymentMethod === 'believe_points' && !hasEnoughPoints)}
                         >
                           {processing ? (
                             "Processing..."
                           ) : course.pricing_type === "paid" ? (
-                            <>
-                              <CreditCard className="mr-2 h-4 w-4" />
-                              Pay ${course.course_fee} & Enroll
-                            </>
+                            paymentMethod === 'believe_points' ? (
+                              <>
+                                <Coins className="mr-2 h-4 w-4" />
+                                Pay {pointsRequired.toFixed(2)} Points & Enroll
+                              </>
+                            ) : (
+                              <>
+                                <CreditCard className="mr-2 h-4 w-4" />
+                                Pay ${course.course_fee} & Enroll
+                              </>
+                            )
                           ) : (
                             <>
                               <CheckCircle className="mr-2 h-4 w-4" />

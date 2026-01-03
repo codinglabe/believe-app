@@ -6,6 +6,7 @@ use App\Models\AdminSetting;
 use App\Models\BelievePointPurchase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
@@ -191,5 +192,241 @@ class BelievePointController extends Controller
 
         return redirect()->route('believe-points.index')
             ->with('info', 'Purchase was cancelled.');
+    }
+
+    /**
+     * Display the refund page showing refundable purchases.
+     */
+    public function refunds(Request $request)
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return redirect()->route('login');
+        }
+
+        // Get user's current believe points balance
+        $currentBalance = $user->currentBelievePoints();
+
+        // Get all completed purchases that can potentially be refunded
+        $purchases = BelievePointPurchase::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereNull('refunded_at')
+            ->where('created_at', '>=', now()->subDays(7))
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($purchase) {
+                return [
+                    'id' => $purchase->id,
+                    'amount' => $purchase->amount,
+                    'points' => $purchase->points,
+                    'created_at' => $purchase->created_at,
+                    'can_refund' => $purchase->canBeRefunded() && $purchase->userHasPointsInBalance(),
+                    'reason' => !$purchase->canBeRefunded()
+                        ? ($purchase->status !== 'completed' ? 'Purchase not completed' : ($purchase->refunded_at ? 'Already refunded' : 'Outside 7-day refund window'))
+                        : (!$purchase->userHasPointsInBalance() ? 'Insufficient points in balance' : null),
+                ];
+            });
+
+        // Get refund history (all refunded purchases)
+        $refundHistory = BelievePointPurchase::where('user_id', $user->id)
+            ->where('status', 'completed')
+            ->whereNotNull('refunded_at')
+            ->orderBy('refunded_at', 'desc')
+            ->get()
+            ->map(function ($purchase) {
+                return [
+                    'id' => $purchase->id,
+                    'amount' => $purchase->amount,
+                    'points' => $purchase->points,
+                    'created_at' => $purchase->created_at,
+                    'refunded_at' => $purchase->refunded_at,
+                    'refund_status' => $purchase->refund_status,
+                    'stripe_refund_id' => $purchase->stripe_refund_id,
+                ];
+            });
+
+        return Inertia::render('BelievePoints/Refunds', [
+            'currentBalance' => $currentBalance,
+            'purchases' => $purchases,
+            'refundHistory' => $refundHistory,
+        ]);
+    }
+
+    /**
+     * Process a refund for a believe points purchase.
+     */
+    public function refund(Request $request, $purchaseId)
+    {
+        Log::info('Believe Points refund: Request received', [
+            'purchase_id' => $purchaseId,
+            'user_id' => Auth::id(),
+            'request_data' => $request->all(),
+        ]);
+
+        $user = Auth::user();
+
+        if (!$user) {
+            Log::warning('Believe Points refund: Unauthorized', [
+                'purchase_id' => $purchaseId,
+            ]);
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'Unauthorized. Please log in to process refunds.');
+        }
+
+        // Find the purchase by ID
+        $purchase = BelievePointPurchase::find($purchaseId);
+
+        if (!$purchase) {
+            Log::warning('Believe Points refund: Purchase not found', [
+                'purchase_id' => $purchaseId,
+                'user_id' => $user->id,
+            ]);
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'Purchase not found.');
+        }
+
+        Log::info('Believe Points refund: Purchase found', [
+            'purchase_id' => $purchase->id,
+            'user_id' => $user->id,
+            'purchase_user_id' => $purchase->user_id,
+            'status' => $purchase->status,
+            'refunded_at' => $purchase->refunded_at,
+            'stripe_payment_intent_id' => $purchase->stripe_payment_intent_id,
+        ]);
+
+        // Verify ownership
+        if ($purchase->user_id !== $user->id) {
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'You are not authorized to refund this purchase.');
+        }
+
+        // Check if purchase can be refunded
+        if (!$purchase->canBeRefunded()) {
+            $reason = 'This purchase cannot be refunded.';
+            if ($purchase->status !== 'completed') {
+                $reason = 'This purchase was not completed.';
+            } elseif ($purchase->refunded_at !== null) {
+                $reason = 'This purchase has already been refunded.';
+            } elseif ($purchase->created_at->lt(now()->subDays(7))) {
+                $reason = 'This purchase is outside the 7-day refund window.';
+            } elseif (!$purchase->stripe_payment_intent_id) {
+                $reason = 'No payment information found for this purchase.';
+            }
+
+            return redirect()->route('believe-points.refunds')
+                ->with('error', $reason);
+        }
+
+        // Check if user still has the points in balance
+        if (!$purchase->userHasPointsInBalance()) {
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'Refund not possible. You no longer have these points in your balance.');
+        }
+
+        try {
+            DB::beginTransaction();
+
+            // Process Stripe refund
+            if (!$purchase->stripe_payment_intent_id) {
+                DB::rollBack();
+                Log::error('Believe Points refund: No payment intent', [
+                    'purchase_id' => $purchase->id,
+                    'user_id' => $user->id,
+                ]);
+                return redirect()->route('believe-points.refunds')
+                    ->with('error', 'No payment information found for this purchase. Cannot process refund.');
+            }
+
+            Log::info('Believe Points refund: Processing Stripe refund', [
+                'purchase_id' => $purchase->id,
+                'user_id' => $user->id,
+                'payment_intent' => $purchase->stripe_payment_intent_id,
+                'amount' => $purchase->amount,
+            ]);
+
+            // Use Cashier's Stripe client which is already configured
+            $stripe = Cashier::stripe();
+            $refund = $stripe->refunds->create([
+                'payment_intent' => $purchase->stripe_payment_intent_id,
+                'amount' => (int) ($purchase->amount * 100), // Convert to cents
+                'reason' => 'requested_by_customer',
+            ]);
+
+            Log::info('Believe Points refund: Stripe refund created', [
+                'purchase_id' => $purchase->id,
+                'refund_id' => $refund->id,
+                'refund_status' => $refund->status,
+            ]);
+
+            // Check refund status
+            if ($refund->status === 'succeeded' || $refund->status === 'pending') {
+                // Deduct points from user's balance
+                $user->refresh(); // Refresh to get latest balance
+                if (!$user->deductBelievePoints($purchase->points)) {
+                    DB::rollBack();
+                    Log::error('Believe Points refund: Failed to deduct points', [
+                        'purchase_id' => $purchase->id,
+                        'user_id' => $user->id,
+                        'points_to_deduct' => $purchase->points,
+                        'current_balance' => $user->believe_points,
+                    ]);
+                    return redirect()->route('believe-points.refunds')
+                        ->with('error', 'Failed to deduct points from balance. Please contact support.');
+                }
+
+                // Update purchase record
+                $purchase->update([
+                    'stripe_refund_id' => $refund->id,
+                    'refunded_at' => now(),
+                    'refund_status' => $refund->status,
+                ]);
+
+                DB::commit();
+
+                $user->refresh(); // Refresh to get latest balance
+
+                Log::info('Believe Points refund processed successfully', [
+                    'purchase_id' => $purchase->id,
+                    'user_id' => $user->id,
+                    'points' => $purchase->points,
+                    'refund_id' => $refund->id,
+                    'refund_status' => $refund->status,
+                    'new_balance' => $user->believe_points,
+                    'refund_amount' => $purchase->amount,
+                ]);
+
+                return redirect()->route('believe-points.refunds')
+                    ->with('success', "Refund processed successfully! {$purchase->points} Believe Points have been deducted from your balance. The refund of {$purchase->amount} will be processed to your original payment method within 5-10 business days.");
+            } else {
+                DB::rollBack();
+                Log::error('Believe Points refund: Invalid refund status', [
+                    'purchase_id' => $purchase->id,
+                    'refund_status' => $refund->status,
+                ]);
+                return redirect()->route('believe-points.refunds')
+                    ->with('error', 'Refund failed with status: ' . $refund->status . '. Please contact support.');
+            }
+        } catch (\Stripe\Exception\ApiErrorException $e) {
+            DB::rollBack();
+            Log::error('Believe Points refund: Stripe API error', [
+                'purchase_id' => $purchase->id ?? null,
+                'user_id' => $user->id,
+                'error' => $e->getMessage(),
+                'stripe_code' => $e->getStripeCode(),
+            ]);
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'Failed to process refund: ' . $e->getMessage() . '. Please contact support if this issue persists.');
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Believe Points refund: General error', [
+                'purchase_id' => $purchase->id ?? null,
+                'user_id' => $user->id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return redirect()->route('believe-points.refunds')
+                ->with('error', 'Failed to process refund: ' . $e->getMessage() . '. Please contact support if this issue persists.');
+        }
     }
 }

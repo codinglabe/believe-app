@@ -13,7 +13,8 @@ import {
     CreditCard,
     DollarSign,
     Loader2,
-    CheckCircle
+    CheckCircle,
+    Coins
 } from "lucide-react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 
@@ -47,8 +48,10 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
     const [customAmount, setCustomAmount] = useState("")
     const [isProcessing, setIsProcessing] = useState(false)
     const [csrfToken, setCsrfToken] = useState<string>("")
-
+    const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
     const page = usePage()
+    const auth = (page.props as any).auth
+    const currentBalance = parseFloat(auth?.user?.believe_points) || 0
     const csrf_token = (page.props as any).csrf_token
 
     // Get CSRF token on component mount
@@ -95,7 +98,13 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
         amount: 0,
         country: brand.countryName,
         currency: brand.currency || 'USD',
+        payment_method: paymentMethod,
     })
+
+    // Update form data when payment method changes
+    useEffect(() => {
+        setData('payment_method', paymentMethod)
+    }, [paymentMethod])
 
     const formatCurrency = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
@@ -157,6 +166,11 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
         }
 
         try {
+            const requestData = {
+                ...data,
+                payment_method: paymentMethod,
+            }
+
             const response = await fetch(route('gift-cards.purchase.store'), {
                 method: 'POST',
                 headers: {
@@ -166,14 +180,22 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
                     'Accept': 'application/json',
                 },
                 credentials: 'include', // Important: Include cookies for CSRF
-                body: JSON.stringify(data),
+                body: JSON.stringify(requestData),
             })
 
             const result = await response.json()
 
-            if (result.success && result.url) {
-                // Direct redirect to Stripe
-                window.location.href = result.url
+            if (result.success) {
+                if (result.url) {
+                    // Stripe payment - redirect to Stripe
+                    window.location.href = result.url
+                } else if (result.redirect) {
+                    // Believe Points payment - redirect to success page
+                    window.location.href = result.redirect
+                } else {
+                    // Fallback redirect
+                    router.visit(route('gift-cards.success'))
+                }
             } else {
                 setIsProcessing(false)
                 alert(result.message || 'Failed to process payment')
@@ -293,17 +315,95 @@ export default function PurchasePage({ brand, stripeKey, user }: PurchaseProps) 
                                         </div>
                                     )}
 
+                                    {/* Payment Method Selection */}
+                                    {isValidAmount && (
+                                        <div className="space-y-4 p-4 border rounded-lg bg-muted/50">
+                                            <Label className="text-base font-semibold">Payment Method</Label>
+
+                                            <div className="grid grid-cols-1 gap-3">
+                                                {/* Stripe Payment */}
+                                                <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                                    paymentMethod === 'stripe'
+                                                        ? 'border-primary bg-primary/10'
+                                                        : 'border-input hover:border-primary/50'
+                                                }`}>
+                                                    <input
+                                                        type="radio"
+                                                        name="payment_method"
+                                                        value="stripe"
+                                                        checked={paymentMethod === 'stripe'}
+                                                        onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                                                        className="w-4 h-4 text-primary"
+                                                    />
+                                                    <CreditCard className="h-5 w-5" />
+                                                    <div className="flex-1">
+                                                        <div className="font-semibold">Pay with Card (Stripe)</div>
+                                                        <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
+                                                    </div>
+                                                </label>
+
+                                                {/* Believe Points Payment */}
+                                                <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                                                    paymentMethod === 'believe_points'
+                                                        ? 'border-primary bg-primary/10'
+                                                        : 'border-input hover:border-primary/50'
+                                                } ${currentBalance < data.amount ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                                                    <input
+                                                        type="radio"
+                                                        name="payment_method"
+                                                        value="believe_points"
+                                                        checked={paymentMethod === 'believe_points'}
+                                                        onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                                                        disabled={currentBalance < data.amount}
+                                                        className="w-4 h-4 text-primary"
+                                                    />
+                                                    <Coins className="h-5 w-5 text-yellow-600" />
+                                                    <div className="flex-1">
+                                                        <div className="font-semibold flex items-center gap-2">
+                                                            Pay with Believe Points
+                                                            {currentBalance < data.amount && (
+                                                                <Badge variant="destructive" className="text-xs">
+                                                                    Insufficient
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <div className="text-sm text-muted-foreground">
+                                                            Your balance: {currentBalance.toFixed(2)} points
+                                                            {currentBalance >= data.amount && (
+                                                                <span className="text-green-600 ml-2">
+                                                                    (You'll have {(currentBalance - data.amount).toFixed(2)} points remaining)
+                                                                </span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                </label>
+                                            </div>
+
+                                            {paymentMethod === 'believe_points' && currentBalance < data.amount && (
+                                                <p className="text-sm text-destructive flex items-center gap-1">
+                                                    <CheckCircle className="h-4 w-4" />
+                                                    You need {data.amount.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                                                </p>
+                                            )}
+                                        </div>
+                                    )}
+
                                     {/* Submit Button */}
                                     <Button
                                         type="submit"
                                         className="w-full bg-gradient-to-r from-primary to-primary/90 hover:from-primary/90 hover:to-primary shadow-lg"
                                         size="lg"
-                                        disabled={!isValidAmount || processing || isProcessing}
+                                        disabled={!isValidAmount || processing || isProcessing || (paymentMethod === 'believe_points' && currentBalance < data.amount)}
                                     >
                                         {processing || isProcessing ? (
                                             <>
                                                 <Loader2 className="h-5 w-5 mr-2 animate-spin" />
                                                 Processing...
+                                            </>
+                                        ) : paymentMethod === 'believe_points' ? (
+                                            <>
+                                                <Coins className="h-5 w-5 mr-2" />
+                                                Pay with Believe Points
                                             </>
                                         ) : (
                                             <>

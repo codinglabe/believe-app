@@ -42,9 +42,10 @@ interface Donation {
 
 interface DonationSuccessPageProps {
     donation: Donation
+    paymentMethod?: 'stripe' | 'believe_points'
 }
 
-export default function DonationSuccessPage({ donation }: DonationSuccessPageProps) {
+export default function DonationSuccessPage({ donation, paymentMethod = 'stripe' }: DonationSuccessPageProps) {
     const formatDate = (dateString: string) => {
         const date = new Date(dateString)
         return date.toLocaleDateString('en-US', {
@@ -131,7 +132,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
     return (
         <FrontendLayout>
             <Head title="Donation Successful - Thank You!" />
-            
+
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl mx-auto">
                     <motion.div
@@ -150,7 +151,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                             backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23000000' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
                                         }} />
                                     </div>
-                                    
+
                                     <CardContent className="relative p-8 md:p-12 text-center">
                                         <motion.div variants={iconVariants} className="mb-6 flex justify-center">
                                             <div className="relative">
@@ -158,7 +159,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                                 <CheckCircle2 className="relative h-24 w-24 md:h-32 md:w-32 text-green-500 dark:text-green-400" strokeWidth={2} />
                                             </div>
                                         </motion.div>
-                                        
+
                                         <motion.h1
                                             variants={itemVariants}
                                             className="mb-4 text-4xl md:text-5xl lg:text-6xl font-bold text-gray-900 dark:text-white leading-tight"
@@ -168,7 +169,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                                 Generous Donation!
                                             </span>
                                         </motion.h1>
-                                        
+
                                         <motion.p
                                             variants={itemVariants}
                                             className="mb-8 text-lg md:text-xl text-gray-600 dark:text-gray-300 max-w-2xl mx-auto leading-relaxed"
@@ -266,16 +267,29 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                             </p>
                                         </div>
 
-                                        {/* Transaction ID */}
+                                        {/* Payment Method */}
                                         <div className="space-y-2">
                                             <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
                                                 <Receipt className="h-4 w-4" />
-                                                Transaction ID
+                                                Payment Method
                                             </div>
-                                            <p className="text-sm font-mono text-gray-700 dark:text-gray-300 break-all">
-                                                {donationDetails.transactionId}
+                                            <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
+                                                {paymentMethod === 'believe_points' ? 'Believe Points' : 'Credit Card (Stripe)'}
                                             </p>
                                         </div>
+
+                                        {/* Transaction ID - Only show for Stripe */}
+                                        {paymentMethod === 'stripe' && (
+                                            <div className="space-y-2">
+                                                <div className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400">
+                                                    <Receipt className="h-4 w-4" />
+                                                    Transaction ID
+                                                </div>
+                                                <p className="text-sm font-mono text-gray-700 dark:text-gray-300 break-all">
+                                                    {donationDetails.transactionId}
+                                                </p>
+                                            </div>
+                                        )}
 
                                         {/* Status */}
                                         <div className="space-y-2">
@@ -283,7 +297,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                                 <CheckCircle2 className="h-4 w-4" />
                                                 Status
                                             </div>
-                                            <Badge 
+                                            <Badge
                                                 className={
                                                     donationDetails.status === 'completed' || donationDetails.status === 'active'
                                                         ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300'
@@ -326,7 +340,7 @@ export default function DonationSuccessPage({ donation }: DonationSuccessPagePro
                                                 Back to Home
                                             </Link>
                                         </Button>
-                                        
+
                                         <Button
                                             asChild
                                             variant="outline"

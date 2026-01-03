@@ -265,7 +265,19 @@ class FrontendCourseController extends Controller
         // Handle image upload
         $imagePath = null;
         if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('course_images', 'public');
+            try {
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                \Illuminate\Support\Facades\Log::info('Course image uploaded (Frontend)', [
+                    'path' => $imagePath,
+                    'exists' => \Illuminate\Support\Facades\Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to upload course image (Frontend): ' . $e->getMessage());
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
+            }
         }
 
         // Generate slug from name
@@ -546,11 +558,24 @@ class FrontendCourseController extends Controller
         // Handle image upload
         $imagePath = $course->image;
         if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($course->image && Storage::disk('public')->exists($course->image)) {
-                Storage::disk('public')->delete($course->image);
+            try {
+                // Delete old image if exists
+                if ($course->image && Storage::disk('public')->exists($course->image)) {
+                    Storage::disk('public')->delete($course->image);
+                }
+                $imagePath = $request->file('image')->store('course_images', 'public');
+                // Log for debugging
+                \Illuminate\Support\Facades\Log::info('Course image updated (Frontend)', [
+                    'course_id' => $course->id,
+                    'path' => $imagePath,
+                    'exists' => Storage::disk('public')->exists($imagePath),
+                ]);
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Failed to update course image (Frontend): ' . $e->getMessage());
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['image' => 'Failed to upload image. Please try again.']);
             }
-            $imagePath = $request->file('image')->store('course_images', 'public');
         }
 
         // Update slug if name changed
@@ -657,4 +682,3 @@ class FrontendCourseController extends Controller
         }
     }
 }
- 

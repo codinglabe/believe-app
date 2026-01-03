@@ -393,10 +393,10 @@ export default function OrganizationShowPage({ giftCard, phazePurchaseData, phaz
                                                         <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.id}</p>
                                                     </div>
                                                 )}
-                                                {phazePurchaseData.orderID && (
+                                                {(phazePurchaseData.orderID || phazePurchaseData.orderId) && (
                                                     <div className="p-4 rounded-lg border dark:border-gray-700">
                                                         <p className="text-xs text-muted-foreground mb-1">Order ID</p>
-                                                        <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.orderID}</p>
+                                                        <p className="font-semibold dark:text-white font-mono text-sm">{phazePurchaseData.orderID || phazePurchaseData.orderId}</p>
                                                     </div>
                                                 )}
                                                 {phazePurchaseData.status && (
@@ -413,7 +413,92 @@ export default function OrganizationShowPage({ giftCard, phazePurchaseData, phaz
                                                         </Badge>
                                                     </div>
                                                 )}
+                                                {phazePurchaseData.productId && (
+                                                    <div className="p-4 rounded-lg border dark:border-gray-700">
+                                                        <p className="text-xs text-muted-foreground mb-1">Product ID</p>
+                                                        <p className="font-semibold dark:text-white">{phazePurchaseData.productId}</p>
+                                                    </div>
+                                                )}
+                                                {phazePurchaseData.denomination && (
+                                                    <div className="p-4 rounded-lg border dark:border-gray-700">
+                                                        <p className="text-xs text-muted-foreground mb-1">Denomination</p>
+                                                        <p className="font-semibold dark:text-white">{formatCurrency(phazePurchaseData.denomination)}</p>
+                                                    </div>
+                                                )}
+                                                {(phazePurchaseData.baseCurrency || phazePurchaseData.currency) && (
+                                                    <div className="p-4 rounded-lg border dark:border-gray-700">
+                                                        <p className="text-xs text-muted-foreground mb-1">Currency</p>
+                                                        <p className="font-semibold dark:text-white">{phazePurchaseData.baseCurrency || phazePurchaseData.currency}</p>
+                                                    </div>
+                                                )}
+                                                {phazePurchaseData.createdAt && (
+                                                    <div className="p-4 rounded-lg border dark:border-gray-700">
+                                                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                                            <Calendar className="h-3 w-3" />
+                                                            Created At
+                                                        </p>
+                                                        <p className="font-semibold dark:text-white">
+                                                            {new Date(phazePurchaseData.createdAt).toLocaleString('en-US', {
+                                                                year: 'numeric',
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                )}
+                                                {phazePurchaseData.updatedAt && (
+                                                    <div className="p-4 rounded-lg border dark:border-gray-700">
+                                                        <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                                            <Calendar className="h-3 w-3" />
+                                                            Updated At
+                                                        </p>
+                                                        <p className="font-semibold dark:text-white">
+                                                            {new Date(phazePurchaseData.updatedAt).toLocaleString('en-US', {
+                                                                year: 'numeric',
+                                                                month: 'short',
+                                                                day: 'numeric',
+                                                                hour: '2-digit',
+                                                                minute: '2-digit'
+                                                            })}
+                                                        </p>
+                                                    </div>
+                                                )}
                                             </div>
+
+                                            {/* Additional Phaze purchase fields */}
+                                            {(phazePurchaseData.externalUserId || phazePurchaseData.voucher || phazePurchaseData.cardNumber || phazePurchaseData.card_number || phazePurchaseData.error) && (
+                                                <div className="mt-4 pt-4 border-t dark:border-gray-700">
+                                                    <h4 className="text-sm font-semibold mb-3 dark:text-white">Additional Details</h4>
+                                                    <div className="space-y-2 text-sm">
+                                                        {phazePurchaseData.externalUserId && (
+                                                            <div className="flex justify-between">
+                                                                <span className="text-muted-foreground">External User ID:</span>
+                                                                <span className="font-medium dark:text-white">{phazePurchaseData.externalUserId}</span>
+                                                            </div>
+                                                        )}
+                                                        {phazePurchaseData.voucher && (
+                                                            <div className="flex justify-between">
+                                                                <span className="text-muted-foreground">Voucher Code:</span>
+                                                                <span className="font-medium dark:text-white font-mono">{phazePurchaseData.voucher}</span>
+                                                            </div>
+                                                        )}
+                                                        {(phazePurchaseData.cardNumber || phazePurchaseData.card_number) && (
+                                                            <div className="flex justify-between">
+                                                                <span className="text-muted-foreground">Card Number:</span>
+                                                                <span className="font-medium dark:text-white font-mono">{formatCardNumber(phazePurchaseData.cardNumber || phazePurchaseData.card_number)}</span>
+                                                            </div>
+                                                        )}
+                                                        {phazePurchaseData.error && (
+                                                            <div className="p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
+                                                                <p className="text-xs font-semibold text-red-800 dark:text-red-200 mb-1">Error</p>
+                                                                <p className="text-sm text-red-700 dark:text-red-300">{phazePurchaseData.error}</p>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            )}
                                         </div>
                                     )}
 

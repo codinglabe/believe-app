@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
-import { Heart, CreditCard, DollarSign, Info, Check } from "lucide-react"
+import { Heart, CreditCard, DollarSign, Info, Check, Coins, Shield, AlertCircle } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
@@ -46,6 +46,10 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
   const [donationType, setDonationType] = useState("one-time")
+  const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
+
+  // Get user's Believe Points balance
+  const currentBalance = parseFloat(user?.believe_points || '0') || 0
 
   // Get the correct organization ID - use registered_organization.id if available, otherwise organization.id
   const organizationId = (organization as any).registered_organization?.id || organization.id
@@ -75,6 +79,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
     return selectedAmount || Number.parseFloat(customAmount) || 0
   }
 
+  const pointsRequired = getCurrentAmount() // 1$ = 1 believe point
+  const hasEnoughPoints = currentBalance >= pointsRequired
+
+  // Believe Points only available for one-time donations
+  const canUseBelievePoints = donationType === 'one-time' && hasEnoughPoints
+
   useEffect(() => {
     if (flash?.warning) {
       // Show warning notification
@@ -99,6 +109,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
       amount: getCurrentAmount(),
       frequency: donationType,
       message: donorInfo.message,
+      payment_method: paymentMethod,
     }, {
       onSuccess: () => {
         setIsProcessing(false)
@@ -223,12 +234,131 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
             </CardContent>
           </Card>
 
+          {/* Payment Method Selection */}
+          <div>
+            <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
+              Payment Method
+            </Label>
+            <div className="space-y-3">
+              {/* Stripe Payment */}
+              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                paymentMethod === 'stripe'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-input hover:border-primary/50'
+              }`}>
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="stripe"
+                  checked={paymentMethod === 'stripe'}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  className="w-4 h-4 text-primary"
+                />
+                <CreditCard className="h-5 w-5" />
+                <div className="flex-1">
+                  <div className="font-semibold">Pay with Card (Stripe)</div>
+                  <div className="text-sm text-muted-foreground">Secure payment via Stripe</div>
+                </div>
+              </label>
+
+              {/* Believe Points Payment - Only for one-time donations */}
+              <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
+                paymentMethod === 'believe_points'
+                  ? 'border-primary bg-primary/10'
+                  : 'border-input hover:border-primary/50'
+              } ${!canUseBelievePoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                <input
+                  type="radio"
+                  name="payment_method"
+                  value="believe_points"
+                  checked={paymentMethod === 'believe_points'}
+                  onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
+                  disabled={!canUseBelievePoints}
+                  className="w-4 h-4 text-primary"
+                />
+                <Coins className="h-5 w-5 text-yellow-600" />
+                <div className="flex-1">
+                  <div className="font-semibold flex items-center gap-2">
+                    Pay with Believe Points
+                    {donationType !== 'one-time' && (
+                      <Badge variant="secondary" className="text-xs">
+                        One-time only
+                      </Badge>
+                    )}
+                    {donationType === 'one-time' && !hasEnoughPoints && (
+                      <Badge variant="destructive" className="text-xs">
+                        Insufficient
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="text-sm text-muted-foreground">
+                    {donationType !== 'one-time' ? (
+                      'Available only for one-time donations'
+                    ) : (
+                      <>
+                        Your balance: {currentBalance.toFixed(2)} points
+                        {hasEnoughPoints && (
+                          <span className="text-green-600 ml-2">
+                            (You'll have {(currentBalance - pointsRequired).toFixed(2)} points remaining)
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              </label>
+            </div>
+
+            {paymentMethod === 'believe_points' && donationType !== 'one-time' && (
+              <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
+                <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm">
+                    Believe Points can only be used for one-time donations. Please select "One-time" frequency to use Believe Points.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'believe_points' && donationType === 'one-time' && !hasEnoughPoints && (
+              <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
+                  <AlertCircle className="h-4 w-4" />
+                  <span className="text-sm">
+                    You need {pointsRequired.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {paymentMethod === 'stripe' && (
+              <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
+                  <Shield className="h-4 w-4" />
+                  <span className="text-sm">
+                    Your payment information is secure and encrypted. We use Stripe for payment processing.
+                  </span>
+                </div>
+              </div>
+            )}
+          </div>
+
           {/* Donation Type */}
           <div>
             <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
               Donation Frequency
             </Label>
-            <RadioGroup value={donationType} onValueChange={setDonationType} className="grid grid-cols-3 gap-4">
+            <RadioGroup
+              value={donationType}
+              onValueChange={(value) => {
+                setDonationType(value)
+                // Reset to Stripe if switching to recurring (Believe Points only for one-time)
+                if (value !== 'one-time' && paymentMethod === 'believe_points') {
+                  setPaymentMethod('stripe')
+                }
+              }}
+              className="grid grid-cols-3 gap-4"
+            >
               <div className="flex items-center space-x-2 border border-gray-200 dark:border-gray-600 rounded-lg p-3 hover:bg-gray-50 dark:hover:bg-gray-700">
                 <RadioGroupItem value="one-time" id="one-time" />
                 <Label htmlFor="one-time" className="text-gray-900 dark:text-white cursor-pointer flex-1">
@@ -411,7 +541,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                 getCurrentAmount() === 0 ||
                 !donorInfo.name ||
                 !donorInfo.email ||
-                isProcessing
+                isProcessing ||
+                (paymentMethod === 'believe_points' && !hasEnoughPoints)
               }
             >
               {isProcessing ? (
@@ -421,9 +552,18 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                 </div>
               ) : (
                 <>
-                  <CreditCard className="mr-2 h-4 w-4" />
-                  Donate ${getCurrentAmount().toFixed(2)}
-                  {getFrequencyText()}
+                  {paymentMethod === 'believe_points' ? (
+                    <>
+                      <Coins className="mr-2 h-4 w-4" />
+                      Donate {pointsRequired.toFixed(2)} Points
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="mr-2 h-4 w-4" />
+                      Donate ${getCurrentAmount().toFixed(2)}
+                      {getFrequencyText()}
+                    </>
+                  )}
                 </>
               )}
             </Button>

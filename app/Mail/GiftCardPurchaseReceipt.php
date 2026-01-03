@@ -16,12 +16,12 @@ class GiftCardPurchaseReceipt extends Mailable
     use Queueable, SerializesModels;
 
     public GiftCard $giftCard;
-    public Session $session;
+    public ?Session $session;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(GiftCard $giftCard, Session $session)
+    public function __construct(GiftCard $giftCard, ?Session $session = null)
     {
         $this->giftCard = $giftCard->load(['user', 'organization']);
         $this->session = $session;
@@ -82,7 +82,7 @@ class GiftCardPurchaseReceipt extends Mailable
             if (class_exists(\Barryvdh\DomPDF\Facade\Pdf::class)) {
                 $pdf = \Barryvdh\DomPDF\Facade\Pdf::loadView('emails.gift-card-receipt-pdf', [
                     'giftCard' => $this->giftCard,
-                    'session' => $this->session,
+                    'session' => $this->session, // Can be null for Believe Points payments
                 ]);
 
                 $pdfPath = storage_path('app/temp/receipt-' . $this->giftCard->id . '-' . time() . '.pdf');

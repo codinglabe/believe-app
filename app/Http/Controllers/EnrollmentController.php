@@ -17,6 +17,43 @@ use Laravel\Cashier\Cashier;
 class EnrollmentController extends Controller
 {
     /**
+     * Show the enrollment page
+     */
+    public function show($slug)
+    {
+        $course = Course::where('slug', $slug)
+            ->with(['topic', 'eventType', 'organization', 'creator'])
+            ->firstOrFail();
+
+        $user = Auth::user();
+
+        // Check if user is already enrolled
+        $existingEnrollment = Enrollment::where('course_id', $course->id)
+            ->where('user_id', $user->id)
+            ->whereIn('status', ['active', 'completed'])
+            ->first();
+
+        if ($existingEnrollment) {
+            return redirect()->route('course.show', $course->slug)
+                ->with('error', 'You are already enrolled in this course.');
+        }
+
+        // Check if course is full
+        $totalEnrolled = Enrollment::where('course_id', $course->id)
+            ->whereIn('status', ['active', 'completed'])
+            ->count();
+
+        if ($totalEnrolled >= $course->max_participants) {
+            return redirect()->route('course.show', $course->slug)
+                ->with('error', 'This course is full.');
+        }
+
+        return Inertia::render('frontend/course/Enroll', [
+            'course' => $course,
+        ]);
+    }
+
+    /**
      * Process the course enrollment
      */
     public function store(Request $request, $slug)
@@ -25,6 +62,7 @@ class EnrollmentController extends Controller
 
         $validated = $request->validate([
             'terms_accepted' => 'required|accepted',
+            'payment_method' => 'nullable|string|in:stripe,believe_points',
         ]);
 
         $user = Auth::user();
@@ -111,7 +149,70 @@ class EnrollmentController extends Controller
                 return redirect(route('courses.enrollment.success') . '?enrollment_id=' . $enrollment->id)
                     ->with('success', 'Successfully enrolled in the course!');
             } else {
-                // Create pending transaction record for paid enrollment
+                $paymentMethod = $validated['payment_method'] ?? 'stripe';
+
+                // Handle Believe Points payment
+                if ($paymentMethod === 'believe_points') {
+                    $pointsRequired = $course->course_fee; // 1$ = 1 believe point
+                    $user->refresh(); // Get latest balance
+
+                    if ($user->believe_points < $pointsRequired) {
+                        DB::rollBack();
+                        if (isset($enrollment)) {
+                            $enrollment->update(['status' => 'failed']);
+                        }
+                        return redirect()->route('course.show', $course->slug)
+                            ->with('error', "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points.");
+                    }
+
+                    // Deduct points
+                    if (!$user->deductBelievePoints($pointsRequired)) {
+                        DB::rollBack();
+                        if (isset($enrollment)) {
+                            $enrollment->update(['status' => 'failed']);
+                        }
+                        return redirect()->route('course.show', $course->slug)
+                            ->with('error', 'Failed to deduct Believe Points. Please try again.');
+                    }
+
+                    // Complete enrollment with Believe Points
+                    $enrollment->update([
+                        'status' => 'active',
+                        'payment_method' => 'believe_points',
+                        'transaction_id' => 'believe_points_enrollment_' . $enrollment->id,
+                    ]);
+
+                    // Create transaction record
+                    Transaction::record([
+                        'user_id' => $user->id,
+                        'related_id' => $enrollment->id,
+                        'related_type' => Enrollment::class,
+                        'type' => 'purchase',
+                        'status' => Transaction::STATUS_COMPLETED,
+                        'amount' => $course->course_fee,
+                        'fee' => 0,
+                        'currency' => 'USD',
+                        'payment_method' => 'believe_points',
+                        'meta' => [
+                            'course_id' => $course->id,
+                            'course_name' => $course->name,
+                            'enrollment_id' => $enrollment->enrollment_id,
+                            'pricing_type' => 'paid',
+                            'believe_points_used' => $pointsRequired,
+                        ],
+                        'processed_at' => now(),
+                    ]);
+
+                    // Update course enrolled count
+                    $course->increment('enrolled');
+
+                    DB::commit();
+
+                    return redirect(route('courses.enrollment.success') . '?enrollment_id=' . $enrollment->id)
+                        ->with('success', 'Successfully enrolled in the course using Believe Points!');
+                }
+
+                // Create pending transaction record for paid enrollment (Stripe)
                 $transaction = Transaction::record([
                     'user_id' => $user->id,
                     'related_id' => $enrollment->id,
@@ -177,7 +278,7 @@ class EnrollmentController extends Controller
         $sessionId = $request->get('session_id');
         $enrollmentId = $request->get('enrollment_id');
 
-        // Handle free enrollment success - check for enrollment_id first
+        // Handle enrollment success with enrollment_id (no session_id) - check for free, Believe Points, or other payment methods
         if ($enrollmentId && !$sessionId) {
             $enrollment = Enrollment::with([
                 'course.organization',
@@ -187,16 +288,30 @@ class EnrollmentController extends Controller
             ])->find($enrollmentId);
 
             if ($enrollment) {
-                // Verify it's a free enrollment
+                // Check if it's a free enrollment
                 if ($enrollment->course->pricing_type === 'free') {
-            return Inertia::render('frontend/course/enrollment/Success', [
-                'enrollment' => $enrollment,
-                'course' => $enrollment->course,
-                'type' => 'free',
-                'meetingLink' => $enrollment->course->meeting_link,
-            ]);
-                } else {
-                    // Enrollment exists but it's a paid course, should have session_id
+                    return Inertia::render('frontend/course/enrollment/Success', [
+                        'enrollment' => $enrollment,
+                        'course' => $enrollment->course,
+                        'type' => 'free',
+                        'meetingLink' => $enrollment->course->meeting_link,
+                    ]);
+                }
+
+                // Check if it's a Believe Points payment
+                if ($enrollment->payment_method === 'believe_points' && $enrollment->status === 'active') {
+                    // This is a Believe Points payment - show success page
+                    return Inertia::render('frontend/course/enrollment/Success', [
+                        'enrollment' => $enrollment,
+                        'course' => $enrollment->course,
+                        'type' => 'paid',
+                        'paymentMethod' => 'believe_points',
+                        'meetingLink' => $enrollment->course->meeting_link,
+                    ]);
+                }
+
+                // If it's a paid course but not Believe Points and no session_id, it's an error
+                if ($enrollment->course->pricing_type === 'paid' && $enrollment->payment_method !== 'believe_points') {
                     return redirect()->route('course.index')->with([
                         'warning' => 'Payment session missing. Please complete your payment.'
                     ]);
@@ -209,18 +324,8 @@ class EnrollmentController extends Controller
             }
         }
 
-        // Handle paid enrollment success - must have session_id
-        if (!$sessionId) {
-            // If we have an enrollment_id but it's not free, or enrollment not found
-            if ($enrollmentId) {
-                $enrollment = Enrollment::with(['course', 'user'])->find($enrollmentId);
-                if ($enrollment && $enrollment->course->pricing_type === 'paid') {
-                    // This is a paid course, should have session_id
-                    return redirect()->route('course.index')->with([
-                        'warning' => 'Payment session missing. Please try enrolling again.'
-                    ]);
-                }
-            }
+        // Handle Stripe payment success - must have session_id
+        if (!$sessionId && !$enrollmentId) {
             // No enrollment_id or session_id found
             return redirect()->route('course.index')->with([
                 'warning' => 'Invalid enrollment session. Please try enrolling again.'
@@ -271,6 +376,7 @@ class EnrollmentController extends Controller
                 'enrollment' => $enrollment,
                 'course' => $enrollment->course,
                 'type' => 'paid',
+                'paymentMethod' => 'stripe',
                 'meetingLink' => $enrollment->course->meeting_link,
             ]);
         } catch (\Exception $e) {
@@ -538,13 +644,13 @@ class EnrollmentController extends Controller
 
             // Check if this ID already exists
             $exists = Enrollment::where('enrollment_id', $enrollmentId)->exists();
-            
+
             if (!$exists) {
                 return $enrollmentId;
             }
 
             $attempt++;
-            
+
             // If we've tried too many times, add more randomness
             if ($attempt >= $maxAttempts) {
                 $randomPart = strtoupper(Str::random(12));
@@ -584,7 +690,7 @@ class EnrollmentController extends Controller
                 'time' => $time,
                 'error' => $e->getMessage()
             ]);
-            
+
             // Fallback to current time
             return Carbon::now();
         }

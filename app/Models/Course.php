@@ -101,10 +101,28 @@ class Course extends Model
 
     public function getImageUrlAttribute()
     {
-        if ($this->image && Storage::disk('public')->exists($this->image)) {
+        if (!$this->image) {
+            return null;
+        }
+
+        // If image is already a full URL, return it as is
+        if (filter_var($this->image, FILTER_VALIDATE_URL)) {
+            return $this->image;
+        }
+
+        // Check if file exists, if not still return URL (file might be on different server)
+        // This ensures the URL is always generated even if file check fails
+        try {
+            if (Storage::disk('public')->exists($this->image)) {
+                return Storage::disk('public')->url($this->image);
+            } else {
+                // File doesn't exist but still return URL (might be uploaded but not synced)
+                return Storage::disk('public')->url($this->image);
+            }
+        } catch (\Exception $e) {
+            // If storage check fails, still return the URL
             return Storage::disk('public')->url($this->image);
         }
-        return null;
     }
     //formated_price return from here
     public function getFormattedPriceAttribute(): string
