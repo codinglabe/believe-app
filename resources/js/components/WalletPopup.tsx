@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react'
-import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage, Loader2 } from 'lucide-react'
+import { X, Wallet, Copy, Check, RefreshCw, ChevronDown, Activity, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, ArrowLeft, QrCode, CheckCircle2, Search, Building2, User, Plus, AlertCircle, Shield, FileCheck, Clock, ExternalLink, Upload, FileImage, Loader2, CreditCard } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -20,6 +20,8 @@ import {
     SendMoney,
     WalletScreen,
     ActivityList,
+    ActivityScreen,
+    TransactionDetails,
     ConnectWallet,
     CreateWallet,
     ExternalAccounts,
@@ -27,6 +29,7 @@ import {
     TransferFromExternal,
     WithdrawToExternal,
     VirtualCard,
+    ServicesMenu,
     KYCForm,
     KYBForm,
     SplashScreen,
@@ -56,6 +59,7 @@ interface SharedData {
             id: number
             name: string
             email: string
+            role?: string
         } | null
     }
 }
@@ -71,7 +75,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
     const [copied, setCopied] = useState(false)
     const [activeTab, setActiveTab] = useState<'account' | 'activity'>('account')
-    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external' | 'withdraw_to_external' | 'virtual_card'>('main')
+    const [actionView, setActionView] = useState<'main' | 'send' | 'receive' | 'swap' | 'addMoney' | 'external_accounts' | 'transfer_from_external' | 'withdraw_to_external' | 'virtual_card' | 'services_menu' | 'activity' | 'transaction_details'>('main')
     const [externalAccounts, setExternalAccounts] = useState<Array<{
         id: string;
         account_number: string;
@@ -100,6 +104,20 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [showSuccess, setShowSuccess] = useState(false)
     const [successMessage, setSuccessMessage] = useState('')
     const [successType, setSuccessType] = useState<'send' | 'receive' | 'swap' | 'addMoney' | null>(null)
+    const [selectedActivity, setSelectedActivity] = useState<{
+        id: string | number
+        type: string
+        amount: number
+        date: string
+        status: string
+        donor_name: string
+        donor_email?: string
+        frequency: string
+        message?: string
+        transaction_id?: string
+        is_outgoing?: boolean
+        recipient_type?: string
+    } | null>(null)
     const [activities, setActivities] = useState<Array<{
         id: string | number;
         type: string;
@@ -121,6 +139,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const [bridgeInitialized, setBridgeInitialized] = useState(false)
     const [hasWallet, setHasWallet] = useState(false)
     const [isSandbox, setIsSandbox] = useState(false)
+    const [hasCardWallet, setHasCardWallet] = useState<boolean | null>(null)
+    const [isCheckingCardWallet, setIsCheckingCardWallet] = useState(false)
     const [depositInstructions, setDepositInstructions] = useState<{
         bank_name?: string;
         bank_address?: string;
@@ -749,10 +769,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0)
                         setHasSubscription(balanceData.has_subscription ?? null)
 
-                        // If no subscription, show subscription modal instead
-                        if (balanceData.has_subscription === false) {
+                        // If no subscription, show subscription modal instead (for regular users only)
+                        const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                        if (isRegularUser && balanceData.has_subscription === false) {
                             setShowSubscriptionModal(true)
                             setIsLoading(false)
+                            setIsInitialLoading(false)
                             return
                         }
                     }
@@ -781,9 +803,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
-                        // If no subscription, show subscription modal instead
-                        if (fallbackData.has_subscription === false) {
+                        // If no subscription, show subscription modal instead (for regular users only)
+                        const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                        if (isRegularUser && fallbackData.has_subscription === false) {
                             setShowSubscriptionModal(true)
+                            setIsLoading(false)
+                            setIsInitialLoading(false)
                             return
                         }
                     }
@@ -811,9 +836,12 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         setWalletBalance(fallbackData.balance || fallbackData.organization_balance || fallbackData.local_balance || 0)
                         setHasSubscription(fallbackData.has_subscription ?? null)
 
-                        // If no subscription, show subscription modal instead
-                        if (fallbackData.has_subscription === false) {
+                        // If no subscription, show subscription modal instead (for regular users only)
+                        const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                        if (isRegularUser && fallbackData.has_subscription === false) {
                             setShowSubscriptionModal(true)
+                            setIsLoading(false)
+                            setIsInitialLoading(false)
                             return
                         }
                     }
@@ -932,37 +960,18 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             // Immediately set the status to ensure UI updates
                             setTosStatus(finalTosStatus)
 
-                            // If action is checkStatus, it means success screen was already shown and hidden
-                            // Just check the status without showing toast again
-                            if (action === 'checkStatus' && hideSuccess) {
-                                // Success screen was already shown, now just check status
-                                // Status already updated above, now sync with backend
-                                // Use a shorter delay to ensure status persists
-                                setTimeout(() => {
+                            // Show success message
+                            showSuccessToast('Terms of Service accepted successfully')
+
+                            // Re-check status to ensure everything is synced with backend
+                            setTimeout(() => {
                                 checkBridgeAndFetchBalance()
 
-                                    // Refresh page after sync to ensure UI is updated
-                                    setTimeout(() => {
-                                        window.location.reload()
-                                    }, 1000)
-                                }, 500)
-                            } else {
-                                // First time - show success message
-                                showSuccessToast('Terms of Service accepted successfully')
-
-                                // Status already updated above, now sync with backend after delay
-                                // After success message shows, check status to ensure sync
-                                // Then refresh page to ensure UI reflects the accepted status
+                                // Reload page after a short delay to ensure UI updates properly
                                 setTimeout(() => {
-                                    // Re-check status to ensure everything is synced with backend
-                                    checkBridgeAndFetchBalance()
-
-                                    // Refresh page after a short delay to ensure UI updates properly
-                                    setTimeout(() => {
-                                        window.location.reload()
-                                    }, 1500)
-                                }, 1500)
-                            }
+                                    window.location.reload()
+                                }, 1000)
+                            }, 1000)
                         } else {
                             showErrorToast(data.message || 'Failed to accept Terms of Service')
                         }
@@ -1052,8 +1061,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             }
 
             try {
-                // Fetch 10 activities per page
-                const response = await fetch(`/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
+                // Fetch activities for main screen (always limit to 10, no pagination)
+                const response = await fetch(`/wallet/activity?t=${Date.now()}`, {
                     method: 'GET',
                     headers: {
                         'Accept': 'application/json',
@@ -1092,46 +1101,28 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         fetchActivities(1, false)
     }, [isOpen, actionView])
 
-    // Handle scroll to load more activities
-    const handleActivityScroll = (e: React.UIEvent<HTMLDivElement>) => {
-        const target = e.currentTarget
-        const scrollBottom = target.scrollHeight - target.scrollTop - target.clientHeight
+    // Handle "See More" button click
+    const handleSeeMore = () => {
+        setActionView('activity')
+    }
 
-        // Load more when scrolled near bottom (within 50px) and there are more activities
-        if (scrollBottom < 50 && hasMoreActivities && !isLoadingMore && !isLoadingActivities) {
-            const nextPage = currentPage + 1
-            const fetchActivities = async (page: number) => {
-                setIsLoadingMore(true)
-                try {
-                    const response = await fetch(`/wallet/activity?page=${page}&per_page=10&t=${Date.now()}`, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': getCsrfToken(),
-                            'X-Requested-With': 'XMLHttpRequest',
-                        },
-                        credentials: 'include',
-                        cache: 'no-store',
-                    })
-
-                    if (response.ok) {
-                        const data = await response.json()
-                        if (data.success) {
-                            // Append new activities
-                            setActivities(prev => [...prev, ...(data.activities || [])])
-                            setHasMoreActivities(data.has_more || false)
-                            setCurrentPage(page)
-                        }
-                    }
-                } catch (error) {
-                    console.error('Failed to fetch more wallet activity:', error)
-                } finally {
-                    setIsLoadingMore(false)
-                }
-            }
-
-            fetchActivities(nextPage)
-        }
+    // Handle activity click to show details
+    const handleActivityClick = (activity: {
+        id: string | number
+        type: string
+        amount: number
+        date: string
+        status: string
+        donor_name: string
+        donor_email?: string
+        frequency: string
+        message?: string
+        transaction_id?: string
+        is_outgoing?: boolean
+        recipient_type?: string
+    }) => {
+        setSelectedActivity(activity)
+        setActionView('transaction_details')
     }
 
     const handleCopyAddress = () => {
@@ -1159,29 +1150,36 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
             })
 
             const data = await response.json()
+            
+            // Debug logging
+            console.log('External accounts API response:', data)
+            
             if (data.success && data.data) {
+                // Backend already returns mapped accounts in the correct format
                 // Handle nested structure: { success: true, data: { count: X, data: [...] } }
                 let accounts = []
                 if (Array.isArray(data.data)) {
-                    // Direct array
+                    // Direct array - backend already mapped it
                     accounts = data.data
+                    console.log('Using direct array, accounts count:', accounts.length)
                 } else if (data.data && Array.isArray(data.data.data)) {
-                    // Nested structure: data.data.data
-                    accounts = data.data.data
+                    // Nested structure: data.data.data (fallback for old format)
+                    console.log('Using nested structure')
+                    accounts = data.data.data.map((account: any) => ({
+                        id: account.id || '',
+                        account_number: account.account?.last_4 || account.last_4 || '0000',
+                        routing_number: account.account?.routing_number || '',
+                        account_type: account.account?.checking_or_savings || 'checking',
+                        account_holder_name: account.account_name || account.account_owner_name || '',
+                        status: account.active ? 'verified' : 'pending',
+                    }))
                 }
                 
-                // Map to frontend format if needed
-                accounts = accounts.map((account: any) => ({
-                    id: account.id || '',
-                    account_number: account.account?.last_4 || account.last_4 || '0000',
-                    routing_number: account.account?.routing_number || '',
-                    account_type: account.account?.checking_or_savings || 'checking',
-                    account_holder_name: account.account_name || account.account_owner_name || '',
-                    status: account.active ? 'verified' : 'pending',
-                }))
-                
+                console.log('Final accounts to set:', accounts)
+                // Use accounts as-is since backend already mapped them correctly
                 setExternalAccounts(accounts)
             } else {
+                console.warn('No accounts found in response:', data)
                 setExternalAccounts([])
             }
         } catch (error) {
@@ -1944,6 +1942,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     if (data.data.tos_url) {
                         setTosIframeUrl(data.data.tos_url)
                     }
+                    // Reload page after showing success message
+                    setTimeout(() => {
+                        window.location.reload()
+                    }, 1500)
                 } else if (data.data?.tos_url) {
                     // Set the TOS URL - this will automatically show the TermsOfService component with iframe
                     setTosIframeUrl(data.data.tos_url)
@@ -2865,6 +2867,62 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }, [actionView])
 
+    // Check card wallet status when wallet is initialized or when navigating to services menu
+    useEffect(() => {
+        // Check if wallet is initialized (either has wallet address or bridge is initialized)
+        const walletReady = walletAddress || (bridgeInitialized && hasWallet)
+        
+        if (walletReady && hasCardWallet === null) {
+            checkCardWallet()
+        }
+    }, [bridgeInitialized, hasWallet, walletAddress])
+
+    // Also check when navigating to services menu or virtual card
+    useEffect(() => {
+        if ((actionView === 'services_menu' || actionView === 'virtual_card') && hasCardWallet === null) {
+            // Only check if we have a wallet
+            if (walletAddress || (bridgeInitialized && hasWallet)) {
+                checkCardWallet()
+            }
+        }
+    }, [actionView])
+
+    const checkCardWallet = async () => {
+        // Don't check if already checking
+        if (isCheckingCardWallet) {
+            return
+        }
+        
+        setIsCheckingCardWallet(true)
+        try {
+            const response = await fetch('/wallet/bridge/card-account', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': getCsrfToken(),
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+
+            const data = await response.json()
+            // Set hasCardWallet based on has_card_account field
+            // If success is false or has_card_account is false/null, user doesn't have a card wallet
+            if (data.success && data.has_card_account === true) {
+                setHasCardWallet(true)
+            } else {
+                // Either request failed or has_card_account is false/null/undefined
+                setHasCardWallet(false)
+            }
+        } catch (error) {
+            console.error('Failed to check card wallet:', error)
+            setHasCardWallet(false)
+        } finally {
+            setIsCheckingCardWallet(false)
+        }
+    }
+
     const handleSelectRecipient = (recipient: { id: string; type: string; name: string; email?: string; display_name: string; address: string }) => {
         setSelectedRecipient(recipient)
         setSendAddress(recipient.address)
@@ -3213,7 +3271,10 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                         actionView === 'external_accounts' ? 'Bank Accounts' :
                                                             actionView === 'transfer_from_external' ? 'Transfer from Bank' :
                                                                 actionView === 'withdraw_to_external' ? 'Withdraw to Bank' :
-                                                                actionView === 'virtual_card' ? 'Virtual Card' : 'Account'}
+                                                                actionView === 'virtual_card' ? 'Virtual Card' :
+                                                                actionView === 'services_menu' ? 'Services' :
+                                                                actionView === 'activity' ? 'Activity' :
+                                                                actionView === 'transaction_details' ? 'Transaction Details' : 'Account'}
                                     </span>
                                 </div>
                                 <button
@@ -3368,6 +3429,29 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             onAmountChange={setWithdrawAmount}
                                             onWithdraw={handleWithdrawToExternal}
                                         />
+                                    ) : !showSuccess && actionView === 'services_menu' ? (
+                                        <ServicesMenu
+                                            onNavigate={setActionView}
+                                            hasCardWallet={hasCardWallet}
+                                            isCheckingCardWallet={isCheckingCardWallet}
+                                        />
+                                    ) : !showSuccess && actionView === 'activity' ? (
+                                        <ActivityScreen
+                                            onBack={() => setActionView('main')}
+                                            onActivityClick={handleActivityClick}
+                                        />
+                                    ) : !showSuccess && actionView === 'transaction_details' && selectedActivity ? (
+                                        <TransactionDetails
+                                            activity={selectedActivity}
+                                            onBack={() => {
+                                                // Go back to previous view (activity or main)
+                                                if (activities.length > 10) {
+                                                    setActionView('activity')
+                                                } else {
+                                                    setActionView('main')
+                                                }
+                                            }}
+                                        />
                                     ) : !showSuccess && actionView === 'virtual_card' ? (
                                         <VirtualCard
                                             cardNumber="4532 •••• •••• 1234"
@@ -3375,6 +3459,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             expiryDate="12/25"
                                             cvv="123"
                                             onBack={() => setActionView('main')}
+                                            onCardCreated={() => {
+                                                // Refresh card wallet status after card is created
+                                                setHasCardWallet(null)
+                                                checkCardWallet()
+                                            }}
                                         />
                                     ) : !showSuccess && actionView === 'receive' ? (
                                         isLoadingReceiveData ? (
@@ -3641,7 +3730,15 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             }
 
                                             // PRIORITY: For KYC - if submitted and pending, show simple waiting screen instead of full verification screen
-                                            if (verificationType === 'kyc' && kycSubmitted && kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected') {
+                                            // Check if user is a regular user (not organization)
+                                            const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                                            // Pending states that should show waiting screen
+                                            const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
+                                            const isKycPending = isRegularUser && 
+                                                verificationType === 'kyc' && 
+                                                (kycSubmitted || (kycStatus && kycPendingStates.includes(kycStatus)))
+                                            
+                                            if (isKycPending) {
                                                 return 'kyc_waiting' // Show simple waiting screen
                                             }
 
@@ -3871,12 +3968,32 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                             {(tosStatus === 'accepted' || tosStatus === 'approved') && (verificationType === 'kyb' ? kybStatus : kycStatus) !== 'approved' && (
                                                                 // For KYB multi-step flow, always show form (user is completing steps)
                                                                 verificationType === 'kyb' ||
-                                                                // For regular KYC, show form when status is not_started, rejected, or in progress (but not approved)
-                                                                (verificationType === 'kyc' && kycStatus !== 'approved')
+                                                                // For regular KYC, show form when status is not_started or rejected (needs resubmission)
+                                                                // Hide form when KYC is pending (for regular users only)
+                                                                (verificationType === 'kyc' && (() => {
+                                                                    const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                                                                    const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
+                                                                    // For regular users: only show form if status is not_started or rejected (not pending)
+                                                                    // For organization users: show form if not approved
+                                                                    if (isRegularUser) {
+                                                                        return kycStatus === 'not_started' || kycStatus === 'rejected'
+                                                                    }
+                                                                    return kycStatus !== 'approved'
+                                                                })())
                                                             ) && (
                                                                     <div className="space-y-2 sm:space-y-3 w-full mt-3">
-                                                                        {/* Toggle between custom form and iframe - Hide when KYB waiting screen is shown */}
+                                                                        {/* Toggle between custom form and iframe - Hide when KYB waiting screen is shown OR KYC is pending (for regular users only) */}
                                                                         {(() => {
+                                                                                            // Check if user is a regular user (not organization)
+                                                                                            const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                                                                                            
+                                                                                            // Check if KYC is pending (for regular users only)
+                                                                                            // Pending states: 'under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo'
+                                                                                            const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
+                                                                                            const isKycPending = isRegularUser && 
+                                                                                                verificationType === 'kyc' && 
+                                                                                                (kycSubmitted || (kycStatus && kycPendingStates.includes(kycStatus)))
+                                                                                            
                                                                                             // Check if KYB waiting screen should be shown
                                                                                             const hasControlPersonSubmitted = controlPersonSubmitted && 
                                                                                                 (documentStatuses.id_front === 'pending' || 
@@ -3900,8 +4017,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                 !hasRejectedDocs &&
                                                                                                 !hasRequestedFields
                                                                                             
-                                                                                            // Hide toggle buttons when waiting screen is shown
-                                                                                            if (shouldShowKybWaitingScreen) {
+                                                                                            // Hide toggle buttons when waiting screen is shown OR KYC is pending
+                                                                                            if (shouldShowKybWaitingScreen || isKycPending) {
                                                                                                 return null
                                                                                             }
                                                                                             
@@ -5129,15 +5246,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                 ) : (
                                                                                                     /* Show only rejected documents or initial form if nothing submitted yet */
                                                                                                     <>
-                                                                                                        {/* Only show header if there are rejected documents or if form hasn't been submitted and no pending documents */}
+                                                                                                        {/* Show header if there are rejected documents, requested fields, or if form hasn't been submitted and no pending documents */}
                                                                                                         {(() => {
                                                                                                             const hasRejectedDocuments = documentStatuses.business_formation === 'rejected' ||
                                                                                                                 documentStatuses.business_ownership === 'rejected' ||
                                                                                                                 documentStatuses.proof_of_address === 'rejected'
                                                                                                             const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
                                                                                                                 documentStatuses.business_ownership === 'pending'
-                                                                                                            // Show header only if there are rejected docs OR (not submitted AND no pending docs)
-                                                                                                            return hasRejectedDocuments || (!businessDocumentsSubmitted && !hasPendingDocuments)
+                                                                                                            const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                                            // Show header if: rejected docs OR requested fields OR (not submitted AND no pending docs)
+                                                                                                            return hasRejectedDocuments || hasRequestedFields || (!businessDocumentsSubmitted && !hasPendingDocuments)
                                                                                                         })() && (
                                                                                                                 <div className="mb-3">
                                                                                                                     <p className="text-xs font-semibold mb-2 text-left">Step 2: Business Documents *</p>
@@ -5145,6 +5263,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                         documentStatuses.business_ownership === 'rejected' ||
                                                                                                                         documentStatuses.proof_of_address === 'rejected') ? (
                                                                                                                         <p className="text-xs text-muted-foreground mb-3 text-left">Please re-upload the rejected documents below.</p>
+                                                                                                                    ) : (requestedFields && requestedFields.length > 0) ? (
+                                                                                                                        <p className="text-xs text-muted-foreground mb-3 text-left">Please re-fill the requested fields below.</p>
                                                                                                                     ) : (
                                                                                                                         <p className="text-xs text-muted-foreground mb-3 text-left">Upload required business formation and ownership documents</p>
                                                                                                                     )}
@@ -5162,7 +5282,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                 const formationStatus = documentStatuses.business_formation
 
                                                                                                                 // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments) {
+                                                                                                                // UNLESS admin requested refill - then always show
+                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
                                                                                                                     return false
                                                                                                                 }
 
@@ -5171,7 +5293,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                     return formationStatus === 'rejected'
                                                                                                                 }
                                                                                                                 // In initial submission: show if not uploaded yet (undefined or null) and not pending
-                                                                                                                return !formationStatus || (formationStatus !== 'pending' && !businessDocumentsSubmitted)
+                                                                                                                // OR if admin requested refill
+                                                                                                                return !formationStatus || (formationStatus !== 'pending' && !businessDocumentsSubmitted) || hasRequestedFields
                                                                                                             })() && (
                                                                                                                     <>
                                                                                                                         {documentStatuses.business_formation === 'rejected' && (
@@ -5223,7 +5346,9 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                 const ownershipStatus = documentStatuses.business_ownership
 
                                                                                                                 // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments) {
+                                                                                                                // UNLESS admin requested refill - then always show
+                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
                                                                                                                     return false
                                                                                                                 }
 
@@ -5232,7 +5357,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                     return ownershipStatus === 'rejected'
                                                                                                                 }
                                                                                                                 // In initial submission: show if not uploaded yet (undefined or null) and not pending
-                                                                                                                return !ownershipStatus || (ownershipStatus !== 'pending' && !businessDocumentsSubmitted)
+                                                                                                                // OR if admin requested refill
+                                                                                                                return !ownershipStatus || (ownershipStatus !== 'pending' && !businessDocumentsSubmitted) || hasRequestedFields
                                                                                                             })() && (
                                                                                                                     <>
                                                                                                                         {documentStatuses.business_ownership === 'rejected' && (
@@ -5378,11 +5504,14 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                                                 const hasPendingDocuments = documentStatuses.business_formation === 'pending' ||
                                                                                                                     documentStatuses.business_ownership === 'pending'
                                                                                                                 // Don't show if documents are submitted and pending (waiting screen should show instead)
-                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments) {
+                                                                                                                // UNLESS admin requested refill - then always show
+                                                                                                                const hasRequestedFields = requestedFields && requestedFields.length > 0
+                                                                                                                if (businessDocumentsSubmitted && hasPendingDocuments && !hasRejectedDocuments && !hasRequestedFields) {
                                                                                                                     return false
                                                                                                                 }
                                                                                                                 // Show if no rejected documents OR if fields are requested
-                                                                                                                return !hasRejectedDocuments ||
+                                                                                                                // Always show if admin requested refill (hasRequestedFields)
+                                                                                                                return hasRequestedFields || !hasRejectedDocuments ||
                                                                                                                     (shouldShowField('entity_type') || shouldShowField('business_description') || shouldShowField('business_industry') || shouldShowField('primary_website'))
                                                                                                             })() && (
                                                                                                                     <>
@@ -6109,20 +6238,23 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         )
                                     ) : null}
 
-                                    {/* Activity - Always show at bottom when on main view */}
-                                    {actionView === 'main' && (
+                                    {/* Activity - Only show when wallet is created */}
+                                    {actionView === 'main' && (hasWallet || walletAddress) && (
                                         <div>
                                             {isLoadingActivities && activities.length === 0 ? (
-                                                <ActivitySkeleton />
-                                            ) : (
-                                                <ActivityList
-                                                    activities={activities}
-                                                    isLoading={isLoadingActivities}
-                                                    hasMore={hasMoreActivities}
-                                                    isLoadingMore={isLoadingMore}
-                                                    onScroll={handleActivityScroll}
-                                                />
-                                            )}
+                                            <ActivitySkeleton />
+                                        ) : (
+                                            <ActivityList
+                                                activities={activities}
+                                                isLoading={isLoadingActivities}
+                                                hasMore={hasMoreActivities}
+                                                isLoadingMore={isLoadingMore}
+                                                onScroll={() => {}}
+                                                onSeeMore={handleSeeMore}
+                                                showSeeMore={activities.length >= 10}
+                                                onActivityClick={handleActivityClick}
+                                            />
+                                    )}
                                         </div>
                                     )}
                                 </motion.div>
@@ -6155,4 +6287,5 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         </AnimatePresence>
     )
 }
+
 

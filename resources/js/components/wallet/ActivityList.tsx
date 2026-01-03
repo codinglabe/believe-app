@@ -9,6 +9,9 @@ interface ActivityListProps {
     hasMore: boolean
     isLoadingMore: boolean
     onScroll: (e: React.UIEvent<HTMLDivElement>) => void
+    onSeeMore?: () => void
+    showSeeMore?: boolean
+    onActivityClick?: (activity: ActivityType) => void
 }
 
 export function ActivityList({
@@ -16,7 +19,10 @@ export function ActivityList({
     isLoading,
     hasMore,
     isLoadingMore,
-    onScroll
+    onScroll,
+    onSeeMore,
+    showSeeMore = false,
+    onActivityClick
 }: ActivityListProps) {
     if (isLoading) {
         return (
@@ -55,7 +61,10 @@ export function ActivityList({
                             key={activity.id}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                            onClick={() => onActivityClick?.(activity)}
+                            className={`w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors ${
+                                onActivityClick ? 'cursor-pointer' : ''
+                            }`}
                         >
                             <div className="flex items-center gap-3 flex-1 min-w-0 w-full sm:w-auto">
                                 <div className={`p-2 rounded-lg flex-shrink-0 ${
@@ -124,6 +133,17 @@ export function ActivityList({
             {isLoadingMore && (
                 <div className="text-center py-4">
                     <RefreshCw className="h-5 w-5 text-muted-foreground mx-auto animate-spin" />
+                </div>
+            )}
+            
+            {showSeeMore && onSeeMore && (
+                <div className="text-center pt-4">
+                    <button
+                        onClick={onSeeMore}
+                        className="text-sm text-primary hover:text-primary/80 font-medium cursor-pointer"
+                    >
+                        See More
+                    </button>
                 </div>
             )}
         </div>

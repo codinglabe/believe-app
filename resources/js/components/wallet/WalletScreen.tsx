@@ -1,4 +1,4 @@
-import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Building2, CreditCard } from 'lucide-react'
+import { RefreshCw, Plus, ArrowUpRight, ArrowDownLeft, ArrowRightLeft, Building2, CreditCard, Menu } from 'lucide-react'
 import { ActionView } from './types'
 import { formatCurrency } from './utils'
 
@@ -68,7 +68,8 @@ export function WalletScreen({
                     </div>
                     <span className="text-xs font-medium">Receive</span>
                 </button>
-                <button
+                {/* Swap button - commented out */}
+                {/* <button
                     onClick={() => onActionViewChange('swap')}
                     className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
                 >
@@ -76,42 +77,18 @@ export function WalletScreen({
                         <ArrowRightLeft className="h-4 w-4 text-white" />
                     </div>
                     <span className="text-xs font-medium">Swap</span>
+                </button> */}
+                <button
+                    onClick={() => onActionViewChange('services_menu')}
+                    className="flex flex-col items-center justify-center p-3 rounded-lg hover:bg-muted transition-colors group"
+                >
+                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full mb-2 group-hover:scale-110 transition-transform">
+                        <Menu className="h-4 w-4 text-white" />
+                    </div>
+                    <span className="text-xs font-medium">More</span>
                 </button>
             </div>
 
-            {/* Bank Accounts Button */}
-            <button
-                onClick={() => onActionViewChange('external_accounts')}
-                className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted transition-colors group"
-            >
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg group-hover:scale-110 transition-transform">
-                        <Building2 className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="text-left">
-                        <p className="text-sm font-medium">Bank Accounts</p>
-                        <p className="text-xs text-muted-foreground">Manage linked accounts</p>
-                    </div>
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-            </button>
-
-            {/* Virtual Card Button */}
-            <button
-                onClick={() => onActionViewChange('virtual_card')}
-                className="w-full flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted transition-colors group"
-            >
-                <div className="flex items-center gap-3">
-                    <div className="p-2 bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg group-hover:scale-110 transition-transform">
-                        <CreditCard className="h-4 w-4 text-white" />
-                    </div>
-                    <div className="text-left">
-                        <p className="text-sm font-medium">Virtual Card</p>
-                        <p className="text-xs text-muted-foreground">View card details</p>
-                    </div>
-                </div>
-                <ArrowUpRight className="h-4 w-4 text-muted-foreground group-hover:text-foreground transition-colors" />
-            </button>
 
         </div>
     )

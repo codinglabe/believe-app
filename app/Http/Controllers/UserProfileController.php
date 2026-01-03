@@ -437,19 +437,24 @@ class UserProfileController extends Controller
     {
         $user = $request->user();
 
-        // Get wallet status
-        $walletConnected = !empty($user->wallet_access_token);
-        $walletExpired = $walletConnected && $user->wallet_token_expires_at && $user->wallet_token_expires_at->isPast();
+        // Get wallet status - check if user has wallet subscription instead of wallet_access_token
+        // For regular users, check subscription; for org users, always connected
+        $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
+        $walletConnected = $isOrgUser || ($user->current_plan_id !== null);
+        $walletExpired = false; // Subscription-based, not token-based
 
-        // Fetch actual wallet balance from WalletController
-        $walletBalance = 0;
-        if ($walletConnected && !$walletExpired) {
+        // Fetch actual wallet balance
+        $walletBalance = (float) ($user->balance ?? 0);
+        try {
             $walletController = new \App\Http\Controllers\WalletController();
             $balanceResponse = $walletController->getBalance($request);
-            $balanceData = $balanceResponse->getData(true); // Get array from JSON response
-            if ($balanceData['success']) {
-                $walletBalance = $balanceData['balance'];
+            $balanceData = $balanceResponse->getData(true);
+            if (isset($balanceData['success']) && $balanceData['success']) {
+                $walletBalance = (float) ($balanceData['balance'] ?? $balanceData['local_balance'] ?? $walletBalance);
             }
+        } catch (\Exception $e) {
+            // Use local balance if API call fails
+            \Log::warning('Failed to fetch wallet balance in billing page', ['error' => $e->getMessage()]);
         }
 
         // Get paginated transactions
@@ -459,9 +464,33 @@ class UserProfileController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        // Transform transactions to include proper data structure
+        $transactions->getCollection()->transform(function ($transaction) {
+            $meta = is_array($transaction->meta) ? $transaction->meta : (is_string($transaction->meta) ? json_decode($transaction->meta, true) : []);
+            
+            return [
+                'id' => $transaction->id,
+                'type' => $transaction->type,
+                'status' => $transaction->status,
+                'amount' => (float) $transaction->amount,
+                'fee' => (float) ($transaction->fee ?? 0),
+                'currency' => $transaction->currency ?? 'USD',
+                'payment_method' => $transaction->payment_method,
+                'transaction_id' => $transaction->transaction_id,
+                'processed_at' => $transaction->processed_at?->toIso8601String(),
+                'created_at' => $transaction->created_at->toIso8601String(),
+                'meta' => $meta,
+                // Include plan details if it's a plan purchase
+                'plan_name' => $meta['plan_name'] ?? null,
+                'plan_frequency' => $meta['plan_frequency'] ?? null,
+                'credits_added' => $meta['credits_added'] ?? null,
+                'description' => $meta['description'] ?? $transaction->description ?? null,
+            ];
+        });
+
         return Inertia::render('frontend/user-profile/billing', [
             'wallet' => [
-                'connected' => $walletConnected && !$walletExpired,
+                'connected' => $walletConnected,
                 'expired' => $walletExpired,
                 'connected_at' => $user->wallet_connected_at?->toIso8601String(),
                 'expires_at' => $user->wallet_token_expires_at?->toIso8601String(),

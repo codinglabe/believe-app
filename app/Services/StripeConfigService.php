@@ -4,7 +4,8 @@ namespace App\Services;
 
 use App\Models\PaymentMethod;
 use Illuminate\Support\Facades\Log;
-use Stripe\Stripe;
+use Illuminate\Support\Facades\Config;
+use Laravel\Cashier\Cashier;
 
 class StripeConfigService
 {
@@ -68,7 +69,7 @@ class StripeConfigService
     }
 
     /**
-     * Configure Stripe API with database credentials
+     * Configure Stripe API with database credentials using Laravel Cashier
      * 
      * @param string|null $environment Optional environment override
      * @return bool Returns true if configured, false otherwise
@@ -80,10 +81,18 @@ class StripeConfigService
 
         if ($credentials && !empty($credentials['secret_key'])) {
             try {
-                Stripe::setApiKey($credentials['secret_key']);
+                // Use Cashier's configuration system instead of direct Stripe API
+                Config::set('cashier.secret', $credentials['secret_key']);
+                Config::set('cashier.key', $credentials['publishable_key'] ?? '');
+                
+                // Override webhook secret if available
+                if (!empty($credentials['webhook_secret'])) {
+                    Config::set('cashier.webhook.secret', $credentials['webhook_secret']);
+                }
+                
                 return true;
             } catch (\Exception $e) {
-                Log::error('Failed to configure Stripe API key', [
+                Log::error('Failed to configure Stripe via Cashier', [
                     'error' => $e->getMessage(),
                 ]);
                 return false;
@@ -130,12 +139,13 @@ class StripeConfigService
             // If product ID exists, verify it's still valid
             if ($productId) {
                 try {
-                    $credentials = self::getCredentials($env);
-                    if ($credentials && !empty($credentials['secret_key'])) {
-                        \Stripe\Stripe::setApiKey($credentials['secret_key']);
-                        \Stripe\Product::retrieve($productId);
-                        return $productId;
-                    }
+                    // Configure Cashier with the correct credentials
+                    self::configureStripe($env);
+                    
+                    // Use Cashier's Stripe client
+                    $stripeClient = Cashier::stripe();
+                    $stripeClient->products->retrieve($productId);
+                    return $productId;
                 } catch (\Exception $e) {
                     // Product doesn't exist, create new one
                     Log::warning("Donation product ID {$productId} is invalid, creating new one", [
@@ -150,9 +160,12 @@ class StripeConfigService
                 return null;
             }
 
-            \Stripe\Stripe::setApiKey($credentials['secret_key']);
+            // Configure Cashier with the correct credentials
+            self::configureStripe($env);
             
-            $product = \Stripe\Product::create([
+            // Use Cashier's Stripe client
+            $stripeClient = Cashier::stripe();
+            $product = $stripeClient->products->create([
                 'name' => 'Donations',
                 'description' => 'Recurring donations to organizations',
             ]);

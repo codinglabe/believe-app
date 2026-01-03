@@ -198,7 +198,25 @@ class WalletController extends Controller
             $balance = $bridgeBalance !== null ? $bridgeBalance : (float) ($entityUser->balance ?? 0);
             
             // Check if user has active subscription
-            $hasSubscription = $entityUser->current_plan_id !== null;
+            // For regular users: check for WALLET subscription specifically
+            // For organization users: check for ANY plan subscription (they don't need wallet-specific subscription)
+            $hasSubscription = false;
+            if ($isOrgUser) {
+                // Organization users: check if they have any active plan subscription
+                $hasSubscription = $entityUser->current_plan_id !== null;
+            } else {
+                // Regular users: check if they have a WALLET subscription plan
+                if ($entityUser->current_plan_id !== null) {
+                    // Check if the plan is a wallet subscription plan
+                    // Wallet plans are created from WalletPlan and have matching stripe_price_id
+                    $plan = \App\Models\Plan::find($entityUser->current_plan_id);
+                    if ($plan) {
+                        // Check if this plan corresponds to a WalletPlan
+                        $walletPlan = \App\Models\WalletPlan::where('stripe_price_id', $plan->stripe_price_id)->first();
+                        $hasSubscription = $walletPlan !== null;
+                    }
+                }
+            }
             
             $response = [
                 'success' => true,
@@ -624,7 +642,7 @@ class WalletController extends Controller
     }
 
     /**
-     * Get wallet activity for both regular users and organizations
+     * Get wallet activity for main screen (limited to 10 activities)
      * - Regular users: donations made, transfers sent/received, deposits
      * - Organizations: donations received, transfers sent/received, deposits
      */
@@ -635,49 +653,49 @@ class WalletController extends Controller
 
             // Check if user is an organization user
             $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
-
-            // Get pagination parameters
-            $page = (int) $request->get('page', 1);
-            $perPage = (int) $request->get('per_page', 5);
+            
+            // For main screen, always limit to 10 activities
+            $page = 1;
+            $perPage = 10;
             
             $donations = collect([]);
             $transactions = collect([]);
 
             if ($isOrgUser) {
                 // For organization users: show donations received and transactions
-                $organization = $user->organization;
-                
+            $organization = $user->organization;
+            
                 if ($organization && $organization->user) {
-                    $orgUser = $organization->user;
+            $orgUser = $organization->user;
+            
+            // Get donations received by this organization
+            $donations = \App\Models\Donation::where('organization_id', $organization->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->with(['user:id,name,email'])
+                ->get()
+                ->map(function ($donation) {
+                    return [
+                        'id' => 'donation_' . $donation->id,
+                        'type' => 'donation',
+                        'amount' => (float) $donation->amount,
+                        'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
+                        'status' => $donation->status,
+                        'donor_name' => $donation->user->name ?? 'Anonymous',
+                        'donor_email' => $donation->user->email ?? null,
+                        'frequency' => $donation->frequency,
+                        'message' => $donation->message,
+                        'transaction_id' => $donation->transaction_id,
+                        'sort_date' => $donation->donation_date ?? $donation->created_at,
+                    ];
+                });
 
-                    // Get donations received by this organization
-                    $donations = \App\Models\Donation::where('organization_id', $organization->id)
-                        ->whereIn('status', ['completed', 'active'])
-                        ->with(['user:id,name,email'])
-                        ->get()
-                        ->map(function ($donation) {
-                            return [
-                                'id' => 'donation_' . $donation->id,
-                                'type' => 'donation',
-                                'amount' => (float) $donation->amount,
-                                'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
-                                'status' => $donation->status,
-                                'donor_name' => $donation->user->name ?? 'Anonymous',
-                                'donor_email' => $donation->user->email ?? null,
-                                'frequency' => $donation->frequency,
-                                'message' => $donation->message,
-                                'transaction_id' => $donation->transaction_id,
-                                'sort_date' => $donation->donation_date ?? $donation->created_at,
-                            ];
-                        });
-
-                    // Get transactions (transfers and deposits) for the organization's user
+            // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
-                    $transactions = Transaction::where('user_id', $orgUser->id)
-                        ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
+            $transactions = Transaction::where('user_id', $orgUser->id)
+                ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
-                        ->orderBy('created_at', 'desc')
-                        ->get();
+                ->orderBy('created_at', 'desc')
+                ->get();
                 }
             } else {
                 // For regular users: show donations made and transactions
@@ -718,6 +736,204 @@ class WalletController extends Controller
                 'transaction_count' => $transactions->count(),
                 'transaction_ids' => $transactions->pluck('id')->toArray(),
             ]);
+            
+            $transactions = $transactions->map(function ($transaction) {
+                    $meta = $transaction->meta ?? [];
+                    $isOutgoing = $transaction->type === 'transfer_out';
+                    $isDeposit = $transaction->type === 'deposit';
+                    
+                    if ($isDeposit) {
+                        return [
+                            'id' => 'transaction_' . $transaction->id,
+                            'type' => 'deposit',
+                            'amount' => (float) $transaction->amount,
+                            'date' => $transaction->processed_at?->toIso8601String() ?? $transaction->created_at->toIso8601String(),
+                            'status' => $transaction->status,
+                            'donor_name' => $meta['deposited_by_name'] ?? $meta['organization_name'] ?? 'System',
+                            'donor_email' => null,
+                            'frequency' => 'one-time',
+                            'message' => 'Deposit to wallet',
+                            'transaction_id' => $transaction->transaction_id,
+                            'sort_date' => $transaction->processed_at ?? $transaction->created_at,
+                            'is_outgoing' => false,
+                            'recipient_type' => null,
+                        ];
+                    }
+                    
+                    // For received transfers, get sender name from various possible meta fields
+                    $senderName = 'Unknown';
+                    if ($isOutgoing) {
+                        $senderName = $meta['recipient_name'] ?? 'Unknown';
+                    } else {
+                        // Check multiple possible fields for sender name
+                        // Bridge transfers use 'sender_name', regular transfers use 'sender_organization_name'
+                        if (isset($meta['sender_organization_name'])) {
+                            $senderName = $meta['sender_organization_name'];
+                        } elseif (isset($meta['sender_name'])) {
+                            $senderName = $meta['sender_name'];
+                        } elseif (isset($meta['sender_type']) && $meta['sender_type'] === 'organization' && isset($meta['sender_id'])) {
+                            // Fallback: fetch organization name from database
+                            $senderOrg = \App\Models\Organization::find($meta['sender_id']);
+                            if ($senderOrg) {
+                                $senderName = $senderOrg->name;
+                            }
+                        }
+                    }
+                    
+                    // Build message based on status
+                    $statusMessage = '';
+                    if ($transaction->status === 'pending') {
+                        $statusMessage = $isOutgoing ? ' (Processing...)' : ' (Pending...)';
+                    } elseif ($transaction->status === 'failed') {
+                        $statusMessage = ' (Failed)';
+                    } elseif ($transaction->status === 'cancelled') {
+                        $statusMessage = ' (Cancelled)';
+                    }
+                    
+                    return [
+                        'id' => 'transaction_' . $transaction->id,
+                        'type' => $isOutgoing ? 'transfer_sent' : 'transfer_received',
+                        'amount' => (float) $transaction->amount,
+                        'date' => $transaction->processed_at?->toIso8601String() ?? $transaction->created_at->toIso8601String(),
+                        'status' => $transaction->status,
+                        'donor_name' => $senderName,
+                        'donor_email' => null,
+                        'frequency' => 'one-time',
+                        'message' => ($isOutgoing 
+                            ? 'Sent to ' . ($meta['recipient_type'] === 'user' ? 'user' : 'organization')
+                            : 'Received from ' . $senderName) . $statusMessage,
+                        'transaction_id' => $transaction->transaction_id,
+                        'sort_date' => $transaction->processed_at ?? $transaction->created_at,
+                        'is_outgoing' => $isOutgoing,
+                        'recipient_type' => $meta['recipient_type'] ?? null,
+                    ];
+                });
+
+            // Combine and sort by date (newest first)
+            $allActivities = $donations->concat($transactions)
+                ->sortByDesc('sort_date')
+                ->values();
+
+            $total = $allActivities->count();
+            $paginated = $allActivities->slice(($page - 1) * $perPage, $perPage)->values();
+            
+            // Remove sort_date from final output
+            $activities = $paginated->map(function ($activity) {
+                unset($activity['sort_date']);
+                return $activity;
+            });
+
+            $hasMore = ($page * $perPage) < $total;
+
+            return response()->json([
+                'success' => true,
+                'activities' => $activities,
+                'has_more' => $hasMore,
+                'current_page' => $page,
+                'total' => $total,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Wallet activity fetch error: ' . $e->getMessage(), [
+                'user_id' => Auth::id(),
+                'error' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'An error occurred while fetching wallet activity.',
+            ], 500);
+        }
+    }
+
+    /**
+     * Get all wallet activity with pagination for full activity screen
+     * - Regular users: donations made, transfers sent/received, deposits
+     * - Organizations: donations received, transfers sent/received, deposits
+     */
+    public function getAllActivity(Request $request)
+    {
+        try {
+            $user = Auth::user();
+
+            // Check if user is an organization user
+            $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
+            
+            // Get pagination parameters
+            $page = (int) $request->get('page', 1);
+            $perPage = (int) $request->get('per_page', 20);
+            
+            $donations = collect([]);
+            $transactions = collect([]);
+
+            if ($isOrgUser) {
+                // For organization users: show donations received and transactions
+            $organization = $user->organization;
+            
+                if ($organization && $organization->user) {
+            $orgUser = $organization->user;
+            
+            // Get donations received by this organization
+            $donations = \App\Models\Donation::where('organization_id', $organization->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->with(['user:id,name,email'])
+                ->get()
+                ->map(function ($donation) {
+                    return [
+                        'id' => 'donation_' . $donation->id,
+                        'type' => 'donation',
+                        'amount' => (float) $donation->amount,
+                        'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
+                        'status' => $donation->status,
+                        'donor_name' => $donation->user->name ?? 'Anonymous',
+                        'donor_email' => $donation->user->email ?? null,
+                        'frequency' => $donation->frequency,
+                        'message' => $donation->message,
+                        'transaction_id' => $donation->transaction_id,
+                        'sort_date' => $donation->donation_date ?? $donation->created_at,
+                    ];
+                });
+
+            // Get transactions (transfers and deposits) for the organization's user
+                    // Include both completed and pending transfers so users can see transfers in progress
+            $transactions = Transaction::where('user_id', $orgUser->id)
+                ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
+                        ->whereIn('status', ['completed', 'pending'])
+                ->orderBy('created_at', 'desc')
+                ->get();
+                }
+            } else {
+                // For regular users: show donations made and transactions
+                // Get donations made by this user
+                $donations = \App\Models\Donation::where('user_id', $user->id)
+                    ->whereIn('status', ['completed', 'active'])
+                    ->with(['organization:id,name'])
+                    ->get()
+                    ->map(function ($donation) {
+                        return [
+                            'id' => 'donation_' . $donation->id,
+                            'type' => 'donation',
+                            'amount' => (float) $donation->amount,
+                            'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
+                            'status' => $donation->status,
+                            'donor_name' => $donation->organization->name ?? 'Organization',
+                            'donor_email' => null,
+                            'frequency' => $donation->frequency,
+                            'message' => $donation->message,
+                            'transaction_id' => $donation->transaction_id,
+                            'sort_date' => $donation->donation_date ?? $donation->created_at,
+                            'is_outgoing' => true, // User made the donation
+                        ];
+                    });
+
+                // Get transactions (transfers and deposits) for the regular user
+                // Include both completed and pending transfers so users can see transfers in progress
+                $transactions = Transaction::where('user_id', $user->id)
+                    ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
+                    ->whereIn('status', ['completed', 'pending'])
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+            }
             
             $transactions = $transactions->map(function ($transaction) {
                     $meta = $transaction->meta ?? [];

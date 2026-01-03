@@ -7,10 +7,7 @@ use App\Models\Plan;
 use App\Models\User;
 use App\Services\StripeConfigService;
 use Illuminate\Support\Facades\Log;
-use Stripe\Customer;
-use Stripe\Price;
-use Stripe\Product;
-use Stripe\Stripe;
+use Laravel\Cashier\Cashier;
 use Stripe\Exception\ApiErrorException;
 
 class StripeEnvironmentSyncService
@@ -36,7 +33,10 @@ class StripeEnvironmentSyncService
                 throw new \Exception("No Stripe credentials found for {$environment} environment");
             }
 
-            Stripe::setApiKey($credentials['secret_key']);
+            // Configure Cashier with the correct credentials
+            if (!StripeConfigService::configureStripe($environment)) {
+                throw new \Exception("Failed to configure Stripe for {$environment} environment");
+            }
 
             // Sync Users
             $results['users'] = self::syncUsers($environment);
@@ -171,8 +171,11 @@ class StripeEnvironmentSyncService
     private static function createOrFetchCustomer(string $email, ?string $name, int $userId, string $userType): ?string
     {
         try {
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
             // Try to find existing customer by email
-            $customers = Customer::all([
+            $customers = $stripe->customers->all([
                 'email' => $email,
                 'limit' => 1,
             ]);
@@ -189,7 +192,7 @@ class StripeEnvironmentSyncService
             }
 
             // Create new customer
-            $customer = Customer::create([
+            $customer = $stripe->customers->create([
                 'email' => $email,
                 'name' => $name,
                 'metadata' => [
@@ -221,10 +224,13 @@ class StripeEnvironmentSyncService
     private static function createOrFetchProduct(Plan $plan): ?string
     {
         try {
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
             // If plan already has a product ID, try to retrieve it
             if ($plan->stripe_product_id) {
                 try {
-                    $product = Product::retrieve($plan->stripe_product_id);
+                    $product = $stripe->products->retrieve($plan->stripe_product_id);
                     // If product exists and name matches, use it
                     if ($product && $product->name === $plan->name) {
                         return $product->id;
@@ -235,7 +241,7 @@ class StripeEnvironmentSyncService
             }
 
             // Search for existing product by name
-            $products = Product::all([
+            $products = $stripe->products->all([
                 'limit' => 100,
             ]);
 
@@ -246,7 +252,7 @@ class StripeEnvironmentSyncService
             }
 
             // Create new product
-            $product = Product::create([
+            $product = $stripe->products->create([
                 'name' => $plan->name,
                 'description' => $plan->description ?? '',
             ]);
@@ -274,10 +280,13 @@ class StripeEnvironmentSyncService
     private static function createOrFetchPrice(Plan $plan, string $productId): ?string
     {
         try {
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
             // If plan already has a price ID, try to retrieve it
             if ($plan->stripe_price_id) {
                 try {
-                    $price = Price::retrieve($plan->stripe_price_id);
+                    $price = $stripe->prices->retrieve($plan->stripe_price_id);
                     // If price exists and matches the plan, use it
                     if ($price && $price->product === $productId) {
                         // Check if amount matches
@@ -293,7 +302,7 @@ class StripeEnvironmentSyncService
 
             // Search for existing price by product and amount
             $planAmount = (int)($plan->price * 100);
-            $prices = Price::all([
+            $prices = $stripe->prices->all([
                 'product' => $productId,
                 'limit' => 100,
             ]);
@@ -330,7 +339,7 @@ class StripeEnvironmentSyncService
                 ];
             }
 
-            $price = Price::create($priceData);
+            $price = $stripe->prices->create($priceData);
 
             Log::info("Created new Stripe price for plan", [
                 'price_id' => $price->id,
@@ -401,9 +410,12 @@ class StripeEnvironmentSyncService
                 ? $stripe->test_donation_product_id
                 : $stripe->live_donation_product_id;
 
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
             if ($existingProductId) {
                 try {
-                    $product = Product::retrieve($existingProductId);
+                    $product = $stripe->products->retrieve($existingProductId);
                     if ($product && $product->name === 'Donations') {
                         return $product->id;
                     }
@@ -413,7 +425,7 @@ class StripeEnvironmentSyncService
             }
 
             // Search for existing product by name
-            $products = Product::all([
+            $products = $stripe->products->all([
                 'limit' => 100,
             ]);
 
@@ -424,7 +436,7 @@ class StripeEnvironmentSyncService
             }
 
             // Create new donation product
-            $product = Product::create([
+            $product = $stripe->products->create([
                 'name' => 'Donations',
                 'description' => 'Recurring donations to organizations',
             ]);

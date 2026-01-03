@@ -33,26 +33,26 @@ export function ReceiveMoney({
     copied,
     onCopyAddress
 }: ReceiveMoneyProps) {
-    const [activeTab, setActiveTab] = useState<'fiat' | 'crypto'>('fiat')
+    // Only show crypto, no tabs needed
     const [liquidationAddresses, setLiquidationAddresses] = useState<LiquidationAddress[]>([])
     const [selectedCrypto, setSelectedCrypto] = useState<{chain: string, currency: string} | null>(null)
     const [cryptoQrCodeUrl, setCryptoQrCodeUrl] = useState<string | null>(null)
     const [loadingCrypto, setLoadingCrypto] = useState(false)
     const [cryptoCopied, setCryptoCopied] = useState(false)
 
-    // Fetch liquidation addresses when crypto tab is active
+    // Fetch liquidation addresses on mount
     useEffect(() => {
-        if (activeTab === 'crypto' && liquidationAddresses.length === 0) {
+        if (liquidationAddresses.length === 0) {
             fetchLiquidationAddresses()
         }
-    }, [activeTab])
+    }, [])
 
     // Fetch QR code when crypto is selected
     useEffect(() => {
-        if (activeTab === 'crypto' && selectedCrypto) {
+        if (selectedCrypto) {
             fetchCryptoQrCode()
         }
-    }, [selectedCrypto, activeTab])
+    }, [selectedCrypto])
 
     const fetchLiquidationAddresses = async () => {
         try {
@@ -214,126 +214,50 @@ export function ReceiveMoney({
         )
     }
 
-    // Render tabs and content
-    const renderTabs = () => (
-        <div className="flex gap-2 mb-4 border-b border-border">
-            <button
-                onClick={() => setActiveTab('fiat')}
-                className={`flex-1 py-2 px-4 text-sm font-medium transition-colors ${
-                    activeTab === 'fiat'
-                        ? 'text-primary border-b-2 border-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-                <div className="flex items-center justify-center gap-2">
-                    <Building2 className="h-4 w-4" />
-                    <span>Bank Transfer</span>
-                </div>
-            </button>
-            <button
-                onClick={() => setActiveTab('crypto')}
-                className={`flex-1 py-2 px-4 text-sm font-medium transition-colors ${
-                    activeTab === 'crypto'
-                        ? 'text-primary border-b-2 border-primary'
-                        : 'text-muted-foreground hover:text-foreground'
-                }`}
-            >
-                <div className="flex items-center justify-center gap-2">
-                    <Coins className="h-4 w-4" />
-                    <span>Crypto</span>
-                </div>
-            </button>
-        </div>
-    )
-
-    const renderFiatTab = () => {
-        if (depositInstructions) {
-            const hasWire = depositInstructions.payment_rail === 'wire' || 
-                           (depositInstructions.payment_rails && depositInstructions.payment_rails.includes('wire'))
-            const paymentMethod = hasWire ? 'Wire Transfer' : 'ACH'
-
-            return (
-                <div className="space-y-4">
-                    {/* QR Code Section */}
-                    <div className="text-center py-4">
-                        <p className="text-sm font-semibold text-foreground mb-4">Scan to receive funds</p>
-                        {qrCodeUrl ? (
-                            <div className="inline-block p-4 bg-white dark:bg-background rounded-xl border-2 border-border mb-4">
-                                <img 
-                                    src={qrCodeUrl} 
-                                    alt="Deposit QR Code" 
-                                    className="w-64 h-64"
-                                    onError={(e) => {
-                                        console.error('Failed to load QR code:', qrCodeUrl)
-                                        e.currentTarget.style.display = 'none'
-                                    }}
-                                    onLoad={() => {
-                                        console.log('QR code loaded successfully')
-                                    }}
-                                />
-                            </div>
-                        ) : (
-                            <div className="inline-block p-4 bg-muted rounded-xl mb-4">
-                                <QrCode className="h-16 w-16 text-muted-foreground" />
-                            </div>
-                        )}
-                        <p className="text-xs text-muted-foreground mb-4">
-                            Share the QR code to receive funds via {paymentMethod}
-                        </p>
-                    </div>
-
-                    {/* Instructions Card */}
-                    <div className="p-3.5 bg-blue-50/50 dark:bg-blue-900/20 border border-blue-200/50 dark:border-blue-800/50 rounded-lg">
-                        <div className="flex items-start gap-2.5">
-                            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 mt-0.5 flex-shrink-0" />
-                            <div className="flex-1 min-w-0">
-                                <p className="text-xs font-semibold text-blue-900 dark:text-blue-100 mb-1.5">
-                                    How to Receive Funds
-                                </p>
-                                <p className="text-xs leading-relaxed text-blue-700 dark:text-blue-300">
-                                    Share the QR code above to receive funds. Funds will be deposited to your wallet once the transfer is processed. {hasWire ? 'Wire transfers are typically processed same-day or within 1 business day.' : 'ACH transfers typically take 1-3 business days to process.'}
-                                </p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )
-        }
-
-        return (
-            <div className="text-center py-8">
-                <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No bank transfer information available</p>
-            </div>
-        )
-    }
-
     const renderCryptoTab = () => {
         const selectedAddress = getSelectedLiquidationAddress()
 
         return (
             <div className="space-y-4">
                 {/* Crypto Selection */}
-                <div className="space-y-3">
-                    <label className="text-sm font-medium text-foreground">Select Crypto</label>
-                    <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Select Crypto</label>
+                    <div className="grid grid-cols-3 gap-2">
                         {[
-                            { chain: 'solana', currency: 'usdc', label: 'USDC (Solana)' },
-                            { chain: 'ethereum', currency: 'usdc', label: 'USDC (Ethereum)' },
-                            { chain: 'ethereum', currency: 'usdt', label: 'USDT (Ethereum)' },
-                        ].map((option) => (
-                            <button
-                                key={`${option.chain}-${option.currency}`}
-                                onClick={() => setSelectedCrypto({ chain: option.chain, currency: option.currency })}
-                                className={`p-3 rounded-lg border-2 transition-colors ${
-                                    selectedCrypto?.chain === option.chain && selectedCrypto?.currency === option.currency
-                                        ? 'border-primary bg-primary/10'
-                                        : 'border-border hover:border-primary/50'
-                                }`}
-                            >
-                                <p className="text-sm font-medium">{option.label}</p>
-                            </button>
-                        ))}
+                            { chain: 'solana', currency: 'usdc', label: 'USDC', sublabel: 'Solana', color: 'purple' },
+                            { chain: 'ethereum', currency: 'usdc', label: 'USDC', sublabel: 'Ethereum', color: 'blue' },
+                            { chain: 'ethereum', currency: 'usdt', label: 'USDT', sublabel: 'Ethereum', color: 'green' },
+                        ].map((option) => {
+                            const isSelected = selectedCrypto?.chain === option.chain && selectedCrypto?.currency === option.currency
+                            const colorClasses = {
+                                purple: isSelected 
+                                    ? 'border-purple-500 bg-purple-500/10' 
+                                    : 'border-border hover:border-purple-400/50 hover:bg-purple-500/5',
+                                blue: isSelected 
+                                    ? 'border-blue-500 bg-blue-500/10' 
+                                    : 'border-border hover:border-blue-400/50 hover:bg-blue-500/5',
+                                green: isSelected 
+                                    ? 'border-green-500 bg-green-500/10' 
+                                    : 'border-border hover:border-green-400/50 hover:bg-green-500/5',
+                            }
+                            
+                            return (
+                                <button
+                                    key={`${option.chain}-${option.currency}`}
+                                    onClick={() => setSelectedCrypto({ chain: option.chain, currency: option.currency })}
+                                    className={`p-2.5 rounded-lg border transition-colors ${colorClasses[option.color as keyof typeof colorClasses]}`}
+                                >
+                                    <div className="text-center">
+                                        <p className="text-xs font-semibold text-foreground">
+                                            {option.label}
+                                        </p>
+                                        <p className="text-[10px] text-muted-foreground mt-0.5">
+                                            {option.sublabel}
+                                        </p>
+                                    </div>
+                                </button>
+                            )
+                        })}
                     </div>
                 </div>
 
@@ -431,68 +355,7 @@ export function ReceiveMoney({
             transition={{ duration: 0.3 }}
             className="p-4 space-y-4"
         >
-            {renderTabs()}
-            {activeTab === 'fiat' ? renderFiatTab() : renderCryptoTab()}
-        </motion.div>
-    )
-
-    if (walletAddress) {
-        return (
-            <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -20 }}
-                transition={{ duration: 0.3 }}
-                className="p-4 space-y-4"
-            >
-                <div className="text-center py-4">
-                    <div className="inline-block p-4 bg-muted rounded-xl mb-4">
-                        <QrCode className="h-16 w-16 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm text-muted-foreground mb-4">Share this address to receive funds</p>
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between p-3 bg-muted rounded-lg border border-border">
-                            <code className="text-sm font-mono flex-1 text-left break-all">
-                                {walletAddress}
-                            </code>
-                            <button
-                                onClick={onCopyAddress}
-                                className="p-2 rounded-lg hover:bg-background transition-colors flex-shrink-0 ml-2"
-                                title="Copy address"
-                            >
-                                {copied ? (
-                                    <Check className="h-4 w-4 text-green-500" />
-                                ) : (
-                                    <Copy className="h-4 w-4 text-muted-foreground" />
-                                )}
-                            </button>
-                        </div>
-                        <Button
-                            onClick={onCopyAddress}
-                            variant="outline"
-                            className="w-full"
-                        >
-                            <Copy className="h-4 w-4 mr-2" />
-                            Copy Address
-                        </Button>
-                    </div>
-                </div>
-            </motion.div>
-        )
-    }
-
-    return (
-        <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            exit={{ opacity: 0, x: -20 }}
-            transition={{ duration: 0.3 }}
-            className="p-4 space-y-4"
-        >
-            <div className="text-center py-8">
-                <AlertCircle className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                <p className="text-sm text-muted-foreground">No receive information available</p>
-            </div>
+            {renderCryptoTab()}
         </motion.div>
     )
 }

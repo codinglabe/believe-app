@@ -11,8 +11,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
-use Stripe\Stripe;
-use Stripe\Exception\ApiErrorException;
 
 class DonationController extends Controller
 {
@@ -294,6 +292,8 @@ class DonationController extends Controller
             $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
             $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
 
+            $user = $donation->user;
+            
             // Check payment status from Stripe session
             if ($session->payment_status === 'paid') {
                 if ($session->payment_intent) {
@@ -320,6 +320,76 @@ class DonationController extends Controller
                     // Award impact points for completed donation
                     $this->impactScoreService->awardDonationPoints($donation);
                 } elseif ($session->subscription) {
+                    // Recurring payment - store subscription using Laravel Cashier
+                    try {
+                        // Ensure user has stripe_id (required for Cashier)
+                        if (!$user->stripe_id && $session->customer) {
+                            $user->stripe_id = $session->customer;
+                            $user->save();
+                        }
+
+                        // Use Cashier's subscription relationship to find or create
+                        $subscription = $user->subscriptions()->firstOrNew([
+                            'stripe_id' => $session->subscription,
+                        ]);
+
+                        // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
+                        if (!$subscription->exists) {
+                            $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                            
+                            // Get the price ID from the subscription
+                            $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
+                            
+                            // Use Cashier's subscription model properties
+                            $subscription->type = 'donation';
+                            $subscription->stripe_id = $stripeSubscription->id;
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->stripe_price = $priceId;
+                            $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            
+                            $subscription->save();
+
+                            Log::info('Donation subscription stored using Cashier', [
+                                'user_id' => $user->id,
+                                'subscription_id' => $subscription->id,
+                                'stripe_subscription_id' => $session->subscription,
+                                'donation_id' => $donation->id,
+                            ]);
+                        } else {
+                            // Update existing subscription using Cashier's subscription model
+                            $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                            $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->stripe_price = $priceId;
+                            $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            $subscription->save();
+
+                            Log::info('Donation subscription updated using Cashier', [
+                                'user_id' => $user->id,
+                                'subscription_id' => $subscription->id,
+                                'stripe_subscription_id' => $session->subscription,
+                                'donation_id' => $donation->id,
+                            ]);
+                        }
+                    } catch (\Exception $e) {
+                        Log::error('Failed to store donation subscription using Cashier', [
+                            'error' => $e->getMessage(),
+                            'user_id' => $user->id,
+                            'session_id' => $sessionId,
+                            'stripe_subscription_id' => $session->subscription ?? null,
+                            'donation_id' => $donation->id,
+                        ]);
+                        // Continue even if subscription storage fails - webhook will handle it
+                    }
+
                     // Recurring payment
                     $donation->update([
                         'transaction_id' => $session->subscription,

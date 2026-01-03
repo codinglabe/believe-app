@@ -218,17 +218,15 @@ export default function Navbar() {
     const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
 
     if (isRegularUser) {
-      // For regular users, check subscription status
-      // If hasSubscription is null, we're still loading - allow access for now
-      // If hasSubscription is false, show subscription modal
-      if (hasSubscription === false) {
-        // No subscription, show subscription modal
+      // For regular users, check subscription status from existing state
+      // If subscription status is null (not loaded), false, or not explicitly true, show subscription modal
+      if (hasSubscription === null || hasSubscription === false || hasSubscription !== true) {
         setShowSubscriptionModal(true)
-        return
+        return // Don't show wallet popup, show subscription modal instead
       }
-      // If hasSubscription is true or null, proceed to wallet popup
+      // Only if hasSubscription is explicitly true, proceed to wallet popup
     }
-
+    
     // Has subscription or is organization user, show wallet popup
     setShowWalletPopup(true)
   }
@@ -345,23 +343,37 @@ export default function Navbar() {
                     className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
                   >
                     <Wallet className="h-4 w-4 text-green-600" />
-                    <span className="font-medium text-sm">
-                      {showBalance ? `$${userBalance.toLocaleString('en-US', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      })}` : "••••••"}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        setShowBalance(!showBalance)
-                      }}
-                      className="p-0 h-auto"
-                    >
-                      {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                    </Button>
+                    {/* Only show balance and eye icon if user has subscription (or is organization user) */}
+                    {(() => {
+                      const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                      const shouldShowBalance = !isRegularUser || hasSubscription === true
+                      
+                      if (!shouldShowBalance) {
+                        return null // Only show icon, no balance
+                      }
+                      
+                      return (
+                        <>
+                          <span className="font-medium text-sm">
+                            {showBalance ? `$${userBalance.toLocaleString('en-US', {
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2
+                            })}` : "••••••"}
+                          </span>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              setShowBalance(!showBalance)
+                            }}
+                            className="p-0 h-auto"
+                          >
+                            {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                          </Button>
+                        </>
+                      )
+                    })()}
                   </Button>
                 )}
 
@@ -589,25 +601,37 @@ export default function Navbar() {
                               <Wallet className="h-4 w-4 text-green-600" />
                               <span className="font-medium text-sm">Wallet Balance</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                              <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                                {showBalance ? `$${userBalance.toLocaleString('en-US', {
-                                  minimumFractionDigits: 2,
-                                  maximumFractionDigits: 2
-                                })}` : "••••••"}
-                              </span>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  setShowBalance(!showBalance)
-                                }}
-                                className="p-1"
-                              >
-                                {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                              </Button>
-                            </div>
+                            {/* Only show balance and eye icon if user has subscription (or is organization user) */}
+                            {(() => {
+                              const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
+                              const shouldShowBalance = !isRegularUser || hasSubscription === true
+                              
+                              if (!shouldShowBalance) {
+                                return null // Only show icon and text, no balance
+                              }
+                              
+                              return (
+                                <div className="flex items-center gap-2">
+                                  <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                                    {showBalance ? `$${userBalance.toLocaleString('en-US', {
+                                      minimumFractionDigits: 2,
+                                      maximumFractionDigits: 2
+                                    })}` : "••••••"}
+                                  </span>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      setShowBalance(!showBalance)
+                                    }}
+                                    className="p-1"
+                                  >
+                                    {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                  </Button>
+                                </div>
+                              )
+                            })()}
                           </div>
                         </Button>
                       )}
@@ -728,7 +752,17 @@ export default function Navbar() {
       {showSubscriptionModal && (
         <UserWalletSubscriptionModal
           isOpen={showSubscriptionModal}
-          onClose={() => setShowSubscriptionModal(false)}
+          onClose={() => {
+            setShowSubscriptionModal(false)
+            // Refresh balance to get updated subscription status
+            fetchBalance()
+            // After a short delay, if subscription is now true, open wallet popup
+            setTimeout(() => {
+              if (hasSubscription === true) {
+                setShowWalletPopup(true)
+              }
+            }, 1000)
+          }}
         />
       )}
     </nav>

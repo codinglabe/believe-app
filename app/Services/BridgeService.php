@@ -24,7 +24,7 @@ class BridgeService
     {
         // Load credentials from database first, then fall back to env
         $bridgeConfig = PaymentMethod::getConfig('bridge');
-
+        
         // Determine environment
         if ($environment !== null) {
             $this->environment = trim(strtolower($environment));
@@ -143,7 +143,7 @@ class BridgeService
             if ($useIdempotency || strtoupper($method) === 'POST') {
                 $idempotencyKey = $customIdempotencyKey ?? Str::uuid()->toString();
                 $headers['Idempotency-Key'] = $idempotencyKey;
-
+                
                 Log::debug('Bridge API Request with Idempotency Key', [
                     'method' => $method,
                     'url' => $url,
@@ -173,12 +173,12 @@ class BridgeService
                 }
             } else {
                 // For POST, PUT, DELETE, etc., send data as JSON body
-                $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
+            $response = Http::withHeaders($headers)->{strtolower($method)}($url, $data);
             }
 
             $statusCode = $response->status();
             $body = $response->json();
-
+            
             // Log response for debugging (especially for GET requests)
             if (strtoupper($method) === 'GET' && strpos($endpoint, 'virtual_accounts') !== false) {
                 Log::info('Bridge API Virtual Accounts Response', [
@@ -306,21 +306,21 @@ class BridgeService
     public function getTosLink(string $email, ?string $redirectUri = null): array
     {
         $data = ['email' => $email];
-
+        
         Log::info('Bridge Service: getTosLink called', [
             'email' => $email,
             'redirect_uri' => $redirectUri ?? 'null (not provided)',
             'request_data' => $data,
         ]);
-
+        
         $result = $this->makeRequest('POST', '/customers/tos_links', $data);
-
+        
         // Append redirect_uri if provided
         if ($result['success'] && $redirectUri && isset($result['data']['url'])) {
             $urlBefore = $result['data']['url'];
             $separator = strpos($result['data']['url'], '?') !== false ? '&' : '?';
             $result['data']['url'] .= $separator . 'redirect_uri=' . urlencode($redirectUri);
-
+            
             Log::info('Bridge Service: Added redirect_uri to TOS URL', [
                 'url_before' => $urlBefore,
                 'url_after' => $result['data']['url'],
@@ -334,7 +334,7 @@ class BridgeService
                 'tos_url' => $result['data']['url'] ?? 'N/A',
             ]);
         }
-
+        
         return $result;
     }
 
@@ -372,14 +372,14 @@ class BridgeService
         // But we can also try a dedicated endpoint if Bridge has one
         // For now, we'll get them from the customer data
         $customerResult = $this->getCustomer($customerId);
-
+        
         if ($customerResult['success'] && isset($customerResult['data']['associated_persons'])) {
             return [
                 'success' => true,
                 'data' => $customerResult['data']['associated_persons'],
             ];
         }
-
+        
         return [
             'success' => true,
             'data' => [],
@@ -428,18 +428,18 @@ class BridgeService
     {
         // POST /v0/kyc_links with full_name, email, type
         $result = $this->makeRequest('POST', '/kyc_links', $data);
-
+        
         // Handle duplicate_record error - Bridge returns existing KYC link in the response
         if (!$result['success'] && isset($result['response']['code']) && $result['response']['code'] === 'duplicate_record') {
             $existingLink = $result['response']['existing_kyc_link'] ?? null;
-
+            
             if ($existingLink) {
                 Log::info('Bridge KYC Link already exists, using existing link', [
                     'kyc_link_id' => $existingLink['id'] ?? null,
                     'customer_id' => $existingLink['customer_id'] ?? null,
                     'email' => $existingLink['email'] ?? null,
                 ]);
-
+                
                 // Return as success with the existing link data
                 return [
                     'success' => true,
@@ -448,7 +448,7 @@ class BridgeService
                 ];
             }
         }
-
+        
         return $result;
     }
 
@@ -465,27 +465,36 @@ class BridgeService
      * GET /customers/{customerID}/kyc_link
      * 
      * @param string $customerId The Bridge customer ID
+     * @param string|null $endorsement Optional endorsement type (e.g., 'cards')
      * @return array
      */
-    public function getCustomerKycLink(string $customerId): array
+    public function getCustomerKycLink(string $customerId, ?string $endorsement = null): array
     {
         try {
+            $url = "{$this->baseUrl}/customers/{$customerId}/kyc_link";
+            
+            // Add endorsement parameter if provided
+            if ($endorsement) {
+                $url .= "?endorsement={$endorsement}";
+            }
+            
             $response = Http::withHeaders([
                 'Api-Key' => $this->apiKey,
-            ])->get("{$this->baseUrl}/customers/{$customerId}/kyc_link");
-
+                'Accept' => 'application/json',
+            ])->get($url);
+            
             if ($response->successful()) {
                 return ['success' => true, 'data' => $response->json()];
             }
-
+            
             Log::warning('Failed to get customer KYC link', [
                 'customer_id' => $customerId,
                 'status' => $response->status(),
                 'response' => $response->body(),
             ]);
-
+            
             return [
-                'success' => false,
+                'success' => false, 
                 'error' => $response->body(),
                 'status' => $response->status(),
             ];
@@ -509,7 +518,7 @@ class BridgeService
         try {
             // Parse the KYC link URL to extract parameters
             // Example: https://bridge.withpersona.com/verify?fields[developer_id]=xxx&fields[email_address]=xxx&fields[iqt_token]=xxx&environment-id=xxx&inquiry-template-id=xxx&reference-id=xxx
-
+            
             $parsedUrl = parse_url($kycLinkUrl);
             if (!$parsedUrl || !isset($parsedUrl['query'])) {
                 Log::warning('Invalid KYC link URL format', ['url' => $kycLinkUrl]);
@@ -517,7 +526,7 @@ class BridgeService
             }
 
             parse_str($parsedUrl['query'], $params);
-
+            
             // Extract required parameters
             $iqtToken = $params['fields']['iqt_token'] ?? null;
             $environmentId = $params['environment-id'] ?? null;
@@ -534,7 +543,7 @@ class BridgeService
 
             // Determine environment (sandbox or production)
             $environment = $this->baseUrl === 'https://api.sandbox.bridge.xyz/v0' ? 'sandbox' : 'production';
-
+            
             // Build widget URL
             $widgetUrl = 'https://bridge.withpersona.com/widget?' . http_build_query([
                 'environment' => $environment,
@@ -674,18 +683,18 @@ class BridgeService
             if (!isset($destination['payment_rail']) || $destination['payment_rail'] === 'bridge_wallet') {
                 $destination['payment_rail'] = 'ethereum';
             }
-
+            
             // Auto-generate Ethereum address for sandbox if not provided
             // Per Bridge.xyz docs: Sandbox uses dummy data with auto-generated addresses
             if (!isset($destination['address'])) {
                 $destination['address'] = $this->generateEthereumAddress();
             }
-
+            
             // Set currency to usdc for Ethereum in sandbox (per Bridge.xyz docs)
             if (!isset($destination['currency']) || $destination['currency'] === 'usdc') {
                 $destination['currency'] = 'usdc';
             }
-
+            
             // Remove bridge_wallet_id in sandbox (not used with Ethereum payment rail)
             unset($destination['bridge_wallet_id']);
         } else {
@@ -1053,8 +1062,8 @@ class BridgeService
 
             // In sandbox, virtual accounts are on ethereum chain
             // For ethereum payment rail (crypto-to-crypto): MUST use 'from_address' and 'to_address' (NOT bridge_wallet_id or address)
-            $transferData = [
-                'amount' => number_format($amount, 2, '.', ''),
+        $transferData = [
+            'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $toCustomerId,
                 'source' => [
                     'payment_rail' => 'ethereum', // Virtual accounts use ethereum chain
@@ -1072,17 +1081,17 @@ class BridgeService
             $transferData = [
                 'amount' => number_format($amount, 2, '.', ''),
                 'on_behalf_of' => $toCustomerId,
-                'source' => [
-                    'payment_rail' => 'bridge_wallet',
-                    'currency' => $bridgeCurrency,
-                    'bridge_wallet_id' => $fromWalletId,
-                ],
-                'destination' => [
-                    'payment_rail' => 'bridge_wallet',
-                    'currency' => $bridgeCurrency,
-                    'bridge_wallet_id' => $toWalletId,
-                ],
-            ];
+            'source' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $fromWalletId,
+            ],
+            'destination' => [
+                'payment_rail' => 'bridge_wallet',
+                'currency' => $bridgeCurrency,
+                'bridge_wallet_id' => $toWalletId,
+            ],
+        ];
         }
 
         return $this->createTransfer($transferData);
@@ -1202,9 +1211,9 @@ class BridgeService
 
         // In sandbox mode: Use dummy data per Bridge.xyz documentation
         // Sandbox uses Ethereum payment rail with auto-generated address and USDC currency
-        $destination = [
+            $destination = [
             'currency' => 'usdc',
-        ];
+            ];
 
         if ($this->isSandbox()) {
             $destination['payment_rail'] = 'ethereum';
@@ -1407,7 +1416,7 @@ class BridgeService
         try {
             // First, try to find existing webhook
             $webhooksResult = $this->getWebhooks();
-
+            
             if ($webhooksResult['success'] && isset($webhooksResult['data']['data'])) {
                 foreach ($webhooksResult['data']['data'] as $webhook) {
                     if (isset($webhook['url']) && $webhook['url'] === $webhookUrl) {
@@ -1424,7 +1433,7 @@ class BridgeService
                                 $webhookUrl,
                                 $webhook['event_categories'] ?? []
                             );
-
+                            
                             if ($activateResult['success']) {
                                 return $activateResult;
                             }

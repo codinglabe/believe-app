@@ -7,6 +7,7 @@ use App\Models\Organization;
 use App\Models\BridgeIntegration;
 use App\Models\BridgeWallet;
 use App\Models\BridgeKycKybSubmission;
+use App\Models\ControlPerson;
 use App\Models\VerificationDocument;
 use App\Models\AdminSetting;
 use App\Models\WalletFee;
@@ -3350,18 +3351,43 @@ class BridgeWalletController extends Controller
                         // Try to get/create KYC link for control person (only in direct mode)
                         $controlPersonEmail = $metadata['control_person_email'] ?? null;
                         $kycLink = null;
-                        if ($directBridgeSubmission && $controlPersonEmail) {
+                        if ($directBridgeSubmission && $controlPersonEmail && !empty($integration->bridge_customer_id)) {
                             try {
-                                $kycLinkResult = $this->bridgeService->createKYCLink([
-                                    'email' => $controlPersonEmail,
-                                    'full_name' => ($metadata['control_person_first_name'] ?? '') . ' ' . ($metadata['control_person_last_name'] ?? ''),
-                                    'type' => 'individual',
-                                ]);
-                                if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
-                                    $kycLink = $kycLinkResult['data']['url'];
+                                // First, try to get the business customer's KYC link (if control person email matches business email)
+                                $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+                                $businessEmail = $customerResult['success'] ? ($customerResult['data']['email'] ?? null) : null;
+                                
+                                // If control person email matches business email, use business customer's KYC link
+                                if ($businessEmail && strtolower($controlPersonEmail) === strtolower($businessEmail)) {
+                                    $customerKycLinkResult = $this->bridgeService->getCustomerKycLink($integration->bridge_customer_id);
+                                    if ($customerKycLinkResult['success'] && isset($customerKycLinkResult['data']['url'])) {
+                                        $kycLink = $customerKycLinkResult['data']['url'];
+                                        Log::info('Using business customer KYC link for control person (same email)', [
+                                            'customer_id' => $integration->bridge_customer_id,
+                                            'email' => $controlPersonEmail,
+                                        ]);
+                                    }
+                                } else {
+                                    // Control person has different email - try to create individual KYC link
+                                    // BridgeService will handle duplicate_record error and return existing link if found
+                                    $kycLinkResult = $this->bridgeService->createKYCLink([
+                                        'email' => $controlPersonEmail,
+                                        'full_name' => ($metadata['control_person_first_name'] ?? '') . ' ' . ($metadata['control_person_last_name'] ?? ''),
+                                        'type' => 'individual',
+                                    ]);
+                                    if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
+                                        $kycLink = $kycLinkResult['data']['url'];
+                                        // Check if this is an existing link (from duplicate_record handling)
+                                        if (isset($kycLinkResult['is_existing']) && $kycLinkResult['is_existing']) {
+                                            Log::info('Using existing KYC link for control person', [
+                                                'email' => $controlPersonEmail,
+                                                'kyc_link_id' => $kycLinkResult['data']['id'] ?? null,
+                                            ]);
+                                        }
+                                    }
                                 }
                             } catch (\Exception $e) {
-                                Log::warning('Failed to create Control Person KYC link', ['error' => $e->getMessage()]);
+                                Log::warning('Failed to get/create Control Person KYC link', ['error' => $e->getMessage()]);
                             }
                         }
                         
@@ -4155,17 +4181,43 @@ class BridgeWalletController extends Controller
                     
                     // Create KYC link for control person
                     try {
-                        $kycLinkResult = $this->bridgeService->createKYCLink([
-                            'email' => $validated['control_person']['email'],
-                            'full_name' => $validated['control_person']['first_name'] . ' ' . $validated['control_person']['last_name'],
-                            'type' => 'individual',
-                        ]);
+                        // First, check if control person email matches business customer email
+                        $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+                        $businessEmail = $customerResult['success'] ? ($customerResult['data']['email'] ?? null) : null;
+                        $controlPersonEmail = $validated['control_person']['email'];
                         
-                        if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
-                            $controlPersonKycLink = $kycLinkResult['data']['url'];
+                        // If control person email matches business email, use business customer's KYC link
+                        if ($businessEmail && strtolower($controlPersonEmail) === strtolower($businessEmail)) {
+                            $customerKycLinkResult = $this->bridgeService->getCustomerKycLink($integration->bridge_customer_id);
+                            if ($customerKycLinkResult['success'] && isset($customerKycLinkResult['data']['url'])) {
+                                $controlPersonKycLink = $customerKycLinkResult['data']['url'];
+                                Log::info('Using business customer KYC link for control person (same email)', [
+                                    'customer_id' => $integration->bridge_customer_id,
+                                    'email' => $controlPersonEmail,
+                                ]);
+                            }
+                        } else {
+                            // Control person has different email - try to create individual KYC link
+                            // BridgeService will handle duplicate_record error and return existing link if found
+                            $kycLinkResult = $this->bridgeService->createKYCLink([
+                                'email' => $controlPersonEmail,
+                                'full_name' => $validated['control_person']['first_name'] . ' ' . $validated['control_person']['last_name'],
+                                'type' => 'individual',
+                            ]);
+                            
+                            if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
+                                $controlPersonKycLink = $kycLinkResult['data']['url'];
+                                // Check if this is an existing link (from duplicate_record handling)
+                                if (isset($kycLinkResult['is_existing']) && $kycLinkResult['is_existing']) {
+                                    Log::info('Using existing KYC link for control person', [
+                                        'email' => $controlPersonEmail,
+                                        'kyc_link_id' => $kycLinkResult['data']['id'] ?? null,
+                                    ]);
+                                }
+                            }
                         }
                     } catch (\Exception $e) {
-                        Log::warning('Failed to create Control Person KYC link', ['error' => $e->getMessage()]);
+                        Log::warning('Failed to get/create Control Person KYC link', ['error' => $e->getMessage()]);
                     }
                     
                     // Update metadata with step progress (for both new and existing customers)
@@ -4310,9 +4362,8 @@ class BridgeWalletController extends Controller
                 } elseif ($step === 'business_documents' && $isOrgUser) {
                     $newMetadata['kyb_step'] = 'kyc_verification'; // Move to next step
                     $newMetadata['business_documents_submitted'] = true;
-                    if ($kycLink) {
-                        $newMetadata['control_person_kyc_link'] = $kycLink;
-                    }
+                    // control_person_kyc_link is already set in metadata during business_documents submission
+                    // No need to set it again here
                 }
                 
                 // Only set signed_agreement_id if we have one and it's not already set
@@ -4432,20 +4483,51 @@ class BridgeWalletController extends Controller
             $fullName = trim($controlPersonFirstName . ' ' . $controlPersonLastName);
 
             // Create KYC link for control person
-            $kycLinkResult = $this->bridgeService->createKYCLink([
-                'email' => $controlPersonEmail,
-                'full_name' => $fullName ?: 'Control Person',
-                'type' => 'individual',
-            ]);
+            // First, check if control person email matches business customer email
+            $customerResult = $this->bridgeService->getCustomer($integration->bridge_customer_id);
+            $businessEmail = $customerResult['success'] ? ($customerResult['data']['email'] ?? null) : null;
+            
+            // If control person email matches business email, use business customer's KYC link
+            if ($businessEmail && strtolower($controlPersonEmail) === strtolower($businessEmail)) {
+                $customerKycLinkResult = $this->bridgeService->getCustomerKycLink($integration->bridge_customer_id);
+                if ($customerKycLinkResult['success'] && isset($customerKycLinkResult['data']['url'])) {
+                    $kycLink = $customerKycLinkResult['data']['url'];
+                    Log::info('Using business customer KYC link for control person (same email)', [
+                        'customer_id' => $integration->bridge_customer_id,
+                        'email' => $controlPersonEmail,
+                    ]);
+                } else {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to get business customer KYC link',
+                    ], 500);
+                }
+            } else {
+                // Control person has different email - try to create individual KYC link
+                // BridgeService will handle duplicate_record error and return existing link if found
+                $kycLinkResult = $this->bridgeService->createKYCLink([
+                    'email' => $controlPersonEmail,
+                    'full_name' => $fullName ?: 'Control Person',
+                    'type' => 'individual',
+                ]);
 
-            if (!$kycLinkResult['success']) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $kycLinkResult['error'] ?? 'Failed to create KYC link',
-                ], 500);
+                if (!$kycLinkResult['success']) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $kycLinkResult['error'] ?? 'Failed to create KYC link',
+                    ], 500);
+                }
+
+                $kycLink = $kycLinkResult['data']['url'] ?? null;
+                
+                // Check if this is an existing link (from duplicate_record handling)
+                if (isset($kycLinkResult['is_existing']) && $kycLinkResult['is_existing']) {
+                    Log::info('Using existing KYC link for control person', [
+                        'email' => $controlPersonEmail,
+                        'kyc_link_id' => $kycLinkResult['data']['id'] ?? null,
+                    ]);
+                }
             }
-
-            $kycLink = $kycLinkResult['data']['url'] ?? null;
 
             // Convert to iframe URL
             $iframeUrl = null;
@@ -5444,13 +5526,27 @@ class BridgeWalletController extends Controller
                 ];
             } else {
                 // Individual (KYC) - store in submission_data
+                // Remove base64 image data from identifying_information before storing
+                $identifyingInfo = $customerData['identifying_information'] ?? [];
+                $identifyingInfoWithoutImages = [];
+                if (is_array($identifyingInfo)) {
+                    foreach ($identifyingInfo as $info) {
+                        $infoCopy = $info;
+                        // Remove base64 image data
+                        unset($infoCopy['image_front']);
+                        unset($infoCopy['image_back']);
+                        $identifyingInfoWithoutImages[] = $infoCopy;
+                    }
+                }
+                
                 $submissionData['submission_data'] = [
                     'first_name' => $validated['first_name'] ?? null,
                     'last_name' => $validated['last_name'] ?? null,
                     'email' => $validated['email'] ?? null,
                     'birth_date' => $validated['birth_date'] ?? null,
+                    'signed_agreement_id' => $customerData['signed_agreement_id'] ?? null, // Required for Terms of Service acceptance
                     'residential_address' => $customerData['residential_address'] ?? null,
-                    'identifying_information' => $customerData['identifying_information'] ?? null,
+                    'identifying_information' => $identifyingInfoWithoutImages, // Store without base64 images
                 ];
             }
 
@@ -6014,14 +6110,45 @@ class BridgeWalletController extends Controller
             // So $result['data'] is the Bridge API response body: { count: X, data: [...] }
             $bridgeResponse = $result['data'] ?? [];
             
+            // Log the raw response for debugging
+            Log::info('Bridge external accounts raw response', [
+                'integration_id' => $integration->id,
+                'customer_id' => $integration->bridge_customer_id,
+                'bridge_response_structure' => [
+                    'is_array' => is_array($bridgeResponse),
+                    'has_data_key' => isset($bridgeResponse['data']),
+                    'has_count_key' => isset($bridgeResponse['count']),
+                    'keys' => is_array($bridgeResponse) ? array_keys($bridgeResponse) : [],
+                ],
+                'bridge_response' => $bridgeResponse,
+            ]);
+            
             // Extract the actual accounts array from the nested structure
             // Bridge returns: { count: 1, data: [...] }
             $accounts = $bridgeResponse['data'] ?? [];
             
+            // If accounts is not an array, try to get it from the root level
+            if (!is_array($accounts) && is_array($bridgeResponse) && isset($bridgeResponse[0])) {
+                // Sometimes Bridge might return the array directly
+                $accounts = $bridgeResponse;
+            }
+            
             // Ensure accounts is an array
             if (!is_array($accounts)) {
+                Log::warning('External accounts is not an array', [
+                    'integration_id' => $integration->id,
+                    'accounts_type' => gettype($accounts),
+                    'accounts_value' => $accounts,
+                ]);
                 $accounts = [];
             }
+            
+            Log::info('Bridge external accounts processed', [
+                'integration_id' => $integration->id,
+                'customer_id' => $integration->bridge_customer_id,
+                'accounts_count' => count($accounts),
+                'accounts' => $accounts,
+            ]);
             
             // Map Bridge API response to frontend format
             $mappedAccounts = [];
@@ -6050,12 +6177,24 @@ class BridgeWalletController extends Controller
                 $mappedAccounts[] = $mappedAccount;
             }
 
+            Log::info('Bridge external accounts mapped', [
+                'integration_id' => $integration->id,
+                'customer_id' => $integration->bridge_customer_id,
+                'mapped_count' => count($mappedAccounts),
+                'mapped_accounts' => $mappedAccounts,
+            ]);
+
             return response()->json([
                 'success' => true,
                 'data' => $mappedAccounts,
             ]);
         } catch (\Exception $e) {
-            Log::error('Get external accounts error', ['error' => $e->getMessage()]);
+            Log::error('Get external accounts error', [
+                'integration_id' => $integration->id ?? null,
+                'customer_id' => $integration->bridge_customer_id ?? null,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to get external accounts: ' . $e->getMessage(),
@@ -6866,12 +7005,387 @@ class BridgeWalletController extends Controller
                 }
             }
 
+            // Check if customer has date of birth (required for card accounts)
+            // This follows the same logic as BridgeWebhookController::createWalletVirtualAccountAndCardAccount
+            $customerResult = $this->bridgeService->getCustomer($customerId);
+            $hasDateOfBirth = false;
+            $hasRequiredFields = false;
+            
+            if ($customerResult['success'] && isset($customerResult['data'])) {
+                $customerData = $customerResult['data'];
+                
+                // For business customers, check associated persons (control person)
+                if ($customerData['type'] === 'business') {
+                    // Business customer must have approved "cards" endorsement
+                    // Check if business customer has cards endorsement
+                    $hasCardsEndorsement = false;
+                    $cardsEndorsementStatus = null;
+                    
+                    $endorsements = $customerData['endorsements'] ?? [];
+                    foreach ($endorsements as $endorsement) {
+                        $endorsementName = strtolower($endorsement['name'] ?? '');
+                        if ($endorsementName === 'cards') {
+                            $endorsementStatus = strtolower($endorsement['status'] ?? '');
+                            if ($endorsementStatus === 'approved') {
+                                $hasCardsEndorsement = true;
+                            }
+                            $cardsEndorsementStatus = $endorsementStatus;
+                            break;
+                        }
+                    }
+                    
+                    if (!$hasCardsEndorsement) {
+                        $isSandbox = $this->bridgeService->isSandbox();
+                        $cardsEndorsementExists = $cardsEndorsementStatus !== null;
+                        
+                        if ($isSandbox) {
+                            // In sandbox, we can skip the endorsement check and try to create the card account directly
+                            // Bridge allows direct card account creation in sandbox without endorsement
+                            Log::info('Skipping cards endorsement check in sandbox - will attempt direct card account creation', [
+                                'integration_id' => $integration->id,
+                                'customer_id' => $customerId,
+                            ]);
+                            // Continue with card account creation
+                        } else {
+                            // In production, use the KYC Link endpoint with endorsement parameter
+                            if (!$cardsEndorsementExists) {
+                                Log::info('Getting KYC link for cards endorsement in production', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                ]);
+                                
+                                $kycLinkResult = $this->bridgeService->getCustomerKycLink($customerId, 'cards');
+                                
+                                if ($kycLinkResult['success'] && isset($kycLinkResult['data']['url'])) {
+                                    $kycLinkUrl = $kycLinkResult['data']['url'];
+                                    
+                                    Log::info('Cards endorsement KYC link retrieved successfully', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'kyc_link_url' => $kycLinkUrl,
+                                    ]);
+                                    
+                                    return response()->json([
+                                        'success' => false,
+                                        'message' => 'You must complete the cards endorsement verification. Please confirm your KYC information to proceed with card account creation.',
+                                        'error_code' => 'cards_endorsement_kyc_required',
+                                        'kyc_link_url' => $kycLinkUrl,
+                                        'requires_kyc_confirmation' => true,
+                                    ], 400);
+                                } else {
+                                    Log::warning('Failed to get KYC link for cards endorsement', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'error' => $kycLinkResult['error'] ?? 'Unknown error',
+                                    ]);
+                                    
+                                    return response()->json([
+                                        'success' => false,
+                                        'message' => 'Failed to get cards endorsement verification link. Please try again or contact support.',
+                                        'error_code' => 'cards_endorsement_kyc_link_failed',
+                                    ], 500);
+                                }
+                            } else {
+                                // Endorsement exists but not approved
+                                $message = 'The cards endorsement is pending approval. Card account will be created once approved. Please check your Bridge dashboard for endorsement status.';
+                                
+                                return response()->json([
+                                    'success' => false,
+                                    'message' => $message,
+                                    'error_code' => 'cards_endorsement_not_approved',
+                                    'endorsement_status' => $cardsEndorsementStatus,
+                                    'requires_approval' => true,
+                                ], 400);
+                            }
+                        }
+                    }
+                    
+                    // Check if associated person (control person) has all required fields
+                    // Bridge requires: first_name, last_name, and birth_date for card account creation
+                    $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
+                    $hasAssociatedPersonWithDob = false;
+                    
+                    if ($associatedPersonsResult['success'] && !empty($associatedPersonsResult['data'])) {
+                        foreach ($associatedPersonsResult['data'] as $associatedPerson) {
+                            // Check if associated person has all required fields for card account
+                            $hasBirthDate = !empty($associatedPerson['birth_date'] ?? null);
+                            $hasFirstName = !empty($associatedPerson['first_name'] ?? null);
+                            $hasLastName = !empty($associatedPerson['last_name'] ?? null);
+                            
+                            if ($hasBirthDate && $hasFirstName && $hasLastName) {
+                                $hasAssociatedPersonWithDob = true;
+                                $hasRequiredFields = true;
+                                $hasDateOfBirth = true;
+                                break;
+                            } elseif ($hasBirthDate) {
+                                // Has birth_date but missing first_name or last_name
+                                $hasAssociatedPersonWithDob = true;
+                                $hasDateOfBirth = true; // We have birth_date, but missing other fields
+                            }
+                        }
+                    }
+                    
+                    // If no associated person with all required fields, try to get from database and update Bridge
+                    if (!$hasRequiredFields) {
+                        // Get control person from database
+                        $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                            ->where('bridge_customer_id', $customerId)
+                            ->first();
+                        
+                        $birthDate = null;
+                        $associatedPersonId = null;
+                        $controlPerson = null;
+                        
+                        if ($submission) {
+                            // First try to get control person from control_persons table
+                            $controlPerson = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)
+                                ->whereNotNull('bridge_associated_person_id')
+                                ->first();
+                            
+                            if ($controlPerson) {
+                                $associatedPersonId = $controlPerson->bridge_associated_person_id;
+                                
+                                // Get birth_date if available
+                                if ($controlPerson->birth_date) {
+                                    $birthDate = $controlPerson->birth_date->format('Y-m-d');
+                                } else {
+                                    // Fallback: Try to get birth_date from submission_data
+                                    if ($submission->submission_data) {
+                                        $submissionData = is_array($submission->submission_data)
+                                            ? $submission->submission_data
+                                            : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+                                        
+                                        // Check for control_person data in submission_data
+                                        $controlPersonData = $submissionData['control_person'] ?? null;
+                                        if ($controlPersonData && isset($controlPersonData['birth_date'])) {
+                                            $birthDateRaw = $controlPersonData['birth_date'];
+                                            
+                                            if (is_string($birthDateRaw)) {
+                                                try {
+                                                    $birthDateObj = new \DateTime($birthDateRaw);
+                                                    $birthDate = $birthDateObj->format('Y-m-d');
+                                                } catch (\Exception $e) {
+                                                    Log::warning('Failed to parse birth_date from submission_data for control person', [
+                                                        'integration_id' => $integration->id,
+                                                        'customer_id' => $customerId,
+                                                        'birth_date_string' => $birthDateRaw,
+                                                        'error' => $e->getMessage(),
+                                                    ]);
+                                                }
+                                            } elseif ($birthDateRaw instanceof \DateTime || $birthDateRaw instanceof \Carbon\Carbon) {
+                                                $birthDate = $birthDateRaw->format('Y-m-d');
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // If we have associated_person_id and control person, update Bridge with all required fields
+                                if ($associatedPersonId && $controlPerson) {
+                                    // Prepare update data with all required fields for card account creation
+                                    $updateData = [];
+                                    
+                                    // Add birth_date if available (required)
+                                    if ($birthDate) {
+                                        $updateData['birth_date'] = $birthDate;
+                                    }
+                                    
+                                    // Add first_name if available (required for card accounts)
+                                    if ($controlPerson->first_name) {
+                                        $updateData['first_name'] = $controlPerson->first_name;
+                                    }
+                                    
+                                    // Add last_name if available (required for card accounts)
+                                    if ($controlPerson->last_name) {
+                                        $updateData['last_name'] = $controlPerson->last_name;
+                                    }
+                                    
+                                    // Only update if we have at least birth_date (minimum requirement)
+                                    if (!empty($updateData) && isset($updateData['birth_date'])) {
+                                        // Update associated person in Bridge with all available required fields
+                                        $updateResult = $this->bridgeService->updateAssociatedPerson(
+                                            $customerId,
+                                            $associatedPersonId,
+                                            $updateData
+                                        );
+                                        
+                                        if ($updateResult['success']) {
+                                            $hasAssociatedPersonWithDob = true;
+                                            
+                                            // Check if we now have all required fields
+                                            if (isset($updateData['first_name']) && isset($updateData['last_name'])) {
+                                                $hasRequiredFields = true;
+                                                $hasDateOfBirth = true;
+                                            } else {
+                                                $hasDateOfBirth = true; // We have birth_date, but missing other fields
+                                            }
+                                            
+                                            Log::info('Updated associated person with required fields for card account', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'associated_person_id' => $associatedPersonId,
+                                                'birth_date' => $updateData['birth_date'] ?? null,
+                                                'first_name' => $updateData['first_name'] ?? null,
+                                                'last_name' => $updateData['last_name'] ?? null,
+                                                'has_all_required_fields' => $hasRequiredFields,
+                                            ]);
+                                        } else {
+                                            Log::warning('Failed to update associated person with required fields', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'associated_person_id' => $associatedPersonId,
+                                                'update_data' => $updateData,
+                                                'error' => $updateResult['error'] ?? 'Unknown error',
+                                            ]);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Final check: Ensure we have all required fields before creating card account
+                    if (!$hasRequiredFields) {
+                        $message = 'The control person must have first name, last name, and date of birth on file to create a card account. Please complete the KYC verification process first.';
+                        
+                        return response()->json([
+                            'success' => false,
+                            'message' => $message,
+                            'error_code' => 'missing_required_fields',
+                            'requires_kyc' => true,
+                        ], 400);
+                    }
+                } else {
+                    // For individual customers, check customer's birth_date
+                    $hasDateOfBirth = !empty($customerData['birth_date']);
+                    
+                    // If Bridge doesn't have birth_date, try to get it from submission_data and update Bridge
+                    if (!$hasDateOfBirth) {
+                        // Get submission from bridge_kyc_kyb_submissions table
+                        $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                            ->where('bridge_customer_id', $customerId)
+                            ->where('type', 'kyc') // Individual customer
+                            ->first();
+                        
+                        $birthDate = null;
+                        
+                        if ($submission && $submission->submission_data) {
+                            $submissionData = is_array($submission->submission_data)
+                                ? $submission->submission_data
+                                : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+                            
+                            // Get birth_date from submission_data
+                            $birthDate = $submissionData['birth_date'] ?? null;
+                            
+                            // If birth_date is a string, try to parse it
+                            if ($birthDate && is_string($birthDate)) {
+                                try {
+                                    $birthDateObj = new \DateTime($birthDate);
+                                    $birthDate = $birthDateObj->format('Y-m-d');
+                                } catch (\Exception $e) {
+                                    Log::warning('Failed to parse birth_date from submission_data', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'birth_date_string' => $birthDate,
+                                        'error' => $e->getMessage(),
+                                    ]);
+                                    $birthDate = null;
+                                }
+                            } elseif ($birthDate instanceof \DateTime || $birthDate instanceof \Carbon\Carbon) {
+                                $birthDate = $birthDate->format('Y-m-d');
+                            }
+                        }
+                        
+                        if ($birthDate) {
+                            // Update Bridge customer with birth_date from submission_data
+                            $updateResult = $this->bridgeService->updateCustomer($customerId, [
+                                'birth_date' => $birthDate,
+                            ]);
+                            
+                            if ($updateResult['success']) {
+                                $hasDateOfBirth = true;
+                                Log::info('Updated individual customer with birth_date from submission_data', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'submission_id' => $submission->id ?? null,
+                                    'birth_date' => $birthDate,
+                                ]);
+                            } else {
+                                Log::warning('Failed to update individual customer with birth_date from submission_data', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'submission_id' => $submission->id ?? null,
+                                    'birth_date' => $birthDate,
+                                    'error' => $updateResult['error'] ?? 'Unknown error',
+                                ]);
+                            }
+                        }
+                    }
+                    
+                    if (!$hasDateOfBirth) {
+                        $message = 'You must have a date of birth on file to create a card account. Please complete the KYC verification process first.';
+                        
+                        return response()->json([
+                            'success' => false,
+                            'message' => $message,
+                            'error_code' => 'missing_date_of_birth',
+                            'requires_kyc' => true,
+                        ], 400);
+                    }
+                }
+            } else {
+                // Cannot get customer from Bridge
+                $message = $isOrgUser 
+                    ? 'The control person must have a date of birth on file to create a card account. Please complete the KYC verification process first.'
+                    : 'You must have a date of birth on file to create a card account. Please complete the KYC verification process first.';
+                
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'error_code' => 'missing_date_of_birth',
+                    'requires_kyc' => true,
+                ], 400);
+            }
+            
             // Create new card account
-            $cardAccountResult = $this->bridgeService->createCardAccount($customerId, []);
+            // Bridge API requires chain and currency parameters
+            // Determine chain and currency based on environment (sandbox vs production)
+            $isSandbox = $this->bridgeService->isSandbox();
+            $chain = $isSandbox ? 'ethereum' : 'solana';
+            $currency = 'usdc'; // USDC is used for both sandbox and production
+            
+            $cardAccountData = [
+                'chain' => $chain,
+                'currency' => $currency,
+            ];
+            
+            Log::info('Creating card account', [
+                'customer_id' => $customerId,
+                'environment' => $isSandbox ? 'sandbox' : 'production',
+                'chain' => $chain,
+                'currency' => $currency,
+                'has_date_of_birth' => $hasDateOfBirth,
+            ]);
+            
+            $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardAccountData);
 
             if (!$cardAccountResult['success']) {
                 $errorMessage = $cardAccountResult['error'] ?? 'Failed to create card account';
                 $errorCode = $cardAccountResult['response']['code'] ?? '';
+                
+                // Check if error is about missing date of birth
+                if ($errorCode === 'bad_request' && stripos($errorMessage, 'date of birth') !== false) {
+                    $customerType = $isOrgUser ? 'business' : 'individual';
+                    $message = $customerType === 'business' 
+                        ? 'The control person must have a date of birth on file to create a card account. Please complete the KYC verification process first.'
+                        : 'You must have a date of birth on file to create a card account. Please complete the KYC verification process first.';
+                    
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'error_code' => 'missing_date_of_birth',
+                        'requires_kyc' => true,
+                    ], 400);
+                }
                 
                 // Check if error is about cards not being enabled
                 if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
@@ -6892,7 +7406,25 @@ class BridgeWalletController extends Controller
                             ]);
                             
                             // Retry creating card account after enabling
-                            $cardAccountResult = $this->bridgeService->createCardAccount($customerId, []);
+                            // Bridge API requires chain and currency parameters
+                            // Determine chain and currency based on environment (sandbox vs production)
+                            $isSandbox = $this->bridgeService->isSandbox();
+                            $chain = $isSandbox ? 'ethereum' : 'solana';
+                            $currency = 'usdc'; // USDC is used for both sandbox and production
+                            
+                            $cardAccountData = [
+                                'chain' => $chain,
+                                'currency' => $currency,
+                            ];
+                            
+                            Log::info('Retrying card account creation after enabling cards product', [
+                                'customer_id' => $customerId,
+                                'environment' => $isSandbox ? 'sandbox' : 'production',
+                                'chain' => $chain,
+                                'currency' => $currency,
+                            ]);
+                            
+                            $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardAccountData);
                             
                             if ($cardAccountResult['success']) {
                                 return response()->json([

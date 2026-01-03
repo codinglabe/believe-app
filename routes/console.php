@@ -50,3 +50,9 @@ Schedule::command('irs:check-form990-filings --notify')
     ->at('03:00')
     ->withoutOverlapping()
     ->runInBackground();
+
+// Clean Laravel log file when it exceeds 10MB (runs hourly)
+Schedule::command('log:clean --size=10')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();

@@ -342,14 +342,12 @@ class PlansController extends Controller
                 ->where('status', 'completed')
                 ->exists();
 
-            // Create Stripe checkout session for wallet subscription
+            // Use Laravel Cashier's Stripe client for wallet subscription with mixed line items
+            // (subscription + one-time KYC fee)
             $stripe = Cashier::stripe();
 
             $lineItems = [
-                [
-                    'price' => $walletPlan->stripe_price_id,
-                    'quantity' => 1,
-                ]
+                ['price' => $walletPlan->stripe_price_id, 'quantity' => 1]
             ];
 
             // Add one-time KYC fee if user hasn't paid it yet
@@ -367,6 +365,7 @@ class PlansController extends Controller
                 ];
             }
 
+            // Use Cashier's Stripe client to create checkout session
             $checkoutSessionData = [
                 'payment_method_types' => ['card'],
                 'mode' => 'subscription',
@@ -396,13 +395,14 @@ class PlansController extends Controller
                 $checkoutSessionData['subscription_data']['trial_period_days'] = $walletPlan->trial_days;
             }
 
-            // Set customer or customer_email
+            // Set customer using Cashier's Stripe client
             if ($user->stripe_id) {
                 $checkoutSessionData['customer'] = $user->stripe_id;
             } else {
                 $checkoutSessionData['customer_email'] = $user->email;
             }
 
+            // Use Cashier's Stripe client to create checkout session
             $checkoutSession = $stripe->checkout->sessions->create($checkoutSessionData);
 
             Log::info('Wallet subscription checkout created', [
@@ -449,8 +449,8 @@ class PlansController extends Controller
                 ]);
             }
 
-            $stripe = Cashier::stripe();
-            $session = $stripe->checkout->sessions->retrieve($sessionId);
+            // Use Cashier's method to retrieve checkout session
+            $session = Cashier::stripe()->checkout->sessions->retrieve($sessionId);
 
             if ($session->payment_status === 'paid' || $session->payment_status === 'no_payment_required') {
                 $walletPlan = WalletPlan::findOrFail($walletPlanId);
@@ -463,13 +463,6 @@ class PlansController extends Controller
                     ->exists();
 
                 // Record KYC fee transaction if it was paid and not already recorded
-                $kycFeeAmount = 2.00;
-                $hasPaidKycFee = Transaction::where('user_id', $user->id)
-                    ->where('type', 'kyc_fee')
-                    ->where('status', 'completed')
-                    ->exists();
-
-                // Check if KYC fee was included in the payment (from metadata or line items)
                 $kycFeeIncluded = $session->metadata->kyc_fee_included ?? 'false';
                 if (!$hasPaidKycFee && $kycFeeIncluded === 'true') {
                     // Record KYC fee transaction
@@ -488,6 +481,67 @@ class PlansController extends Controller
                         ],
                         'processed_at' => now(),
                     ]);
+                }
+
+                // IMPORTANT: Store subscription in database using Laravel Cashier's built-in methods
+                // When using Checkout Sessions with mode='subscription', Stripe creates the subscription
+                // Cashier will automatically sync it via webhooks, but we sync it here for immediate access
+                if ($session->subscription) {
+                    try {
+                        // Ensure user has stripe_id (required for Cashier)
+                        if (!$user->stripe_id && $session->customer) {
+                            $user->stripe_id = $session->customer;
+                            $user->save();
+                        }
+
+                        // Use Cashier's subscription relationship to find or create
+                        $subscription = $user->subscriptions()->firstOrNew([
+                            'stripe_id' => $session->subscription,
+                        ]);
+
+                        // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
+                        if (!$subscription->exists) {
+                            $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                            
+                            // Use Cashier's subscription model properties
+                            $subscription->type = 'wallet_access';
+                            $subscription->stripe_id = $stripeSubscription->id;
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->stripe_price = $walletPlan->stripe_price_id;
+                            $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            
+                            $subscription->save();
+                        } else {
+                            // Update existing subscription using Cashier's subscription model
+                            $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->stripe_price = $walletPlan->stripe_price_id;
+                            $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            $subscription->save();
+                        }
+
+                        Log::info('Subscription synced using Cashier', [
+                            'user_id' => $user->id,
+                            'subscription_id' => $subscription->id,
+                            'stripe_subscription_id' => $session->subscription,
+                        ]);
+                    } catch (\Exception $e) {
+                        Log::error('Failed to sync subscription using Cashier', [
+                            'error' => $e->getMessage(),
+                            'user_id' => $user->id,
+                            'session_id' => $sessionId,
+                            'stripe_subscription_id' => $session->subscription ?? null,
+                        ]);
+                        // Continue even if subscription sync fails - webhook will handle it
+                    }
                 }
 
                 // Find or create a corresponding Plan record for the user's current_plan_id
@@ -517,6 +571,7 @@ class PlansController extends Controller
                     'wallet_plan_id' => $walletPlan->id,
                     'plan_id' => $plan->id,
                     'session_id' => $sessionId,
+                    'stripe_subscription_id' => $session->subscription ?? null,
                     'kyc_fee_paid' => !$hasPaidKycFee,
                 ]);
 
@@ -524,6 +579,7 @@ class PlansController extends Controller
                 $successMessage = 'Wallet subscription activated successfully! You can now access your digital wallet.';
                 return Inertia::render('Plans/Success', [
                     'successMessage' => $successMessage,
+                    'isWalletSubscription' => true,
                 ]);
             }
 
@@ -572,6 +628,71 @@ class PlansController extends Controller
 
             if ($session->payment_status !== 'paid') {
                 return redirect()->route('plans.index')->with('error', 'Payment was not completed.');
+            }
+
+            // IMPORTANT: Store subscription in database for recurring plans using Laravel Cashier's built-in methods
+            // When using Checkout Sessions with mode='subscription', Stripe creates the subscription
+            // Cashier will automatically sync it via webhooks, but we sync it here for immediate access
+            if ($plan->frequency !== 'one-time' && $session->subscription) {
+                try {
+                    $stripe = Cashier::stripe();
+                    
+                    // Ensure user has stripe_id (required for Cashier)
+                    if (!$user->stripe_id && $session->customer) {
+                        $user->stripe_id = $session->customer;
+                        $user->save();
+                    }
+
+                    // Use Cashier's subscription relationship to find or create
+                    $subscription = $user->subscriptions()->firstOrNew([
+                        'stripe_id' => $session->subscription,
+                    ]);
+
+                    // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
+                    if (!$subscription->exists) {
+                        $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                        
+                        // Use Cashier's subscription model properties
+                        $subscription->type = 'default';
+                        $subscription->stripe_id = $stripeSubscription->id;
+                        $subscription->stripe_status = $stripeSubscription->status;
+                        $subscription->stripe_price = $plan->stripe_price_id;
+                        $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                        $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                        $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                        
+                        $subscription->save();
+                    } else {
+                        // Update existing subscription using Cashier's subscription model
+                        $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
+                        $subscription->stripe_status = $stripeSubscription->status;
+                        $subscription->stripe_price = $plan->stripe_price_id;
+                        $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
+                        $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                        $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                        $subscription->save();
+                    }
+
+                    Log::info('Plan subscription synced using Cashier', [
+                        'user_id' => $user->id,
+                        'subscription_id' => $subscription->id,
+                        'stripe_subscription_id' => $session->subscription,
+                        'plan_id' => $plan->id,
+                    ]);
+                } catch (\Exception $e) {
+                    Log::error('Failed to sync plan subscription using Cashier', [
+                        'error' => $e->getMessage(),
+                        'user_id' => $user->id,
+                        'session_id' => $sessionId,
+                        'stripe_subscription_id' => $session->subscription ?? null,
+                        'plan_id' => $plan->id,
+                    ]);
+                    // Continue even if subscription sync fails - webhook will handle it
+                }
             }
 
             // Calculate total amount including Currency custom fields
@@ -727,17 +848,16 @@ class PlansController extends Controller
             $plan = Plan::find($user->current_plan_id);
             $planName = $plan ? $plan->name : 'Plan';
 
-            // Cancel Stripe subscription if exists
-            $stripe = Cashier::stripe();
+            // Cancel Stripe subscription using Laravel Cashier methods
             $subscriptionCancelled = false;
 
-            // First, try to find subscription in Laravel Cashier database
+            // Use Cashier's subscription relationship to get all subscriptions
             $localSubscriptions = $user->subscriptions()->get();
 
             foreach ($localSubscriptions as $subscription) {
                 if ($subscription->stripe_status === 'active' || $subscription->stripe_status === 'trialing') {
                     try {
-                        // Cancel immediately (no refund)
+                        // Use Cashier's cancelNow() method
                         $subscription->cancelNow();
                         $subscriptionCancelled = true;
                         Log::info('Subscription cancelled via Laravel Cashier', [
@@ -745,21 +865,21 @@ class PlansController extends Controller
                             'user_id' => $user->id,
                         ]);
                     } catch (\Exception $e) {
-                        Log::warning('Failed to cancel subscription via cancelNow', [
+                        Log::warning('Failed to cancel subscription via Cashier cancelNow', [
                             'subscription_id' => $subscription->stripe_id,
                             'error' => $e->getMessage(),
                         ]);
 
-                        // Try direct Stripe API cancellation
+                        // Fallback: Use Cashier's Stripe client
                         try {
-                            $stripe->subscriptions->cancel($subscription->stripe_id);
+                            Cashier::stripe()->subscriptions->cancel($subscription->stripe_id);
                             $subscriptionCancelled = true;
-                            Log::info('Subscription cancelled directly via Stripe API', [
+                            Log::info('Subscription cancelled via Cashier Stripe client', [
                                 'subscription_id' => $subscription->stripe_id,
                                 'user_id' => $user->id,
                             ]);
                         } catch (\Exception $stripeError) {
-                            Log::error('Failed to cancel Stripe subscription directly', [
+                            Log::error('Failed to cancel subscription via Cashier', [
                                 'subscription_id' => $subscription->stripe_id,
                                 'error' => $stripeError->getMessage(),
                             ]);
@@ -768,14 +888,14 @@ class PlansController extends Controller
                 }
             }
 
-            // If no subscription found in database, try to get it from Stripe directly
+            // If no subscription found in database, try to get it from Stripe using Cashier
             if (!$subscriptionCancelled) {
                 try {
                     $stripeCustomerId = $user->stripe_id;
 
-                    // If user doesn't have stripe_id, try to find customer by email
+                    // If user doesn't have stripe_id, try to find customer by email using Cashier
                     if (!$stripeCustomerId) {
-                        $customers = $stripe->customers->all([
+                        $customers = Cashier::stripe()->customers->all([
                             'email' => $user->email,
                             'limit' => 1,
                         ]);
@@ -787,9 +907,9 @@ class PlansController extends Controller
                         }
                     }
 
-                    // Get all active subscriptions for this customer from Stripe
+                    // Get all active subscriptions for this customer using Cashier
                     if ($stripeCustomerId) {
-                        $stripeSubscriptions = $stripe->subscriptions->all([
+                        $stripeSubscriptions = Cashier::stripe()->subscriptions->all([
                             'customer' => $stripeCustomerId,
                             'status' => 'all',
                             'limit' => 100,
@@ -799,18 +919,18 @@ class PlansController extends Controller
                             // Only cancel active or trialing subscriptions
                             if ($stripeSubscription->status === 'active' || $stripeSubscription->status === 'trialing') {
                                 try {
-                                    // Cancel immediately (no refund)
-                                    $stripe->subscriptions->cancel($stripeSubscription->id);
+                                    // Cancel immediately using Cashier's Stripe client
+                                    Cashier::stripe()->subscriptions->cancel($stripeSubscription->id);
                                     $subscriptionCancelled = true;
 
-                                    Log::info('Subscription cancelled directly from Stripe', [
+                                    Log::info('Subscription cancelled via Cashier from Stripe', [
                                         'subscription_id' => $stripeSubscription->id,
                                         'customer_id' => $stripeCustomerId,
                                         'user_id' => $user->id,
                                         'status' => $stripeSubscription->status,
                                     ]);
                                 } catch (\Exception $e) {
-                                    Log::error('Failed to cancel Stripe subscription', [
+                                    Log::error('Failed to cancel subscription via Cashier', [
                                         'subscription_id' => $stripeSubscription->id,
                                         'error' => $e->getMessage(),
                                     ]);
@@ -819,7 +939,7 @@ class PlansController extends Controller
                         }
                     }
                 } catch (\Exception $e) {
-                    Log::error('Error retrieving subscriptions from Stripe', [
+                    Log::error('Error retrieving subscriptions via Cashier', [
                         'user_id' => $user->id,
                         'error' => $e->getMessage(),
                     ]);

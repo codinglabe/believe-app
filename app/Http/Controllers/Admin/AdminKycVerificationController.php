@@ -102,7 +102,8 @@ class AdminKycVerificationController extends Controller
     public function show($id)
     {
         $submission = BridgeKycKybSubmission::with([
-            'bridgeIntegration.integratable'
+            'bridgeIntegration.integratable',
+            'verificationDocuments' // Load verification documents
         ])->where('type', 'kyc')->findOrFail($id);
 
         // Permission is checked via middleware
@@ -157,24 +158,28 @@ class AdminKycVerificationController extends Controller
                     ]);
                 }
 
-                // Load ID images from storage if available
+                // Load ID images from verification_documents table
                 $idFrontImage = null;
                 $idBackImage = null;
                 
-                if ($submission->id_front_image_path) {
-                    $imagePath = storage_path('app/public/' . $submission->id_front_image_path);
+                // Load from verification_documents table
+                $idFrontDoc = $submission->getVerificationDocument('id_front');
+                $idBackDoc = $submission->getVerificationDocument('id_back');
+                
+                if ($idFrontDoc && $idFrontDoc->file_path) {
+                    $imagePath = storage_path('app/public/' . $idFrontDoc->file_path);
                     if (file_exists($imagePath)) {
                         $imageData = file_get_contents($imagePath);
-                        $mimeType = $this->getMimeType($submission->id_front_image_path);
+                        $mimeType = $this->getMimeType($idFrontDoc->file_path);
                         $idFrontImage = "data:{$mimeType};base64," . base64_encode($imageData);
                     }
                 }
                 
-                if ($submission->id_back_image_path) {
-                    $imagePath = storage_path('app/public/' . $submission->id_back_image_path);
+                if ($idBackDoc && $idBackDoc->file_path) {
+                    $imagePath = storage_path('app/public/' . $idBackDoc->file_path);
                     if (file_exists($imagePath)) {
                         $imageData = file_get_contents($imagePath);
-                        $mimeType = $this->getMimeType($submission->id_back_image_path);
+                        $mimeType = $this->getMimeType($idBackDoc->file_path);
                         $idBackImage = "data:{$mimeType};base64," . base64_encode($imageData);
                     }
                 }

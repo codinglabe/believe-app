@@ -48,6 +48,7 @@ export function SendMoney({
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20 }}
             transition={{ duration: 0.3 }}
+            layout={false}
             className="p-4 space-y-4"
         >
             <div className="space-y-3">
@@ -169,15 +170,10 @@ export function SendMoney({
                     </AnimatePresence>
                     
                     {selectedRecipient && (
-                        <div className="mt-2 p-2 sm:p-2.5 bg-muted/50 rounded-lg flex flex-col sm:flex-row sm:items-center gap-2 text-xs">
-                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                                <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                                <span className="text-muted-foreground flex-shrink-0">Selected:</span>
-                                <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
-                            </div>
-                            <span className="text-muted-foreground font-mono text-[10px] sm:ml-auto flex-shrink-0">
-                                {formatAddress(selectedRecipient.address)}
-                            </span>
+                        <div className="mt-2 p-2 sm:p-2.5 bg-muted/50 rounded-lg flex items-center gap-2 text-xs">
+                            <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                            <span className="text-muted-foreground flex-shrink-0">Selected:</span>
+                            <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
                         </div>
                     )}
                 </div>

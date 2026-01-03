@@ -377,6 +377,7 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
         Route::get('/balance', [WalletController::class, 'getBalance'])->name('balance');
         Route::get('/status', [WalletController::class, 'status'])->name('status');
         Route::get('/activity', [WalletController::class, 'getActivity'])->name('activity');
+        Route::get('/activity/all', [WalletController::class, 'getAllActivity'])->name('activity.all');
         Route::get('/search-recipients', [WalletController::class, 'searchRecipients'])->name('search-recipients');
         Route::post('/send', [WalletController::class, 'send'])->name('send');
     Route::post('/deposit', [WalletController::class, 'deposit'])->name('deposit');

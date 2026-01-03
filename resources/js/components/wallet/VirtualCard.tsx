@@ -13,6 +13,7 @@ interface VirtualCardProps {
     expiryDate?: string
     cvv?: string
     onBack: () => void
+    onCardCreated?: () => void
 }
 
 export function VirtualCard({
@@ -20,7 +21,8 @@ export function VirtualCard({
     cardholderName: propCardholderName,
     expiryDate: propExpiryDate,
     cvv: propCvv,
-    onBack
+    onBack,
+    onCardCreated
 }: VirtualCardProps) {
     const [isFlipped, setIsFlipped] = useState(false)
     const [isFrozen, setIsFrozen] = useState(false)
@@ -135,6 +137,10 @@ export function VirtualCard({
                 showSuccessToast('Card account created successfully!')
                 // Refresh card account status
                 await checkCardAccount()
+                // Notify parent component that card was created
+                if (onCardCreated) {
+                    onCardCreated()
+                }
             } else {
                 showErrorToast(data.message || 'Failed to create card account')
             }

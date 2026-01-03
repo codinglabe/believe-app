@@ -38,25 +38,45 @@ class BridgeKycKybSubmission extends Model
     }
 
     /**
-     * Get the full URL for the ID front image
+     * Get the full URL for the ID front image (from verification_documents table)
      */
     public function getIdFrontImageUrlAttribute(): ?string
     {
-        if (!$this->id_front_image_path) {
+        $doc = $this->getVerificationDocument('id_front');
+        if (!$doc || !$doc->file_path) {
             return null;
         }
-        return asset('storage/' . $this->id_front_image_path);
+        return asset('storage/' . $doc->file_path);
     }
 
     /**
-     * Get the full URL for the ID back image
+     * Get the full URL for the ID back image (from verification_documents table)
      */
     public function getIdBackImageUrlAttribute(): ?string
     {
-        if (!$this->id_back_image_path) {
+        $doc = $this->getVerificationDocument('id_back');
+        if (!$doc || !$doc->file_path) {
             return null;
         }
-        return asset('storage/' . $this->id_back_image_path);
+        return asset('storage/' . $doc->file_path);
+    }
+    
+    /**
+     * Get the file path for the ID front image (from verification_documents table)
+     */
+    public function getIdFrontImagePathAttribute(): ?string
+    {
+        $doc = $this->getVerificationDocument('id_front');
+        return $doc ? $doc->file_path : null;
+    }
+    
+    /**
+     * Get the file path for the ID back image (from verification_documents table)
+     */
+    public function getIdBackImagePathAttribute(): ?string
+    {
+        $doc = $this->getVerificationDocument('id_back');
+        return $doc ? $doc->file_path : null;
     }
 
     /**

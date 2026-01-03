@@ -84,6 +84,7 @@ class StripeConfigServiceProvider extends ServiceProvider
 
             if ($credentials && !empty($credentials['secret_key']) && !empty($credentials['publishable_key'])) {
                 // Override Cashier config - use Config::set() which works at runtime
+                // Cashier reads from config('cashier.secret') and config('cashier.key')
                 Config::set('cashier.secret', $credentials['secret_key']);
                 Config::set('cashier.key', $credentials['publishable_key']);
                 
@@ -92,8 +93,9 @@ class StripeConfigServiceProvider extends ServiceProvider
                     Config::set('cashier.webhook.secret', $credentials['webhook_secret']);
                 }
 
-                // Set Stripe API key globally - this is the most important one
-                // Cashier uses this when making API calls
+                // Note: Cashier automatically uses config('cashier.secret') when calling Cashier::stripe()
+                // The Stripe::setApiKey() call is kept for backward compatibility with direct Stripe SDK usage
+                // but Cashier should be used via Cashier::stripe() instead
                 Stripe::setApiKey($credentials['secret_key']);
             }
         } catch (\Illuminate\Database\QueryException $e) {
