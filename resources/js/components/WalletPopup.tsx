@@ -436,7 +436,27 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setRequiresVerification(statusData.requires_verification)
                 }
                 if (statusData.kyc_status) {
-                    setKycStatus(statusData.kyc_status)
+                    // If KYC was submitted, preserve the waiting screen state
+                    // Only update to approved or rejected, otherwise keep current status if it's a pending state
+                    if (kycSubmitted) {
+                        if (statusData.kyc_status === 'approved') {
+                            setKycStatus('approved')
+                            setKycSubmitted(false) // Clear submitted flag when approved
+                            setRequiresVerification(false)
+                        } else if (statusData.kyc_status === 'rejected') {
+                            setKycStatus('rejected')
+                            // Keep kycSubmitted as true for resubmission
+                        } else if (statusData.kyc_status === 'not_started') {
+                            // Don't reset to not_started if KYC was already submitted - keep waiting screen
+                            // Keep current status (should be under_review or similar)
+                        } else {
+                            // Update to other pending states (incomplete, awaiting_questionnaire, etc.)
+                            setKycStatus(statusData.kyc_status)
+                        }
+                    } else {
+                        // KYC not submitted yet, update status normally
+                        setKycStatus(statusData.kyc_status)
+                    }
                 }
                 if (statusData.kyb_status) {
                     setKybStatus(statusData.kyb_status)
@@ -491,33 +511,39 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     // CRITICAL: Check has_control_person FIRST - this is the source of truth
 
                     if (statusData.has_control_person) {
-                        // Control person EXISTS in database - set state immediately
-                        setControlPersonSubmitted(true)
+                        // Check for rejected documents FIRST before setting controlPersonSubmitted
+                        const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
+                            statusData.document_statuses?.id_back === 'rejected')
+                        const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
+                        
+                        // Check if requested fields are for control_person (start with 'control_person.' or are control person related)
+                        const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
+                            'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
+                            'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
+                            'control_person.country', 'control_person.id_type', 'control_person.id_number', 
+                            'control_person.id_front_image', 'control_person.id_back_image']
+                        const hasControlPersonRequestedFields = hasRequestedFields && 
+                            statusData.requested_fields.some((field: string) => 
+                                controlPersonFields.includes(field) || field.startsWith('control_person.')
+                            )
+
+                        // If rejected docs OR requested fields for control_person, set controlPersonSubmitted to false
+                        // Otherwise, control person exists and is submitted
+                        if (hasRejectedDocs || hasControlPersonRequestedFields) {
+                            setControlPersonSubmitted(false) // Show form for re-upload
+                        } else {
+                            // Control person EXISTS in database and no rejected docs - set state
+                            setControlPersonSubmitted(true)
+                        }
 
                         // CRITICAL: If control person exists, we should NEVER be on control_person step
                         // Check if step is control_person OR if we're currently on control_person step
                         const needsAdvance = statusData.kyb_step === 'control_person' || kybStep === 'control_person'
 
                         if (needsAdvance) {
-                            const hasRejectedDocs = (statusData.document_statuses?.id_front === 'rejected' ||
-                                statusData.document_statuses?.id_back === 'rejected')
-                            const hasRequestedFields = statusData.requested_fields && statusData.requested_fields.length > 0
-                            
-                            // Check if requested fields are for control_person (start with 'control_person.' or are control person related)
-                            const controlPersonFields = ['control_person.first_name', 'control_person.last_name', 'control_person.email', 
-                                'control_person.birth_date', 'control_person.ssn', 'control_person.title', 'control_person.ownership_percentage',
-                                'control_person.street_line_1', 'control_person.city', 'control_person.state', 'control_person.postal_code',
-                                'control_person.country', 'control_person.id_type', 'control_person.id_number', 
-                                'control_person.id_front_image', 'control_person.id_back_image']
-                            const hasControlPersonRequestedFields = hasRequestedFields && 
-                                statusData.requested_fields.some((field: string) => 
-                                    controlPersonFields.includes(field) || field.startsWith('control_person.')
-                                )
-
                             // If rejected docs OR requested fields for control_person, stay on control_person step
                             if (hasRejectedDocs || hasControlPersonRequestedFields) {
                                 setKybStep('control_person')
-                                setControlPersonSubmitted(false) // Show form for re-upload
                                 return // Exit early
                             } else {
                                 // No rejected docs and no control_person requested fields - advance to business_documents
@@ -630,13 +656,22 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     setDocumentStatuses(statuses)
                     setDocumentRejectionReasons(rejectionReasons)
                     
-                    // If control person documents (id_front or id_back) are rejected, switch back to control_person step
+                    // CRITICAL: Check for rejected documents FIRST and set controlPersonSubmitted to false
+                    // This must happen BEFORE any other logic to ensure the form shows when docs are rejected
                     if (statuses.id_front === 'rejected' || statuses.id_back === 'rejected') {
+                        console.log('Control Person: Documents rejected - setting controlPersonSubmitted to false', {
+                            id_front: statuses.id_front,
+                            id_back: statuses.id_back
+                        })
                         setKybStep('control_person')
-                        setControlPersonSubmitted(false) // Show form for re-upload
+                        setControlPersonSubmitted(false) // Show form for re-upload - CRITICAL
                     } else if ((statuses.id_front === 'pending' || statuses.id_back === 'pending') && 
                                statuses.id_front !== 'rejected' && statuses.id_back !== 'rejected') {
                         // If documents are pending (submitted but not rejected), show waiting screen
+                        console.log('Control Person: Documents pending - setting controlPersonSubmitted to true', {
+                            id_front: statuses.id_front,
+                            id_back: statuses.id_back
+                        })
                         setControlPersonSubmitted(true)
                         setKybStep('control_person')
                     }
@@ -1138,12 +1173,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
     const fetchExternalAccounts = async () => {
         setIsLoadingExternalAccounts(true)
         try {
-            const response = await fetch('/wallet/bridge/external-accounts', {
+            const timestamp = Date.now()
+            const response = await fetch(`/wallet/bridge/external-accounts?t=${timestamp}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': getCsrfToken(),
                     'X-Requested-With': 'XMLHttpRequest',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
                 },
                 credentials: 'include',
                 cache: 'no-store',
@@ -1973,6 +2012,27 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         }
     }
 
+    // Helper function to refresh CSRF token
+    const refreshCsrfToken = async (): Promise<string> => {
+        try {
+            // Make a simple GET request to refresh the session and get CSRF token
+            await fetch('/wallet/bridge/status', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+            // Try to get token again after the request
+            return getCsrfToken()
+        } catch (e) {
+            console.warn('Failed to refresh CSRF token:', e)
+            return getCsrfToken()
+        }
+    }
+
     // Handle Control Person submission (Step 1 of KYB)
     const handleSubmitControlPerson = async () => {
         try {
@@ -2060,17 +2120,24 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                 return
             }
 
-            const response = await fetch('/wallet/bridge/create-customer-kyc', {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': getCsrfToken(),
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
-                body: JSON.stringify({
+            // Get fresh CSRF token before submission
+            let csrfToken = getCsrfToken()
+            if (!csrfToken) {
+                // Try to refresh token
+                csrfToken = await refreshCsrfToken()
+            }
+
+            if (!csrfToken) {
+                showErrorToast('CSRF token not found. Refreshing page...')
+                setIsLoading(false)
+                setTimeout(() => {
+                    window.location.reload()
+                }, 1500)
+                return
+            }
+
+            // Prepare request body
+            const requestBody = {
                     signed_agreement_id: signedAgreementId,
                     step: 'control_person', // Indicate this is step 1
                     business_name: kybFormData.business_name,
@@ -2104,8 +2171,74 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             ? { id_back_image: kybFormData.control_person.id_back_image }
                             : {}),
                     },
-                }),
-            })
+                }
+
+            // Retry logic for CSRF token mismatch
+            let response: Response | null = null
+            let retryCount = 0
+            const maxRetries = 3
+
+            while (retryCount < maxRetries) {
+                try {
+                    // Refresh token before each attempt
+                    if (retryCount > 0) {
+                        csrfToken = await refreshCsrfToken()
+                        if (!csrfToken) {
+                            throw new Error('Failed to get CSRF token after retry')
+                        }
+                        // Small delay before retry
+                        await new Promise(resolve => setTimeout(resolve, 500))
+                    }
+
+                    response = await fetch('/wallet/bridge/create-customer-kyc', {
+                        method: 'POST',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                            'X-Requested-With': 'XMLHttpRequest',
+                        },
+                        credentials: 'include',
+                        cache: 'no-store',
+                        body: JSON.stringify(requestBody),
+                    })
+
+                    // If successful or non-CSRF error, break retry loop
+                    if (response.ok || (response.status !== 419 && response.status !== 403)) {
+                        break
+                    }
+
+                    // If CSRF mismatch, retry
+                    if (response.status === 419 || response.status === 403) {
+                        retryCount++
+                        if (retryCount < maxRetries) {
+                            console.warn(`CSRF token mismatch (attempt ${retryCount + 1}/${maxRetries}), retrying...`)
+                            continue
+                        } else {
+                            // Max retries reached
+                            const errorData = await response.json().catch(() => ({ message: 'CSRF token mismatch' }))
+                            showErrorToast('Session expired. Refreshing page...')
+                            setIsLoading(false)
+                            setTimeout(() => {
+                                window.location.reload()
+                            }, 1500)
+                            return
+                        }
+                    }
+                } catch (error) {
+                    if (retryCount < maxRetries - 1) {
+                        retryCount++
+                        console.warn(`Request failed (attempt ${retryCount}/${maxRetries}), retrying...`, error)
+                        continue
+                    } else {
+                        throw error
+                    }
+                }
+            }
+
+            if (!response) {
+                throw new Error('Failed to get response after retries')
+            }
 
             const data = await response.json()
 
@@ -2563,48 +2696,65 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         }, 500)
                     } else {
                         // Not instantly approved - show waiting screen
-                    showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                        showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                        // Ensure verification type is set to 'kyc'
+                        setVerificationType('kyc')
                         setKycStatus('under_review') // Set status to under_review after submission
                         setKycSubmitted(true) // Mark that KYC has been submitted
-                    setRequiresVerification(true)
-                    // Refresh status from backend to ensure sync
-                    setTimeout(() => {
-                        fetch(`/wallet/bridge/status?t=${Date.now()}`, {
-                            method: 'GET',
-                            headers: {
-                                'Accept': 'application/json',
-                                'X-CSRF-TOKEN': getCsrfToken(),
-                                'X-Requested-With': 'XMLHttpRequest',
-                            },
-                            credentials: 'include',
-                            cache: 'no-store',
+                        setRequiresVerification(true)
+                        // Force a re-render to show waiting screen immediately
+                        console.log('KYC submitted - setting waiting screen state', {
+                            kycSubmitted: true,
+                            kycStatus: 'under_review',
+                            verificationType: 'kyc'
                         })
-                            .then(res => res.json())
-                            .then(statusData => {
-                                if (statusData.success) {
-                                    if (statusData.kyc_status) {
+                        // Refresh status from backend to ensure sync
+                        setTimeout(() => {
+                            fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+                                method: 'GET',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'X-CSRF-TOKEN': getCsrfToken(),
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                credentials: 'include',
+                                cache: 'no-store',
+                            })
+                                .then(res => res.json())
+                                .then(statusData => {
+                                    if (statusData.success) {
+                                        if (statusData.kyc_status) {
                                             // If KYC was submitted, don't allow status to go back to not_started (which would show form)
                                             // Keep waiting screen visible until approved or rejected
-                                            if (kycSubmitted && statusData.kyc_status === 'not_started') {
-                                                // Keep status as under_review to maintain waiting screen
+                                            // Only update status if it's approved or rejected, otherwise keep it as under_review
+                                            if (statusData.kyc_status === 'approved') {
+                                                setKycStatus('approved')
+                                                setKycSubmitted(false)
+                                                setRequiresVerification(false)
+                                                // Refresh wallet status
+                                                checkBridgeAndFetchBalance()
+                                            } else if (statusData.kyc_status === 'rejected') {
+                                                setKycStatus('rejected')
+                                                // Keep kycSubmitted as true to show form for resubmission
                                             } else {
-                                        setKycStatus(statusData.kyc_status)
-                                                // If status becomes approved, clear the submitted flag
-                                                if (statusData.kyc_status === 'approved') {
-                                                    setKycSubmitted(false)
-                                                    setRequiresVerification(false)
-                                                    // Refresh wallet status
-                                                    checkBridgeAndFetchBalance()
+                                                // For pending states (under_review, incomplete, etc.), keep under_review to show waiting screen
+                                                // Don't overwrite with status from backend if it's still pending
+                                                if (statusData.kyc_status !== 'not_started') {
+                                                    setKycStatus(statusData.kyc_status)
                                                 }
                                             }
+                                        }
+                                        if (statusData.requires_verification !== undefined) {
+                                            setRequiresVerification(statusData.requires_verification)
+                                        }
+                                        // Ensure verification type is set
+                                        if (statusData.verification_type) {
+                                            setVerificationType(statusData.verification_type)
+                                        }
                                     }
-                                    if (statusData.requires_verification !== undefined) {
-                                        setRequiresVerification(statusData.requires_verification)
-                                    }
-                                }
-                            })
-                            .catch(err => console.error('Failed to refresh KYC status:', err))
-                    }, 500)
+                                })
+                                .catch(err => console.error('Failed to refresh KYC status:', err))
+                        }, 500)
                     }
                 } else {
                     showErrorToast(data.message || 'Failed to submit KYC data')
@@ -2895,12 +3045,16 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
         
         setIsCheckingCardWallet(true)
         try {
-            const response = await fetch('/wallet/bridge/card-account', {
+            const timestamp = Date.now()
+            const response = await fetch(`/wallet/bridge/card-account?t=${timestamp}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': getCsrfToken(),
                     'X-Requested-With': 'XMLHttpRequest',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
                 },
                 credentials: 'include',
                 cache: 'no-store',
@@ -3734,9 +3888,27 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                             const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
                                             // Pending states that should show waiting screen
                                             const kycPendingStates = ['under_review', 'pending', 'incomplete', 'awaiting_questionnaire', 'awaiting_ubo']
+                                            // If KYC was submitted, always show waiting screen unless approved or rejected
+                                            const isKycSubmittedAndPending = kycSubmitted && kycStatus !== 'approved' && kycStatus !== 'rejected'
+                                            // Or if status is in pending states
+                                            const isKycStatusPending = kycStatus && kycStatus !== 'not_started' && kycStatus !== 'approved' && kycStatus !== 'rejected' && kycPendingStates.includes(kycStatus)
+                                            
                                             const isKycPending = isRegularUser && 
                                                 verificationType === 'kyc' && 
-                                                (kycSubmitted || (kycStatus && kycPendingStates.includes(kycStatus)))
+                                                (isKycSubmittedAndPending || isKycStatusPending)
+                                            
+                                            // Debug logging
+                                            if (verificationType === 'kyc') {
+                                                console.log('KYC waiting screen check:', {
+                                                    isRegularUser,
+                                                    verificationType,
+                                                    kycSubmitted,
+                                                    kycStatus,
+                                                    isKycSubmittedAndPending,
+                                                    isKycStatusPending,
+                                                    isKycPending
+                                                })
+                                            }
                                             
                                             if (isKycPending) {
                                                 return 'kyc_waiting' // Show simple waiting screen
@@ -4311,34 +4483,8 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                                                         {/* Step 1: Control Person */}
                                                                                         {kybStep === 'control_person' && (
                                                                                             <>
-                                                                                                {/* WAITING SCREEN FOR CONTROL PERSON - If submitted and no rejected docs/requested fields */}
+                                                                                                {/* Control Person Form - Always show form, no waiting screen */}
                                                                                                 {(() => {
-                                                                                                    // Check if control person is submitted and no rejected docs or requested fields
-                                                                                                    const hasRejectedIdDocs = documentStatuses.id_front === 'rejected' || documentStatuses.id_back === 'rejected'
-                                                                                                    const hasRequestedFields = requestedFields && requestedFields.length > 0
-                                                                                                    const hasPendingOrApprovedIdDocs = documentStatuses.id_front === 'pending' ||
-                                                                                                        documentStatuses.id_front === 'approved' ||
-                                                                                                        documentStatuses.id_back === 'pending' ||
-                                                                                                        documentStatuses.id_back === 'approved'
-                                                                                                    
-                                                                                                    // Show waiting screen if control person is submitted and no rejected docs/requested fields
-                                                                                                    const shouldShowWaitingScreen = controlPersonSubmitted &&
-                                                                                                        hasPendingOrApprovedIdDocs &&
-                                                                                                        !hasRejectedIdDocs &&
-                                                                                                        !hasRequestedFields
-                                                                                                    
-                                                                                                    if (shouldShowWaitingScreen) {
-                                                                                                        return (
-                                                                                                            <WaitingScreen
-                                                                                                                variant="control_person"
-                                                                                                                title="Control Person Information Submitted"
-                                                                                                                message="Your control person information and ID documents are currently under review."
-                                                                                                                subMessage="Once approved, you will be able to proceed to Step 2: Business Documents."
-                                                                                                            />
-                                                                                                        )
-                                                                                                    }
-                                                                                                    
-                                                                                                    // Show form only if there are rejected docs or requested fields
                                                                                                     return (
                                                                                             <>
                                                                                                 {/* Show refill message banner if admin requested re-fill */}
@@ -6240,7 +6386,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
 
                                     {/* Activity - Only show when wallet is created */}
                                     {actionView === 'main' && (hasWallet || walletAddress) && (
-                                        <div>
+                                        <div className="flex-shrink-0 max-h-[350px] min-h-0 flex flex-col">
                                             {isLoadingActivities && activities.length === 0 ? (
                                             <ActivitySkeleton />
                                         ) : (

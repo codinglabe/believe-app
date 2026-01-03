@@ -276,7 +276,7 @@ export default function Billing({ transactions: initialTransactions }: BillingPr
           <CardContent className="pt-6">
             {initialTransactions?.data && initialTransactions.data.length > 0 ? (
               <>
-                <div className="space-y-3">
+                      <div className="space-y-3">
                   {initialTransactions.data.map((transaction) => (
                     <div 
                       key={transaction.id} 
@@ -299,7 +299,7 @@ export default function Billing({ transactions: initialTransactions }: BillingPr
                                 className={`text-xs font-medium px-1.5 py-0.5 ${getStatusBadgeClass(transaction.status)}`}
                               >
                                 {transaction.status.charAt(0).toUpperCase() + transaction.status.slice(1)}
-                              </Badge>
+                            </Badge>
                             </div>
                             <div className="flex flex-col gap-1 mt-1">
                               <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400">
@@ -321,9 +321,9 @@ export default function Billing({ transactions: initialTransactions }: BillingPr
                                 <div className="text-xs text-green-600 dark:text-green-400 font-medium">
                                   +{transaction.credits_added} credits added
                                 </div>
-                              )}
-                            </div>
-                          </div>
+                          )}
+                        </div>
+                      </div>
 
                           {/* Amount Section */}
                           <div className="flex-shrink-0 text-right self-center">
@@ -350,26 +350,26 @@ export default function Billing({ transactions: initialTransactions }: BillingPr
                                       isSubscriptionOrKyc
                                         ? 'text-red-600 dark:text-red-400'
                                         : isPositive
-                                        ? 'text-green-600 dark:text-green-400'
-                                        : 'text-red-600 dark:text-red-400'
-                                    }`}
-                                  >
+                              ? 'text-green-600 dark:text-green-400'
+                              : 'text-red-600 dark:text-red-400'
+                          }`}
+                        >
                                     {isSubscriptionOrKyc ? '' : (isPositive ? '+' : '-')}
                                     {transaction.currency === 'USD' ? '$' : transaction.currency + ' '}
                                     {displayAmount.toLocaleString('en-US', {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}
-                                  </p>
-                                  {transaction.fee > 0 && (
+                            minimumFractionDigits: 2,
+                            maximumFractionDigits: 2,
+                          })}
+                        </p>
+                        {transaction.fee > 0 && (
                                     <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
                                       Fee: {transaction.currency === 'USD' ? '$' : transaction.currency + ' '}
                                       {Number(transaction.fee).toLocaleString('en-US', {
-                                        minimumFractionDigits: 2,
-                                        maximumFractionDigits: 2,
-                                      })}
-                                    </p>
-                                  )}
+                              minimumFractionDigits: 2,
+                              maximumFractionDigits: 2,
+                            })}
+                          </p>
+                        )}
                                 </div>
                               )
                             })()}
@@ -397,19 +397,19 @@ export default function Billing({ transactions: initialTransactions }: BillingPr
                       <span className="text-sm text-gray-600 dark:text-gray-400">
                         Page {initialTransactions.current_page} of {initialTransactions.last_page}
                       </span>
-                      <div className="flex gap-1">
-                        {pageNumbers.map((link, index) => (
-                          <Button
-                            key={index}
-                            variant={link.active ? 'default' : 'outline'}
-                            size="sm"
-                            onClick={() => handlePageChange(link.url)}
-                            disabled={link.active}
+                    <div className="flex gap-1">
+                      {pageNumbers.map((link, index) => (
+                        <Button
+                          key={index}
+                          variant={link.active ? 'default' : 'outline'}
+                          size="sm"
+                          onClick={() => handlePageChange(link.url)}
+                          disabled={link.active}
                             className="min-w-[2.5rem]"
-                          >
-                            {link.label}
-                          </Button>
-                        ))}
+                        >
+                          {link.label}
+                        </Button>
+                      ))}
                       </div>
                     </div>
                     <Button

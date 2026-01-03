@@ -7,11 +7,13 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { router } from '@inertiajs/react'
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
+import { getCsrfToken } from '@/components/wallet/utils'
 
 interface Plan {
     id: number
     name: string
     price: number
+    one_time_fee?: number | null
     frequency: string
     is_popular?: boolean
     description?: string
@@ -28,7 +30,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
     const [plans, setPlans] = useState<Plan[]>([])
     const [selectedPlan, setSelectedPlan] = useState<number | null>(null)
     const [isLoading, setIsLoading] = useState(false)
-    const [isSubscribing, setIsSubscribing] = useState(false)
+    const [isSubscribing, setIsSubscribing] = useState(false) // Keep internal state name for consistency
 
     useEffect(() => {
         setMounted(true)
@@ -59,6 +61,9 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                 const data = await response.json()
                 const plansData = data.plans || []
                 
+                // Debug: Log plans data to check one_time_fee
+                console.log('Plans data received:', plansData)
+                
                 if (plansData.length > 0) {
                     setPlans(plansData)
                     // Auto-select first plan if available
@@ -87,24 +92,117 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
         }
     }
 
+
+    // Helper function to refresh CSRF token by making a GET request
+    const refreshCsrfToken = async (): Promise<string> => {
+        try {
+            // Make a simple GET request to refresh the session and get CSRF token
+            await fetch('/wallet/plans', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-store',
+            })
+            // Try to get token again after the request
+            return getCsrfToken()
+        } catch (e) {
+            console.warn('Failed to refresh CSRF token:', e)
+            return ''
+        }
+    }
+
     const handleSubscribe = async () => {
         if (!selectedPlan) {
             showErrorToast('Please select a plan')
             return
         }
 
-        setIsSubscribing(true)
+        setIsSubscribing(true) // Internal state name
         try {
+            // Get CSRF token with validation - try multiple times if needed
+            let csrfToken = getCsrfToken()
+
+            // If token is missing, try to refresh it
+            if (!csrfToken) {
+                csrfToken = await refreshCsrfToken()
+            }
+
+            if (!csrfToken) {
+                showErrorToast('CSRF token not found. Please refresh the page and try again.')
+                setIsSubscribing(false)
+                setTimeout(() => {
+                    window.location.reload()
+                }, 2000)
+                return
+            }
+
             const response = await fetch(`/wallet/subscribe/${selectedPlan}`, {
                 method: 'POST',
                 headers: {
                     'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-CSRF-TOKEN': csrfToken,
                     'X-Requested-With': 'XMLHttpRequest',
                 },
                 credentials: 'include',
+                cache: 'no-store',
             })
+
+            // Check if response is OK - handle CSRF token mismatch
+            if (!response.ok) {
+                const contentType = response.headers.get('content-type')
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json()
+                    
+                    // If CSRF token mismatch, try refreshing and retrying once
+                    if (response.status === 419 || errorData.message?.includes('CSRF') || errorData.message?.includes('419')) {
+                        console.warn('CSRF token mismatch detected, refreshing token and retrying...')
+                        
+                        // Refresh token
+                        const newToken = await refreshCsrfToken()
+                        if (newToken) {
+                            // Retry the request with fresh token
+                            const retryResponse = await fetch(`/wallet/subscribe/${selectedPlan}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Accept': 'application/json',
+                                    'Content-Type': 'application/json',
+                                    'X-CSRF-TOKEN': newToken,
+                                    'X-Requested-With': 'XMLHttpRequest',
+                                },
+                                credentials: 'include',
+                                cache: 'no-store',
+                            })
+
+                            if (retryResponse.ok) {
+                                const retryData = await retryResponse.json()
+                                if (retryData.success && retryData.url) {
+                                    // Redirect to Stripe checkout
+                                    window.location.href = retryData.url
+                                    return
+                                }
+                            }
+                        }
+                        
+                        // If retry failed, show error and reload
+                        showErrorToast('Session expired. Please refresh the page and try again.')
+                        setIsSubscribing(false)
+                        setTimeout(() => {
+                            window.location.reload()
+                        }, 2000)
+                        return
+                    }
+                }
+                
+                // Handle other errors
+                const errorData = await response.json().catch(() => ({ message: 'Failed to become a member. Please try again.' }))
+                showErrorToast(errorData.message || 'Failed to become a member. Please try again.')
+                setIsSubscribing(false)
+                return
+            }
 
             const data = await response.json()
 
@@ -112,12 +210,12 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                 // Redirect to Stripe checkout
                 window.location.href = data.url
             } else {
-                showErrorToast(data.message || 'Failed to subscribe. Please try again.')
+                showErrorToast(data.message || 'Failed to become a member. Please try again.')
                 setIsSubscribing(false)
             }
         } catch (error) {
-            console.error('Subscription error:', error)
-            showErrorToast('Failed to subscribe. Please try again.')
+            console.error('Membership error:', error)
+            showErrorToast('Failed to become a member. Please try again.')
             setIsSubscribing(false)
         }
     }
@@ -154,7 +252,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                             stiffness: 300, 
                             damping: 30 
                         }}
-                        className="relative z-10 w-full max-w-md bg-background rounded-2xl shadow-2xl border border-border overflow-hidden"
+                        className="relative z-10 w-full max-w-lg bg-background rounded-2xl shadow-2xl border border-border overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Close Button */}
@@ -174,11 +272,12 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                     <Wallet className="h-8 w-8 text-primary" />
                                 </div>
                                 <h2 className="text-xl font-bold text-foreground mb-1.5">
-                                    Subscription Required for Wallet Access
+                                    Owner Platform Access Fee
                                 </h2>
-                                <p className="text-muted-foreground text-xs leading-relaxed">
-                                    Subscribe now to unlock all wallet features!
-                                </p>
+                                <div className="text-muted-foreground text-xs leading-relaxed space-y-1">
+                                    <p>One‑line explainer (always directly under it)</p>
+                                    <p>Covers identity verification, secure accounts, and the tools owners use to earn, pay, and support each other — while keeping fees low for the community.</p>
+                                </div>
                             </div>
 
                             {/* Plan Selection */}
@@ -208,7 +307,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                                     onClick={() => setSelectedPlan(plan.id)}
                                                     className={`relative p-3 rounded-lg border-2 cursor-pointer transition-all ${
                                                         isSelected
-                                                            ? 'border-primary bg-primary/5 dark:bg-primary/10 shadow-lg'
+                                                            ? 'border-primary bg-primary/10 dark:bg-primary/20 shadow-lg ring-2 ring-primary/20'
                                                             : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 hover:border-primary/50'
                                                     }`}
                                                 >
@@ -222,7 +321,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                                         <p className="text-xs font-semibold text-foreground mb-1.5">
                                                             {isMonthly ? 'Monthly' : isAnnual ? 'Annual' : plan.name}
                                                         </p>
-                                                        <div className="flex items-baseline justify-center gap-0.5 mb-1.5">
+                                                        <div className="flex items-baseline justify-center gap-0.5 mb-1">
                                                             <span className="text-lg font-bold text-primary">
                                                                 ${plan.price.toFixed(2)}
                                                             </span>
@@ -230,8 +329,20 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                                                 /{isMonthly ? 'mo' : 'yr'}
                                                             </span>
                                                         </div>
+                                                        {(plan.one_time_fee !== null && plan.one_time_fee !== undefined && Number(plan.one_time_fee) > 0) && (
+                                                            <div className="mb-1.5">
+                                                                <p className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                                                    + ${Number(plan.one_time_fee).toFixed(2)} setup fee
+                                                                </p>
+                                                            </div>
+                                                        )}
+                                                        {plan.description && (
+                                                            <p className="text-[10px] text-muted-foreground mt-1 px-1 text-center leading-relaxed">
+                                                                {plan.description}
+                                                            </p>
+                                                        )}
                                                         {plan.trial_days && plan.trial_days > 0 && (
-                                                            <div className="mt-1">
+                                                            <div className="mt-1.5">
                                                                 <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
                                                                     {plan.trial_days} Day Free
                                                                 </span>
@@ -290,7 +401,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                         </>
                                     ) : (
                                         <>
-                                            <span>Subscribe Now</span>
+                                            <span>Become a Member</span>
                                             <ArrowRight className="ml-2 h-3.5 w-3.5" />
                                         </>
                                     )}
@@ -307,7 +418,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
 
                             {/* Additional Info */}
                             <p className="text-[10px] text-center text-muted-foreground mt-3">
-                                💡 Start with a 14-day free trial - no credit card required!
+                                💡 Start with a 14-day free trial membership!
                             </p>
                         </div>
                     </motion.div>

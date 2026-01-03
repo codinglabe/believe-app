@@ -620,6 +620,7 @@ export default function Dashboard({
   monthlyRevenue = [],
   promotionalBanner = null,
   promotionalBanners = null,
+  hasSubscription = false,
 }: {
   totalOrg?: number
   orgInfo?: any
@@ -631,6 +632,7 @@ export default function Dashboard({
   form1023Application?: any
   form990Filings?: any
   overdueForm990Filings?: any[]
+  hasSubscription?: boolean
 } & AdminDashboardProps) {
   const auth = usePage().props.auth
   const organization = orgInfo

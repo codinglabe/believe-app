@@ -2142,86 +2142,264 @@ class BridgeWebhookController extends Controller
                 $shouldCreateCardAccount = true;
 
                 if ($isBusiness) {
-                    // For business accounts, Bridge requires:
-                    // 1. Business customer must have approved "cards" endorsement
-                    // 2. Associated person (control person) must have: first_name, last_name, and birth_date
+                    // Check if we're in sandbox - skip endorsement check entirely for sandbox
+                    $isSandbox = $this->bridgeService->isSandbox();
                     
-                    // Check if business customer has cards endorsement
-                    $customerResult = $this->bridgeService->getCustomer($customerId);
-                    $hasCardsEndorsement = false;
-                    
-                    if ($customerResult['success'] && isset($customerResult['data'])) {
-                        $customer = $customerResult['data'];
-                        $endorsements = $customer['endorsements'] ?? [];
+                    if (!$isSandbox) {
+                        // Only check for cards endorsement in production/live environment
+                        // For business accounts, Bridge requires:
+                        // 1. Business customer must have approved "cards" endorsement
+                        // 2. Associated person (control person) must have: first_name, last_name, and birth_date
                         
-                        foreach ($endorsements as $endorsement) {
-                            $endorsementName = strtolower($endorsement['name'] ?? '');
-                            $endorsementStatus = strtolower($endorsement['status'] ?? '');
+                        // Check if business customer has cards endorsement
+                        $customerResult = $this->bridgeService->getCustomer($customerId);
+                        $hasCardsEndorsement = false;
+                        
+                        if ($customerResult['success'] && isset($customerResult['data'])) {
+                            $customer = $customerResult['data'];
+                            $endorsements = $customer['endorsements'] ?? [];
                             
-                            // Check if cards endorsement exists and is approved
-                            if ($endorsementName === 'cards' && $endorsementStatus === 'approved') {
-                                $hasCardsEndorsement = true;
-                                break;
-                            }
-                        }
-                    }
-                    
-                    if (!$hasCardsEndorsement) {
-                        // Check if cards endorsement exists but is not approved (pending, under_review, etc.)
-                        $cardsEndorsementExists = false;
-                        $cardsEndorsementStatus = null;
-                        
-                        foreach ($endorsements as $endorsement) {
-                            $endorsementName = strtolower($endorsement['name'] ?? '');
-                            if ($endorsementName === 'cards') {
-                                $cardsEndorsementExists = true;
-                                $cardsEndorsementStatus = strtolower($endorsement['status'] ?? '');
-                                break;
+                            foreach ($endorsements as $endorsement) {
+                                $endorsementName = strtolower($endorsement['name'] ?? '');
+                                $endorsementStatus = strtolower($endorsement['status'] ?? '');
+                                
+                                // Check if cards endorsement exists and is approved
+                                if ($endorsementName === 'cards' && $endorsementStatus === 'approved') {
+                                    $hasCardsEndorsement = true;
+                                    break;
+                                }
                             }
                         }
                         
-                        // If cards endorsement doesn't exist, request it
-                        if (!$cardsEndorsementExists) {
-                            Log::info('Requesting cards endorsement for business account', [
-                                'integration_id' => $integration->id,
-                                'customer_id' => $customerId,
-                            ]);
+                        if (!$hasCardsEndorsement) {
+                            // Check if cards endorsement exists but is not approved (pending, under_review, etc.)
+                            $cardsEndorsementExists = false;
+                            $cardsEndorsementStatus = null;
                             
-                            $endorsementResult = $this->bridgeService->requestEndorsement($customerId, [
-                                'endorsement_type' => 'cards',
-                            ]);
+                            foreach ($endorsements as $endorsement) {
+                                $endorsementName = strtolower($endorsement['name'] ?? '');
+                                if ($endorsementName === 'cards') {
+                                    $cardsEndorsementExists = true;
+                                    $cardsEndorsementStatus = strtolower($endorsement['status'] ?? '');
+                                    break;
+                                }
+                            }
                             
-                            if ($endorsementResult['success']) {
-                                Log::info('Cards endorsement requested successfully', [
+                            // If cards endorsement doesn't exist, request it
+                            if (!$cardsEndorsementExists) {
+                                Log::info('Requesting cards endorsement for business account', [
                                     'integration_id' => $integration->id,
                                     'customer_id' => $customerId,
-                                    'endorsement_data' => $endorsementResult['data'] ?? null,
                                 ]);
+                                
+                                $endorsementResult = $this->bridgeService->requestEndorsement($customerId, [
+                                    'endorsement_type' => 'cards',
+                                ]);
+                                
+                                if ($endorsementResult['success']) {
+                                    Log::info('Cards endorsement requested successfully', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'endorsement_data' => $endorsementResult['data'] ?? null,
+                                    ]);
+                                } else {
+                                    Log::warning('Failed to request cards endorsement', [
+                                        'integration_id' => $integration->id,
+                                        'customer_id' => $customerId,
+                                        'error' => $endorsementResult['error'] ?? 'Unknown error',
+                                    ]);
+                                }
                             } else {
-                                Log::warning('Failed to request cards endorsement', [
+                                Log::info('Cards endorsement exists but not approved yet', [
                                     'integration_id' => $integration->id,
                                     'customer_id' => $customerId,
-                                    'error' => $endorsementResult['error'] ?? 'Unknown error',
+                                    'endorsement_status' => $cardsEndorsementStatus,
+                                    'note' => 'Cards endorsement is pending approval. Card account will be created once approved.',
                                 ]);
                             }
-                        } else {
-                            Log::info('Cards endorsement exists but not approved yet', [
+                            
+                            $shouldCreateCardAccount = false;
+                            Log::info('Skipping card account creation for business account - cards endorsement not approved', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
+                                'endorsement_exists' => $cardsEndorsementExists,
                                 'endorsement_status' => $cardsEndorsementStatus,
-                                'note' => 'Cards endorsement is pending approval. Card account will be created once approved.',
+                                'note' => 'Business customer must have approved "cards" endorsement to create card accounts',
                             ]);
+                        } else {
+                            // Cards endorsement is approved - check associated person fields
+                            // Check if associated person (control person) has all required fields
+                            // Bridge requires: first_name, last_name, and birth_date for card account creation
+                            $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
+                            $hasAssociatedPersonWithDob = false;
+                            $hasRequiredFields = false;
+
+                            if ($associatedPersonsResult['success'] && !empty($associatedPersonsResult['data'])) {
+                                foreach ($associatedPersonsResult['data'] as $associatedPerson) {
+                                    // Check if associated person has all required fields for card account
+                                    $hasBirthDate = !empty($associatedPerson['birth_date'] ?? null);
+                                    $hasFirstName = !empty($associatedPerson['first_name'] ?? null);
+                                    $hasLastName = !empty($associatedPerson['last_name'] ?? null);
+                                    
+                                    if ($hasBirthDate && $hasFirstName && $hasLastName) {
+                                        $hasAssociatedPersonWithDob = true;
+                                        $hasRequiredFields = true;
+                                        break;
+                                    } elseif ($hasBirthDate) {
+                                        // Has birth_date but missing first_name or last_name
+                                        $hasAssociatedPersonWithDob = true; // We'll update the missing fields
+                                    }
+                                }
+                            }
+
+                            // If no associated person with all required fields, try to get from database and update Bridge
+                            // Also update if we have birth_date but missing first_name or last_name
+                            if (!$hasRequiredFields) {
+                                // Get control person from database
+                                $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                                    ->where('bridge_customer_id', $customerId)
+                                    ->first();
+
+                                $birthDate = null;
+                                $associatedPersonId = null;
+                                $controlPerson = null;
+
+                                if ($submission) {
+                                    // First try to get control person from control_persons table
+                                    // Get the control person even if birth_date is null, we need first_name and last_name
+                                    $controlPerson = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)
+                                        ->whereNotNull('bridge_associated_person_id')
+                                        ->first();
+
+                                    if ($controlPerson) {
+                                        $associatedPersonId = $controlPerson->bridge_associated_person_id;
+                                        
+                                        // Get birth_date if available
+                                        if ($controlPerson->birth_date) {
+                                            $birthDate = $controlPerson->birth_date->format('Y-m-d');
+                                        } else {
+                                            // Fallback: Try to get birth_date from submission_data
+                                            if ($submission->submission_data) {
+                                                $submissionData = is_array($submission->submission_data)
+                                                    ? $submission->submission_data
+                                                    : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+
+                                                // Check for control_person data in submission_data
+                                                $controlPersonData = $submissionData['control_person'] ?? null;
+                                                if ($controlPersonData && isset($controlPersonData['birth_date'])) {
+                                                    $birthDateRaw = $controlPersonData['birth_date'];
+
+                                                    if (is_string($birthDateRaw)) {
+                                                        try {
+                                                            $birthDateObj = new \DateTime($birthDateRaw);
+                                                            $birthDate = $birthDateObj->format('Y-m-d');
+                                                        } catch (\Exception $e) {
+                                                            Log::warning('Failed to parse birth_date from submission_data for control person', [
+                                                                'integration_id' => $integration->id,
+                                                                'customer_id' => $customerId,
+                                                                'birth_date_string' => $birthDateRaw,
+                                                                'error' => $e->getMessage(),
+                                                            ]);
+                                                        }
+                                                    } elseif ($birthDateRaw instanceof \DateTime || $birthDateRaw instanceof \Carbon\Carbon) {
+                                                        $birthDate = $birthDateRaw->format('Y-m-d');
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // If we have associated_person_id and control person, update Bridge with all required fields
+                                    // For card accounts, Bridge requires: first_name, last_name, and birth_date on associated person
+                                    if ($associatedPersonId && $controlPerson) {
+                                        // Prepare update data with all required fields for card account creation
+                                        $updateData = [];
+                                        
+                                        // Add birth_date if available (required)
+                                        if ($birthDate) {
+                                            $updateData['birth_date'] = $birthDate;
+                                        }
+                                        
+                                        // Add first_name if available (required for card accounts)
+                                        if ($controlPerson->first_name) {
+                                            $updateData['first_name'] = $controlPerson->first_name;
+                                        }
+                                        
+                                        // Add last_name if available (required for card accounts)
+                                        if ($controlPerson->last_name) {
+                                            $updateData['last_name'] = $controlPerson->last_name;
+                                        }
+                                        
+                                        // Only update if we have at least birth_date (minimum requirement)
+                                        if (!empty($updateData) && isset($updateData['birth_date'])) {
+                                            // Update associated person in Bridge with all available required fields
+                                            $updateResult = $this->bridgeService->updateAssociatedPerson(
+                                                $customerId,
+                                                $associatedPersonId,
+                                                $updateData
+                                            );
+
+                                            if ($updateResult['success']) {
+                                                $hasAssociatedPersonWithDob = true;
+                                                
+                                                // Check if we now have all required fields
+                                                if (isset($updateData['first_name']) && isset($updateData['last_name'])) {
+                                                    $hasRequiredFields = true;
+                                                }
+                                                
+                                                Log::info('Updated associated person with required fields for card account', [
+                                                    'integration_id' => $integration->id,
+                                                    'customer_id' => $customerId,
+                                                    'associated_person_id' => $associatedPersonId,
+                                                    'birth_date' => $updateData['birth_date'] ?? null,
+                                                    'first_name' => $updateData['first_name'] ?? null,
+                                                    'last_name' => $updateData['last_name'] ?? null,
+                                                    'has_all_required_fields' => $hasRequiredFields,
+                                                    'source' => 'control_persons_table',
+                                                ]);
+                                            } else {
+                                                Log::warning('Failed to update associated person with required fields', [
+                                                    'integration_id' => $integration->id,
+                                                    'customer_id' => $customerId,
+                                                    'associated_person_id' => $associatedPersonId,
+                                                    'update_data' => $updateData,
+                                                    'error' => $updateResult['error'] ?? 'Unknown error',
+                                                ]);
+                                            }
+                                        } else {
+                                            Log::warning('Cannot update associated person - missing birth_date', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                                'associated_person_id' => $associatedPersonId,
+                                                'has_birth_date' => !empty($birthDate),
+                                                'has_first_name' => !empty($controlPerson->first_name),
+                                                'has_last_name' => !empty($controlPerson->last_name),
+                                            ]);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // Final check: Ensure we have all required fields before creating card account
+                            if (!$hasRequiredFields) {
+                                $shouldCreateCardAccount = false;
+                                Log::info('Skipping card account creation for business account - associated person missing required fields', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'has_cards_endorsement' => $hasCardsEndorsement,
+                                    'has_associated_person' => $hasAssociatedPersonWithDob,
+                                    'has_all_required_fields' => $hasRequiredFields,
+                                    'note' => 'Associated person must have first_name, last_name, and birth_date for card account creation',
+                                ]);
+                            }
                         }
-                        
-                        $shouldCreateCardAccount = false;
-                        Log::info('Skipping card account creation for business account - cards endorsement not approved', [
+                    } else {
+                        // In sandbox, skip endorsement check entirely and proceed with card account creation
+                        Log::info('Skipping cards endorsement check in sandbox for instant approval - will attempt direct card account creation', [
                             'integration_id' => $integration->id,
                             'customer_id' => $customerId,
-                            'endorsement_exists' => $cardsEndorsementExists,
-                            'endorsement_status' => $cardsEndorsementStatus,
-                            'note' => 'Business customer must have approved "cards" endorsement to create card accounts',
                         ]);
-                    } else {
+                        
                         // Check if associated person (control person) has all required fields
                         // Bridge requires: first_name, last_name, and birth_date for card account creation
                         $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
@@ -2288,7 +2466,7 @@ class BridgeWebhookController extends Controller
                                                         $birthDateObj = new \DateTime($birthDateRaw);
                                                         $birthDate = $birthDateObj->format('Y-m-d');
                                                     } catch (\Exception $e) {
-                                                        Log::warning('Failed to parse birth_date from submission_data for control person', [
+                                                        Log::warning('Failed to parse birth_date from submission_data for control person (sandbox)', [
                                                             'integration_id' => $integration->id,
                                                             'customer_id' => $customerId,
                                                             'birth_date_string' => $birthDateRaw,
@@ -2341,7 +2519,7 @@ class BridgeWebhookController extends Controller
                                                 $hasRequiredFields = true;
                                             }
                                             
-                                            Log::info('Updated associated person with required fields for card account', [
+                                            Log::info('Updated associated person with required fields for card account (sandbox)', [
                                                 'integration_id' => $integration->id,
                                                 'customer_id' => $customerId,
                                                 'associated_person_id' => $associatedPersonId,
@@ -2352,7 +2530,7 @@ class BridgeWebhookController extends Controller
                                                 'source' => 'control_persons_table',
                                             ]);
                                         } else {
-                                            Log::warning('Failed to update associated person with required fields', [
+                                            Log::warning('Failed to update associated person with required fields (sandbox)', [
                                                 'integration_id' => $integration->id,
                                                 'customer_id' => $customerId,
                                                 'associated_person_id' => $associatedPersonId,
@@ -2361,7 +2539,7 @@ class BridgeWebhookController extends Controller
                                             ]);
                                         }
                                     } else {
-                                        Log::warning('Cannot update associated person - missing birth_date', [
+                                        Log::warning('Cannot update associated person - missing birth_date (sandbox)', [
                                             'integration_id' => $integration->id,
                                             'customer_id' => $customerId,
                                             'associated_person_id' => $associatedPersonId,
@@ -2377,10 +2555,9 @@ class BridgeWebhookController extends Controller
                         // Final check: Ensure we have all required fields before creating card account
                         if (!$hasRequiredFields) {
                             $shouldCreateCardAccount = false;
-                            Log::info('Skipping card account creation for business account - associated person missing required fields', [
+                            Log::info('Skipping card account creation for business account - associated person missing required fields (sandbox)', [
                                 'integration_id' => $integration->id,
                                 'customer_id' => $customerId,
-                                'has_cards_endorsement' => $hasCardsEndorsement,
                                 'has_associated_person' => $hasAssociatedPersonWithDob,
                                 'has_all_required_fields' => $hasRequiredFields,
                                 'note' => 'Associated person must have first_name, last_name, and birth_date for card account creation',
@@ -2555,8 +2732,148 @@ class BridgeWebhookController extends Controller
                         $errorMessage = $cardAccountResult['error'] ?? $cardAccountResult['message'] ?? 'Card account may be auto-created';
                         $errorCode = $cardAccountResult['response']['code'] ?? '';
 
-                        // Check if error is about cards not being enabled
-                        if ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
+                        // Check if error is about missing date of birth
+                        if ($errorCode === 'bad_request' && stripos($errorMessage, 'date of birth') !== false) {
+                            // Try to update birth_date and retry
+                            if ($isBusiness) {
+                                // For business, update associated person (control person) birth_date
+                                $associatedPersonsResult = $this->bridgeService->getAssociatedPersons($customerId);
+                                
+                                if ($associatedPersonsResult['success'] && !empty($associatedPersonsResult['data'])) {
+                                    foreach ($associatedPersonsResult['data'] as $associatedPerson) {
+                                        $associatedPersonId = $associatedPerson['id'] ?? null;
+                                        
+                                        if ($associatedPersonId) {
+                                            // Get control person from database
+                                            $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                                                ->where('bridge_customer_id', $customerId)
+                                                ->first();
+                                            
+                                            $birthDate = null;
+                                            $controlPerson = null;
+                                            
+                                            if ($submission) {
+                                                $controlPerson = \App\Models\ControlPerson::where('bridge_kyc_kyb_submission_id', $submission->id)
+                                                    ->where('bridge_associated_person_id', $associatedPersonId)
+                                                    ->first();
+                                                
+                                                if ($controlPerson && $controlPerson->birth_date) {
+                                                    $birthDate = $controlPerson->birth_date->format('Y-m-d');
+                                                } elseif ($submission->submission_data) {
+                                                    $submissionData = is_array($submission->submission_data)
+                                                        ? $submission->submission_data
+                                                        : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+                                                    
+                                                    $controlPersonData = $submissionData['control_person'] ?? null;
+                                                    if ($controlPersonData && isset($controlPersonData['birth_date'])) {
+                                                        $birthDateRaw = $controlPersonData['birth_date'];
+                                                        if (is_string($birthDateRaw)) {
+                                                            try {
+                                                                $birthDateObj = new \DateTime($birthDateRaw);
+                                                                $birthDate = $birthDateObj->format('Y-m-d');
+                                                            } catch (\Exception $e) {
+                                                                Log::warning('Failed to parse birth_date for retry', [
+                                                                    'integration_id' => $integration->id,
+                                                                    'customer_id' => $customerId,
+                                                                    'error' => $e->getMessage(),
+                                                                ]);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                                
+                                                if ($birthDate && $associatedPersonId) {
+                                                    $updateResult = $this->bridgeService->updateAssociatedPerson($customerId, $associatedPersonId, [
+                                                        'birth_date' => $birthDate,
+                                                    ]);
+                                                    
+                                                    if ($updateResult['success']) {
+                                                        Log::info('Updated associated person birth_date and retrying card account creation', [
+                                                            'integration_id' => $integration->id,
+                                                            'customer_id' => $customerId,
+                                                            'associated_person_id' => $associatedPersonId,
+                                                            'birth_date' => $birthDate,
+                                                        ]);
+                                                        
+                                                        // Retry card account creation
+                                                        $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                                                        
+                                                        if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
+                                                            $cardAccountData = $cardAccountResult['data'];
+                                                            Log::info('Card account created successfully after updating birth_date', [
+                                                                'integration_id' => $integration->id,
+                                                                'customer_id' => $customerId,
+                                                            ]);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                            break; // Only process first associated person
+                                        }
+                                    }
+                                }
+                            } else {
+                                // For individual, update customer birth_date
+                                $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                                    ->where('bridge_customer_id', $customerId)
+                                    ->where('type', 'kyc')
+                                    ->first();
+                                
+                                $birthDate = null;
+                                
+                                if ($submission && $submission->submission_data) {
+                                    $submissionData = is_array($submission->submission_data)
+                                        ? $submission->submission_data
+                                        : (is_string($submission->submission_data) ? json_decode($submission->submission_data, true) : []);
+                                    
+                                    $birthDate = $submissionData['birth_date'] ?? null;
+                                    
+                                    if ($birthDate && is_string($birthDate)) {
+                                        try {
+                                            $birthDateObj = new \DateTime($birthDate);
+                                            $birthDate = $birthDateObj->format('Y-m-d');
+                                        } catch (\Exception $e) {
+                                            $birthDate = null;
+                                        }
+                                    }
+                                }
+                                
+                                if ($birthDate) {
+                                    $updateResult = $this->bridgeService->updateCustomer($customerId, [
+                                        'birth_date' => $birthDate,
+                                    ]);
+                                    
+                                    if ($updateResult['success']) {
+                                        Log::info('Updated individual customer birth_date and retrying card account creation', [
+                                            'integration_id' => $integration->id,
+                                            'customer_id' => $customerId,
+                                            'birth_date' => $birthDate,
+                                        ]);
+                                        
+                                        // Retry card account creation
+                                        $cardAccountResult = $this->bridgeService->createCardAccount($customerId, $cardData);
+                                        
+                                        if ($cardAccountResult['success'] && isset($cardAccountResult['data'])) {
+                                            $cardAccountData = $cardAccountResult['data'];
+                                            Log::info('Card account created successfully after updating birth_date', [
+                                                'integration_id' => $integration->id,
+                                                'customer_id' => $customerId,
+                                            ]);
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            // If still failed after retry, log and continue
+                            if (!isset($cardAccountData)) {
+                                Log::warning('Card account creation failed after birth_date update attempt', [
+                                    'integration_id' => $integration->id,
+                                    'customer_id' => $customerId,
+                                    'is_business' => $isBusiness,
+                                    'error' => $errorMessage,
+                                ]);
+                            }
+                        } elseif ($errorCode === 'not_allowed' || stripos($errorMessage, 'cards product has not been enabled') !== false || stripos($errorMessage, 'cards-sandbox') !== false) {
                             // Try to enable cards product automatically (only in sandbox)
                             if ($this->bridgeService->isSandbox()) {
                                 Log::info('Card account creation failed - attempting to enable cards product', [

@@ -304,6 +304,10 @@ class DashboardController extends Controller
             }
         }
 
+        // Check if organization user has active subscription
+        // For organization users: check if they have any active plan subscription
+        $hasSubscription = $user->current_plan_id !== null;
+
         return Inertia::render('dashboard', [
             'isAdmin' => false,
             'totalOrg' => 0,
@@ -356,6 +360,7 @@ class DashboardController extends Controller
                     'name' => $topic->name,
                 ];
             }),
+            'hasSubscription' => $hasSubscription,
         ]);
     }
 

@@ -49,9 +49,9 @@ export default function PlansSuccess({ successMessage }: PlansSuccessProps) {
                                         {isWalletSubscription ? (
                                             <Wallet className="h-10 w-10 text-green-500" />
                                         ) : (
-                                            <CheckCircle className="h-10 w-10 text-primary" />
+                                    <CheckCircle className="h-10 w-10 text-primary" />
                                         )}
-                                    </div>
+                                </div>
                                 </motion.div>
                                 <div>
                                     <h1 className="text-2xl font-bold mb-2">
@@ -64,12 +64,12 @@ export default function PlansSuccess({ successMessage }: PlansSuccessProps) {
                                     )}
                                     {!isWalletSubscription && (
                                         <>
-                                            <p className="text-muted-foreground mb-4">
-                                                Your 14-day free trial has begun. You now have full access to all plan features.
-                                            </p>
-                                            <p className="text-sm text-muted-foreground">
-                                                Your subscription will automatically continue after the trial period ends.
-                                            </p>
+                                    <p className="text-muted-foreground mb-4">
+                                        Your 14-day free trial has begun. You now have full access to all plan features.
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                        Your subscription will automatically continue after the trial period ends.
+                                    </p>
                                         </>
                                     )}
                                     {isWalletSubscription && (
@@ -99,17 +99,17 @@ export default function PlansSuccess({ successMessage }: PlansSuccessProps) {
                                         </>
                                     ) : (
                                         <>
-                                            <Link href="/dashboard" className="flex-1">
-                                                <Button className="w-full">
-                                                    Go to Dashboard
-                                                    <ArrowRight className="h-4 w-4 ml-2" />
-                                                </Button>
-                                            </Link>
-                                            <Link href="/plans" className="flex-1">
-                                                <Button variant="outline" className="w-full">
-                                                    View Plans
-                                                </Button>
-                                            </Link>
+                                    <Link href="/dashboard" className="flex-1">
+                                        <Button className="w-full">
+                                            Go to Dashboard
+                                            <ArrowRight className="h-4 w-4 ml-2" />
+                                        </Button>
+                                    </Link>
+                                    <Link href="/plans" className="flex-1">
+                                        <Button variant="outline" className="w-full">
+                                            View Plans
+                                        </Button>
+                                    </Link>
                                         </>
                                     )}
                                 </div>

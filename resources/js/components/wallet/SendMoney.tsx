@@ -171,9 +171,9 @@ export function SendMoney({
                     
                     {selectedRecipient && (
                         <div className="mt-2 p-2 sm:p-2.5 bg-muted/50 rounded-lg flex items-center gap-2 text-xs">
-                            <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
-                            <span className="text-muted-foreground flex-shrink-0">Selected:</span>
-                            <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
+                                <Check className="h-3.5 w-3.5 text-green-500 flex-shrink-0" />
+                                <span className="text-muted-foreground flex-shrink-0">Selected:</span>
+                                <span className="font-medium truncate min-w-0">{selectedRecipient.display_name}</span>
                         </div>
                     )}
                 </div>

@@ -145,7 +145,7 @@ class StripeConfigService
                     // Use Cashier's Stripe client
                     $stripeClient = Cashier::stripe();
                     $stripeClient->products->retrieve($productId);
-                    return $productId;
+                        return $productId;
                 } catch (\Exception $e) {
                     // Product doesn't exist, create new one
                     Log::warning("Donation product ID {$productId} is invalid, creating new one", [

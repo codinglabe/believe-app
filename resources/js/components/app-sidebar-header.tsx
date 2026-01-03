@@ -9,13 +9,13 @@ import { Button } from '@/components/ui/button';
 import { router } from '@inertiajs/react';
 import { LogOut, Wallet } from 'lucide-react';
 import { showSuccessToast } from '@/lib/toast';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { route } from 'ziggy-js';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
 
 export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: BreadcrumbItemType[] }) {
-    const { isImpersonating, auth } = usePage<{
+    const { isImpersonating, auth, hasSubscription: propHasSubscription } = usePage<{
         isImpersonating?: boolean;
         auth?: {
             user?: {
@@ -24,12 +24,13 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 believe_points?: number;
             };
         };
+        hasSubscription?: boolean;
     }>().props;
 
     const [walletBalance, setWalletBalance] = useState<number | null>(null);
     const [walletConnected, setWalletConnected] = useState(false);
     const [walletPopupOpen, setWalletPopupOpen] = useState(false);
-    const [hasSubscription, setHasSubscription] = useState<boolean | null>(null);
+    const [hasSubscription, setHasSubscription] = useState<boolean | null>(propHasSubscription ?? null);
     const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
     const isOrgUser = auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending';
@@ -44,43 +45,74 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
     }
 
     // Fetch organization balance directly (no wallet connection checks)
-    useEffect(() => {
-        const fetchOrganizationBalance = async () => {
-            if (!isOrgUser) return;
+    const fetchOrganizationBalance = useCallback(async () => {
+        if (!isOrgUser) return;
 
-            try {
-                // Fetch organization balance directly
-                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                        'X-Requested-With': 'XMLHttpRequest',
-                    },
-                    credentials: 'include',
-                    cache: 'no-cache',
-                });
+        try {
+            // Fetch organization balance directly
+            const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'include',
+                cache: 'no-cache',
+            });
 
-                if (balanceResponse.ok) {
-                    const balanceData = await balanceResponse.json();
-                    if (balanceData.success) {
-                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
-                        setWalletConnected(true); // Always connected for organization users
+            if (balanceResponse.ok) {
+                const balanceData = await balanceResponse.json();
+                if (balanceData.success) {
+                    setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
+                    setWalletConnected(true); // Always connected for organization users
+                    // Only update subscription status if not provided via props
+                    if (propHasSubscription === undefined) {
                         setHasSubscription(balanceData.has_subscription ?? null);
                     }
                 }
-            } catch (error) {
-                console.error('Failed to fetch organization balance:', error);
-                setWalletBalance(0);
+            }
+        } catch (error) {
+            console.error('Failed to fetch organization balance:', error);
+            setWalletBalance(0);
+        }
+    }, [isOrgUser]);
+
+    // Update hasSubscription when prop changes
+    useEffect(() => {
+        if (propHasSubscription !== undefined) {
+            setHasSubscription(propHasSubscription);
+        }
+    }, [propHasSubscription]);
+
+    useEffect(() => {
+        fetchOrganizationBalance();
+    }, [fetchOrganizationBalance]);
+
+    // Refresh subscription status when page becomes visible or regains focus (user returns from Stripe checkout)
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === 'visible' && isOrgUser) {
+                // Refresh balance/subscription status when user returns to the page
+                fetchOrganizationBalance();
             }
         };
 
-        fetchOrganizationBalance();
+        const handleFocus = () => {
+            if (isOrgUser) {
+                // Refresh balance/subscription status when window regains focus
+                fetchOrganizationBalance();
+            }
+        };
 
-        // Refresh balance every 30 seconds
-        const interval = setInterval(fetchOrganizationBalance, 30000);
-        return () => clearInterval(interval);
-    }, [isOrgUser]);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        window.addEventListener('focus', handleFocus);
+        
+        return () => {
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+            window.removeEventListener('focus', handleFocus);
+        };
+    }, [isOrgUser, fetchOrganizationBalance]);
 
     const handleStopImpersonate = () => {
         router.post(route('users.stop-impersonate'), {}, {
@@ -175,7 +207,13 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
                 {isOrgUser && (
                     <SubscriptionRequiredModal
                         isOpen={showSubscriptionModal}
-                        onClose={() => setShowSubscriptionModal(false)}
+                        onClose={() => {
+                            setShowSubscriptionModal(false);
+                            // Refresh subscription status when modal closes (user might have subscribed)
+                            setTimeout(() => {
+                                fetchOrganizationBalance();
+                            }, 1000);
+                        }}
                         feature="wallet"
                     />
                 )}

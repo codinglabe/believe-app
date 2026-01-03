@@ -158,7 +158,7 @@
                     if (message.success) {
                         window.location.reload();
                     } else {
-                        window.location.href = '/wallet';
+                    window.location.href = '/wallet';
                     }
                 }, 300);
             }, 2000); // Show success for 2 seconds (reduced from 3)

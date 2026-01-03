@@ -412,7 +412,7 @@ class StripeEnvironmentSyncService
 
             // Use Cashier's Stripe client
             $stripe = Cashier::stripe();
-            
+
             if ($existingProductId) {
                 try {
                     $product = $stripe->products->retrieve($existingProductId);

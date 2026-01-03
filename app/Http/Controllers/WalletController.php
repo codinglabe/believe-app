@@ -643,8 +643,9 @@ class WalletController extends Controller
 
     /**
      * Get wallet activity for main screen (limited to 10 activities)
-     * - Regular users: donations made, transfers sent/received, deposits
-     * - Organizations: donations received, transfers sent/received, deposits
+     * - Only returns wallet transactions (transfers and deposits), excludes donations
+     * - Regular users: transfers sent/received, deposits
+     * - Organizations: transfers sent/received, deposits
      */
     public function getActivity(Request $request)
     {
@@ -658,69 +659,25 @@ class WalletController extends Controller
             $page = 1;
             $perPage = 10;
             
-            $donations = collect([]);
             $transactions = collect([]);
 
             if ($isOrgUser) {
-                // For organization users: show donations received and transactions
-            $organization = $user->organization;
+                // For organization users: show only wallet transactions (transfers and deposits)
+                $organization = $user->organization;
             
                 if ($organization && $organization->user) {
-            $orgUser = $organization->user;
+                    $orgUser = $organization->user;
             
-            // Get donations received by this organization
-            $donations = \App\Models\Donation::where('organization_id', $organization->id)
-                ->whereIn('status', ['completed', 'active'])
-                ->with(['user:id,name,email'])
-                ->get()
-                ->map(function ($donation) {
-                    return [
-                        'id' => 'donation_' . $donation->id,
-                        'type' => 'donation',
-                        'amount' => (float) $donation->amount,
-                        'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
-                        'status' => $donation->status,
-                        'donor_name' => $donation->user->name ?? 'Anonymous',
-                        'donor_email' => $donation->user->email ?? null,
-                        'frequency' => $donation->frequency,
-                        'message' => $donation->message,
-                        'transaction_id' => $donation->transaction_id,
-                        'sort_date' => $donation->donation_date ?? $donation->created_at,
-                    ];
-                });
-
-            // Get transactions (transfers and deposits) for the organization's user
+                    // Get transactions (transfers and deposits) for the organization's user
                     // Include both completed and pending transfers so users can see transfers in progress
-            $transactions = Transaction::where('user_id', $orgUser->id)
-                ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
+                    $transactions = Transaction::where('user_id', $orgUser->id)
+                        ->whereIn('type', ['transfer_out', 'transfer_in', 'deposit'])
                         ->whereIn('status', ['completed', 'pending'])
-                ->orderBy('created_at', 'desc')
-                ->get();
+                        ->orderBy('created_at', 'desc')
+                        ->get();
                 }
             } else {
-                // For regular users: show donations made and transactions
-                // Get donations made by this user
-                $donations = \App\Models\Donation::where('user_id', $user->id)
-                    ->whereIn('status', ['completed', 'active'])
-                    ->with(['organization:id,name'])
-                    ->get()
-                    ->map(function ($donation) {
-                        return [
-                            'id' => 'donation_' . $donation->id,
-                            'type' => 'donation',
-                            'amount' => (float) $donation->amount,
-                            'date' => $donation->donation_date?->toIso8601String() ?? $donation->created_at->toIso8601String(),
-                            'status' => $donation->status,
-                            'donor_name' => $donation->organization->name ?? 'Organization',
-                            'donor_email' => null,
-                            'frequency' => $donation->frequency,
-                            'message' => $donation->message,
-                            'transaction_id' => $donation->transaction_id,
-                            'sort_date' => $donation->donation_date ?? $donation->created_at,
-                            'is_outgoing' => true, // User made the donation
-                        ];
-                    });
-
+                // For regular users: show only wallet transactions (transfers and deposits)
                 // Get transactions (transfers and deposits) for the regular user
                 // Include both completed and pending transfers so users can see transfers in progress
                 $transactions = Transaction::where('user_id', $user->id)
@@ -809,8 +766,9 @@ class WalletController extends Controller
                     ];
                 });
 
-            // Combine and sort by date (newest first)
-            $allActivities = $donations->concat($transactions)
+            // Only wallet transactions (transfers and deposits), no donations
+            // Sort by date (newest first)
+            $allActivities = $transactions
                 ->sortByDesc('sort_date')
                 ->values();
 
@@ -825,13 +783,13 @@ class WalletController extends Controller
 
             $hasMore = ($page * $perPage) < $total;
 
-            return response()->json([
-                'success' => true,
+                return response()->json([
+                    'success' => true,
                 'activities' => $activities,
                 'has_more' => $hasMore,
                 'current_page' => $page,
                 'total' => $total,
-            ]);
+                ]);
 
         } catch (\Exception $e) {
             Log::error('Wallet activity fetch error: ' . $e->getMessage(), [
@@ -858,7 +816,7 @@ class WalletController extends Controller
 
             // Check if user is an organization user
             $isOrgUser = in_array($user->role, ['organization', 'organization_pending']);
-            
+
             // Get pagination parameters
             $page = (int) $request->get('page', 1);
             $perPage = (int) $request->get('per_page', 20);

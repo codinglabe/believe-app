@@ -10,6 +10,7 @@ class WalletPlan extends Model
         'name',
         'frequency',
         'price',
+        'one_time_fee',
         'stripe_price_id',
         'stripe_product_id',
         'description',
@@ -21,6 +22,7 @@ class WalletPlan extends Model
     protected $casts = [
         'is_active' => 'boolean',
         'price' => 'decimal:2',
+        'one_time_fee' => 'decimal:2',
         'trial_days' => 'integer',
         'sort_order' => 'integer',
     ];

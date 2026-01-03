@@ -42,12 +42,37 @@ export function ActivityList({
         )
     }
 
+    const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+        const target = e.currentTarget
+        const { scrollTop, scrollHeight, clientHeight } = target
+        
+        // Check if we can scroll in this direction
+        const isScrollingDown = e.deltaY > 0
+        const isScrollingUp = e.deltaY < 0
+        const isAtTop = scrollTop === 0
+        const isAtBottom = scrollTop + clientHeight >= scrollHeight - 1
+        
+        // Only stop propagation if we can scroll in the current direction
+        // This prevents parent scrolling when ActivityList is being scrolled
+        if ((isScrollingDown && !isAtBottom) || (isScrollingUp && !isAtTop)) {
+            e.stopPropagation()
+        }
+    }
+
     return (
         <div 
-            className={`flex-1 p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] sm:h-[350px] sm:max-h-[350px] sm:min-h-[350px] ${
-                hasMore ? 'overflow-y-auto' : 'overflow-hidden'
+            className={`flex-1 p-4 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none] max-h-[350px] min-h-0 overflow-y-auto ${
+                hasMore ? '' : ''
             }`}
-            onScroll={hasMore ? onScroll : undefined}
+            onScroll={(e) => {
+                // Stop scroll event from propagating to parent
+                e.stopPropagation()
+                if (hasMore) {
+                    onScroll(e)
+                }
+            }}
+            onWheel={handleWheel}
+            style={{ maxHeight: '350px' }}
         >
             <div className="space-y-2">
                 {activities.map((activity) => {

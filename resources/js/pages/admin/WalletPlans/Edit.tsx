@@ -29,6 +29,7 @@ interface WalletPlan {
     name: string
     frequency: string
     price: number
+    one_time_fee: number | null
     stripe_price_id: string | null
     stripe_product_id: string | null
     description: string | null
@@ -46,6 +47,7 @@ export default function AdminWalletPlansEdit({ plan }: EditWalletPlanProps) {
         name: plan.name,
         frequency: plan.frequency,
         price: plan.price.toString(),
+        one_time_fee: plan.one_time_fee ? plan.one_time_fee.toString() : '',
         stripe_price_id: plan.stripe_price_id || '',
         stripe_product_id: plan.stripe_product_id || '',
         description: plan.description || '',
@@ -118,19 +120,37 @@ export default function AdminWalletPlansEdit({ plan }: EditWalletPlanProps) {
                                         </div>
                                     </div>
 
-                                    <div className="space-y-2">
-                                        <Label htmlFor="price">Price ($) *</Label>
-                                        <Input
-                                            id="price"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={data.price}
-                                            onChange={(e) => setData('price', e.target.value)}
-                                            placeholder="0.00"
-                                            className={errors.price ? 'border-red-500' : ''}
-                                        />
-                                        {errors.price && <p className="text-sm text-red-500">{errors.price}</p>}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                        <div className="space-y-2">
+                                            <Label htmlFor="price">Price ($) *</Label>
+                                            <Input
+                                                id="price"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={data.price}
+                                                onChange={(e) => setData('price', e.target.value)}
+                                                placeholder="0.00"
+                                                className={errors.price ? 'border-red-500' : ''}
+                                            />
+                                            {errors.price && <p className="text-sm text-red-500">{errors.price}</p>}
+                                        </div>
+
+                                        <div className="space-y-2">
+                                            <Label htmlFor="one_time_fee">One-Time Fee ($)</Label>
+                                            <Input
+                                                id="one_time_fee"
+                                                type="number"
+                                                step="0.01"
+                                                min="0"
+                                                value={data.one_time_fee}
+                                                onChange={(e) => setData('one_time_fee', e.target.value)}
+                                                placeholder="0.00"
+                                                className={errors.one_time_fee ? 'border-red-500' : ''}
+                                            />
+                                            {errors.one_time_fee && <p className="text-sm text-red-500">{errors.one_time_fee}</p>}
+                                            <p className="text-xs text-muted-foreground">Optional one-time setup fee charged at subscription start</p>
+                                        </div>
                                     </div>
 
                                     <div>

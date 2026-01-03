@@ -52,12 +52,16 @@ export function VirtualCard({
     const checkCardAccount = async () => {
         setIsLoadingCardAccount(true)
         try {
-            const response = await fetch('/wallet/bridge/card-account', {
+            const timestamp = Date.now()
+            const response = await fetch(`/wallet/bridge/card-account?t=${timestamp}`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
                     'X-CSRF-TOKEN': getCsrfToken(),
                     'X-Requested-With': 'XMLHttpRequest',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
                 },
                 credentials: 'include',
                 cache: 'no-store',

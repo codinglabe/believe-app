@@ -25,9 +25,18 @@ class PlansController extends Controller
             $currentPlan = Plan::with('features')->find($user->current_plan_id);
         }
 
+        // Get all wallet plan stripe_price_ids to exclude them from regular plans
+        $walletPlanPriceIds = WalletPlan::whereNotNull('stripe_price_id')
+            ->pluck('stripe_price_id')
+            ->toArray();
+
         $plans = Plan::with('features')
             ->active()
             ->ordered()
+            ->when(!empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
+                // Exclude plans that have a matching stripe_price_id in wallet_plans table
+                $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
+            })
             ->get()
             ->map(function ($plan) {
                 return [
@@ -253,6 +262,7 @@ class PlansController extends Controller
                     'id' => $plan->id,
                     'name' => $plan->name,
                     'price' => (float) $plan->price,
+                    'one_time_fee' => $plan->one_time_fee ? (float) $plan->one_time_fee : null,
                     'frequency' => $plan->frequency,
                     'description' => $plan->description,
                     'trial_days' => (int) ($plan->trial_days ?? 0),
