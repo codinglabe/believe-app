@@ -629,173 +629,107 @@ export default function Navbar() {
                           </div>
                         </Button>
                       )}
-                              {/* More section */}
-                              <div className="border-t px-3 py-2">
-                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">More</p>
-                                  {moreItems.map((item) => (
-                                      <Link
-                                          key={item.name}
-                                          href={item.href}
-                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
-                                          onClick={() => setIsOpen(false)}
-                                      >
-                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                                          {item.name}
-                                      </Link>
-                                  ))}
-                              </div>
-                              <div className="space-y-2 border-t pt-4">
-                                  {isLoggedIn ? (
-                                      <div className="space-y-2">
-                                          <div className="flex items-center space-x-3 px-3 py-2">
-                                              <Avatar className="h-8 w-8">
-                                                  <AvatarImage src={auth?.user?.image || '/placeholder.svg?height=32&width=32'} alt="User" />
-                                                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
-                                                      JD
-                                                  </AvatarFallback>
-                                              </Avatar>
-                                              <div>
-                                                  <p className="text-sm font-medium">{auth?.user?.name ?? 'John Doe'}</p>
-                                                  <p className="text-muted-foreground text-xs">{auth?.user?.email ?? 'john@example.com'}</p>
-                                              </div>
-                                          </div>
-                                          {/* Wallet section for mobile - Hide for admin users */}
-                                          {isLoggedIn && auth?.user?.role !== 'admin' && (
-                                              <Button
-                                                  variant="ghost"
-                                                  className="w-full justify-start rounded-md bg-gray-50 dark:bg-gray-800"
-                                                  onClick={handleWalletClick}
-                                              >
-                                                  <div className="flex w-full items-center justify-between">
-                                                      <div className="flex items-center gap-2">
-                                                          <Wallet className="h-4 w-4 text-green-600" />
-                                                          <span className="text-sm font-medium">Wallet Balance</span>
-                                                      </div>
-                                                      <div className="flex items-center gap-2">
-                                                          <span className="text-lg font-bold text-green-600 dark:text-green-400">
-                                                              {showBalance
-                                                                  ? `$${userBalance.toLocaleString('en-US', {
-                                                                        minimumFractionDigits: 2,
-                                                                        maximumFractionDigits: 2,
-                                                                    })}`
-                                                                  : '••••••'}
-                                                          </span>
-                                                          <Button
-                                                              variant="ghost"
-                                                              size="sm"
-                                                              onClick={(e) => {
-                                                                  e.stopPropagation();
-                                                                  setShowBalance(!showBalance);
-                                                              }}
-                                                              className="p-1"
-                                                          >
-                                                              {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                                                          </Button>
-                                                      </div>
-                                                  </div>
-                                              </Button>
-                                          )}
 
-                                          {/* Reward Points section for mobile */}
-                                          {auth?.user?.reward_points !== undefined && (
-                                              <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-800">
-                                                  <div className="flex items-center gap-2">
-                                                      <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                                      <span className="text-sm font-medium">Reward Points</span>
-                                                  </div>
-                                                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                                                      {(auth.user.reward_points || 0).toLocaleString('en-US', {
-                                                          minimumFractionDigits: 0,
-                                                          maximumFractionDigits: 2,
-                                                      })}
-                                                  </div>
-                                              </div>
-                                          )}
+                      {/* Reward Points section for mobile */}
+                      {auth?.user?.reward_points !== undefined && (
+                        <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-800">
+                          <div className="flex items-center gap-2">
+                            <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                            <span className="text-sm font-medium">Reward Points</span>
+                          </div>
+                          <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                            {(auth.user.reward_points || 0).toLocaleString('en-US', {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </div>
+                        </div>
+                      )}
 
-                                          {/* Believe Points section for mobile */}
-                                          {auth?.user?.believe_points !== undefined && (
-                                              <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="mobile" />
-                                          )}
+                      {/* Believe Points section for mobile */}
+                      {auth?.user?.believe_points !== undefined && (
+                        <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="mobile" />
+                      )}
 
-                                          {/* cart mobile button */}
-                                          <Link href={route('cart.index')}>
-                                              <Button variant="ghost" className="w-full justify-start">
-                                                  <ShoppingBag className="mr-2 h-4 w-4" />
-                                                  <span>Cart</span>
-                                              </Button>
-                                          </Link>
-                                          <Link href={auth?.user?.role === 'user' ? route('user.profile.index') : route('profile.edit')}>
-                                              <Button variant="ghost" className="w-full justify-start">
-                                                  <User className="mr-2 h-4 w-4" />
-                                                  Profile
-                                              </Button>
-                                          </Link>
+                      {/* cart mobile button */}
+                      <Link href={route('cart.index')}>
+                        <Button variant="ghost" className="w-full justify-start">
+                          <ShoppingBag className="mr-2 h-4 w-4" />
+                          <span>Cart</span>
+                        </Button>
+                      </Link>
+                      <Link href={auth?.user?.role === 'user' ? route('user.profile.index') : route('profile.edit')}>
+                        <Button variant="ghost" className="w-full justify-start">
+                          <User className="mr-2 h-4 w-4" />
+                          Profile
+                        </Button>
+                      </Link>
 
-                                          {auth?.user?.role === 'user' && (
-                                              <Link href={route('chat.index')}>
-                                                  <Button variant="ghost" className="w-full justify-start">
-                                                      <Text className="mr-2 h-4 w-4" />
-                                                      Chat
-                                                  </Button>
-                                              </Link>
-                                          )}
-                                          {(auth?.user?.role === 'admin' ||
-                                              auth?.user?.role === 'organization' ||
-                                              auth?.user?.role === 'organization_pending') && (
-                                              <Link href={route('dashboard')}>
-                                                  <Button variant="ghost" className="w-full justify-start">
-                                                      <LayoutGrid className="mr-2 h-4 w-4" />
-                                                      Dashboard
-                                                  </Button>
-                                              </Link>
-                                          )}
-                                          {auth?.user?.service_seller_profile && (
-                                              <>
-                                                  <Link href={route('service-hub.seller.profile', auth.user.id)}>
-                                                      <Button variant="ghost" className="w-full justify-start">
-                                                          <User className="mr-2 h-4 w-4" />
-                                                          Seller Profile
-                                                      </Button>
-                                                  </Link>
-                                                  <Link href={route('service-hub.seller-orders')}>
-                                                      <Button variant="ghost" className="w-full justify-start">
-                                                          <Store className="mr-2 h-4 w-4" />
-                                                          Seller Dashboard
-                                                      </Button>
-                                                  </Link>
-                                              </>
-                                          )}
-                                          <Button
-                                              variant="ghost"
-                                              className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
-                                              onClick={handleLogout}
-                                          >
-                                              <Link
-                                                  method="post"
-                                                  className="align-items-center flex w-full cursor-pointer justify-start"
-                                                  href={route('logout')}
-                                                  onClick={handleLogout}
-                                              >
-                                                  <LogOut className="d-flex align-items-center mt-0.5 mr-3 h-3 w-3 justify-center align-middle" />
-                                                  Log out
-                                              </Link>
-                                          </Button>
-                                      </div>
-                                  ) : (
-                                      <>
-                                          <Link href={route('login')} className="block px-3">
-                                              <Button variant="ghost" className="w-full">
-                                                  Sign In
-                                              </Button>
-                                          </Link>
-                                          <Link href={route('register')} className="block px-3">
-                                              <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
-                                                  Get Started
-                                              </Button>
-                                          </Link>
-                                      </>
-                                  )}
-                              </div>
+                      {auth?.user?.role === 'user' && (
+                        <Link href={route('chat.index')}>
+                          <Button variant="ghost" className="w-full justify-start">
+                            <Text className="mr-2 h-4 w-4" />
+                            Chat
+                          </Button>
+                        </Link>
+                      )}
+                      {(auth?.user?.role === 'admin' ||
+                        auth?.user?.role === 'organization' ||
+                        auth?.user?.role === 'organization_pending') && (
+                        <Link href={route('dashboard')}>
+                          <Button variant="ghost" className="w-full justify-start">
+                            <LayoutGrid className="mr-2 h-4 w-4" />
+                            Dashboard
+                          </Button>
+                        </Link>
+                      )}
+                      {auth?.user?.service_seller_profile && (
+                        <>
+                          <Link href={route('service-hub.seller.profile', auth.user.id)}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <User className="mr-2 h-4 w-4" />
+                              Seller Profile
+                            </Button>
+                          </Link>
+                          <Link href={route('service-hub.seller-orders')}>
+                            <Button variant="ghost" className="w-full justify-start">
+                              <Store className="mr-2 h-4 w-4" />
+                              Seller Dashboard
+                            </Button>
+                          </Link>
+                        </>
+                      )}
+                      <Button
+                        variant="ghost"
+                        className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                        onClick={handleLogout}
+                      >
+                        <Link
+                          method="post"
+                          className="align-items-center flex w-full cursor-pointer justify-start"
+                          href={route('logout')}
+                          onClick={handleLogout}
+                        >
+                          <LogOut className="d-flex align-items-center mt-0.5 mr-3 h-3 w-3 justify-center align-middle" />
+                          Log out
+                        </Link>
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <Link href={route('login')} className="block px-3">
+                        <Button variant="ghost" className="w-full">
+                          Sign In
+                        </Button>
+                      </Link>
+                      <Link href={route('register')} className="block px-3">
+                        <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                          Get Started
+                        </Button>
+                      </Link>
+                    </>
+                  )}
+                </div>
                           </div>
                       </motion.div>
                   )}
