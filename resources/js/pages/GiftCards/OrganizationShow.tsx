@@ -14,7 +14,8 @@ import {
     Globe,
     FileText,
     User,
-    Building2
+    Building2,
+    CreditCard
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { useState } from "react"
@@ -36,6 +37,7 @@ interface GiftCard {
     purchased_at: string | null
     expires_at: string | null
     created_at: string
+    payment_method?: string | null
     meta: any
     organization?: {
         id: number
@@ -113,6 +115,24 @@ export default function OrganizationShowPage({ giftCard, phazePurchaseData, phaz
 
         return (
             <Badge className={config.color}>
+                {config.label}
+            </Badge>
+        )
+    }
+
+    const getPaymentMethodBadge = (paymentMethod: string | null | undefined) => {
+        if (!paymentMethod) return null
+
+        const methodConfig = {
+            stripe: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200', label: 'Card/Stripe' },
+            believe_points: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200', label: 'Believe Points' },
+        }
+
+        const config = methodConfig[paymentMethod as keyof typeof methodConfig] || { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', label: paymentMethod }
+
+        return (
+            <Badge className={config.color} variant="outline">
+                <CreditCard className="h-3 w-3 mr-1" />
                 {config.label}
             </Badge>
         )
@@ -314,6 +334,15 @@ export default function OrganizationShowPage({ giftCard, phazePurchaseData, phaz
                                                 Country
                                             </p>
                                             <p className="font-semibold dark:text-white">{giftCard.country}</p>
+                                        </div>
+                                    )}
+                                    {giftCard.payment_method && (
+                                        <div className="p-4 rounded-lg border dark:border-gray-700">
+                                            <p className="text-xs text-muted-foreground mb-2 flex items-center gap-1">
+                                                <CreditCard className="h-3 w-3" />
+                                                Payment Method
+                                            </p>
+                                            {getPaymentMethodBadge(giftCard.payment_method)}
                                         </div>
                                     )}
                                 </div>

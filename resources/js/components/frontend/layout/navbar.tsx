@@ -227,7 +227,7 @@ export default function Navbar() {
       }
       // Only if hasSubscription is explicitly true, proceed to wallet popup
     }
-    
+
     // Has subscription or is organization user, show wallet popup
     setShowWalletPopup(true)
   }
@@ -245,95 +245,95 @@ export default function Navbar() {
   const userBalance = walletBalance !== null ? walletBalance : (auth?.user?.balance ? parseFloat(auth.user.balance.toString()) : 0)
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container mx-auto px-4">
-        <div className="flex justify-between items-center h-16">
-          {/* Logo */}
-          <SiteTitle />
+      <nav className="bg-background/95 supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full border-b backdrop-blur">
+          <div className="container mx-auto px-4">
+              <div className="flex h-16 items-center justify-between">
+                  {/* Logo */}
+                  <SiteTitle />
 
-          {/* Desktop Navigation */}
-          <div className="hidden xl:flex items-center space-x-1">
-            {/* Core items - always visible */}
-            {coreNavItems.map((item) => (
-              <Link key={item.name} href={item.href}>
-                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
-                  {item.name}
-                </Button>
-              </Link>
-            ))}
+                  {/* Desktop Navigation */}
+                  <div className="hidden items-center space-x-1 xl:flex">
+                      {/* Core items - always visible */}
+                      {coreNavItems.map((item) => (
+                          <Link key={item.name} href={item.href}>
+                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
+                                  {item.name}
+                              </Button>
+                          </Link>
+                      ))}
 
-            {/* Community Dropdown */}
-            {communityItems.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
-                    Community
-                    <ChevronDown className="ml-1 h-3 w-3" />
-                  </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start" className="w-48">
-                  {communityItems.map((item) => (
-                    <DropdownMenuItem key={item.name} asChild>
-                      <Link href={item.href} className="flex items-center cursor-pointer">
-                        {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                        <span>{item.name}</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
+                      {/* Community Dropdown */}
+                      {communityItems.length > 0 && (
+                          <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
+                                      Community
+                                      <ChevronDown className="ml-1 h-3 w-3" />
+                                  </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="start" className="w-48">
+                                  {communityItems.map((item) => (
+                                      <DropdownMenuItem key={item.name} asChild>
+                                          <Link href={item.href} className="flex cursor-pointer items-center">
+                                              {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                              <span>{item.name}</span>
+                                          </Link>
+                                      </DropdownMenuItem>
+                                  ))}
+                              </DropdownMenuContent>
+                          </DropdownMenu>
+                      )}
 
-            {/* Services Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
-                  Services
-                  <ChevronDown className="ml-1 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                {servicesItems.map((item) => (
-                  <DropdownMenuItem key={item.name} asChild>
-                    <Link href={item.href} className="flex items-center cursor-pointer">
-                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                      <span>{item.name}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+                      {/* Services Dropdown */}
+                      <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
+                                  Services
+                                  <ChevronDown className="ml-1 h-3 w-3" />
+                              </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                              {servicesItems.map((item) => (
+                                  <DropdownMenuItem key={item.name} asChild>
+                                      <Link href={item.href} className="flex cursor-pointer items-center">
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <span>{item.name}</span>
+                                      </Link>
+                                  </DropdownMenuItem>
+                              ))}
+                          </DropdownMenuContent>
+                      </DropdownMenu>
 
-            {/* More Dropdown */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="text-sm font-medium hover:bg-accent cursor-pointer">
-                  More
-                  <ChevronDown className="ml-1 h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                {moreItems.map((item) => (
-                  <DropdownMenuItem key={item.name} asChild>
-                    <Link href={item.href} className="flex items-center cursor-pointer">
-                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                      <span>{item.name}</span>
-                    </Link>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
+                      {/* More Dropdown */}
+                      <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" className="hover:bg-accent cursor-pointer text-sm font-medium">
+                                  More
+                                  <ChevronDown className="ml-1 h-3 w-3" />
+                              </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="start" className="w-48">
+                              {moreItems.map((item) => (
+                                  <DropdownMenuItem key={item.name} asChild>
+                                      <Link href={item.href} className="flex cursor-pointer items-center">
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          <span>{item.name}</span>
+                                      </Link>
+                                  </DropdownMenuItem>
+                              ))}
+                          </DropdownMenuContent>
+                      </DropdownMenu>
+                  </div>
 
-          {/* Desktop Actions */}
-          <div className="hidden xl:flex items-center space-x-2">
-            <ThemeToggle />
-            {isLoggedIn ? (
-              <>
-                {/* <Button variant="ghost" size="sm" className="h-9 w-9 px-0">
+                  {/* Desktop Actions */}
+                  <div className="hidden items-center space-x-2 xl:flex">
+                      <ThemeToggle />
+                      {isLoggedIn ? (
+                          <>
+                              {/* <Button variant="ghost" size="sm" className="h-9 w-9 px-0">
                                   <Bell className="h-4 w-4" />
                               </Button> */}
-                <NotificationBell userId={auth.user.id} />
+                              <NotificationBell userId={auth.user.id} />
 
                 {/* Wallet Balance Button - Hide for admin users */}
                 {isLoggedIn && auth?.user?.role !== "admin" && (
@@ -348,11 +348,11 @@ export default function Navbar() {
                     {(() => {
                       const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
                       const shouldShowBalance = !isRegularUser || hasSubscription === true
-                      
+
                       if (!shouldShowBalance) {
                         return null // Only show icon, no balance
                       }
-                      
+
                       return (
                         <>
                           <span className="font-medium text-sm">
@@ -378,187 +378,180 @@ export default function Navbar() {
                   </Button>
                 )}
 
-                {/* Believe Points Display - Visible for all authenticated users */}
-                {isLoggedIn && auth?.user?.believe_points !== undefined && (
-                  <BelievePointsDisplay
-                    balance={auth.user.believe_points || 0}
-                    variant="compact"
-                    showLabel={false}
-                  />
-                )}
+                              {/* Believe Points Display - Visible for all authenticated users */}
+                              {isLoggedIn && auth?.user?.believe_points !== undefined && (
+                                  <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="compact" showLabel={false} />
+                              )}
 
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                      <Avatar className="h-9 w-9">
-                        <AvatarImage
-                          src={auth?.user?.image ? auth?.user?.image : "/placeholder.svg?height=36&width=36"}
-                          alt="User"
-                        />
-                        <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
-                          JD
-                        </AvatarFallback>
-                      </Avatar>
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-56" align="end" forceMount>
-                    <div className="flex items-center justify-start gap-2 p-2">
-                      <div className="flex flex-col space-y-1 leading-none">
-                        <p className="font-medium">{auth?.user?.name ?? "John Doe"}</p>
-                        <p className="w-[200px] truncate text-sm text-muted-foreground">
-                          {auth?.user?.email ?? "john@example.com"}
-                        </p>
-                      </div>
-                    </div>
+                              <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                      <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+                                          <Avatar className="h-9 w-9">
+                                              <AvatarImage
+                                                  src={auth?.user?.image ? auth?.user?.image : '/placeholder.svg?height=36&width=36'}
+                                                  alt="User"
+                                              />
+                                              <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">JD</AvatarFallback>
+                                          </Avatar>
+                                      </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent className="w-56" align="end" forceMount>
+                                      <div className="flex items-center justify-start gap-2 p-2">
+                                          <div className="flex flex-col space-y-1 leading-none">
+                                              <p className="font-medium">{auth?.user?.name ?? 'John Doe'}</p>
+                                              <p className="text-muted-foreground w-[200px] truncate text-sm">
+                                                  {auth?.user?.email ?? 'john@example.com'}
+                                              </p>
+                                          </div>
+                                      </div>
                                       <DropdownMenuSeparator />
-                    {/* {auth?.user?.role === "user" && ( */}
+                                      {/* {auth?.user?.role === "user" && ( */}
                                       <DropdownMenuItem asChild>
-                                    <Link href={route("cart.index")}>
-                                        <ShoppingBag className="mr-2 h-4 w-4" />
-                                        <span>Cart</span>
-                                    </Link>
-                                    </DropdownMenuItem>
-                    {/* )} */}
-                    <DropdownMenuItem asChild>
-                      <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
-                        <User className="mr-2 h-4 w-4" />
-                        <span>Profile</span>
-                      </Link>
-                    </DropdownMenuItem>
-                    {auth?.user?.role === "user" && (
-                      <DropdownMenuItem asChild>
-                        <Link href={route("chat.index")}>
-                          <Text className="mr-2 h-4 w-4" />
-                          <span>Chat</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    {(auth?.user?.role === "admin" || auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") && (
-                      <DropdownMenuItem asChild>
-                        <Link href={route("dashboard")}>
-                          <LayoutGrid className="mr-2 h-4 w-4" />
-                          <span>Dashboard</span>
-                        </Link>
-                      </DropdownMenuItem>
-                    )}
-                    {auth?.user?.service_seller_profile && (
-                      <>
-                        <DropdownMenuItem asChild>
-                          <Link href={route("service-hub.seller.profile", auth.user.id)}>
-                            <User className="mr-2 h-4 w-4" />
-                            <span>Seller Profile</span>
-                          </Link>
-                        </DropdownMenuItem>
-                        <DropdownMenuItem asChild>
-                          <Link href={route("service-hub.seller-orders")}>
-                            <Store className="mr-2 h-4 w-4" />
-                            <span>Seller Dashboard</span>
-                          </Link>
-                        </DropdownMenuItem>
-
-                      </>
-                    )}
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem asChild>
-                      <Link method="post" className="w-full" href={route("logout")} onClick={handleLogout}>
-                        <LogOut className="mr-2 h-4 w-4" />
-                        <span>Log out</span>
-                      </Link>
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </>
-            ) : (
-              <>
-                <Link href={route("login")}>
-                  <Button variant="ghost" size="sm">
-                    Sign In
-                  </Button>
-                </Link>
-                <Link href={route("register")}>
-                  <Button
-                    size="sm"
-                    className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                  >
-                    Get Started
-                  </Button>
-                </Link>
-              </>
-            )}
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="xl:hidden flex items-center space-x-2">
-            <ThemeToggle />
-            {isLoggedIn ? (
-              <>
-                <NotificationBell userId={auth.user.id} />
-              </>) : null}
-            <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)}>
-              {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-          </div>
-        </div>
-
-        {/* Mobile Navigation */}
-        <AnimatePresence>
-          {isOpen && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              transition={{ duration: 0.2 }}
-              className="xl:hidden border-t"
-            >
-              <div className="py-4 space-y-2 max-h-[calc(100vh-4rem)] overflow-y-auto">
-                {/* Core items */}
-                <div className="px-3 py-2">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Main</p>
-                  {coreNavItems.map((item) => (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className="block px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
-                      onClick={() => setIsOpen(false)}
-                    >
-                      {item.name}
-                    </Link>
-                  ))}
-                </div>
-
-                {/* Community section */}
-                {communityItems.length > 0 && (
-                  <div className="px-3 py-2 border-t">
-                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Community</p>
-                    {communityItems.map((item) => (
-                      <Link
-                        key={item.name}
-                        href={item.href}
-                        className="flex items-center px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
-                        onClick={() => setIsOpen(false)}
-                      >
-                        {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                        {item.name}
-                      </Link>
-                    ))}
+                                          <Link href={route('cart.index')}>
+                                              <ShoppingBag className="mr-2 h-4 w-4" />
+                                              <span>Cart</span>
+                                          </Link>
+                                      </DropdownMenuItem>
+                                      {/* )} */}
+                                      <DropdownMenuItem asChild>
+                                          <Link href={auth?.user?.role === 'user' ? route('user.profile.index') : route('profile.edit')}>
+                                              <User className="mr-2 h-4 w-4" />
+                                              <span>Profile</span>
+                                          </Link>
+                                      </DropdownMenuItem>
+                                      {auth?.user?.role === 'user' && (
+                                          <DropdownMenuItem asChild>
+                                              <Link href={route('chat.index')}>
+                                                  <Text className="mr-2 h-4 w-4" />
+                                                  <span>Chat</span>
+                                              </Link>
+                                          </DropdownMenuItem>
+                                      )}
+                                      {(auth?.user?.role === 'admin' ||
+                                          auth?.user?.role === 'organization' ||
+                                          auth?.user?.role === 'organization_pending') && (
+                                          <DropdownMenuItem asChild>
+                                              <Link href={route('dashboard')}>
+                                                  <LayoutGrid className="mr-2 h-4 w-4" />
+                                                  <span>Dashboard</span>
+                                              </Link>
+                                          </DropdownMenuItem>
+                                      )}
+                                      {auth?.user?.service_seller_profile && (
+                                          <>
+                                              <DropdownMenuItem asChild>
+                                                  <Link href={route('service-hub.seller.profile', auth.user.id)}>
+                                                      <User className="mr-2 h-4 w-4" />
+                                                      <span>Seller Profile</span>
+                                                  </Link>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem asChild>
+                                                  <Link href={route('service-hub.seller-dashboard')}>
+                                                      <Store className="mr-2 h-4 w-4" />
+                                                      <span>Seller Dashboard</span>
+                                                  </Link>
+                                              </DropdownMenuItem>
+                                          </>
+                                      )}
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem asChild>
+                                          <Link method="post" className="w-full" href={route('logout')} onClick={handleLogout}>
+                                              <LogOut className="mr-2 h-4 w-4" />
+                                              <span>Log out</span>
+                                          </Link>
+                                      </DropdownMenuItem>
+                                  </DropdownMenuContent>
+                              </DropdownMenu>
+                          </>
+                      ) : (
+                          <>
+                              <Link href={route('login')}>
+                                  <Button variant="ghost" size="sm">
+                                      Sign In
+                                  </Button>
+                              </Link>
+                              <Link href={route('register')}>
+                                  <Button size="sm" className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                                      Get Started
+                                  </Button>
+                              </Link>
+                          </>
+                      )}
                   </div>
-                )}
 
-                {/* Services section */}
-                <div className="px-3 py-2 border-t">
-                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Services</p>
-                  {servicesItems.map((item) => (
-                    <Link
-                      key={item.name}
-                      href={item.href}
-                      className="flex items-center px-3 py-2 text-base font-medium text-foreground hover:bg-accent rounded-md cursor-pointer"
-                      onClick={() => setIsOpen(false)}
-                    >
-                      {item.icon && <item.icon className="mr-2 h-4 w-4" />}
-                      {item.name}
-                    </Link>
-                  ))}
-                </div>
+                  {/* Mobile menu button */}
+                  <div className="flex items-center space-x-2 xl:hidden">
+                      <ThemeToggle />
+                      {isLoggedIn ? (
+                          <>
+                              <NotificationBell userId={auth.user.id} />
+                          </>
+                      ) : null}
+                      <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)}>
+                          {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+                      </Button>
+                  </div>
+              </div>
+
+              {/* Mobile Navigation */}
+              <AnimatePresence>
+                  {isOpen && (
+                      <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: 'auto' }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="border-t xl:hidden"
+                      >
+                          <div className="max-h-[calc(100vh-4rem)] space-y-2 overflow-y-auto py-4">
+                              {/* Core items */}
+                              <div className="px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Main</p>
+                                  {coreNavItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent block cursor-pointer rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+
+                              {/* Community section */}
+                              {communityItems.length > 0 && (
+                                  <div className="border-t px-3 py-2">
+                                      <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Community</p>
+                                      {communityItems.map((item) => (
+                                          <Link
+                                              key={item.name}
+                                              href={item.href}
+                                              className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                              onClick={() => setIsOpen(false)}
+                                          >
+                                              {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                              {item.name}
+                                          </Link>
+                                      ))}
+                                  </div>
+                              )}
+
+                              {/* Services section */}
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">Services</p>
+                                  {servicesItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
 
                 {/* More section */}
                 <div className="px-3 py-2 border-t">
@@ -606,11 +599,11 @@ export default function Navbar() {
                             {(() => {
                               const isRegularUser = auth?.user?.role === 'user' || !auth?.user?.role
                               const shouldShowBalance = !isRegularUser || hasSubscription === true
-                              
+
                               if (!shouldShowBalance) {
                                 return null // Only show icon and text, no balance
                               }
-                              
+
                               return (
                                 <div className="flex items-center gap-2">
                                   <span className="text-lg font-bold text-green-600 dark:text-green-400">
@@ -636,138 +629,186 @@ export default function Navbar() {
                           </div>
                         </Button>
                       )}
+                              {/* More section */}
+                              <div className="border-t px-3 py-2">
+                                  <p className="text-muted-foreground mb-2 text-xs font-semibold tracking-wider uppercase">More</p>
+                                  {moreItems.map((item) => (
+                                      <Link
+                                          key={item.name}
+                                          href={item.href}
+                                          className="text-foreground hover:bg-accent flex cursor-pointer items-center rounded-md px-3 py-2 text-base font-medium"
+                                          onClick={() => setIsOpen(false)}
+                                      >
+                                          {item.icon && <item.icon className="mr-2 h-4 w-4" />}
+                                          {item.name}
+                                      </Link>
+                                  ))}
+                              </div>
+                              <div className="space-y-2 border-t pt-4">
+                                  {isLoggedIn ? (
+                                      <div className="space-y-2">
+                                          <div className="flex items-center space-x-3 px-3 py-2">
+                                              <Avatar className="h-8 w-8">
+                                                  <AvatarImage src={auth?.user?.image || '/placeholder.svg?height=32&width=32'} alt="User" />
+                                                  <AvatarFallback className="bg-gradient-to-r from-blue-500 to-purple-500 text-white">
+                                                      JD
+                                                  </AvatarFallback>
+                                              </Avatar>
+                                              <div>
+                                                  <p className="text-sm font-medium">{auth?.user?.name ?? 'John Doe'}</p>
+                                                  <p className="text-muted-foreground text-xs">{auth?.user?.email ?? 'john@example.com'}</p>
+                                              </div>
+                                          </div>
+                                          {/* Wallet section for mobile - Hide for admin users */}
+                                          {isLoggedIn && auth?.user?.role !== 'admin' && (
+                                              <Button
+                                                  variant="ghost"
+                                                  className="w-full justify-start rounded-md bg-gray-50 dark:bg-gray-800"
+                                                  onClick={handleWalletClick}
+                                              >
+                                                  <div className="flex w-full items-center justify-between">
+                                                      <div className="flex items-center gap-2">
+                                                          <Wallet className="h-4 w-4 text-green-600" />
+                                                          <span className="text-sm font-medium">Wallet Balance</span>
+                                                      </div>
+                                                      <div className="flex items-center gap-2">
+                                                          <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                                                              {showBalance
+                                                                  ? `$${userBalance.toLocaleString('en-US', {
+                                                                        minimumFractionDigits: 2,
+                                                                        maximumFractionDigits: 2,
+                                                                    })}`
+                                                                  : '••••••'}
+                                                          </span>
+                                                          <Button
+                                                              variant="ghost"
+                                                              size="sm"
+                                                              onClick={(e) => {
+                                                                  e.stopPropagation();
+                                                                  setShowBalance(!showBalance);
+                                                              }}
+                                                              className="p-1"
+                                                          >
+                                                              {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                                                          </Button>
+                                                      </div>
+                                                  </div>
+                                              </Button>
+                                          )}
 
-                      {/* Reward Points section for mobile */}
-                      {auth?.user?.reward_points !== undefined && (
-                      <div className="px-3 py-2 space-y-2 bg-gray-50 dark:bg-gray-800 rounded-md">
-                        <div className="flex items-center gap-2">
-                          <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                          <span className="font-medium text-sm">Reward Points</span>
-                        </div>
-                        <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                          {(auth.user.reward_points || 0).toLocaleString('en-US', {
-                            minimumFractionDigits: 0,
-                            maximumFractionDigits: 2
-                          })}
-                        </div>
-                      </div>
-                      )}
+                                          {/* Reward Points section for mobile */}
+                                          {auth?.user?.reward_points !== undefined && (
+                                              <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-800">
+                                                  <div className="flex items-center gap-2">
+                                                      <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                                                      <span className="text-sm font-medium">Reward Points</span>
+                                                  </div>
+                                                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
+                                                      {(auth.user.reward_points || 0).toLocaleString('en-US', {
+                                                          minimumFractionDigits: 0,
+                                                          maximumFractionDigits: 2,
+                                                      })}
+                                                  </div>
+                                              </div>
+                                          )}
 
-                      {/* Believe Points section for mobile */}
-                      {auth?.user?.believe_points !== undefined && (
-                        <BelievePointsDisplay
-                          balance={auth.user.believe_points || 0}
-                          variant="mobile"
-                        />
-                      )}
+                                          {/* Believe Points section for mobile */}
+                                          {auth?.user?.believe_points !== undefined && (
+                                              <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="mobile" />
+                                          )}
 
                                           {/* cart mobile button */}
-                                          <Link href={route("cart.index")}>
+                                          <Link href={route('cart.index')}>
                                               <Button variant="ghost" className="w-full justify-start">
-
-                                        <ShoppingBag className="mr-2 h-4 w-4" />
-                                        <span>Cart</span>
+                                                  <ShoppingBag className="mr-2 h-4 w-4" />
+                                                  <span>Cart</span>
                                               </Button>
-                                    </Link>
-                      <Link href={auth?.user?.role === "user" ? route("user.profile.index") : route("profile.edit")}>
-                        <Button variant="ghost" className="w-full justify-start">
-                          <User className="mr-2 h-4 w-4" />
-                          Profile
-                        </Button>
-                      </Link>
+                                          </Link>
+                                          <Link href={auth?.user?.role === 'user' ? route('user.profile.index') : route('profile.edit')}>
+                                              <Button variant="ghost" className="w-full justify-start">
+                                                  <User className="mr-2 h-4 w-4" />
+                                                  Profile
+                                              </Button>
+                                          </Link>
 
-                      {auth?.user?.role === "user" && (
-                        <Link href={route("chat.index")}>
-                          <Button variant="ghost" className="w-full justify-start">
-                            <Text className="mr-2 h-4 w-4" />
-                            Chat
-                          </Button>
-                        </Link>
-                      )}
-                      {(auth?.user?.role === "admin" || auth?.user?.role === "organization" || auth?.user?.role === "organization_pending") && (
-                        <Link href={route("dashboard")}>
-                          <Button variant="ghost" className="w-full justify-start">
-                            <LayoutGrid className="mr-2 h-4 w-4" />
-                            Dashboard
-                          </Button>
-                        </Link>
-                      )}
-                      {auth?.user?.service_seller_profile && (
-                        <>
-                         <Link href={route("service-hub.seller.profile", auth.user.id)}>
-                            <Button variant="ghost" className="w-full justify-start">
-                              <User className="mr-2 h-4 w-4" />
-                              Seller Profile
-                            </Button>
-                          </Link>
-                          <Link href={route("service-hub.seller-orders")}>
-                            <Button variant="ghost" className="w-full justify-start">
-                              <Store className="mr-2 h-4 w-4" />
-                              Seller Dashboard
-                            </Button>
-                          </Link>
-
-                        </>
-                      )}
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start text-red-600 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950"
-                        onClick={handleLogout}
-                      >
-                        <Link method="post" className="w-full flex justify-start align-items-center cursor-pointer" href={route("logout")} onClick={handleLogout}>
-                          <LogOut className="mr-3 mt-0.5 h-3 w-3 d-flex justify-center align-middle align-items-center" />
-                          Log out
-                        </Link>
-                      </Button>
-                    </div>
-                  ) : (
-                    <>
-                      <Link href={route("login")} className="block px-3">
-                        <Button variant="ghost" className="w-full">
-                          Sign In
-                        </Button>
-                      </Link>
-                      <Link href={route("register")} className="block px-3">
-                        <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
-                          Get Started
-                        </Button>
-                      </Link>
-                    </>
+                                          {auth?.user?.role === 'user' && (
+                                              <Link href={route('chat.index')}>
+                                                  <Button variant="ghost" className="w-full justify-start">
+                                                      <Text className="mr-2 h-4 w-4" />
+                                                      Chat
+                                                  </Button>
+                                              </Link>
+                                          )}
+                                          {(auth?.user?.role === 'admin' ||
+                                              auth?.user?.role === 'organization' ||
+                                              auth?.user?.role === 'organization_pending') && (
+                                              <Link href={route('dashboard')}>
+                                                  <Button variant="ghost" className="w-full justify-start">
+                                                      <LayoutGrid className="mr-2 h-4 w-4" />
+                                                      Dashboard
+                                                  </Button>
+                                              </Link>
+                                          )}
+                                          {auth?.user?.service_seller_profile && (
+                                              <>
+                                                  <Link href={route('service-hub.seller.profile', auth.user.id)}>
+                                                      <Button variant="ghost" className="w-full justify-start">
+                                                          <User className="mr-2 h-4 w-4" />
+                                                          Seller Profile
+                                                      </Button>
+                                                  </Link>
+                                                  <Link href={route('service-hub.seller-orders')}>
+                                                      <Button variant="ghost" className="w-full justify-start">
+                                                          <Store className="mr-2 h-4 w-4" />
+                                                          Seller Dashboard
+                                                      </Button>
+                                                  </Link>
+                                              </>
+                                          )}
+                                          <Button
+                                              variant="ghost"
+                                              className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                                              onClick={handleLogout}
+                                          >
+                                              <Link
+                                                  method="post"
+                                                  className="align-items-center flex w-full cursor-pointer justify-start"
+                                                  href={route('logout')}
+                                                  onClick={handleLogout}
+                                              >
+                                                  <LogOut className="d-flex align-items-center mt-0.5 mr-3 h-3 w-3 justify-center align-middle" />
+                                                  Log out
+                                              </Link>
+                                          </Button>
+                                      </div>
+                                  ) : (
+                                      <>
+                                          <Link href={route('login')} className="block px-3">
+                                              <Button variant="ghost" className="w-full">
+                                                  Sign In
+                                              </Button>
+                                          </Link>
+                                          <Link href={route('register')} className="block px-3">
+                                              <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                                                  Get Started
+                                              </Button>
+                                          </Link>
+                                      </>
+                                  )}
+                              </div>
+                          </div>
+                      </motion.div>
                   )}
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              </AnimatePresence>
+          </div>
 
-      {/* Wallet Popup */}
-      {showWalletPopup && (
-        <WalletPopup
-          isOpen={showWalletPopup}
-          onClose={handleWalletPopupClose}
-        />
-      )}
+          {/* Wallet Popup */}
+          {showWalletPopup && <WalletPopup isOpen={showWalletPopup} onClose={handleWalletPopupClose} />}
 
-      {/* User Wallet Subscription Modal - For supporters without subscription */}
-      {showSubscriptionModal && (
-        <UserWalletSubscriptionModal
-          isOpen={showSubscriptionModal}
-          onClose={() => {
-            setShowSubscriptionModal(false)
-            // Refresh balance to get updated subscription status
-            fetchBalance()
-            // After a short delay, if subscription is now true, open wallet popup
-            setTimeout(() => {
-              if (hasSubscription === true) {
-                setShowWalletPopup(true)
-              }
-            }, 1000)
-          }}
-        />
-      )}
-    </nav>
-  )
+          {/* User Wallet Subscription Modal - For supporters without subscription */}
+          {showSubscriptionModal && <UserWalletSubscriptionModal isOpen={showSubscriptionModal} onClose={() => setShowSubscriptionModal(false)} />}
+      </nav>
+  );
 }
 
 // Render modals outside nav to avoid z-index issues

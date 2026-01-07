@@ -18,7 +18,8 @@ import {
     CheckCircle,
     FileText,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    CreditCard
 } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { format } from "date-fns"
@@ -40,6 +41,7 @@ interface GiftCard {
     status: string
     created_at: string
     purchased_at: string | null
+    payment_method?: string | null
     user?: {
         id: number
         name: string
@@ -152,6 +154,24 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
 
         return (
             <Badge className={config.color}>
+                {config.label}
+            </Badge>
+        )
+    }
+
+    const getPaymentMethodBadge = (paymentMethod: string | null | undefined) => {
+        if (!paymentMethod) return null
+
+        const methodConfig = {
+            stripe: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200', label: 'Card/Stripe' },
+            believe_points: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200', label: 'Believe Points' },
+        }
+
+        const config = methodConfig[paymentMethod as keyof typeof methodConfig] || { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', label: paymentMethod }
+
+        return (
+            <Badge className={config.color} variant="outline">
+                <CreditCard className="h-3 w-3 mr-1" />
                 {config.label}
             </Badge>
         )
@@ -373,6 +393,7 @@ export default function CreatedCardsPage({ giftCards, organization, isAdmin = fa
                                             </div>
                                             <div className="flex flex-col gap-2">
                                                 {getStatusBadge(card.status)}
+                                                {getPaymentMethodBadge(card.payment_method)}
                                                 {/* View button - all cards here are purchased */}
                                                 <div className="flex gap-2 mt-2">
                                                     <Button

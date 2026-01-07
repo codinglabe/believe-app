@@ -11,6 +11,7 @@ import {
   XCircle,
   Calendar,
   DollarSign,
+  CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
@@ -31,6 +32,7 @@ interface Enrollment {
   enrolled_at: string
   amount_paid: number
   enrollment_id: string
+  payment_method?: string | null
 }
 
 interface EnrollmentStats {
@@ -255,6 +257,9 @@ export default function AdminCourseEnrollments({
                       <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">
                         Enrollment ID
                       </th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-foreground">
+                        Payment Method
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -302,6 +307,25 @@ export default function AdminCourseEnrollments({
                           <span className="text-sm font-mono text-muted-foreground">
                             {enrollment.enrollment_id}
                           </span>
+                        </td>
+                        <td className="py-3 px-4">
+                          {enrollment.payment_method ? (
+                            <Badge
+                              variant="outline"
+                              className={
+                                enrollment.payment_method === 'stripe'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                  : enrollment.payment_method === 'believe_points'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }
+                            >
+                              <CreditCard className="h-3 w-3 mr-1" />
+                              {enrollment.payment_method === 'stripe' ? 'Card/Stripe' : enrollment.payment_method === 'believe_points' ? 'Believe Points' : enrollment.payment_method}
+                            </Badge>
+                          ) : (
+                            <span className="text-sm text-muted-foreground">N/A</span>
+                          )}
                         </td>
                       </tr>
                     ))}

@@ -28,10 +28,17 @@ import { Link, router, useForm, Head, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
+interface State {
+  state: string
+  state_code: string
+  base_sales_tax_rate: number
+}
+
 interface Profile {
   id: number
   bio: string
   location: string | null
+  state: string | null
   timezone: string | null
   phone: string | null
   skills: string[]
@@ -49,15 +56,17 @@ interface Profile {
 
 interface PageProps extends Record<string, unknown> {
   profile: Profile
+  states?: State[]
 }
 
 export default function EditSellerProfile() {
-  const { profile } = usePage<PageProps>().props
+  const { profile, states = [] } = usePage<PageProps>().props
 
   const { data, setData, processing, errors } = useForm({
     profile_image: null as File | null,
     bio: profile?.bio || '',
     location: profile?.location || '',
+    state: profile?.state || '',
     timezone: profile?.timezone || '',
     phone: profile?.phone || '',
     skills: profile?.skills || [],
@@ -164,6 +173,7 @@ export default function EditSellerProfile() {
     // Handle basic fields
     formData.append('bio', data.bio)
     if (data.location) formData.append('location', data.location)
+    formData.append('state', data.state) // State is required
     if (data.timezone) formData.append('timezone', data.timezone)
     if (data.phone) formData.append('phone', data.phone)
     if (data.response_time) formData.append('response_time', data.response_time)
@@ -346,6 +356,41 @@ export default function EditSellerProfile() {
                         <p className="text-sm text-red-600 dark:text-red-400 mt-1">
                           {getError('location')}
                         </p>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label htmlFor="state">
+                        State <span className="text-red-500">*</span>
+                      </Label>
+                      <select
+                        id="state"
+                        value={data.state}
+                        onChange={(e) => setData('state', e.target.value)}
+                        className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError('state') ? 'border-red-500' : ''}`}
+                        required
+                      >
+                        <option value="">Select your state</option>
+                        {states.map((state) => (
+                          <option key={state.state_code} value={state.state_code}>
+                            {state.state} ({state.base_sales_tax_rate}% sales tax)
+                          </option>
+                        ))}
+                      </select>
+                      {getError('state') && (
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                          {getError('state')}
+                        </p>
+                      )}
+                      {data.state && (
+                        <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
+                            <strong>Sales Tax Rate:</strong> {states.find(s => s.state_code === data.state)?.base_sales_tax_rate || 0}%
+                          </p>
+                          <p className="text-xs text-blue-600 dark:text-blue-300 mt-1">
+                            This rate will be applied to all orders you receive. Buyers will pay this sales tax on top of the service price.
+                          </p>
+                        </div>
                       )}
                     </div>
 

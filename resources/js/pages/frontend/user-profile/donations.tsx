@@ -1,7 +1,7 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Download, Calendar, DollarSign, TrendingUp, Heart, Building2, FileText, CheckCircle2, Clock, XCircle, Search, Filter, ChevronLeft, ChevronRight } from "lucide-react"
+import { Download, Calendar, DollarSign, TrendingUp, Heart, Building2, FileText, CheckCircle2, Clock, XCircle, Search, Filter, ChevronLeft, ChevronRight, CreditCard } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -17,6 +17,7 @@ interface Donation {
   date: string
   status: string
   frequency?: string
+  payment_method?: string | null
   impact?: string
   receipt_url?: string
 }
@@ -59,12 +60,12 @@ export default function ProfileDonations() {
 
   const handleSearchChange = (value: string) => {
     setSearch(value)
-    
+
     // Clear existing timeout
     if (searchTimeoutRef.current) {
       clearTimeout(searchTimeoutRef.current)
     }
-    
+
     // Set new timeout for debounced search
     searchTimeoutRef.current = setTimeout(() => {
       router.get('/profile/donations', {
@@ -167,7 +168,7 @@ export default function ProfileDonations() {
                   className="pl-10 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
                 />
               </div>
-              
+
               {/* Status Filter */}
               <div className="w-full md:w-48">
                 <Select value={statusFilter} onValueChange={handleStatusFilterChange}>
@@ -226,8 +227,8 @@ export default function ProfileDonations() {
               }
 
               return (
-                <Card 
-                  key={donation.id} 
+                <Card
+                  key={donation.id}
                   className="border border-gray-200 dark:border-gray-700 hover:shadow-lg transition-all duration-300 hover:border-blue-300 dark:hover:border-blue-600 bg-white dark:bg-gray-800"
                 >
                   <CardContent className="p-5 md:p-6">
@@ -270,10 +271,10 @@ export default function ProfileDonations() {
                         <div className="min-w-0">
                           <p className="text-xs text-gray-500 dark:text-gray-400">Date</p>
                           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">
-                            {new Date(donation.date).toLocaleDateString('en-US', { 
-                              month: 'short', 
-                              day: 'numeric', 
-                              year: 'numeric' 
+                            {new Date(donation.date).toLocaleDateString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric'
                             })}
                           </p>
                         </div>
@@ -287,6 +288,26 @@ export default function ProfileDonations() {
                           </p>
                         </div>
                       </div>
+                      {donation.payment_method && (
+                        <div className="flex items-center gap-2 p-2.5 bg-gray-50 dark:bg-gray-700/50 rounded-lg col-span-2">
+                          <CreditCard className="h-4 w-4 text-blue-500 dark:text-blue-400 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">Payment Method</p>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-semibold ${
+                                donation.payment_method === 'stripe'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                  : donation.payment_method === 'believe_points'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }`}
+                            >
+                              {donation.payment_method === 'stripe' ? 'Card/Stripe' : donation.payment_method === 'believe_points' ? 'Believe Points' : donation.payment_method}
+                            </Badge>
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {/* Impact Message */}
@@ -341,7 +362,7 @@ export default function ProfileDonations() {
                 <span className="font-semibold text-gray-900 dark:text-white">{pagination.to}</span> of{' '}
                 <span className="font-semibold text-gray-900 dark:text-white">{pagination.total}</span> donations
               </div>
-              
+
               <div className="flex items-center gap-2">
                 <Button
                   variant="outline"
@@ -353,7 +374,7 @@ export default function ProfileDonations() {
                   <ChevronLeft className="h-4 w-4" />
                   <span className="hidden sm:inline ml-1">Previous</span>
                 </Button>
-                
+
                 <div className="flex items-center gap-1">
                   {Array.from({ length: Math.min(5, pagination.last_page) }, (_, i) => {
                     let pageNum: number
@@ -366,7 +387,7 @@ export default function ProfileDonations() {
                     } else {
                       pageNum = pagination.current_page - 2 + i
                     }
-                    
+
                     return (
                       <Button
                         key={pageNum}
@@ -384,7 +405,7 @@ export default function ProfileDonations() {
                     )
                   })}
                 </div>
-                
+
                 <Button
                   variant="outline"
                   size="sm"

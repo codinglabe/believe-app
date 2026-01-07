@@ -187,6 +187,7 @@ Route::get('/service-hub/create', [App\Http\Controllers\ServiceHubController::cl
 Route::post('/service-hub', [App\Http\Controllers\ServiceHubController::class, 'store'])->name('service-hub.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Seller Profile Routes
+Route::get('/service-hub/seller-dashboard', [App\Http\Controllers\ServiceHubController::class, 'sellerDashboard'])->name('service-hub.seller-dashboard')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller-profile/create', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileCreate'])->name('service-hub.seller-profile.create')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/seller-profile', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileStore'])->name('service-hub.seller-profile.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileEdit'])->name('service-hub.seller-profile.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
@@ -203,6 +204,7 @@ Route::get('/service-hub/create-order', [App\Http\Controllers\ServiceHubControll
 Route::post('/service-hub/create-order', [App\Http\Controllers\ServiceHubController::class, 'orderStore'])->name('service-hub.order.store')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Separate route for Stripe checkout session creation
 Route::post('/service-hub/checkout/create-session', [App\Http\Controllers\ServiceHubController::class, 'createCheckoutSession'])->name('service-hub.checkout.create-session')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/service-hub/calculate-fees', [App\Http\Controllers\ServiceHubController::class, 'calculateFees'])->name('service-hub.calculate-fees')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/order/success', [App\Http\Controllers\ServiceHubController::class, 'orderSuccess'])->name('service-hub.order.success')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/seller/{id}', [App\Http\Controllers\ServiceHubController::class, 'sellerProfile'])->name('service-hub.seller.profile');
 Route::get('/service-hub/seller/{id}/reviews', [App\Http\Controllers\ServiceHubController::class, 'sellerReviews'])->name('service-hub.seller.reviews');

@@ -18,6 +18,7 @@ import {
   ExternalLink,
   Copy,
   Video,
+  CreditCard,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -87,7 +88,7 @@ interface PageProps {
 
 export default function MyEnrollments() {
   const { enrollments, enrollmentStats, filters } = usePage<PageProps>().props
-  
+
   // Ensure we have default values if data is missing
   const safeEnrollments = enrollments || {
     data: [],
@@ -96,16 +97,16 @@ export default function MyEnrollments() {
     last_page: 1,
     per_page: 10,
   }
-  
+
   const safeEnrollmentStats = enrollmentStats || {
     total_spent: 0,
     total_enrolled: 0,
     active_enrollments: 0,
     completed_enrollments: 0,
   }
-  
+
   const safeFilters = filters || { search: '', status: '' }
-  
+
   const [search, setSearch] = useState(safeFilters.search)
   const [statusFilter, setStatusFilter] = useState(safeFilters.status)
   const isInitialMount = useRef(true)
@@ -486,6 +487,29 @@ export default function MyEnrollments() {
                             ${Number(enrollment.amount_paid).toLocaleString()}
                           </span>
                         </div>
+
+                        {enrollment.payment_method && (
+                          <div className="bg-indigo-50 dark:bg-indigo-900/20 p-3 rounded-lg border border-indigo-200 dark:border-indigo-800">
+                            <div className="flex items-center gap-2 mb-1">
+                              <CreditCard className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                              <span className="text-xs font-medium text-indigo-600 dark:text-indigo-400 uppercase tracking-wide">
+                                Payment Method
+                              </span>
+                            </div>
+                            <Badge
+                              variant="outline"
+                              className={`text-xs font-semibold mt-1 ${
+                                enrollment.payment_method === 'stripe'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                  : enrollment.payment_method === 'believe_points'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }`}
+                            >
+                              {enrollment.payment_method === 'stripe' ? 'Card/Stripe' : enrollment.payment_method === 'believe_points' ? 'Believe Points' : enrollment.payment_method}
+                            </Badge>
+                          </div>
+                        )}
 
                         <div className="bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
                           <div className="flex items-center gap-2 mb-1">

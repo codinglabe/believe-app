@@ -70,7 +70,11 @@ interface Order {
   }
   amount: number
   platformFee: number
+  transactionFee: number
+  salesTax: number
+  salesTaxRate: number
   sellerEarnings: number
+  paymentMethod: string
   total: number
   status: string
   paymentStatus: string
@@ -651,24 +655,52 @@ export default function OrderDetail() {
                     <span className="text-muted-foreground">Package</span>
                     <span className="font-medium">{order.package.name}</span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Service Price</span>
-                    <span className="font-medium">${order.amount.toFixed(2)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Platform Fee</span>
-                    <span className="font-medium">${order.platformFee.toFixed(2)}</span>
-                  </div>
-                  {isSeller && (
-                    <div className="flex justify-between">
-                      <span className="text-muted-foreground">Your Earnings</span>
-                      <span className="font-medium text-green-600">${order.sellerEarnings.toFixed(2)}</span>
-                    </div>
+
+                  {isBuyer ? (
+                    // Buyer View: Only show service price
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Service Price</span>
+                        <span className="font-medium">${order.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="border-t pt-4 flex justify-between">
+                        <span className="font-semibold">Total Paid</span>
+                        <span className="font-bold text-lg">${order.total.toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground pt-2">
+                        Payment Method: {order.paymentMethod === 'believe_points' ? 'Believe Points' : 'Stripe Card'}
+                      </div>
+                    </>
+                  ) : (
+                    // Seller View: Show full breakdown
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Service Price</span>
+                        <span className="font-medium">${order.amount.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600 dark:text-red-400">
+                        <span className="text-muted-foreground">Platform Fee</span>
+                        <span className="font-medium">-${order.platformFee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between text-red-600 dark:text-red-400">
+                        <span className="text-muted-foreground">Transaction Fee</span>
+                        <span className="font-medium">-${order.transactionFee.toFixed(2)}</span>
+                      </div>
+                      {order.salesTax > 0 && (
+                        <div className="flex justify-between text-red-600 dark:text-red-400">
+                          <span className="text-muted-foreground">Sales Tax ({order.salesTaxRate}%)</span>
+                          <span className="font-medium">-${order.salesTax.toFixed(2)}</span>
+                        </div>
+                      )}
+                      <div className="border-t pt-4 flex justify-between">
+                        <span className="font-semibold text-green-600 dark:text-green-400">Your Earnings</span>
+                        <span className="font-bold text-lg text-green-600 dark:text-green-400">${order.sellerEarnings.toFixed(2)}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground pt-2">
+                        Payment Method: {order.paymentMethod === 'believe_points' ? 'Believe Points' : 'Stripe Card'}
+                      </div>
+                    </>
                   )}
-                  <div className="border-t pt-4 flex justify-between">
-                    <span className="font-semibold">Total</span>
-                    <span className="font-bold text-lg">${order.total.toFixed(2)}</span>
-                  </div>
                 </CardContent>
               </Card>
 

@@ -210,35 +210,35 @@ class UserProfileController extends Controller
     public function donations(Request $request)
     {
         $user = auth()->user();
-        
+
         // Get search and filter parameters
         $search = $request->get('search', '');
         $statusFilter = $request->get('status', '');
         $perPage = $request->get('per_page', 4);
-        
+
         // Build query
         $query = Donation::where('user_id', $user->id)
             ->with('organization:id,name');
-        
+
         // Apply search filter
         if ($search) {
             $query->whereHas('organization', function ($q) use ($search) {
                 $q->where('name', 'like', '%' . $search . '%');
             });
         }
-        
+
         // Apply status filter
         if ($statusFilter && $statusFilter !== 'all') {
             $query->where('status', $statusFilter);
         }
-        
+
         // Order by date
         $query->orderBy('donation_date', 'desc')
             ->orderBy('created_at', 'desc');
-        
+
         // Paginate results
         $donationsPaginated = $query->paginate($perPage);
-        
+
         // Transform donations
         $donations = $donationsPaginated->getCollection()->map(function ($donation) {
             // Map status correctly - 'active' for recurring donations should be shown as 'completed'
@@ -251,7 +251,7 @@ class UserProfileController extends Controller
                 // For now, if it's not pending/failed/canceled, assume it's completed
                 $displayStatus = 'completed';
             }
-            
+
             return [
                 'id' => $donation->id,
                 'organization_name' => $donation->organization->name ?? 'Unknown Organization',
@@ -259,6 +259,7 @@ class UserProfileController extends Controller
                 'date' => $donation->donation_date ? $donation->donation_date->toDateString() : $donation->created_at->toDateString(),
                 'status' => $displayStatus,
                 'frequency' => $donation->frequency ?? 'one-time',
+                'payment_method' => $donation->payment_method ?? null,
                 'impact' => $donation->messages ?? null,
                 'receipt_url' => null, // Add receipt URL if available
             ];
@@ -269,12 +270,12 @@ class UserProfileController extends Controller
         $totalDonated = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
-        
+
         $thisYearDonated = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
             ->whereYear('donation_date', now()->year)
             ->sum('amount');
-        
+
         $organizationsSupported = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
             ->distinct('organization_id')
@@ -314,6 +315,7 @@ class UserProfileController extends Controller
                     'datetime' => $order->created_at->toISOString(),
                     'status' => $order->status,
                     'payment_status' => $order->payment_status,
+                    'payment_method' => $order->payment_method ?? null,
                     'total_amount' => $order->total_amount,
                     'item_count' => $order->items->count(),
                     'printify_order_id' => $order->printify_order_id,

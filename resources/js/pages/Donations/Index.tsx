@@ -5,12 +5,13 @@ import React from "react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
-    HeartHandshake, 
-    DollarSign, 
+import {
+    HeartHandshake,
+    DollarSign,
     Calendar,
     User,
-    Mail
+    Mail,
+    CreditCard
 } from "lucide-react"
 import { format } from "date-fns"
 
@@ -85,6 +86,24 @@ export default function DonationsIndex({ donations, organization }: DonationsInd
         )
     }
 
+    const getPaymentMethodBadge = (paymentMethod: string | null | undefined) => {
+        if (!paymentMethod) return null
+
+        const methodConfig = {
+            stripe: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200', label: 'Card/Stripe' },
+            believe_points: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200', label: 'Believe Points' },
+        }
+
+        const config = methodConfig[paymentMethod as keyof typeof methodConfig] || { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', label: paymentMethod }
+
+        return (
+            <Badge className={config.color} variant="outline">
+                <CreditCard className="h-3 w-3 mr-1" />
+                {config.label}
+            </Badge>
+        )
+    }
+
     const formatAmount = (amount: number) => {
         return new Intl.NumberFormat('en-US', {
             style: 'currency',
@@ -96,7 +115,7 @@ export default function DonationsIndex({ donations, organization }: DonationsInd
     return (
         <AppSidebarLayout>
             <Head title="Donations" />
-            
+
             <div className="flex h-full flex-1 flex-col gap-4 rounded-xl py-4 px-4 md:py-6 md:px-10">
                 {/* Header */}
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -211,7 +230,7 @@ export default function DonationsIndex({ donations, organization }: DonationsInd
                                                 </p>
                                             )}
                                         </div>
-                                        
+
                                         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 flex-shrink-0">
                                             <div className="text-right">
                                                 <p className="text-2xl font-bold text-primary">
@@ -225,6 +244,7 @@ export default function DonationsIndex({ donations, organization }: DonationsInd
                                             <div className="flex flex-col gap-2">
                                                 {getStatusBadge(donation.status)}
                                                 {getFrequencyBadge(donation.frequency)}
+                                                {getPaymentMethodBadge(donation.payment_method)}
                                             </div>
                                         </div>
                                     </div>

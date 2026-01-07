@@ -28,6 +28,7 @@ class Gig extends Model
         'faqs',
         'status',
         'is_featured',
+        'accepts_believe_points',
     ];
 
     protected $casts = [
@@ -36,6 +37,7 @@ class Gig extends Model
         'tags' => 'array',
         'faqs' => 'array',
         'is_featured' => 'boolean',
+        'accepts_believe_points' => 'boolean',
         'reviews_count' => 'integer',
         'orders_count' => 'integer',
     ];

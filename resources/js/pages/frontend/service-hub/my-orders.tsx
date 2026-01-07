@@ -316,7 +316,7 @@ export default function MyOrders() {
                                   ${order.total.toFixed(2)}
                                 </div>
                                 <div className="text-xs text-muted-foreground">
-                                  Service: ${order.amount} + Fee: ${order.platformFee}
+                                  Service: ${order.amount.toFixed(2)}
                                 </div>
                               </div>
                             </div>

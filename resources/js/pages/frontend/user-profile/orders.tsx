@@ -1,7 +1,7 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Package, Calendar, DollarSign, FileText, ArrowRight } from "lucide-react"
+import { Package, Calendar, DollarSign, FileText, ArrowRight, CreditCard } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -23,6 +23,7 @@ interface Order {
   datetime: string
   status: string
   payment_status: string
+  payment_method?: string | null
   total_amount: number
   item_count: number
   printify_order_id?: string
@@ -120,6 +121,21 @@ export default function ProfileOrders() {
                           <Badge variant="outline" className={getPaymentStatusColor(order.payment_status)}>
                             {getPaymentStatusText(order.payment_status)}
                           </Badge>
+                          {order.payment_method && (
+                            <Badge
+                              variant="outline"
+                              className={
+                                order.payment_method === 'stripe'
+                                  ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                  : order.payment_method === 'believe_points'
+                                  ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                  : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                              }
+                            >
+                              <CreditCard className="h-3 w-3 mr-1" />
+                              {order.payment_method === 'stripe' ? 'Card/Stripe' : order.payment_method === 'believe_points' ? 'Believe Points' : order.payment_method}
+                            </Badge>
+                          )}
                         </div>
                         <div className="flex flex-wrap items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                           <div className="flex items-center gap-1">

@@ -35,6 +35,7 @@ import {
   MessageCircle,
   Package,
   ShoppingBag,
+  BarChart3,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -269,6 +270,12 @@ export default function ServiceHubIndex() {
                   <Button variant="ghost" size="sm" className="gap-2">
                     <Package className="h-4 w-4" />
                     My Orders
+                  </Button>
+                </Link>
+                <Link href="/service-hub/seller-dashboard">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Seller Dashboard
                   </Button>
                 </Link>
                 <Link href="/service-hub/seller-orders">
@@ -815,12 +822,20 @@ export default function ServiceHubIndex() {
             <p className="text-white/90 mb-8 max-w-2xl mx-auto">
               Join thousands of professionals and start earning by offering your skills
             </p>
-            <Link href="/service-hub/create">
-              <Button size="lg" className="bg-white text-primary hover:bg-white/90">
-                <Plus className="mr-2 h-5 w-5" />
-                Create Your Service
-              </Button>
-            </Link>
+            <div className="flex items-center gap-4 justify-center flex-wrap">
+              <Link href="/service-hub/seller-dashboard">
+                <Button size="lg" className="bg-white text-blue-600 hover:bg-white/90">
+                  <BarChart3 className="mr-2 h-5 w-5" />
+                  Go to Dashboard
+                </Button>
+              </Link>
+              <Link href="/service-hub/create">
+                <Button size="lg" variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20">
+                  <Plus className="mr-2 h-5 w-5" />
+                  Create Your Service
+                </Button>
+              </Link>
+            </div>
           </div>
         </motion.section>
       </div>

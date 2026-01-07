@@ -64,6 +64,7 @@ export default function CreateService() {
     tags: [] as string[],
     images: [] as File[],
     faqs: [] as Array<{ question: string; answer: string }>,
+    accepts_believe_points: false,
   })
   const [packages, setPackages] = useState<Package[]>([
     {
@@ -258,6 +259,9 @@ export default function CreateService() {
       formDataToSubmit.append('images[]', image)
     })
 
+    // Append Believe Points acceptance
+    formDataToSubmit.append('accepts_believe_points', formData.accepts_believe_points ? '1' : '0')
+
     // Submit to backend
     router.post('/service-hub', formDataToSubmit, {
       forceFormData: true,
@@ -428,6 +432,34 @@ export default function CreateService() {
                         {getError('tags')}
                       </p>
                     )}
+                  </div>
+
+                  {/* Believe Points Acceptance */}
+                  <div className="p-4 border rounded-lg bg-muted/50">
+                    <div className="flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        id="accepts_believe_points"
+                        checked={formData.accepts_believe_points}
+                        onChange={(e) => setFormData({ ...formData, accepts_believe_points: e.target.checked })}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <div className="flex-1">
+                        <Label htmlFor="accepts_believe_points" className="font-semibold cursor-pointer">
+                          Accept Believe Points Payments
+                        </Label>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Allow buyers to pay with Believe Points. You'll pay only 1% transaction fee instead of 3% for Stripe payments.
+                        </p>
+                        {formData.accepts_believe_points && (
+                          <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
+                            <p className="text-green-800 dark:text-green-200 font-medium">
+                              ✓ Transaction fee discount: 1% (vs 3% for Stripe)
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </CardContent>
               </Card>

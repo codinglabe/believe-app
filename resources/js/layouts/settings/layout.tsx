@@ -4,7 +4,7 @@ import type { BreadcrumbItem, SharedData } from "@/types"
 import { Head, Link, usePage } from "@inertiajs/react"
 import AppLayout from "@/layouts/app-layout"
 import { Card, CardContent } from "@/components/frontend/ui/card"
-import { User, Lock, Shield, CreditCard, Globe, Webhook, Settings } from "lucide-react"
+import { User, Lock, Shield, CreditCard, Globe, Webhook, Settings, ShoppingBag, FileText } from "lucide-react"
 import type { PropsWithChildren } from "react"
 import { route } from "ziggy-js"
 
@@ -71,7 +71,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <Lock className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Password & Security</span>
                     </Link>
-                    
+
                     {(auth.user.role === "admin" || auth.user.role !== "organization") && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
@@ -129,7 +129,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                         )}
                       </>
                     )}
-                    
+
                     <div className="px-3 py-2 mt-4 mb-2">
                       <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Billing</h3>
                     </div>
@@ -186,7 +186,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <Lock className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Password & Security</span>
                     </Link>
-                    
+
                     {(auth.user.role === "admin" || auth.user.role !== "organization") && (
                       <>
                         <div className="px-3 py-2 mt-4 mb-2">
@@ -244,7 +244,7 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                         )}
                       </>
                     )}
-                    
+
                     <div className="px-3 py-2 mt-4 mb-2">
                       <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Billing</h3>
                     </div>
@@ -270,6 +270,25 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                       <Shield className="h-4 w-4 flex-shrink-0" />
                       <span className="truncate">Referral Link</span>
                     </Link>
+
+                    {auth.user.role === "organization" && (
+                      <>
+                        <div className="px-3 py-2 mt-4 mb-2">
+                          <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Tax Exemptions</h3>
+                        </div>
+                        <Link
+                          href={route("exemption-certificates.index")}
+                          className={`flex items-center gap-3 px-3 py-2.5 rounded-md text-sm font-medium transition-all ${
+                            activeTab === "exemption-certificates"
+                              ? "bg-primary/10 text-primary dark:bg-primary/20 dark:text-primary"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+                          }`}
+                        >
+                          <FileText className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">Exemption Certificates</span>
+                        </Link>
+                      </>
+                    )}
                   </div>
                 </nav>
               </CardContent>

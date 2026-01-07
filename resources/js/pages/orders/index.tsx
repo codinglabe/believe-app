@@ -3,7 +3,7 @@ import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye } from 'lucide-react';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -22,6 +22,7 @@ interface Category {
     reference_number: string;
     total_amount: string;
     status: string;
+    payment_method?: string | null;
     created_at: string;
     updated_at: string;
 }
@@ -198,6 +199,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                         <th className="px-4 py-3 font-medium min-w-32">Reference Number</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Amount</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Payment Method</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Date</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
@@ -219,6 +221,25 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                 <Badge variant="secondary" className="font-medium">
                                                     {item.status}
                                                 </Badge>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
+                                                {item.payment_method ? (
+                                                    <Badge
+                                                        variant="outline"
+                                                        className={
+                                                            item.payment_method === 'stripe'
+                                                                ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                                                : item.payment_method === 'believe_points'
+                                                                ? 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                                                : 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300'
+                                                        }
+                                                    >
+                                                        <CreditCard className="h-3 w-3 mr-1" />
+                                                        {item.payment_method === 'stripe' ? 'Card/Stripe' : item.payment_method === 'believe_points' ? 'Believe Points' : item.payment_method}
+                                                    </Badge>
+                                                ) : (
+                                                    <span className="text-sm text-muted-foreground">N/A</span>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 min-w-64">
                                                 <span className="truncate block max-w-md" title={item.created_at}>

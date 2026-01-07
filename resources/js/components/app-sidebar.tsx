@@ -58,7 +58,8 @@ import {
     Send,
     Store,
     CreditCard,
-    FolderOpen
+    FolderOpen,
+    ShoppingBag
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { route } from 'ziggy-js';
@@ -759,6 +760,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Service Categories',
                 href: '/admin/service-categories',
                 icon: FolderOpen,
+                role: "admin"
+            },
+            {
+                title: 'Service Hub Settings',
+                href: '/settings/service-hub',
+                icon: ShoppingBag,
                 role: "admin"
             },
             {

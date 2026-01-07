@@ -14,12 +14,14 @@ use App\Models\ServiceChat;
 use App\Models\ServiceChatMessage;
 use App\Models\CustomOffer;
 use App\Services\StripeConfigService;
+use App\Services\ServiceHubFeeService;
 use Illuminate\Http\Request;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Stripe\Stripe;
@@ -214,6 +216,7 @@ class ServiceHubController extends Controller
             'packages.*.features.*' => 'string|max:255',
             'images' => 'required|array|min:1|max:5',
             'images.*' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'accepts_believe_points' => 'nullable|boolean',
         ]);
 
         try {
@@ -240,6 +243,7 @@ class ServiceHubController extends Controller
                 'faqs' => $faqs,
                 'price' => $validated['packages'][0]['price'] ?? 0,
                 'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
+                'accepts_believe_points' => $validated['accepts_believe_points'] ?? false,
                 'status' => 'active',
             ]);
             // Create packages
@@ -320,6 +324,7 @@ class ServiceHubController extends Controller
                 'fullDescription' => $gig->full_description ?? '',
                 'tags' => $gig->tags ?? [],
                 'faqs' => $gig->faqs ?? [],
+                'accepts_believe_points' => $gig->accepts_believe_points ?? false,
                 'images' => $existingImages,
                 'packages' => $packages,
             ],
@@ -359,6 +364,7 @@ class ServiceHubController extends Controller
             'existing_images.*' => 'nullable|string',
             'deleted_images' => 'nullable|array',
             'deleted_images.*' => 'nullable|integer',
+            'accepts_believe_points' => 'nullable|boolean',
         ]);
 
         try {
@@ -385,6 +391,7 @@ class ServiceHubController extends Controller
                 'faqs' => $faqs,
                 'price' => $validated['packages'][0]['price'] ?? 0,
                 'delivery_time' => $validated['packages'][0]['delivery_time'] ?? '3 days',
+                'accepts_believe_points' => $validated['accepts_believe_points'] ?? false,
             ]);
 
             // Handle deleted images
@@ -642,6 +649,7 @@ class ServiceHubController extends Controller
             'slug' => $gig->slug,
             'title' => $gig->title,
             'image' => $imageUrl,
+            'accepts_believe_points' => $gig->accepts_believe_points ?? false,
             'seller' => [
                 'id' => $gig->user->id,
                 'name' => $gig->user->name,
@@ -660,9 +668,33 @@ class ServiceHubController extends Controller
             'features' => $package->features ?? [],
         ];
 
+        // Get user's Believe Points balance
+        $userBelievePoints = $user ? $user->believe_points : 0;
+
+        // Calculate fees to check if user has enough points (only if gig accepts Believe Points)
+        $sellerState = $gig->user->serviceSellerProfile->state ?? null;
+        $pointsRequired = 0;
+        $hasEnoughPoints = false;
+
+        if ($gig->accepts_believe_points ?? false) {
+            $fees = ServiceHubFeeService::calculateFees(
+                $package->price,
+                'believe_points',
+                $sellerState,
+                true, // gig accepts Believe Points
+                $user,
+                true // Services are typically for charitable use
+            );
+            $pointsRequired = $fees['total_buyer_pays'];
+            $hasEnoughPoints = $userBelievePoints >= $pointsRequired;
+        }
+
         return Inertia::render('frontend/service-hub/order', [
             'gig' => $gigData,
             'package' => $packageData,
+            'userBelievePoints' => $userBelievePoints,
+            'pointsRequired' => $pointsRequired,
+            'hasEnoughPoints' => $hasEnoughPoints,
         ]);
     }
 
@@ -699,16 +731,52 @@ class ServiceHubController extends Controller
             ],
             'requirements' => 'required|string',
             'special_instructions' => 'nullable|string',
-            'payment_method' => 'required|in:wallet,card',
+            'payment_method' => 'required|in:stripe,believe_points',
         ]);
 
         try {
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
 
-            // Calculate fees
-            $platformFee = $package->price * 0.05; // 5% platform fee
-            $sellerEarnings = $package->price - $platformFee;
+            // Get seller's state from their profile
+            $seller = $gig->user;
+            $sellerState = $seller->serviceSellerProfile->state ?? null;
+
+            // Validate Believe Points payment
+            $paymentMethod = $validated['payment_method'];
+            if ($paymentMethod === 'believe_points' && !$gig->accepts_believe_points) {
+                return back()->withErrors(['payment_method' => 'This service does not accept Believe Points payments.']);
+            }
+
+            // Get buyer for exemption check
+            $buyer = Auth::user();
+
+            // Calculate fees using ServiceHubFeeService (using seller's state)
+            $fees = ServiceHubFeeService::calculateFees(
+                $package->price,
+                $paymentMethod,
+                $sellerState,
+                $gig->accepts_believe_points,
+                $buyer,
+                true // Services are typically for charitable use
+            );
+
+            // Handle Believe Points payment
+            if ($paymentMethod === 'believe_points') {
+                $pointsRequired = $fees['total_buyer_pays'];
+                $user->refresh();
+
+                if ($user->believe_points < $pointsRequired) {
+                    return back()->withErrors([
+                        'payment_method' => "Insufficient Believe Points. You need {$pointsRequired} points but only have {$user->believe_points} points."
+                    ]);
+                }
+
+                // Deduct points
+                if (!$user->deductBelievePoints($pointsRequired)) {
+                    return back()->withErrors(['payment_method' => 'Failed to deduct Believe Points. Please try again.']);
+                }
+            }
 
             $order = ServiceOrder::create([
                 'gig_id' => $gig->id,
@@ -717,12 +785,17 @@ class ServiceHubController extends Controller
                 'package_id' => $package->id,
                 'package_type' => $package->name,
                 'amount' => $package->price,
-                'platform_fee' => $platformFee,
-                'seller_earnings' => $sellerEarnings,
+                'platform_fee' => $fees['platform_fee'],
+                'transaction_fee' => $fees['transaction_fee'],
+                'sales_tax' => $fees['sales_tax'],
+                'sales_tax_rate' => $fees['sales_tax_rate'],
+                'buyer_state' => $validated['buyer_state'] ?? null,
+                'seller_earnings' => $fees['seller_earnings'],
+                'payment_method' => $paymentMethod,
                 'requirements' => $validated['requirements'],
                 'special_instructions' => $validated['special_instructions'] ?? null,
                 'status' => 'pending',
-                'payment_status' => $validated['payment_method'] === 'wallet' ? 'paid' : 'pending',
+                'payment_status' => $paymentMethod === 'believe_points' ? 'paid' : 'pending',
             ]);
 
             // Send email notification to seller
@@ -736,9 +809,8 @@ class ServiceHubController extends Controller
                 ]);
             }
 
-            // Handle wallet payment
-            if ($validated['payment_method'] === 'wallet') {
-                // TODO: Deduct from wallet balance
+            // Handle Believe Points payment
+            if ($paymentMethod === 'believe_points') {
                 return redirect()->route('service-hub.order.success')
                     ->with('order_id', $order->id);
             }
@@ -803,10 +875,22 @@ class ServiceHubController extends Controller
             $gig = Gig::with('packages')->findOrFail($validated['gig_id']);
             $package = GigPackage::findOrFail($validated['package_id']);
 
-            // Calculate fees
-            $platformFee = $package->price * 0.05; // 5% platform fee
-            $sellerEarnings = $package->price - $platformFee;
-            $totalAmount = $package->price + $platformFee;
+            // Get seller's state from their profile
+            $seller = $gig->user;
+            $sellerState = $seller->serviceSellerProfile->state ?? null;
+
+            // Get buyer for exemption check
+            $buyer = Auth::user();
+
+            // Calculate fees using ServiceHubFeeService (Stripe payment, using seller's state)
+            $fees = ServiceHubFeeService::calculateFees(
+                $package->price,
+                'stripe',
+                $sellerState,
+                $gig->accepts_believe_points,
+                $buyer,
+                true // Services are typically for charitable use
+            );
 
             // Step 1: Create the order
             $order = ServiceOrder::create([
@@ -816,8 +900,13 @@ class ServiceHubController extends Controller
                 'package_id' => $package->id,
                 'package_type' => $package->name,
                 'amount' => $package->price,
-                'platform_fee' => $platformFee,
-                'seller_earnings' => $sellerEarnings,
+                'platform_fee' => $fees['platform_fee'],
+                'transaction_fee' => $fees['transaction_fee'],
+                'sales_tax' => $fees['sales_tax'],
+                'sales_tax_rate' => $fees['sales_tax_rate'],
+                'buyer_state' => $sellerState, // Store seller's state (used for sales tax calculation)
+                'seller_earnings' => $fees['seller_earnings'],
+                'payment_method' => 'stripe',
                 'requirements' => $validated['requirements'],
                 'special_instructions' => $validated['special_instructions'] ?? null,
                 'status' => 'pending',
@@ -866,9 +955,9 @@ class ServiceHubController extends Controller
                         'currency' => 'usd',
                         'product_data' => [
                             'name' => $gig->title . ' - ' . $package->name,
-                            'description' => 'Service Order: ' . $gig->title,
+                            'description' => 'Service Amount: $' . number_format($package->price, 2),
                         ],
-                        'unit_amount' => (int)($totalAmount * 100), // Convert to cents
+                        'unit_amount' => (int)($fees['total_buyer_pays'] * 100), // Convert to cents (buyer pays only service amount, no fees or sales tax)
                     ],
                     'quantity' => 1,
                 ],
@@ -964,7 +1053,7 @@ class ServiceHubController extends Controller
                 'package' => $order->package_type ?? 'Standard',
                 'amount' => (float) $order->amount,
                 'platformFee' => (float) $order->platform_fee,
-                'total' => (float) ($order->amount + $order->platform_fee),
+                'total' => (float) $order->amount, // Buyer pays only service amount, no fees
                 'status' => $order->status,
                 'paymentStatus' => $order->payment_status,
                 'orderDate' => $order->created_at->format('Y-m-d'),
@@ -1036,8 +1125,11 @@ class ServiceHubController extends Controller
                 'package' => $order->package_type ?? 'Standard',
                 'amount' => (float) $order->amount,
                 'platformFee' => (float) $order->platform_fee,
+                'transactionFee' => (float) $order->transaction_fee,
+                'salesTax' => (float) $order->sales_tax,
+                'salesTaxRate' => (float) $order->sales_tax_rate,
                 'sellerEarnings' => (float) $order->seller_earnings,
-                'total' => (float) ($order->amount + $order->platform_fee),
+                'paymentMethod' => $order->payment_method ?? 'stripe',
                 'status' => $order->status,
                 'paymentStatus' => $order->payment_status,
                 'orderDate' => $order->created_at->format('Y-m-d'),
@@ -1115,8 +1207,12 @@ class ServiceHubController extends Controller
             ],
             'amount' => (float) $order->amount,
             'platformFee' => (float) $order->platform_fee,
+            'transactionFee' => (float) $order->transaction_fee,
+            'salesTax' => (float) $order->sales_tax,
+            'salesTaxRate' => (float) $order->sales_tax_rate,
             'sellerEarnings' => (float) $order->seller_earnings,
-            'total' => (float) ($order->amount + $order->platform_fee),
+            'paymentMethod' => $order->payment_method ?? 'stripe',
+            'total' => (float) $order->amount, // Buyer pays only the service amount
             'status' => $order->status,
             'paymentStatus' => $order->payment_status,
             'orderDate' => $order->created_at->format('Y-m-d H:i'),
@@ -1357,8 +1453,10 @@ class ServiceHubController extends Controller
                         // Update order payment status and store Stripe response
                         $order->update([
                             'payment_status' => 'paid',
+                            'payment_method' => 'stripe',
                             'stripe_response' => $stripeResponse,
                             'stripe_session_id' => $sessionId,
+                            'stripe_payment_intent_id' => $session->payment_intent ?? null,
                         ]);
                         $paymentStatus = 'paid';
 
@@ -1783,7 +1881,12 @@ class ServiceHubController extends Controller
                 ->with('info', 'You already have a seller profile. You can update it here.');
         }
 
-        return Inertia::render('frontend/service-hub/seller-profile/create');
+        // Get all states for sales tax dropdown
+        $states = \App\Models\StateSalesTax::orderBy('state')->get(['state', 'state_code', 'base_sales_tax_rate']);
+
+        return Inertia::render('frontend/service-hub/seller-profile/create', [
+            'states' => $states,
+        ]);
     }
 
     public function sellerProfileStore(Request $request): RedirectResponse
@@ -1796,10 +1899,12 @@ class ServiceHubController extends Controller
                 ->with('error', 'You already have a seller profile.');
         }
 
+
         $validated = $request->validate([
             'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'bio' => 'required|string|max:1000',
             'location' => 'nullable|string|max:255',
+            'state' => 'required|string|max:2',
             'timezone' => 'nullable|string|max:100',
             'phone' => 'nullable|string|max:20',
             'skills' => 'nullable|array',
@@ -1833,6 +1938,7 @@ class ServiceHubController extends Controller
             'user_id' => $user->id,
             'bio' => $validated['bio'],
             'location' => $validated['location'] ?? null,
+            'state' => $validated['state'],
             'timezone' => $validated['timezone'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'skills' => $validated['skills'] ?? [],
@@ -1853,6 +1959,123 @@ class ServiceHubController extends Controller
             ->with('success', 'Seller profile created successfully!');
     }
 
+    public function sellerDashboard(Request $request): Response|RedirectResponse
+    {
+        $user = Auth::user();
+        $profile = $user->serviceSellerProfile;
+
+        // If no seller profile, redirect to create one
+        if (!$profile) {
+            return redirect()->route('service-hub.seller-profile.create')
+                ->with('info', 'Please create a seller profile first to access your dashboard.');
+        }
+
+        // Calculate statistics
+        $totalOrders = ServiceOrder::where('seller_id', $user->id)->count();
+        $pendingOrders = ServiceOrder::where('seller_id', $user->id)->where('status', 'pending')->count();
+        $inProgressOrders = ServiceOrder::where('seller_id', $user->id)->where('status', 'in_progress')->count();
+        $completedOrders = ServiceOrder::where('seller_id', $user->id)->where('status', 'completed')->count();
+
+        // Calculate earnings
+        $totalEarnings = ServiceOrder::where('seller_id', $user->id)
+            ->where('payment_status', 'paid')
+            ->sum('seller_earnings');
+
+        $pendingEarnings = ServiceOrder::where('seller_id', $user->id)
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'completed')
+            ->sum('seller_earnings');
+
+        $availableEarnings = ServiceOrder::where('seller_id', $user->id)
+            ->where('payment_status', 'paid')
+            ->where('status', 'completed')
+            ->sum('seller_earnings');
+
+        // Get active services
+        $activeServices = Gig::where('user_id', $user->id)
+            ->where('status', 'active')
+            ->with(['category', 'images', 'packages'])
+            ->orderBy('created_at', 'desc')
+            ->limit(6)
+            ->get()
+            ->map(function ($gig) {
+                $primaryImage = $gig->images->where('is_primary', true)->first() ?? $gig->images->first();
+                return [
+                    'id' => $gig->id,
+                    'slug' => $gig->slug,
+                    'title' => $gig->title,
+                    'image' => $primaryImage ? Storage::url($primaryImage->image_path) : null,
+                    'category' => $gig->category->name ?? 'Uncategorized',
+                    'price' => (float) $gig->price,
+                    'rating' => (float) $gig->rating,
+                    'orders_count' => $gig->orders_count,
+                    'reviews_count' => $gig->reviews_count,
+                ];
+            });
+
+        // Get recent orders
+        $recentOrders = ServiceOrder::where('seller_id', $user->id)
+            ->with(['gig.images', 'buyer', 'package'])
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get()
+            ->map(function ($order) {
+                $gigImage = $order->gig->images->where('is_primary', true)->first() ?? $order->gig->images->first();
+                return [
+                    'id' => $order->id,
+                    'orderNumber' => $order->order_number,
+                    'serviceTitle' => $order->gig->title,
+                    'serviceImage' => $gigImage ? Storage::url($gigImage->image_path) : null,
+                    'buyerName' => $order->buyer->name,
+                    'buyerAvatar' => $order->buyer->image ? Storage::url($order->buyer->image) : null,
+                    'amount' => (float) $order->amount,
+                    'sellerEarnings' => (float) $order->seller_earnings,
+                    'status' => $order->status,
+                    'paymentStatus' => $order->payment_status,
+                    'createdAt' => $order->created_at->format('M d, Y'),
+                ];
+            });
+
+        // Calculate average rating
+        $avgRating = ServiceReview::whereHas('order', function ($q) use ($user) {
+            $q->where('seller_id', $user->id);
+        })->avg('rating') ?? 0;
+
+        // Get total reviews
+        $totalReviews = ServiceReview::whereHas('order', function ($q) use ($user) {
+            $q->where('seller_id', $user->id);
+        })->count();
+
+        // Get total services
+        $totalServices = Gig::where('user_id', $user->id)->count();
+        $activeServicesCount = Gig::where('user_id', $user->id)->where('status', 'active')->count();
+
+        return Inertia::render('frontend/service-hub/seller-dashboard', [
+            'profile' => [
+                'id' => $profile->id,
+                'bio' => $profile->bio,
+                'location' => $profile->location,
+                'state' => $profile->state,
+                'profile_image' => $profile->profile_image ? Storage::url($profile->profile_image) : null,
+            ],
+            'stats' => [
+                'totalOrders' => $totalOrders,
+                'pendingOrders' => $pendingOrders,
+                'inProgressOrders' => $inProgressOrders,
+                'completedOrders' => $completedOrders,
+                'totalEarnings' => round($totalEarnings, 2),
+                'pendingEarnings' => round($pendingEarnings, 2),
+                'availableEarnings' => round($availableEarnings, 2),
+                'avgRating' => round($avgRating, 2),
+                'totalReviews' => $totalReviews,
+                'totalServices' => $totalServices,
+                'activeServices' => $activeServicesCount,
+            ],
+            'activeServices' => $activeServices,
+            'recentOrders' => $recentOrders,
+        ]);
+    }
+
     public function sellerProfileEdit(): Response|RedirectResponse
     {
         $user = Auth::user();
@@ -1863,11 +2086,15 @@ class ServiceHubController extends Controller
                 ->with('error', 'Please create a seller profile first.');
         }
 
+        // Get all states for sales tax dropdown
+        $states = \App\Models\StateSalesTax::orderBy('state')->get(['state', 'state_code', 'base_sales_tax_rate']);
+
         return Inertia::render('frontend/service-hub/seller-profile/edit', [
             'profile' => [
                 'id' => $profile->id,
                 'bio' => $profile->bio,
                 'location' => $profile->location,
+                'state' => $profile->state,
                 'timezone' => $profile->timezone,
                 'phone' => $profile->phone,
                 'skills' => $profile->skills ?? [],
@@ -1882,6 +2109,7 @@ class ServiceHubController extends Controller
                 'instagram' => $profile->instagram,
                 'profile_image' => $profile->profile_image,
             ],
+            'states' => $states,
         ]);
     }
 
@@ -1899,6 +2127,7 @@ class ServiceHubController extends Controller
             'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
             'bio' => 'required|string|max:1000',
             'location' => 'nullable|string|max:255',
+            'state' => 'required|string|max:2',
             'timezone' => 'nullable|string|max:100',
             'phone' => 'nullable|string|max:20',
             'skills' => 'nullable|array',
@@ -1926,6 +2155,7 @@ class ServiceHubController extends Controller
         $updateData = [
             'bio' => $validated['bio'],
             'location' => $validated['location'] ?? null,
+            'state' => $validated['state'],
             'timezone' => $validated['timezone'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'skills' => $validated['skills'] ?? [],
@@ -2434,9 +2664,25 @@ class ServiceHubController extends Controller
         }
 
         try {
-            // Calculate fees
-            $platformFee = $offer->price * 0.05; // 5% platform fee
-            $sellerEarnings = $offer->price - $platformFee;
+            $gig = $offer->gig;
+
+            // Get seller's state from their profile
+            $seller = $gig->user;
+            $sellerState = $seller->serviceSellerProfile->state ?? null;
+
+            // Get buyer for exemption check
+            $buyer = Auth::user();
+
+            // Calculate fees using ServiceHubFeeService (default to Stripe for custom offers)
+            // Note: Custom offers will need payment method selection in future
+            $fees = ServiceHubFeeService::calculateFees(
+                $offer->price,
+                'stripe', // Default to Stripe for custom offers
+                $sellerState,
+                $gig->accepts_believe_points ?? false,
+                $buyer,
+                true // Services are typically for charitable use
+            );
 
             // Create order from offer
             $order = ServiceOrder::create([
@@ -2446,8 +2692,12 @@ class ServiceHubController extends Controller
                 'package_id' => null, // Custom offer, no package
                 'package_type' => 'Custom Offer',
                 'amount' => $offer->price,
-                'platform_fee' => $platformFee,
-                'seller_earnings' => $sellerEarnings,
+                'platform_fee' => $fees['platform_fee'],
+                'transaction_fee' => $fees['transaction_fee'],
+                'sales_tax' => $fees['sales_tax'],
+                'sales_tax_rate' => $fees['sales_tax_rate'],
+                'seller_earnings' => $fees['seller_earnings'],
+                'payment_method' => 'stripe', // Default for custom offers
                 'requirements' => $offer->requirements,
                 'special_instructions' => $offer->description,
                 'status' => 'pending',
@@ -2722,6 +2972,54 @@ class ServiceHubController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => config('app.debug') ? $e->getTraceAsString() : null,
             ], 500);
+        }
+    }
+
+    /**
+     * Calculate fees for an order (API endpoint)
+     */
+    public function calculateFees(Request $request)
+    {
+        $validated = $request->validate([
+            'gig_id' => 'required|exists:gigs,id',
+            'package_id' => 'required|exists:gig_packages,id',
+            'payment_method' => 'required|in:stripe,believe_points',
+        ]);
+
+        try {
+            $gig = Gig::with('user.serviceSellerProfile')->findOrFail($validated['gig_id']);
+            $package = GigPackage::findOrFail($validated['package_id']);
+
+            // Get seller's state from their profile
+            $sellerState = $gig->user->serviceSellerProfile->state ?? null;
+
+            // Validate Believe Points payment
+            if ($validated['payment_method'] === 'believe_points' && !$gig->accepts_believe_points) {
+                return response()->json([
+                    'error' => 'This service does not accept Believe Points payments.',
+                ], 400);
+            }
+
+            // Get buyer for exemption check
+            $buyer = Auth::user();
+
+            $fees = ServiceHubFeeService::getFeeBreakdown(
+                $package->price,
+                $validated['payment_method'],
+                $sellerState,
+                $gig->accepts_believe_points,
+                $buyer,
+                true // Services are typically for charitable use
+            );
+
+            return response()->json([
+                'success' => true,
+                'fees' => $fees,
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'error' => $e->getMessage(),
+            ], 400);
         }
     }
 }

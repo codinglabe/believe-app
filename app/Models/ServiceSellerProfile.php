@@ -16,6 +16,7 @@ class ServiceSellerProfile extends Model
         'profile_image',
         'bio',
         'location',
+        'state',
         'timezone',
         'phone',
         'skills',

@@ -26,9 +26,10 @@ import {
   Zap,
   Gift,
   TrendingUp,
+  AlertCircle,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
-import { useState } from "react"
+import React, { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import axios from "axios"
@@ -54,25 +55,62 @@ interface Package {
   features: string[]
 }
 
+interface State {
+  state: string
+  state_code: string
+  base_sales_tax_rate: number
+}
+
 interface PageProps extends Record<string, unknown> {
-  gig: Gig
+  gig: Gig & {
+    accepts_believe_points?: boolean
+  }
   package: Package
+  userBelievePoints?: number
+  pointsRequired?: number
+  hasEnoughPoints?: boolean
 }
 
 export default function ServiceOrder() {
-  const { gig, package: selectedPackage } = usePage<PageProps>().props
+  const { gig, package: selectedPackage, userBelievePoints: userBelievePointsProp = 0, pointsRequired: pointsRequiredProp = 0, hasEnoughPoints: hasEnoughPointsProp = false } = usePage<PageProps>().props
+
+  // Ensure values are numbers
+  const userBelievePoints = typeof userBelievePointsProp === 'number' ? userBelievePointsProp : parseFloat(userBelievePointsProp) || 0
+  const pointsRequired = typeof pointsRequiredProp === 'number' ? pointsRequiredProp : parseFloat(pointsRequiredProp) || 0
+  const hasEnoughPoints = hasEnoughPointsProp && userBelievePoints >= pointsRequired
 
   const [orderData, setOrderData] = useState({
     requirements: "",
     specialInstructions: "",
-    paymentMethod: "card",
+    paymentMethod: (gig.accepts_believe_points && hasEnoughPoints) ? "believe_points" : "stripe",
   })
   const [isProcessing, setIsProcessing] = useState(false)
   const [currentStep, setCurrentStep] = useState(1)
+  const [feeBreakdown, setFeeBreakdown] = useState<any>(null)
+
+  // Calculate fees when payment method changes
+  React.useEffect(() => {
+    const calculateFees = async () => {
+      try {
+        const response = await axios.post('/service-hub/calculate-fees', {
+          gig_id: gig.id,
+          package_id: selectedPackage.id,
+          payment_method: orderData.paymentMethod,
+        })
+        if (response.data.success) {
+          setFeeBreakdown(response.data.fees)
+        }
+      } catch (error) {
+        console.error('Failed to calculate fees:', error)
+      }
+    }
+
+    calculateFees()
+  }, [orderData.paymentMethod, gig.id, selectedPackage.id])
 
   const subtotal = selectedPackage.price
-  const serviceFee = subtotal * 0.05 // 5% service fee
-  const total = subtotal + serviceFee
+  // Buyer pays only the service amount, no sales tax or fees
+  const total = feeBreakdown?.total_buyer_pays || subtotal
 
   const steps = [
     { number: 1, label: "Details", icon: FileText },
@@ -84,10 +122,15 @@ export default function ServiceOrder() {
     e.preventDefault()
     setIsProcessing(true)
 
-    // alert(orderData.paymentMethod);
+    // Validate Believe Points balance before submission
+    if (orderData.paymentMethod === 'believe_points' && !hasEnoughPoints) {
+      showErrorToast(`Insufficient Believe Points. You need ${pointsRequired.toFixed(2)} points but only have ${userBelievePoints.toFixed(2)} points.`)
+      setIsProcessing(false)
+      return
+    }
 
-    // For wallet payments, use Inertia router
-    if (orderData.paymentMethod === 'wallet') {
+    // For Believe Points payments, use Inertia router
+    if (orderData.paymentMethod === 'believe_points') {
       router.post('/service-hub/create-order', {
         gig_id: gig.id,
         package_id: selectedPackage.id,
@@ -107,8 +150,8 @@ export default function ServiceOrder() {
       return
     }
 
-    // For card payments: Create order and Stripe checkout session in one call
-    if (orderData.paymentMethod === 'card') {
+    // For Stripe payments: Create order and Stripe checkout session in one call
+    if (orderData.paymentMethod === 'stripe') {
       try {
         // Create order and Stripe checkout session in one step
         const checkoutResponse = await axios.post('/service-hub/checkout/create-session', {
@@ -416,11 +459,12 @@ export default function ServiceOrder() {
                             <CheckCircle2 className="h-6 w-6 text-primary" />
                           )}
                         </motion.label> */}
+                        {/* Stripe Payment Option */}
                         <motion.label
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                           className={`flex items-center gap-4 p-5 rounded-xl border-2 cursor-pointer transition-all ${
-                            orderData.paymentMethod === "card"
+                            orderData.paymentMethod === "stripe"
                               ? "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20"
                               : "border-border hover:border-primary/50 bg-background"
                           }`}
@@ -428,8 +472,11 @@ export default function ServiceOrder() {
                           <input
                             type="radio"
                             name="paymentMethod"
-                            value="card"
-                            checked={true}
+                            value="stripe"
+                            checked={orderData.paymentMethod === "stripe"}
+                            onChange={(e) =>
+                              setOrderData({ ...orderData, paymentMethod: e.target.value })
+                            }
                             className="h-5 w-5 text-primary"
                           />
                           <div className="p-3 rounded-lg bg-purple-500/10">
@@ -441,10 +488,60 @@ export default function ServiceOrder() {
                               Secure payment via Stripe
                             </div>
                           </div>
-                          {orderData.paymentMethod === "card" && (
+                          {orderData.paymentMethod === "stripe" && (
                             <CheckCircle2 className="h-6 w-6 text-primary" />
                           )}
                         </motion.label>
+
+                        {/* Believe Points Payment Option */}
+                        {gig.accepts_believe_points && (
+                          <motion.label
+                            whileHover={hasEnoughPoints ? { scale: 1.02 } : {}}
+                            whileTap={hasEnoughPoints ? { scale: 0.98 } : {}}
+                            className={`flex items-center gap-4 p-5 rounded-xl border-2 transition-all ${
+                              !hasEnoughPoints
+                                ? "border-gray-300 bg-gray-100 dark:bg-gray-800 cursor-not-allowed opacity-60"
+                                : orderData.paymentMethod === "believe_points"
+                                ? "border-primary bg-primary/5 shadow-md ring-2 ring-primary/20 cursor-pointer"
+                                : "border-border hover:border-primary/50 bg-background cursor-pointer"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="paymentMethod"
+                              value="believe_points"
+                              checked={orderData.paymentMethod === "believe_points"}
+                              onChange={(e) => {
+                                if (hasEnoughPoints) {
+                                  setOrderData({ ...orderData, paymentMethod: e.target.value })
+                                }
+                              }}
+                              disabled={!hasEnoughPoints}
+                              className="h-5 w-5 text-primary disabled:cursor-not-allowed"
+                            />
+                            <div className="p-3 rounded-lg bg-green-500/10">
+                              <Sparkles className="h-6 w-6 text-green-600" />
+                            </div>
+                            <div className="flex-1">
+                              <div className="font-semibold text-lg">Believe Points</div>
+                              {hasEnoughPoints ? (
+                                <div className="text-sm text-muted-foreground">
+                                  Pay with Believe Points (Lower fees for seller)
+                                </div>
+                              ) : (
+                                <div className="text-sm text-red-600 dark:text-red-400 font-medium">
+                                  Insufficient Balance: You need {pointsRequired.toFixed(2)} points but only have {userBelievePoints.toFixed(2)} points
+                                </div>
+                              )}
+                            </div>
+                            {orderData.paymentMethod === "believe_points" && hasEnoughPoints && (
+                              <CheckCircle2 className="h-6 w-6 text-primary" />
+                            )}
+                            {!hasEnoughPoints && (
+                              <AlertCircle className="h-6 w-6 text-red-500" />
+                            )}
+                          </motion.label>
+                        )}
                       </div>
                     </CardContent>
                   </Card>
@@ -469,18 +566,26 @@ export default function ServiceOrder() {
                     <CardContent className="pt-6 space-y-6">
                       <div className="space-y-4">
                         <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                          <span className="text-sm text-muted-foreground">Package</span>
+                          <span className="text-sm text-muted-foreground">Service Amount</span>
                           <span className="font-semibold">${subtotal.toFixed(2)}</span>
-                        </div>
-                        <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                          <span className="text-sm text-muted-foreground">Service Fee</span>
-                          <span className="font-semibold">${serviceFee.toFixed(2)}</span>
                         </div>
                         <Separator className="my-2" />
                         <div className="flex items-center justify-between p-4 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 rounded-lg border-2 border-primary/20">
                           <span className="text-lg font-bold">Total</span>
                           <span className="text-2xl font-bold text-primary">${total.toFixed(2)}</span>
                         </div>
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                          <p className="text-xs text-blue-800 dark:text-blue-200">
+                            ℹ️ All fees (platform fee, transaction fee, and sales tax) are deducted from the seller's earnings.
+                          </p>
+                        </div>
+                        {feeBreakdown?.transaction_fee_discount > 0 && (
+                          <div className="p-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg">
+                            <p className="text-sm text-green-800 dark:text-green-200 font-medium">
+                              ✓ Using Believe Points helps sellers save on transaction fees
+                            </p>
+                          </div>
+                        )}
                       </div>
 
                       <Separator />

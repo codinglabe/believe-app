@@ -12,7 +12,8 @@ import {
     Eye,
     Copy,
     CheckCircle,
-    Download
+    Download,
+    CreditCard
 } from "lucide-react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { useState } from "react"
@@ -28,6 +29,7 @@ interface GiftCard {
     status: string
     purchased_at: string | null
     created_at: string
+    payment_method?: string | null
     stripe_session_id?: string | null
     stripe_payment_intent_id?: string | null
 }
@@ -70,6 +72,24 @@ export default function MyCardsPage({ giftCards, user }: MyCardsProps) {
 
         return (
             <Badge className={config.color}>
+                {config.label}
+            </Badge>
+        )
+    }
+
+    const getPaymentMethodBadge = (paymentMethod: string | null | undefined) => {
+        if (!paymentMethod) return null
+
+        const methodConfig = {
+            stripe: { color: 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200', label: 'Card/Stripe' },
+            believe_points: { color: 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200', label: 'Believe Points' },
+        }
+
+        const config = methodConfig[paymentMethod as keyof typeof methodConfig] || { color: 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300', label: paymentMethod }
+
+        return (
+            <Badge className={config.color} variant="outline">
+                <CreditCard className="h-3 w-3 mr-1" />
                 {config.label}
             </Badge>
         )
@@ -216,14 +236,17 @@ export default function MyCardsPage({ giftCards, user }: MyCardsProps) {
                                                 </div>
                                             )}
 
-                                            {card.purchased_at && (
-                                                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                                                    <Calendar className="h-3 w-3" />
-                                                    <span>
-                                                        {new Date(card.purchased_at).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                            )}
+                                            <div className="space-y-2">
+                                                {card.purchased_at && (
+                                                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                                        <Calendar className="h-3 w-3" />
+                                                        <span>
+                                                            {new Date(card.purchased_at).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                                {getPaymentMethodBadge(card.payment_method)}
+                                            </div>
 
                                             <div className="flex gap-2">
                                                 <Link href={route('gift-cards.show.id', card.id)} className="flex-1">

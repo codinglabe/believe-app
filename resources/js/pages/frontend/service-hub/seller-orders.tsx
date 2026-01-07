@@ -29,6 +29,8 @@ import {
   Upload,
   Check,
   X,
+  BarChart3,
+  Plus,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
@@ -51,8 +53,11 @@ interface Order {
   package: string
   amount: number
   platformFee: number
+  transactionFee: number
+  salesTax: number
+  salesTaxRate: number
   sellerEarnings: number
-  total: number
+  paymentMethod: string
   status: string
   paymentStatus: string
   orderDate: string
@@ -217,6 +222,20 @@ export default function SellerOrders() {
                 <h1 className="text-2xl font-bold">My Sales</h1>
                 <p className="text-sm text-muted-foreground">Manage your service orders</p>
               </div>
+              <div className="flex items-center gap-2">
+                <Link href="/service-hub/seller-dashboard">
+                  <Button variant="ghost" size="sm" className="gap-2">
+                    <BarChart3 className="h-4 w-4" />
+                    Dashboard
+                  </Button>
+                </Link>
+                <Link href="/service-hub/create">
+                  <Button size="sm" className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+                    <Plus className="h-4 w-4" />
+                    Create Service
+                  </Button>
+                </Link>
+              </div>
             </div>
           </div>
         </div>
@@ -352,13 +371,29 @@ export default function SellerOrders() {
                                 </div>
                               </div>
 
-                              {/* Earnings */}
+                              {/* Earnings Breakdown */}
                               <div className="text-right">
-                                <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                                <div className="text-2xl font-bold text-green-600 dark:text-green-400 mb-2">
                                   ${order.sellerEarnings.toFixed(2)}
                                 </div>
-                                <div className="text-xs text-muted-foreground">
-                                  Total: ${order.total} (Fee: ${order.platformFee})
+                                <div className="text-xs space-y-1">
+                                  <div className="text-muted-foreground">
+                                    Order: ${order.amount.toFixed(2)}
+                                  </div>
+                                  <div className="text-red-600 dark:text-red-400">
+                                    - Platform Fee: ${order.platformFee.toFixed(2)}
+                                  </div>
+                                  <div className="text-red-600 dark:text-red-400">
+                                    - Transaction Fee: ${order.transactionFee.toFixed(2)}
+                                  </div>
+                                  {order.salesTax > 0 && (
+                                    <div className="text-red-600 dark:text-red-400">
+                                      - Sales Tax ({order.salesTaxRate}%): ${order.salesTax.toFixed(2)}
+                                    </div>
+                                  )}
+                                  <div className="text-green-600 dark:text-green-400 font-semibold pt-1 border-t border-border">
+                                    Earnings: ${order.sellerEarnings.toFixed(2)}
+                                  </div>
                                 </div>
                               </div>
                             </div>
