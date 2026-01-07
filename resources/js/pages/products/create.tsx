@@ -273,6 +273,50 @@ const handleCategoryChange = (categoryId: number) => {
         setErrors({});
         setProcessing(true);
 
+        // Validate printify_images before submission
+        const validImages = data.printify_images.filter(img => img && img.file);
+        if (validImages.length === 0) {
+            setErrors({ printify_images: 'Please upload at least one design image.' });
+            setProcessing(false);
+            showErrorToast('Please upload at least one design image.');
+            return;
+        }
+
+        // Validate file sizes before submission
+        const MAX_SIZE = 1 * 1024 * 1024; // 1MB (Printify API requirement)
+        const invalidFiles: string[] = [];
+        validImages.forEach((img, index) => {
+            if (img.file && img.file.size > MAX_SIZE) {
+                invalidFiles.push(`${img.name || `Image ${index + 1}`} (${(img.file.size / 1024 / 1024).toFixed(2)}MB)`);
+            }
+        });
+
+        if (invalidFiles.length > 0) {
+            setErrors({
+                printify_images: `The following files are too large (max 1MB): ${invalidFiles.join(', ')}`
+            });
+            setProcessing(false);
+            showErrorToast(
+                `Some files are too large. Maximum size is 1MB per file (Printify requirement). Please compress or resize your images.\n\nLarge files: ${invalidFiles.join(', ')}`
+            );
+            return;
+        }
+
+        // Check total size (prevent nginx 413 errors)
+        const totalSize = validImages.reduce((sum, img) => sum + (img.file?.size || 0), 0);
+        const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total (reasonable limit for multiple 1MB files)
+        if (totalSize > MAX_TOTAL_SIZE) {
+            const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+            setErrors({
+                printify_images: `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
+            });
+            setProcessing(false);
+            showErrorToast(
+                `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
+            );
+            return;
+        }
+
         const formData = new FormData();
 
         // সাধারণ ফিল্ড
@@ -322,28 +366,98 @@ const handleCategoryChange = (categoryId: number) => {
             },
             onError: (err) => {
                 setErrors(err);
-                showErrorToast('Please fix the errors');
+
+                // Handle 413 Request Entity Too Large error
+                if (err.message?.includes('413') || err.message?.includes('Request Entity Too Large')) {
+                    showErrorToast(
+                        'File size too large. Please ensure each design image is under 1MB (Printify requirement). If you\'re uploading multiple images, try uploading them one at a time or compress your images before uploading.'
+                    );
+                } else if (err.printify_images) {
+                    // Show specific error for printify_images
+                    const imageError = Array.isArray(err.printify_images)
+                        ? err.printify_images.join(', ')
+                        : err.printify_images;
+                    showErrorToast(`Design image error: ${imageError}`);
+                } else {
+                    showErrorToast('Please fix the errors');
+                }
                 console.log('Errors:', err);
             },
             onFinish: () => setProcessing(false),
         });
     };
 
-    // File upload handler
+    // File upload handler with validation
     const handleDesignUpload = (index: number, file: File | null) => {
         if (!file) return;
 
-        const reader = new FileReader();
-        reader.onloadend = () => {
-            const newImages = [...data.printify_images];
-            newImages[index] = {
-                file,
-                preview: reader.result as string,
-                name: file.name
+        // Validate file type
+        const allowedTypes = ['image/png', 'image/jpeg', 'image/jpg'];
+        if (!allowedTypes.includes(file.type)) {
+            showErrorToast(`Invalid file type. Please upload PNG or JPEG images only.`);
+            return;
+        }
+
+        // Validate file size (1MB max - Printify API requirement)
+        const MAX_SIZE = 1 * 1024 * 1024; // 1MB in bytes
+        if (file.size > MAX_SIZE) {
+            const fileSizeMB = (file.size / 1024 / 1024).toFixed(2);
+            showErrorToast(
+                `File "${file.name}" is too large (${fileSizeMB}MB). Maximum size is 1MB. Please compress or resize your image.`
+            );
+            return;
+        }
+
+        // Validate image dimensions (optional - Printify recommends high quality but reasonable size)
+        const img = new Image();
+        const objectUrl = URL.createObjectURL(file);
+
+        img.onload = () => {
+            URL.revokeObjectURL(objectUrl);
+
+            // Check dimensions (Printify typically works with images up to 6000x6000px)
+            const MAX_DIMENSION = 6000;
+            if (img.width > MAX_DIMENSION || img.height > MAX_DIMENSION) {
+                showErrorToast(
+                    `Image dimensions (${img.width}x${img.height}px) exceed the maximum (${MAX_DIMENSION}x${MAX_DIMENSION}px). Please resize your image.`
+                );
+                return;
+            }
+
+            // Validate minimum dimensions (Printify requires at least 100x100px)
+            const MIN_DIMENSION = 100;
+            if (img.width < MIN_DIMENSION || img.height < MIN_DIMENSION) {
+                showErrorToast(
+                    `Image dimensions (${img.width}x${img.height}px) are too small. Minimum size is ${MIN_DIMENSION}x${MIN_DIMENSION}px.`
+                );
+                return;
+            }
+
+            // All validations passed, proceed with upload
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                const newImages = [...data.printify_images];
+                newImages[index] = {
+                    file,
+                    preview: reader.result as string,
+                    name: file.name
+                };
+                setData({ ...data, printify_images: newImages });
+
+                // Clear any previous errors
+                if (errors.printify_images) {
+                    setErrors({ ...errors, printify_images: undefined });
+                }
             };
-            setData({ ...data, printify_images: newImages });
+            reader.readAsDataURL(file);
         };
-        reader.readAsDataURL(file);
+
+        img.onerror = () => {
+            URL.revokeObjectURL(objectUrl);
+            showErrorToast(`Failed to load image. Please check if the file is a valid image.`);
+        };
+
+        img.src = objectUrl;
     };
 
     const addDesignField = () => {
@@ -759,6 +873,9 @@ const handleCategoryChange = (categoryId: number) => {
   <p className="text-sm text-muted-foreground">
     Upload your design files (PNG recommended with transparent background)
   </p>
+  <p className="text-xs text-muted-foreground mt-1">
+    Requirements: PNG or JPEG format • Max 1MB per file (Printify requirement) • Recommended: 100x100px to 6000x6000px
+  </p>
 
   <div className="space-y-4">
     {data.printify_images.map((img, index) => (
@@ -766,18 +883,31 @@ const handleCategoryChange = (categoryId: number) => {
             <div className="flex-1">
                 <Input
                     type="file"
-                    accept="image/png,image/jpeg"
+                    accept="image/png,image/jpeg,image/jpg"
                     onChange={(e) => handleDesignUpload(index, e.target.files?.[0] || null)}
                     className="hidden"
                     id={`design-${index}`}
                 />
                 <label htmlFor={`design-${index}`} className="block cursor-pointer">
-                    {/* আপনার পুরানো ডিজাইন প্রিভিউ কোড */}
                     {img?.preview ? (
-                        <img src={img.preview} alt="preview" className="w-full h-48 object-contain border rounded" />
+                        <div className="space-y-2">
+                            <img src={img.preview} alt="preview" className="w-full h-48 object-contain border rounded" />
+                            <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{img.name}</span>
+                                {img.file && (
+                                    <span className="text-muted-foreground">
+                                        {(img.file.size / 1024 / 1024).toFixed(2)} MB
+                                    </span>
+                                )}
+                            </div>
+                        </div>
                     ) : (
-                        <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center">
-                            <Upload className="h-12 w-12 text-gray-400" />
+                        <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                            <div className="text-center">
+                                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                                <p className="text-sm text-muted-foreground">Click to upload</p>
+                                <p className="text-xs text-muted-foreground mt-1">Max 1MB</p>
+                            </div>
                         </div>
                     )}
                 </label>
@@ -796,7 +926,15 @@ const handleCategoryChange = (categoryId: number) => {
     </Button>
 
   {errors.printify_images && (
-    <p className="text-sm text-red-500">{errors.printify_images}</p>
+    <div className="space-y-1">
+      <p className="text-sm text-red-500">{errors.printify_images}</p>
+      {errors.printify_images.includes('413') || errors.printify_images.includes('Request Entity Too Large') ? (
+        <p className="text-xs text-muted-foreground mt-1">
+          Note: If you continue to see this error, your server's nginx configuration may need to be updated.
+          Contact your administrator to increase the <code className="text-xs">client_max_body_size</code> setting in nginx.
+        </p>
+      ) : null}
+    </div>
   )}
 </div>
                                             </div>

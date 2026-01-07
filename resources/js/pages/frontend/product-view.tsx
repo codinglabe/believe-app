@@ -66,6 +66,8 @@ interface ProductViewProps {
   variants: PrintifyVariant[];
   firstVariant?: PrintifyVariant;
   relatedProducts: Product[];
+  isOrganizationUser?: boolean;
+  message?: string;
 }
 
 interface CartItem {
@@ -88,7 +90,9 @@ export default function ProductView({
   printifyProduct,
   variants,
   firstVariant,
-  relatedProducts
+  relatedProducts,
+  isOrganizationUser = false,
+  message
 }: ProductViewProps) {
   const [selectedVariant, setSelectedVariant] = useState<PrintifyVariant | null>(firstVariant || null);
   const [quantity, setQuantity] = useState(1);
@@ -191,9 +195,9 @@ export default function ProductView({
   };
 
   // Get current variant price or fallback to product price
-  const currentPrice = selectedVariant
+  const currentPrice = Number(selectedVariant
     ? selectedVariant.price
-    : product.unit_price;
+    : product.unit_price) || 0;
 
   // Get current variant cost for display
   const currentCost = selectedVariant
@@ -493,7 +497,7 @@ export default function ProductView({
                 <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Price</p>
                 <div className="flex items-baseline gap-3">
                   <span className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                    ${currentPrice.toFixed(2)}
+                    ${typeof currentPrice === 'number' ? currentPrice.toFixed(2) : '0.00'}
                   </span>
                   {product.quantity_available <= 5 && product.quantity_available > 0 && (
                     <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
@@ -518,7 +522,7 @@ export default function ProductView({
                         This item is in your cart
                       </p>
                       <p className="text-sm text-green-700 dark:text-green-300">
-                        Quantity: {cartItem.quantity} • ${(cartItem.quantity * currentPrice).toFixed(2)}
+                        Quantity: {cartItem.quantity} • ${(cartItem.quantity * (typeof currentPrice === 'number' ? currentPrice : 0)).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -543,7 +547,7 @@ export default function ProductView({
               </div>
 
               {/* Variants Section */}
-              {variants.length > 0 && getAttributeKeys().map((attributeKey) => (
+              {variants.length > 0 && !isOrganizationUser && getAttributeKeys().map((attributeKey) => (
                 <div key={attributeKey}>
                   <label className="text-sm font-semibold text-gray-900 dark:text-white capitalize mb-3 block">
                     Select {attributeKey}
@@ -576,46 +580,75 @@ export default function ProductView({
               ))}
 
               {/* Quantity Selector */}
-              <div>
-                <label className="text-sm font-semibold text-gray-900 dark:text-white mb-3 block">Quantity</label>
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => handleQuantityChange(quantity - 1)}
-                    className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
-                  >
-                    −
-                  </button>
-                  <input
-                    type="number"
-                    value={quantity}
-                    onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
-                    min="1"
-                    max={product.quantity_available}
-                    className="w-16 h-10 text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                  />
-                  <button
-                    onClick={() => handleQuantityChange(quantity + 1)}
-                    disabled={quantity >= product.quantity_available}
-                    className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    +
-                  </button>
-                  <span className="text-sm text-gray-600 dark:text-gray-400 ml-auto">
-                    {product.quantity_available} available
-                  </span>
-                </div>
-
-                {/* Quantity Error Message */}
-                {quantityError && (
-                  <div className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">
-                    {quantityError}
+              {!isOrganizationUser && (
+                <div>
+                  <label className="text-sm font-semibold text-gray-900 dark:text-white mb-3 block">Quantity</label>
+                  <div className="flex items-center gap-4">
+                    <button
+                      onClick={() => handleQuantityChange(quantity - 1)}
+                      className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors"
+                    >
+                      −
+                    </button>
+                    <input
+                      type="number"
+                      value={quantity}
+                      onChange={(e) => handleQuantityChange(parseInt(e.target.value) || 1)}
+                      min="1"
+                      max={product.quantity_available}
+                      className="w-16 h-10 text-center border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                    />
+                    <button
+                      onClick={() => handleQuantityChange(quantity + 1)}
+                      disabled={quantity >= product.quantity_available}
+                      className="w-10 h-10 flex items-center justify-center rounded-lg border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      +
+                    </button>
+                    <span className="text-sm text-gray-600 dark:text-gray-400 ml-auto">
+                      {product.quantity_available} available
+                    </span>
                   </div>
-                )}
-              </div>
+
+                  {/* Quantity Error Message */}
+                  {quantityError && (
+                    <div className="mt-2 text-sm text-red-600 dark:text-red-400 font-medium">
+                      {quantityError}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Organization User Message */}
+              {isOrganizationUser && message && (
+                <div className="bg-yellow-50 dark:bg-yellow-900/20 border-2 border-yellow-200 dark:border-yellow-800 rounded-xl p-6 mb-4">
+                  <div className="flex items-start gap-4">
+                    <div className="flex-shrink-0">
+                      <svg className="w-6 h-6 text-yellow-600 dark:text-yellow-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                    </div>
+                    <div className="flex-1">
+                      <h3 className="text-lg font-semibold text-yellow-800 dark:text-yellow-300 mb-2">
+                        Purchase Restricted
+                      </h3>
+                      <p className="text-yellow-700 dark:text-yellow-400">
+                        {message}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* CTA Buttons */}
                <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                {productInCart ? (
+                {isOrganizationUser ? (
+                  <div className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
+                    <p className="text-gray-600 dark:text-gray-400 font-medium">
+                      Only supporters can purchase products
+                    </p>
+                  </div>
+                ) : productInCart ? (
                   <>
                     <button
                       onClick={handleViewCart}

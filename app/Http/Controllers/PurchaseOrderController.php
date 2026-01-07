@@ -11,6 +11,7 @@ use App\Models\OrderProduct;
 use Illuminate\Http\Request;
 use App\Models\OrderShippingInfo;
 use Illuminate\Support\Facades\Auth;
+use App\Services\StripeConfigService;
 use Stripe\Checkout\Session as StripeSession;
 
 class PurchaseOrderController extends Controller
@@ -47,9 +48,16 @@ class PurchaseOrderController extends Controller
                 ];
             }
 
+            // Get Stripe credentials from database, fallback to env
+            $environment = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($environment);
 
-
-            Stripe::setApiKey(config('services.stripe.secret'));
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to env if database credentials not found
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
 
             $session = StripeSession::create([
                 'payment_method_types' => ['card'],
@@ -86,7 +94,16 @@ class PurchaseOrderController extends Controller
                 return back()->withErrors(['stripe' => 'Missing Stripe session ID.']);
             }
 
-            Stripe::setApiKey(config('services.stripe.secret'));
+            // Get Stripe credentials from database, fallback to env
+            $environment = StripeConfigService::getEnvironment();
+            $credentials = StripeConfigService::getCredentials($environment);
+
+            if ($credentials && !empty($credentials['secret_key'])) {
+                Stripe::setApiKey($credentials['secret_key']);
+            } else {
+                // Fallback to env if database credentials not found
+                Stripe::setApiKey(config('services.stripe.secret'));
+            }
 
             // Get session from Stripe
             $session = StripeSession::retrieve($session_id);

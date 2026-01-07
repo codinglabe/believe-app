@@ -96,27 +96,44 @@ class ProductController extends BaseController
 
     public function show(Request $request, $id): Response
     {
-        // Check if this is an admin/organization request (from products management)
-        $isAdminRequest = $request->user() && in_array($request->user()->role, ['admin', 'organization']);
+        $user = $request->user();
+
+        // Check if this is an admin request (from products management)
+        $isAdminRequest = $user && $user->role === 'admin';
 
         if ($isAdminRequest) {
-            // Admin/Organization viewing their own product
+            // Admin viewing product
             $product = Product::with([
                 'organization',
                 'categories',
                 'variants'
             ])->findOrFail($id);
 
-            // Check authorization
-            if ($request->user()->role === 'organization') {
-                $organization = Organization::where('user_id', $request->user()->id)->first();
-                if ($product->organization_id !== $organization->id) {
-                    abort(403, 'You can only view your own products.');
-                }
-            }
-
             return Inertia::render('products/show', [
                 'product' => $product,
+            ]);
+        }
+
+        // If organization user tries to view a product, show message that only supporters can buy
+        if ($user && $user->role === 'organization') {
+            $product = Product::with([
+                'organization',
+                'categories',
+                'variants'
+            ])->whereNotNull("printify_product_id")->findOrFail($id);
+
+            // Check if product is available for marketplace
+            if ($product->status !== 'active' || $product->quantity_available <= 0) {
+                abort(404, 'Product not found');
+            }
+
+            return Inertia::render('frontend/product-view', [
+                'product' => $product,
+                'printifyProduct' => null,
+                'variants' => [],
+                'firstVariant' => null,
+                'isOrganizationUser' => true,
+                'message' => 'Only supporters can purchase products. Please log in with a supporter account to buy this product.',
             ]);
         }
 
@@ -499,7 +516,15 @@ class ProductController extends BaseController
             'printify_provider_id' => 'required|integer',
             'printify_variants' => 'required|array',
             'printify_images' => 'required|array|min:1',
-            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:1024',
+            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:1024', // 1MB max (Printify API requirement)
+        ], [
+            'printify_images.required' => 'Please upload at least one design image.',
+            'printify_images.min' => 'Please upload at least one design image.',
+            'printify_images.*.required' => 'Please select a design image file.',
+            'printify_images.*.file' => 'The uploaded file is not valid.',
+            'printify_images.*.image' => 'The file must be an image (PNG, JPEG, or JPG).',
+            'printify_images.*.mimes' => 'The design image must be a PNG, JPEG, or JPG file.',
+            'printify_images.*.max' => 'The design image size must not exceed 1MB (Printify requirement). Please compress or resize your image.',
         ]);
 
         try {
