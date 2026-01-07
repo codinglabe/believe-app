@@ -6,8 +6,8 @@ import { X, Wallet, Sparkles, CheckCircle2, ArrowRight, Gift, Loader2 } from 'lu
 import { motion, AnimatePresence } from 'framer-motion'
 import { Button } from '@/components/ui/button'
 import { router } from '@inertiajs/react'
-import { showSuccessToast, showErrorToast } from '@/lib/toast'
-import { getCsrfToken } from '@/components/wallet/utils'
+import { showErrorToast } from '@/lib/toast'
+import { walletFetch } from '@/components/wallet/utils'
 
 interface Plan {
     id: number
@@ -18,6 +18,7 @@ interface Plan {
     is_popular?: boolean
     description?: string
     trial_days?: number
+    savings?: number | null
 }
 
 interface UserWalletSubscriptionModalProps {
@@ -42,182 +43,65 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
         if (isOpen && plans.length === 0) {
             fetchPlans()
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen])
 
     const fetchPlans = async () => {
         setIsLoading(true)
         try {
-            const response = await fetch('/wallet/plans', {
+            const timestamp = Date.now()
+            const response = await walletFetch(`/wallet/plans?t=${timestamp}`, {
                 method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
             })
 
             if (response.ok) {
                 const data = await response.json()
                 const plansData = data.plans || []
                 
-                // Debug: Log plans data to check one_time_fee
-                console.log('Plans data received:', plansData)
-                
                 if (plansData.length > 0) {
                     setPlans(plansData)
-                    // Auto-select first plan if available
                     setSelectedPlan(plansData[0].id)
                 } else {
-                    // Fallback to default plans if no plans found
-                    setPlans([
-                        { id: 1, name: 'Monthly', price: 3.00, frequency: 'monthly', trial_days: 14 },
-                        { id: 2, name: 'Annual', price: 30, frequency: 'annually', trial_days: 14 },
-                    ])
-                    setSelectedPlan(1)
+                    setPlans([])
+                    setSelectedPlan(null)
+                    showErrorToast('No wallet plans available. Please contact support.')
                 }
             } else {
-                throw new Error('Failed to fetch plans')
+                const errorData = await response.json().catch(() => ({}))
+                throw new Error(errorData.message || 'Failed to fetch plans')
             }
         } catch (error) {
-            console.error('Failed to fetch plans:', error)
-            // Fallback to default plans if API fails
-            setPlans([
-                { id: 1, name: 'Monthly', price: 3.00, frequency: 'monthly', trial_days: 14 },
-                { id: 2, name: 'Annual', price: 30, frequency: 'annually', trial_days: 14 },
-            ])
-            setSelectedPlan(1)
+            setPlans([])
+            setSelectedPlan(null)
+            const errorMessage = error instanceof Error ? error.message : 'Failed to load wallet plans. Please try again later.'
+            showErrorToast(errorMessage)
         } finally {
             setIsLoading(false)
         }
     }
 
-
-    // Helper function to refresh CSRF token by making a GET request
-    const refreshCsrfToken = async (): Promise<string> => {
-        try {
-            // Make a simple GET request to refresh the session and get CSRF token
-            await fetch('/wallet/plans', {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
-            })
-            // Try to get token again after the request
-            return getCsrfToken()
-        } catch (e) {
-            console.warn('Failed to refresh CSRF token:', e)
-            return ''
-        }
-    }
-
-    const handleSubscribe = async () => {
+    const handleSubscribe = () => {
         if (!selectedPlan) {
             showErrorToast('Please select a plan')
             return
         }
 
-        setIsSubscribing(true) // Internal state name
-        try {
-            // Get CSRF token with validation - try multiple times if needed
-            let csrfToken = getCsrfToken()
+        setIsSubscribing(true)
 
-            // If token is missing, try to refresh it
-            if (!csrfToken) {
-                csrfToken = await refreshCsrfToken()
-            }
-
-            if (!csrfToken) {
-                showErrorToast('CSRF token not found. Please refresh the page and try again.')
+        router.post(`/wallet/subscribe/${selectedPlan}`, {}, {
+            preserveState: true,
+            preserveScroll: true,
+            only: [],
+            onError: (errors) => {
+                const errorMessage = errors.message || errors.error || 'Failed to become a member. Please try again.'
+                showErrorToast(errorMessage)
                 setIsSubscribing(false)
-                setTimeout(() => {
-                    window.location.reload()
-                }, 2000)
-                return
-            }
-
-            const response = await fetch(`/wallet/subscribe/${selectedPlan}`, {
-                method: 'POST',
-                headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-store',
-            })
-
-            // Check if response is OK - handle CSRF token mismatch
-            if (!response.ok) {
-                const contentType = response.headers.get('content-type')
-                if (contentType && contentType.includes('application/json')) {
-                    const errorData = await response.json()
-                    
-                    // If CSRF token mismatch, try refreshing and retrying once
-                    if (response.status === 419 || errorData.message?.includes('CSRF') || errorData.message?.includes('419')) {
-                        console.warn('CSRF token mismatch detected, refreshing token and retrying...')
-                        
-                        // Refresh token
-                        const newToken = await refreshCsrfToken()
-                        if (newToken) {
-                            // Retry the request with fresh token
-                            const retryResponse = await fetch(`/wallet/subscribe/${selectedPlan}`, {
-                                method: 'POST',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'Content-Type': 'application/json',
-                                    'X-CSRF-TOKEN': newToken,
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                credentials: 'include',
-                                cache: 'no-store',
-                            })
-
-                            if (retryResponse.ok) {
-                                const retryData = await retryResponse.json()
-                                if (retryData.success && retryData.url) {
-                                    // Redirect to Stripe checkout
-                                    window.location.href = retryData.url
-                                    return
-                                }
-                            }
-                        }
-                        
-                        // If retry failed, show error and reload
-                        showErrorToast('Session expired. Please refresh the page and try again.')
-                        setIsSubscribing(false)
-                        setTimeout(() => {
-                            window.location.reload()
-                        }, 2000)
-                        return
-                    }
-                }
-                
-                // Handle other errors
-                const errorData = await response.json().catch(() => ({ message: 'Failed to become a member. Please try again.' }))
-                showErrorToast(errorData.message || 'Failed to become a member. Please try again.')
-                setIsSubscribing(false)
-                return
-            }
-
-            const data = await response.json()
-
-            if (data.success && data.url) {
-                // Redirect to Stripe checkout
-                window.location.href = data.url
-            } else {
-                showErrorToast(data.message || 'Failed to become a member. Please try again.')
+            },
+            onFinish: () => {
+                // Reset loading state if redirect doesn't happen
                 setIsSubscribing(false)
             }
-        } catch (error) {
-            console.error('Membership error:', error)
-            showErrorToast('Failed to become a member. Please try again.')
-            setIsSubscribing(false)
-        }
+        })
     }
 
     if (!mounted) return null
@@ -274,8 +158,7 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                 <h2 className="text-xl font-bold text-foreground mb-1.5">
                                     Owner Platform Access Fee
                                 </h2>
-                                <div className="text-muted-foreground text-xs leading-relaxed space-y-1">
-                                    <p>One‑line explainer (always directly under it)</p>
+                                <div className="text-muted-foreground text-xs leading-relaxed">
                                     <p>Covers identity verification, secure accounts, and the tools owners use to earn, pay, and support each other — while keeping fees low for the community.</p>
                                 </div>
                             </div>
@@ -290,6 +173,11 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                 {isLoading ? (
                                     <div className="flex items-center justify-center py-8">
                                         <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                                    </div>
+                                ) : plans.length === 0 ? (
+                                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                                        <p className="text-sm text-muted-foreground mb-2">No wallet plans available</p>
+                                        <p className="text-xs text-muted-foreground">Please contact support for assistance.</p>
                                     </div>
                                 ) : (
                                     <div className="grid grid-cols-2 gap-2">
@@ -348,9 +236,9 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                                                                 </span>
                                                             </div>
                                                         )}
-                                                        {isAnnual && (
+                                                        {plan.savings && plan.savings > 0 && (
                                                             <p className="text-[10px] text-green-600 dark:text-green-400 mt-1 font-medium">
-                                                                Save ${(3.00 * 12 - 30).toFixed(2)}
+                                                                Save ${plan.savings.toFixed(2)}
                                                             </p>
                                                         )}
                                                     </div>
@@ -417,9 +305,11 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
                             </div>
 
                             {/* Additional Info */}
-                            <p className="text-[10px] text-center text-muted-foreground mt-3">
-                                💡 Start with a 14-day free trial membership!
-                            </p>
+                            {plans.length > 0 && plans.some(p => p.trial_days && p.trial_days > 0) && (
+                                <p className="text-[10px] text-center text-muted-foreground mt-3">
+                                    💡 Start with a {Math.max(...plans.filter(p => p.trial_days).map(p => p.trial_days || 0))}-day free trial membership!
+                                </p>
+                            )}
                         </div>
                     </motion.div>
                 </motion.div>

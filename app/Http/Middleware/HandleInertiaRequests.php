@@ -42,6 +42,7 @@ class HandleInertiaRequests extends Middleware
         // Check if we're on livestock domain and use appropriate guard
         // For development, manually set or check domain
         $isLivestockDomain = false;
+        $isMerchantDomain = false;
 
         if (function_exists('is_livestock_domain')) {
             $isLivestockDomain = is_livestock_domain();
@@ -51,17 +52,28 @@ class HandleInertiaRequests extends Middleware
                 (request()->has('livestock') ||
                     str_contains(request()->url(), 'livestock'));
         }
-        $user = $isLivestockDomain
-            ? $request->user('livestock')
-            : $request->user();
 
-        // Only load organization relationship if user is not a LivestockUser
-        if ($user && !$isLivestockDomain && !($user instanceof \App\Models\LivestockUser)) {
+        // Check if we're on merchant domain
+        $merchantDomain = config('merchant.domain');
+        $currentHost = $request->getHost();
+        $isMerchantDomain = $currentHost === $merchantDomain || str_contains($currentHost, 'merchant.');
+
+        // Get user based on domain
+        if ($isMerchantDomain) {
+            $user = $request->user('merchant');
+        } elseif ($isLivestockDomain) {
+            $user = $request->user('livestock');
+        } else {
+            $user = $request->user();
+        }
+
+        // Only load organization relationship if user is not a LivestockUser or Merchant
+        if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
             $user->load("organization", "serviceSellerProfile");
         }
-        // Only access roles if user is not a LivestockUser (User model has roles via Spatie Permission)
+        // Only access roles if user is not a LivestockUser or Merchant (User model has roles via Spatie Permission)
         $role = null;
-        if ($user && !($user instanceof \App\Models\LivestockUser)) {
+        if ($user && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
             $role = $user->roles?->first();
         }
 
@@ -69,7 +81,7 @@ class HandleInertiaRequests extends Middleware
         $permissions = [];
         $roles = [];
 
-        if ($user && !$isLivestockDomain && !($user instanceof \App\Models\LivestockUser) && method_exists($user, 'getAllPermissions')) {
+        if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant) && method_exists($user, 'getAllPermissions')) {
             $permissions = $user->getAllPermissions()->pluck('name')->toArray();
             $roles = $user->roles?->pluck('name')->toArray() ?? [];
         }
@@ -77,7 +89,26 @@ class HandleInertiaRequests extends Middleware
         // Build user data based on domain
         $userData = null;
         if ($user) {
-            if ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
+            if ($isMerchantDomain || ($user instanceof \App\Models\Merchant)) {
+                // Merchant user data
+                $userData = [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'business_name' => $user->business_name,
+                    'business_description' => $user->business_description,
+                    'phone' => $user->phone,
+                    'address' => $user->address,
+                    'city' => $user->city,
+                    'state' => $user->state,
+                    'zip_code' => $user->zip_code,
+                    'country' => $user->country,
+                    'status' => $user->status,
+                    'role' => $user->role,
+                    'email_verified_at' => $user->email_verified_at,
+                    'joined' => $user->created_at->format('F Y'),
+                ];
+            } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data
                 $userData = [
                     'id' => $user->id,
@@ -103,7 +134,7 @@ class HandleInertiaRequests extends Middleware
                 ];
             } else {
                 // Main app user data (only for regular User models)
-                if (!($user instanceof \App\Models\LivestockUser)) {
+                if (!($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
                     $userData = [
                         'id' => $user->id,
                         'name' => $user->name,
@@ -171,6 +202,7 @@ class HandleInertiaRequests extends Middleware
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),
+            'merchantDomain' => config('merchant.domain'),
         ];
     }
 }

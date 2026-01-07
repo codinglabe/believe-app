@@ -16,14 +16,31 @@ class CheckTopicsSelected
     // CheckTopicsSelected.php
     public function handle(Request $request, Closure $next): Response
     {
-        $excludedRoutes = ['topics.select', 'topics.store', 'logout'];
+        $excludedRoutes = ['topics.select', 'topics.store', 'logout', 'wallet.plans'];
 
         if (in_array($request->route()->getName(), $excludedRoutes)) {
             return $next($request);
         }
 
-        if ($request->user() && !$request->user()->interestedTopics()->exists()) {
-            $user = $request->user();
+        $user = $request->user();
+        
+        // Allow admin users to bypass topic selection requirement
+        if ($user && $user->role === 'admin') {
+            return $next($request);
+        }
+
+        if ($user && !$user->interestedTopics()->exists()) {
+
+            // For JSON/API requests, return JSON response instead of redirecting
+            if ($request->expectsJson() || $request->wantsJson() || $request->is('api/*') || $request->header('Accept') === 'application/json') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please select your topics to continue.',
+                    'redirect' => $user->role === 'organization' || $user->role === 'organization_pending' 
+                        ? route('auth.topics.select')
+                        : route('user.topics.select'),
+                ], 403);
+            }
 
             // Use simple role property check instead of Spatie Permission to avoid guard issues
             // This is more reliable and doesn't depend on guard configuration

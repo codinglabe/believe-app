@@ -46,36 +46,36 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
 
     // Fetch organization balance directly (no wallet connection checks)
     const fetchOrganizationBalance = useCallback(async () => {
-        if (!isOrgUser) return;
+            if (!isOrgUser) return;
 
-        try {
-            // Fetch organization balance directly
-            const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
-                method: 'GET',
-                headers: {
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
-                credentials: 'include',
-                cache: 'no-cache',
-            });
+            try {
+                // Fetch organization balance directly
+                const balanceResponse = await fetch(`/wallet/balance?t=${Date.now()}`, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                        'X-Requested-With': 'XMLHttpRequest',
+                    },
+                    credentials: 'include',
+                    cache: 'no-cache',
+                });
 
-            if (balanceResponse.ok) {
-                const balanceData = await balanceResponse.json();
-                if (balanceData.success) {
-                    setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
-                    setWalletConnected(true); // Always connected for organization users
+                if (balanceResponse.ok) {
+                    const balanceData = await balanceResponse.json();
+                    if (balanceData.success) {
+                        setWalletBalance(balanceData.balance || balanceData.organization_balance || balanceData.local_balance || 0);
+                        setWalletConnected(true); // Always connected for organization users
                     // Only update subscription status if not provided via props
                     if (propHasSubscription === undefined) {
                         setHasSubscription(balanceData.has_subscription ?? null);
                     }
+                    }
                 }
+            } catch (error) {
+                console.error('Failed to fetch organization balance:', error);
+                setWalletBalance(0);
             }
-        } catch (error) {
-            console.error('Failed to fetch organization balance:', error);
-            setWalletBalance(0);
-        }
     }, [isOrgUser]);
 
     // Update hasSubscription when prop changes
@@ -101,7 +101,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
         const handleFocus = () => {
             if (isOrgUser) {
                 // Refresh balance/subscription status when window regains focus
-                fetchOrganizationBalance();
+        fetchOrganizationBalance();
             }
         };
 

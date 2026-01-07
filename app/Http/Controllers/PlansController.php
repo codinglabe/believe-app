@@ -254,10 +254,26 @@ class PlansController extends Controller
      */
     public function getWalletPlans(Request $request)
     {
-        $plans = WalletPlan::active()
-            ->ordered()
-            ->get()
-            ->map(function ($plan) {
+        try {
+            // Always fetch fresh data from database (no cache)
+            $plansCollection = WalletPlan::active()
+                ->ordered()
+                ->get();
+
+            // Get monthly plan for savings calculation
+            $monthlyPlan = $plansCollection->firstWhere('frequency', 'monthly');
+
+            $plans = $plansCollection->map(function ($plan) use ($monthlyPlan) {
+                // Calculate savings for annual plans by comparing with monthly plan
+                $savings = null;
+                if ($plan->frequency === 'annually' && $monthlyPlan) {
+                    $monthlyYearlyCost = $monthlyPlan->price * 12;
+                    $calculatedSavings = $monthlyYearlyCost - $plan->price;
+                    if ($calculatedSavings > 0) {
+                        $savings = (float) $calculatedSavings;
+                    }
+                }
+
                 return [
                     'id' => $plan->id,
                     'name' => $plan->name,
@@ -266,13 +282,36 @@ class PlansController extends Controller
                     'frequency' => $plan->frequency,
                     'description' => $plan->description,
                     'trial_days' => (int) ($plan->trial_days ?? 0),
+                    'savings' => $savings,
                 ];
             });
 
-        return response()->json([
-            'success' => true,
-            'plans' => $plans,
-        ]);
+            return response()->json([
+                'success' => true,
+                'plans' => $plans,
+            ], 200, [
+                'Content-Type' => 'application/json',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to fetch wallet plans', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch wallet plans',
+                'plans' => [],
+            ], 500, [
+                'Content-Type' => 'application/json',
+                'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                'Pragma' => 'no-cache',
+                'Expires' => '0',
+            ]);
+        }
     }
 
     /**
@@ -345,23 +384,25 @@ class PlansController extends Controller
                 }
             }
 
+            // Get KYC Verification Fee from database (wallet plan one_time_fee)
+            $kycFeeAmount = $walletPlan->one_time_fee ? (float) $walletPlan->one_time_fee : 0;
+
             // Check if user has already paid KYC fee
-            $kycFeeAmount = 2.00; // One-time KYC verification fee
             $hasPaidKycFee = Transaction::where('user_id', $user->id)
                 ->where('type', 'kyc_fee')
                 ->where('status', 'completed')
                 ->exists();
 
             // Use Laravel Cashier's Stripe client for wallet subscription with mixed line items
-            // (subscription + one-time KYC fee)
+            // (subscription + one-time KYC verification fee)
             $stripe = Cashier::stripe();
 
             $lineItems = [
                 ['price' => $walletPlan->stripe_price_id, 'quantity' => 1]
             ];
 
-            // Add one-time KYC fee if user hasn't paid it yet
-            if (!$hasPaidKycFee) {
+            // Add one-time KYC verification fee if it exists and user hasn't paid it yet
+            if ($kycFeeAmount > 0 && !$hasPaidKycFee) {
                 $lineItems[] = [
                     'price_data' => [
                         'currency' => 'usd',
@@ -369,7 +410,7 @@ class PlansController extends Controller
                             'name' => 'KYC Verification Fee',
                             'description' => 'One-time KYC verification fee for wallet access',
                         ],
-                        'unit_amount' => (int) ($kycFeeAmount * 100), // $2.00 in cents
+                        'unit_amount' => (int) ($kycFeeAmount * 100), // Convert to cents
                     ],
                     'quantity' => 1,
                 ];
@@ -394,8 +435,8 @@ class PlansController extends Controller
                     'wallet_plan_id' => $walletPlan->id,
                     'type' => 'wallet_subscription',
                     'subscription_type' => 'wallet_access',
-                    'kyc_fee_included' => !$hasPaidKycFee ? 'true' : 'false',
-                    'kyc_fee_amount' => !$hasPaidKycFee ? (string) $kycFeeAmount : '0',
+                    'kyc_fee_included' => ($kycFeeAmount > 0 && !$hasPaidKycFee) ? 'true' : 'false',
+                    'kyc_fee_amount' => ($kycFeeAmount > 0 && !$hasPaidKycFee) ? (string) $kycFeeAmount : '0',
                 ],
                 'allow_promotion_codes' => true,
             ];
@@ -421,24 +462,46 @@ class PlansController extends Controller
                 'session_id' => $checkoutSession->id,
             ]);
 
-            return response()->json([
-                'success' => true,
-                'url' => $checkoutSession->url,
-                'session_id' => $checkoutSession->id,
-            ]);
+            // Use Inertia location to redirect to Stripe checkout
+            return Inertia::location($checkoutSession->url);
 
         } catch (\Exception $e) {
+            $errorMessage = $e->getMessage();
+            $errorClass = get_class($e);
+            
             Log::error('Wallet subscription error', [
-                'error' => $e->getMessage(),
+                'error' => $errorMessage,
+                'error_class' => $errorClass,
                 'trace' => $e->getTraceAsString(),
                 'user_id' => $user->id ?? null,
                 'wallet_plan_id' => $walletPlan->id ?? null,
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
             ]);
+
+            // Provide more specific error messages based on exception type
+            $userFriendlyMessage = 'Failed to create checkout session. Please try again.';
+            
+            // Check for Stripe-specific errors
+            if (str_contains($errorClass, 'Stripe') || str_contains($errorMessage, 'Stripe')) {
+                if (str_contains($errorMessage, 'No such price')) {
+                    $userFriendlyMessage = 'Payment configuration error. The selected plan is not properly configured. Please contact support.';
+                } elseif (str_contains($errorMessage, 'No such product')) {
+                    $userFriendlyMessage = 'Payment configuration error. The plan product is missing. Please contact support.';
+                } elseif (str_contains($errorMessage, 'Invalid')) {
+                    $userFriendlyMessage = 'Invalid payment configuration. Please contact support.';
+                } else {
+                    $userFriendlyMessage = 'Payment service error. Please try again or contact support.';
+                }
+            } elseif (str_contains($errorMessage, 'Connection') || str_contains($errorMessage, 'timeout')) {
+                $userFriendlyMessage = 'Connection error. Please check your internet connection and try again.';
+            }
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to create checkout session. Please try again.',
-                'error' => config('app.debug') ? $e->getMessage() : null,
+                'message' => $userFriendlyMessage,
+                'error' => config('app.debug') ? $errorMessage : null,
+                'error_type' => config('app.debug') ? $errorClass : null,
             ], 500);
         }
     }
@@ -465,22 +528,26 @@ class PlansController extends Controller
             if ($session->payment_status === 'paid' || $session->payment_status === 'no_payment_required') {
                 $walletPlan = WalletPlan::findOrFail($walletPlanId);
 
+                // Get KYC Verification Fee from database (wallet plan one_time_fee)
+                $kycFeeAmount = $walletPlan->one_time_fee ? (float) $walletPlan->one_time_fee : 0;
+
                 // Check if KYC fee was included in the payment
-                $kycFeeAmount = 2.00;
+                $kycFeeIncluded = $session->metadata->kyc_fee_included ?? 'false';
+                $kycFeeAmountFromSession = (float) ($session->metadata->kyc_fee_amount ?? '0');
+
+                // Record KYC fee transaction if it was paid and not already recorded
                 $hasPaidKycFee = Transaction::where('user_id', $user->id)
                     ->where('type', 'kyc_fee')
                     ->where('status', 'completed')
                     ->exists();
 
-                // Record KYC fee transaction if it was paid and not already recorded
-                $kycFeeIncluded = $session->metadata->kyc_fee_included ?? 'false';
-                if (!$hasPaidKycFee && $kycFeeIncluded === 'true') {
+                if ($kycFeeAmount > 0 && $kycFeeIncluded === 'true' && $kycFeeAmountFromSession > 0 && !$hasPaidKycFee) {
                     // Record KYC fee transaction
                     Transaction::create([
                         'user_id' => $user->id,
                         'type' => 'kyc_fee',
                         'status' => 'completed',
-                        'amount' => $kycFeeAmount,
+                        'amount' => $kycFeeAmountFromSession,
                         'currency' => 'USD',
                         'payment_method' => 'stripe',
                         'transaction_id' => $session->payment_intent ?? $sessionId,
@@ -579,10 +646,11 @@ class PlansController extends Controller
                 Log::info('Wallet subscription successful', [
                     'user_id' => $user->id,
                     'wallet_plan_id' => $walletPlan->id,
-                    'plan_id' => $plan->id,
+                    'plan_id' => $plan->id ?? null,
                     'session_id' => $sessionId,
                     'stripe_subscription_id' => $session->subscription ?? null,
-                    'kyc_fee_paid' => !$hasPaidKycFee,
+                    'kyc_fee_paid' => $kycFeeIncluded === 'true',
+                    'kyc_fee_amount' => $kycFeeAmountFromSession,
                 ]);
 
                 // Render success page instead of redirecting

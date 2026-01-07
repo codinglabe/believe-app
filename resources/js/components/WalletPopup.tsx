@@ -451,7 +451,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             // Keep current status (should be under_review or similar)
                         } else {
                             // Update to other pending states (incomplete, awaiting_questionnaire, etc.)
-                            setKycStatus(statusData.kyc_status)
+                    setKycStatus(statusData.kyc_status)
                         }
                     } else {
                         // KYC not submitted yet, update status normally
@@ -1001,11 +1001,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             // Re-check status to ensure everything is synced with backend
                             setTimeout(() => {
                                 checkBridgeAndFetchBalance()
-
-                                // Reload page after a short delay to ensure UI updates properly
-                                setTimeout(() => {
-                                    window.location.reload()
-                                }, 1000)
                             }, 1000)
                         } else {
                             showErrorToast(data.message || 'Failed to accept Terms of Service')
@@ -1981,10 +1976,6 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                     if (data.data.tos_url) {
                         setTosIframeUrl(data.data.tos_url)
                     }
-                    // Reload page after showing success message
-                    setTimeout(() => {
-                        window.location.reload()
-                    }, 1500)
                 } else if (data.data?.tos_url) {
                     // Set the TOS URL - this will automatically show the TermsOfService component with iframe
                     setTosIframeUrl(data.data.tos_url)
@@ -2696,34 +2687,34 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                         }, 500)
                     } else {
                         // Not instantly approved - show waiting screen
-                        showSuccessToast('KYC data submitted successfully. Verification is pending.')
+                    showSuccessToast('KYC data submitted successfully. Verification is pending.')
                         // Ensure verification type is set to 'kyc'
                         setVerificationType('kyc')
                         setKycStatus('under_review') // Set status to under_review after submission
                         setKycSubmitted(true) // Mark that KYC has been submitted
-                        setRequiresVerification(true)
+                    setRequiresVerification(true)
                         // Force a re-render to show waiting screen immediately
                         console.log('KYC submitted - setting waiting screen state', {
                             kycSubmitted: true,
                             kycStatus: 'under_review',
                             verificationType: 'kyc'
                         })
-                        // Refresh status from backend to ensure sync
-                        setTimeout(() => {
-                            fetch(`/wallet/bridge/status?t=${Date.now()}`, {
-                                method: 'GET',
-                                headers: {
-                                    'Accept': 'application/json',
-                                    'X-CSRF-TOKEN': getCsrfToken(),
-                                    'X-Requested-With': 'XMLHttpRequest',
-                                },
-                                credentials: 'include',
-                                cache: 'no-store',
-                            })
-                                .then(res => res.json())
-                                .then(statusData => {
-                                    if (statusData.success) {
-                                        if (statusData.kyc_status) {
+                    // Refresh status from backend to ensure sync
+                    setTimeout(() => {
+                        fetch(`/wallet/bridge/status?t=${Date.now()}`, {
+                            method: 'GET',
+                            headers: {
+                                'Accept': 'application/json',
+                                'X-CSRF-TOKEN': getCsrfToken(),
+                                'X-Requested-With': 'XMLHttpRequest',
+                            },
+                            credentials: 'include',
+                            cache: 'no-store',
+                        })
+                            .then(res => res.json())
+                            .then(statusData => {
+                                if (statusData.success) {
+                                    if (statusData.kyc_status) {
                                             // If KYC was submitted, don't allow status to go back to not_started (which would show form)
                                             // Keep waiting screen visible until approved or rejected
                                             // Only update status if it's approved or rejected, otherwise keep it as under_review
@@ -2740,21 +2731,21 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                                 // For pending states (under_review, incomplete, etc.), keep under_review to show waiting screen
                                                 // Don't overwrite with status from backend if it's still pending
                                                 if (statusData.kyc_status !== 'not_started') {
-                                                    setKycStatus(statusData.kyc_status)
+                                        setKycStatus(statusData.kyc_status)
                                                 }
                                             }
-                                        }
-                                        if (statusData.requires_verification !== undefined) {
-                                            setRequiresVerification(statusData.requires_verification)
-                                        }
+                                    }
+                                    if (statusData.requires_verification !== undefined) {
+                                        setRequiresVerification(statusData.requires_verification)
+                                    }
                                         // Ensure verification type is set
                                         if (statusData.verification_type) {
                                             setVerificationType(statusData.verification_type)
                                         }
-                                    }
-                                })
-                                .catch(err => console.error('Failed to refresh KYC status:', err))
-                        }, 500)
+                                }
+                            })
+                            .catch(err => console.error('Failed to refresh KYC status:', err))
+                    }, 500)
                     }
                 } else {
                     showErrorToast(data.message || 'Failed to submit KYC data')

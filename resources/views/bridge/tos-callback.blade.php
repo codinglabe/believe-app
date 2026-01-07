@@ -106,13 +106,6 @@
                     
                     // Also send close action
                     window.parent.postMessage({ ...message, action: 'close' }, '*');
-                    
-                    // Reload the parent page after successful TOS acceptance
-                    if (message.success) {
-                        setTimeout(() => {
-                            window.parent.location.reload();
-                        }, 500);
-                    }
                 }, 300);
             }, 2000); // Show success for 2 seconds (reduced from 3)
         } else if (window.opener) {

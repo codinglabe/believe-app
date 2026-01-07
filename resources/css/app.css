@@ -769,6 +769,35 @@ body.main-domain #nprogress .peg {
   box-shadow: 0 0 10px #7F03DB, 0 0 5px #7F03DB !important;
 }
 
+/* Merchant domain: neon bright gradient (French Rose, Valentino, Burnt Sienna) */
+body.merchant-domain #nprogress .bar {
+  background: linear-gradient(to right, #FF1493, #DC143C, #E97451, #FF1493) !important;
+  background-size: 200% 100% !important;
+  animation: progress-gradient-merchant 2s ease infinite !important;
+  height: 3px !important;
+}
+
+@keyframes progress-gradient-merchant {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
+body.merchant-domain #nprogress .peg {
+  box-shadow: 0 0 10px #FF1493, 0 0 5px #DC143C, 0 0 3px #E97451 !important;
+}
+
+body.merchant-domain #nprogress .spinner-icon {
+  border-top-color: #FF1493 !important;
+  border-left-color: #DC143C !important;
+}
+
 body.main-domain #nprogress .spinner-icon {
   border-top-color: #7F03DB !important;
   border-left-color: #7F03DB !important;

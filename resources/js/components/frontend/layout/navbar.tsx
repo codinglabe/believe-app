@@ -105,6 +105,7 @@ export default function Navbar() {
   // Services dropdown items
   const servicesItems = [
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
+    { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
     { name: "Jobs", href: "/jobs", icon: Briefcase },

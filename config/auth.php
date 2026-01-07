@@ -49,6 +49,11 @@ return [
             'driver' => 'session',
             'provider' => 'livestock_users',
         ],
+
+        'merchant' => [
+            'driver' => 'session',
+            'provider' => 'merchants',
+        ],
     ],
 
     /*
@@ -82,6 +87,11 @@ return [
         'livestock_users' => [
             'driver' => 'eloquent',
             'model' => App\Models\LivestockUser::class,
+        ],
+
+        'merchants' => [
+            'driver' => 'eloquent',
+            'model' => App\Models\Merchant::class,
         ],
 
         // 'users' => [
@@ -119,6 +129,13 @@ return [
 
         'livestock_users' => [
             'provider' => 'livestock_users',
+            'table' => 'password_reset_tokens',
+            'expire' => 60,
+            'throttle' => 60,
+        ],
+
+        'merchants' => [
+            'provider' => 'merchants',
             'table' => 'password_reset_tokens',
             'expire' => 60,
             'throttle' => 60,

@@ -73,5 +73,8 @@ class DatabaseSeeder extends Seeder
         $this->call(ExistingUserReferralGenerate::class);
 
         $this->call(SupporterPositionsTableSeeder::class);
+
+        // Step 7: Seed merchant data
+        $this->call(MerchantSeeder::class);
     }
 }

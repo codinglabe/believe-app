@@ -91,10 +91,18 @@ use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
 
 // ============================================
-// LIVESTOCK DOMAIN ROUTES - MUST BE FIRST
+// MERCHANT DOMAIN ROUTES - MUST BE FIRST
+// ============================================
+// Load merchant routes only when accessing merchant domain
+// This must be before all other routes to take precedence
+Route::domain(config('merchant.domain'))->group(function () {
+    require __DIR__ . '/merchant.php';
+});
+
+// ============================================
+// LIVESTOCK DOMAIN ROUTES
 // ============================================
 // Load livestock routes only when accessing livestock domain
-// This must be before all other routes to take precedence
 Route::domain(config('livestock.domain'))->group(function () {
     require __DIR__ . '/livestock.php';
 });
@@ -233,6 +241,52 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->
     Route::get('/cancel', [App\Http\Controllers\BelievePointController::class, 'cancel'])->name('cancel');
     Route::get('/refunds', [App\Http\Controllers\BelievePointController::class, 'refunds'])->name('refunds');
     Route::post('/refunds/{purchaseId}', [App\Http\Controllers\BelievePointController::class, 'refund'])->name('refund');
+});
+
+// Merchant Hub Routes (Public - for viewing offers)
+Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::get('/', function () {
+        return Inertia::render('frontend/merchant-hub/Index');
+    })->name('index');
+    
+    Route::get('/offers/{id}', function ($id) {
+        return Inertia::render('frontend/merchant-hub/OfferDetail', [
+            'offerId' => $id
+        ]);
+    })->name('offer.show');
+});
+
+// Merchant Program Routes
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
+    Route::get('/welcome', function () {
+        return Inertia::render('merchant/Welcome');
+    })->name('welcome');
+    
+    Route::get('/hub', function () {
+        return Inertia::render('merchant/Hub');
+    })->name('hub');
+    
+    Route::get('/earn-points', function () {
+        return Inertia::render('merchant/EarnPoints');
+    })->name('earn-points');
+    
+    Route::get('/offers/{id}', function ($id) {
+        return Inertia::render('merchant/OfferDetail', [
+            'offer' => null // Replace with actual offer data from backend
+        ]);
+    })->name('offers.show');
+    
+    Route::get('/redemption-confirmed', function () {
+        return Inertia::render('merchant/RedemptionConfirmed');
+    })->name('redemption.confirmed');
+    
+    Route::get('/qr-code', function () {
+        return Inertia::render('merchant/QRCode');
+    })->name('qr-code');
+    
+    Route::get('/dashboard', function () {
+        return Inertia::render('merchant/Dashboard');
+    })->name('dashboard');
 });
 
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {

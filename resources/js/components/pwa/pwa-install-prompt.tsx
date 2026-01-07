@@ -4,6 +4,7 @@ import { Copy, Download, DownloadCloud, Loader2, Share2, X, CheckCircle2 } from 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { isLivestockDomain } from '@/lib/livestock-domain';
+import { isMerchantDomain } from '@/lib/merchant-domain';
 
 const INSTALL_PARAM = 'install-pwa';
 
@@ -44,6 +45,11 @@ export function PwaInstallPrompt() {
 
         // Don't show PWA prompt on livestock domain
         if (isLivestockDomain()) {
+            return;
+        }
+        
+        // Don't show PWA prompt on merchant domain
+        if (isMerchantDomain()) {
             return;
         }
 
@@ -544,6 +550,12 @@ export function PwaInstallPrompt() {
     if (isLivestockDomain()) {
         return null;
     }
+    
+    // Don't show PWA prompt on merchant domain - check early and return null immediately
+    const isMerchant = isMerchantDomain();
+    if (isMerchant) {
+        return null;
+    }
 
     // Show panel if visible OR if install was requested (to show install button immediately)
     const shouldRenderPanel = (isVisible || installRequested) && !isStandalone && !alreadyInstalled;
@@ -558,12 +570,18 @@ export function PwaInstallPrompt() {
                 <div 
                     data-pwa-install-panel
                     onClick={handlePanelClick}
-                    className={`fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-lg border border-primary/40 bg-primary/10 p-4 shadow-xl backdrop-blur transition-all dark:border-primary/30 dark:bg-primary/20 sm:bottom-6 sm:right-6 sm:w-full ${installRequested ? 'cursor-pointer animate-pulse ring-2 ring-primary ring-offset-2' : ''}`}
+                    className={`fixed bottom-4 right-4 z-40 w-[calc(100%-2rem)] max-w-sm rounded-lg p-4 shadow-xl backdrop-blur transition-all sm:bottom-6 sm:right-6 sm:w-full ${
+                        isMerchantDomain() 
+                            ? `border-2 border-[#FF1493]/50 bg-gradient-to-br from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 dark:border-[#FF1493]/40 dark:from-[#FF1493]/30 dark:via-[#DC143C]/30 dark:to-[#E97451]/30 ${installRequested ? 'cursor-pointer animate-pulse ring-2 ring-[#FF1493] ring-offset-2' : ''}`
+                            : `border border-primary/40 bg-primary/10 dark:border-primary/30 dark:bg-primary/20 ${installRequested ? 'cursor-pointer animate-pulse ring-2 ring-primary ring-offset-2' : ''}`
+                    }`}
                 >
                     <div className="flex items-start justify-between gap-2 sm:gap-3">
                         <div>
-                            <h2 className="text-base font-semibold text-primary">Install { import.meta.env.VITE_APP_NAME}</h2>
-                            <p className="mt-1 text-sm text-muted-foreground">
+                            <h2 className={`text-base font-semibold ${isMerchantDomain() ? 'text-white' : 'text-primary'}`}>
+                                Install { import.meta.env.VITE_APP_NAME}
+                            </h2>
+                            <p className={`mt-1 text-sm ${isMerchantDomain() ? 'text-gray-200' : 'text-muted-foreground'}`}>
                                 {installRequested
                                     ? 'Click anywhere on this page or panel to start installing the app on your device.'
                                     : 'Scan the QR code or use the link below to install the Believe App on your device.'}
@@ -604,7 +622,9 @@ export function PwaInstallPrompt() {
                     )}
 
                     <div className="mt-4 grid gap-2">
-                        <span className="text-sm font-medium text-primary">Shareable install link</span>
+                        <span className={`text-sm font-medium ${isMerchantDomain() ? 'text-white' : 'text-primary'}`}>
+                            Shareable install link
+                        </span>
                         <div className="flex items-center gap-2">
                             <Input
                                 value={installUrl}
@@ -632,7 +652,11 @@ export function PwaInstallPrompt() {
                             type="button"
                             variant="secondary"
                             onClick={handleShare}
-                            className="justify-center gap-2 border border-primary/30 bg-primary/20 text-primary hover:bg-primary/30"
+                            className={`justify-center gap-2 ${
+                                isMerchantDomain()
+                                    ? 'border-2 border-[#FF1493]/50 bg-gradient-to-r from-[#FF1493]/30 via-[#DC143C]/30 to-[#E97451]/30 text-white hover:from-[#FF1493]/40 hover:via-[#DC143C]/40 hover:to-[#E97451]/40'
+                                    : 'border border-primary/30 bg-primary/20 text-primary hover:bg-primary/30'
+                            }`}
                         >
                             <Share2 className="size-4" />
                             {shareLabel}
@@ -650,7 +674,11 @@ export function PwaInstallPrompt() {
                             type="button"
                             onClick={handleInstallClick}
                             disabled={deferredPrompt === null}
-                            className={`inline-flex items-center justify-center gap-2 ${installRequested ? 'animate-pulse ring-2 ring-primary ring-offset-2' : ''}`}
+                            className={`inline-flex items-center justify-center gap-2 ${
+                                isMerchantDomain()
+                                    ? `bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white hover:from-[#FF1493]/90 hover:via-[#DC143C]/90 hover:to-[#E97451]/90 ${installRequested ? 'animate-pulse ring-2 ring-[#FF1493] ring-offset-2' : ''}`
+                                    : `${installRequested ? 'animate-pulse ring-2 ring-primary ring-offset-2' : ''}`
+                            }`}
                         >
                             <Download className="size-4" />
                             {installRequested ? 'Click to Install' : 'Install now'}

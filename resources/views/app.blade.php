@@ -48,11 +48,15 @@
 
         @php
             $isLivestock = function_exists('is_livestock_domain') ? is_livestock_domain() : false;
+            $isMerchant = request()->getHost() === config('merchant.domain') || str_contains(request()->getHost(), 'merchant.');
         @endphp
 
-        <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @else {{ config('app.name', 'Laravel') }} @endif</title>
+        <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @elseif($isMerchant) {{ config('app.name', 'Believe') }} Merchant Program @else {{ config('app.name', 'Laravel') }} @endif</title>
 
-        @if($isLivestock)
+        @if($isMerchant)
+            <link rel="icon" href="/merchant/merchant.ico" sizes="any">
+            <link rel="apple-touch-icon" href="/merchant/merchant.png">
+        @elseif($isLivestock)
             <link rel="icon" href="/livestock/fav.ico" sizes="any">
             <link rel="apple-touch-icon" href="/livestock/logo.png">
         @else

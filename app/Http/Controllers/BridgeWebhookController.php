@@ -616,10 +616,17 @@ class BridgeWebhookController extends Controller
                 }
             }
 
-            // Store endorsements if available
+            // Store endorsements if available and process missing requirements
             if (isset($eventObject['endorsements'])) {
                 $metadata = $integration->bridge_metadata ?? [];
+                if (!is_array($metadata)) {
+                    $metadata = is_string($metadata) ? json_decode($metadata, true) : [];
+                }
                 $metadata['endorsements'] = $eventObject['endorsements'];
+                
+                // Process missing requirements from endorsements
+                $this->processMissingRequirements($integration, $eventObject['endorsements'], $customerId);
+                
                 $integration->bridge_metadata = $metadata;
             }
 
@@ -3308,5 +3315,256 @@ class BridgeWebhookController extends Controller
                 throw $e; // Re-throw to rollback transaction
             }
         });
+    }
+
+    /**
+     * Recursively extract string values from nested requirement structures
+     * Handles structures like: ["requirement1", {"any_of": ["req2", "req3"]}]
+     * 
+     * @param mixed $item
+     * @return array
+     */
+    private function extractRequirementStrings($item): array
+    {
+        $result = [];
+        
+        if (is_string($item)) {
+            $result[] = $item;
+        } elseif (is_array($item)) {
+            // If it's an associative array with keys like "any_of", "all_of", extract the values
+            if (isset($item['any_of']) && is_array($item['any_of'])) {
+                foreach ($item['any_of'] as $subItem) {
+                    $result = array_merge($result, $this->extractRequirementStrings($subItem));
+                }
+            } elseif (isset($item['all_of']) && is_array($item['all_of'])) {
+                foreach ($item['all_of'] as $subItem) {
+                    $result = array_merge($result, $this->extractRequirementStrings($subItem));
+                }
+            } else {
+                // Regular array, process each item
+                foreach ($item as $subItem) {
+                    $result = array_merge($result, $this->extractRequirementStrings($subItem));
+                }
+            }
+        }
+        
+        return $result;
+    }
+
+    /**
+     * Process missing requirements from Bridge endorsements
+     * Detects missing documents and data requirements dynamically
+     * 
+     * @param BridgeIntegration $integration
+     * @param array $endorsements
+     * @param string $customerId
+     */
+    private function processMissingRequirements(BridgeIntegration $integration, array $endorsements, string $customerId): void
+    {
+        if (empty($endorsements) || !is_array($endorsements)) {
+            return;
+        }
+
+        $allMissingRequirements = [];
+        $allIssues = [];
+        $endorsementDetails = [];
+
+        foreach ($endorsements as $endorsement) {
+            $endorsementName = $endorsement['name'] ?? 'unknown';
+            $endorsementStatus = $endorsement['status'] ?? null;
+            $requirements = $endorsement['requirements'] ?? [];
+            
+            // Extract missing requirements
+            $missing = $requirements['missing'] ?? [];
+            $issues = $requirements['issues'] ?? [];
+            
+            // Handle nested missing structure: { "all_of": ["requirement1", "requirement2"] }
+            $missingList = [];
+            if (isset($missing['all_of']) && is_array($missing['all_of'])) {
+                // Extract string values from potentially nested structure
+                $missingList = $this->extractRequirementStrings($missing['all_of']);
+            } elseif (is_array($missing) && !isset($missing['all_of'])) {
+                // Handle flat array structure
+                $missingList = $this->extractRequirementStrings($missing);
+            }
+            
+            // Handle issues array
+            $issuesList = [];
+            if (is_array($issues)) {
+                if (isset($issues['all_of']) && is_array($issues['all_of'])) {
+                    $issuesList = $this->extractRequirementStrings($issues['all_of']);
+                } elseif (!isset($issues['all_of'])) {
+                    $issuesList = $this->extractRequirementStrings($issues);
+                }
+            }
+            
+            if (!empty($missingList) || !empty($issuesList)) {
+                $endorsementDetails[] = [
+                    'name' => $endorsementName,
+                    'status' => $endorsementStatus,
+                    'missing' => $missingList,
+                    'issues' => $issuesList,
+                ];
+                
+                $allMissingRequirements = array_merge($allMissingRequirements, $missingList);
+                $allIssues = array_merge($allIssues, $issuesList);
+            }
+        }
+
+        // Remove duplicates (now safe since we only have strings)
+        $allMissingRequirements = array_unique($allMissingRequirements);
+        $allIssues = array_unique($allIssues);
+
+        // Only update if there are missing requirements or issues
+        if (!empty($allMissingRequirements) || !empty($allIssues)) {
+            $metadata = $integration->bridge_metadata ?? [];
+            if (!is_array($metadata)) {
+                $metadata = is_string($metadata) ? json_decode($metadata, true) : [];
+            }
+            
+            // Store pending requirements with detailed information
+            $metadata['pending_requirements'] = [
+                'missing' => array_values($allMissingRequirements),
+                'issues' => array_values($allIssues),
+                'endorsements' => $endorsementDetails,
+                'updated_at' => now()->toIso8601String(),
+                'source' => 'bridge_webhook',
+            ];
+            
+            // Categorize requirements into documents vs data fields
+            $documentRequirements = [];
+            $dataRequirements = [];
+            
+            // Common document requirements from Bridge
+            $documentTypes = [
+                'proof_of_address',
+                'government_id_verification',
+                'government_id_front',
+                'government_id_back',
+                'business_formation_document',
+                'business_ownership_document',
+                'determination_letter_501c3',
+                'id_front',
+                'id_back',
+            ];
+            
+            // Common data field requirements
+            $dataFieldTypes = [
+                'control_person',
+                'ultimate_beneficial_owners',
+                'physical_address',
+                'business_address',
+                'tax_id',
+                'ein',
+                'ssn',
+                'date_of_birth',
+                'birth_date',
+            ];
+            
+            foreach ($allMissingRequirements as $requirement) {
+                $requirementLower = strtolower($requirement);
+                
+                // Check if it's a document requirement
+                $isDocument = false;
+                foreach ($documentTypes as $docType) {
+                    if (str_contains($requirementLower, $docType)) {
+                        $isDocument = true;
+                        $documentRequirements[] = $requirement;
+                        break;
+                    }
+                }
+                
+                // Check if it's a data field requirement
+                if (!$isDocument) {
+                    foreach ($dataFieldTypes as $dataType) {
+                        if (str_contains($requirementLower, $dataType)) {
+                            $dataRequirements[] = $requirement;
+                            break;
+                        }
+                    }
+                }
+                
+                // If not categorized, assume it might be a document (safer default)
+                if (!$isDocument && empty($dataRequirements)) {
+                    $documentRequirements[] = $requirement;
+                }
+            }
+            
+            $metadata['pending_requirements']['categorized'] = [
+                'documents' => array_values(array_unique($documentRequirements)),
+                'data_fields' => array_values(array_unique($dataRequirements)),
+            ];
+            
+            $integration->bridge_metadata = $metadata;
+            
+            Log::info('Bridge KYC/KYB missing requirements detected', [
+                'integration_id' => $integration->id,
+                'customer_id' => $customerId,
+                'missing_requirements' => $allMissingRequirements,
+                'issues' => $allIssues,
+                'document_requirements' => $documentRequirements,
+                'data_requirements' => $dataRequirements,
+                'endorsement_count' => count($endorsementDetails),
+            ]);
+            
+            // TODO: Notify user/organization about missing requirements
+            // This can be done via:
+            // 1. Email notification
+            // 2. In-app notification
+            // 3. Push notification (if implemented)
+            // 4. Update submission status to 'needs_more_info' if applicable
+            
+            // Update submission status if exists
+            $submission = \App\Models\BridgeKycKybSubmission::where('bridge_integration_id', $integration->id)
+                ->where('bridge_customer_id', $customerId)
+                ->latest()
+                ->first();
+            
+            if ($submission && !empty($allMissingRequirements)) {
+                // Only update to needs_more_info if status is under_review or incomplete
+                if (in_array($submission->submission_status, ['under_review', 'incomplete', 'not_started'])) {
+                    $submission->submission_status = 'needs_more_info';
+                    
+                    // Store missing requirements in submission data
+                    $submissionData = $submission->submission_data ?? [];
+                    if (is_string($submissionData)) {
+                        $submissionData = json_decode($submissionData, true) ?? [];
+                    }
+                    $submissionData['bridge_missing_requirements'] = [
+                        'missing' => array_values($allMissingRequirements),
+                        'issues' => array_values($allIssues),
+                        'detected_at' => now()->toIso8601String(),
+                    ];
+                    $submission->submission_data = $submissionData;
+                    $submission->save();
+                    
+                    Log::info('Bridge submission status updated to needs_more_info due to missing requirements', [
+                        'submission_id' => $submission->id,
+                        'integration_id' => $integration->id,
+                        'missing_requirements' => $allMissingRequirements,
+                    ]);
+                }
+            }
+        } else {
+            // Clear pending requirements if all requirements are met
+            $metadata = $integration->bridge_metadata ?? [];
+            if (!is_array($metadata)) {
+                $metadata = is_string($metadata) ? json_decode($metadata, true) : [];
+            }
+            
+            if (isset($metadata['pending_requirements'])) {
+                // Only clear if it was set by a webhook (not by admin request)
+                $pendingReqs = $metadata['pending_requirements'] ?? [];
+                if (isset($pendingReqs['source']) && $pendingReqs['source'] === 'bridge_webhook') {
+                    unset($metadata['pending_requirements']);
+                    $integration->bridge_metadata = $metadata;
+                    
+                    Log::info('Bridge pending requirements cleared - all requirements met', [
+                        'integration_id' => $integration->id,
+                        'customer_id' => $customerId,
+                    ]);
+                }
+            }
+        }
     }
 }

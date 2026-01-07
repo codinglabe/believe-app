@@ -1,8 +1,9 @@
 import SiteTitle from "@/components/site-title"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
 import {  Facebook, Twitter, Instagram, Linkedin, Mail, Phone, MapPin } from "lucide-react"
 
 export default function Footer() {
+  const { merchantDomain } = usePage().props as { merchantDomain?: string }
   return (
     <footer className="bg-gray-900 dark:bg-black text-white">
       <div className="container mx-auto px-4 py-16">
@@ -71,6 +72,14 @@ export default function Footer() {
                 <Link href={route("register.organization")} className="text-gray-400 hover:text-white transition-colors">
                   Register Organization
                 </Link>
+              </li>
+              <li>
+                <a 
+                  href={`//${merchantDomain || import.meta.env.VITE_MERCHANT_DOMAIN || 'merchant.believeinunity.org'}`}
+                  className="text-gray-400 hover:text-white transition-colors"
+                >
+                  Become a Merchant
+                </a>
               </li>
             </ul>
           </div>
