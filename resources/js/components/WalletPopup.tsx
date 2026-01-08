@@ -996,11 +996,11 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                             setTosStatus(finalTosStatus)
 
                             // Show success message
-                            showSuccessToast('Terms of Service accepted successfully')
+                                showSuccessToast('Terms of Service accepted successfully')
 
-                            // Re-check status to ensure everything is synced with backend
+                                    // Re-check status to ensure everything is synced with backend
                             setTimeout(() => {
-                                checkBridgeAndFetchBalance()
+                                    checkBridgeAndFetchBalance()
                             }, 1000)
                         } else {
                             showErrorToast(data.message || 'Failed to accept Terms of Service')
@@ -2741,7 +2741,7 @@ export function WalletPopup({ isOpen, onClose, organizationName }: WalletPopupPr
                                         // Ensure verification type is set
                                         if (statusData.verification_type) {
                                             setVerificationType(statusData.verification_type)
-                                        }
+                                    }
                                 }
                             })
                             .catch(err => console.error('Failed to refresh KYC status:', err))

@@ -119,18 +119,32 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     return colors[category] || 'bg-muted text-muted-foreground border-border'
   }
 
-  const handleRedeem = () => {
+  const handleRedeem = async () => {
     if (!auth?.user) {
       router.visit('/login')
       return
     }
 
     setIsRedeeming(true)
-    // TODO: Implement redemption logic
-    setTimeout(() => {
+    try {
+      await router.post('/merchant-hub/redeem', {
+        offer_id: offer.id,
+        points_used: offer.pointsRequired,
+        cash_paid: offer.cashRequired || 0,
+      }, {
+        preserveScroll: true,
+        onSuccess: () => {
+          setIsRedeeming(false)
+        },
+        onError: (errors) => {
+          console.error('Redemption failed:', errors)
+          setIsRedeeming(false)
+        }
+      })
+    } catch (error) {
+      console.error('Redemption failed:', error)
       setIsRedeeming(false)
-      // Show success message and redirect
-    }, 1000)
+    }
   }
 
   const handleShare = () => {

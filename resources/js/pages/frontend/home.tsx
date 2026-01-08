@@ -444,6 +444,24 @@ export default function HomePage() {
                     <span className="text-xs sm:text-sm">Secure Platform</span>
                   </div>
                 </motion.div>
+
+                {/* File for 501c3 Button */}
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.8, delay: 1 }}
+                  className="mt-6 sm:mt-8"
+                >
+                  <Link href="/register/organization" className="w-full sm:w-auto">
+                    <Button
+                      size="lg"
+                      className="bg-white text-gray-900 hover:bg-white/90 font-bold px-6 sm:px-8 py-4 sm:py-6 text-base sm:text-lg rounded-lg shadow-lg hover:shadow-xl transform hover:scale-105 transition-all duration-300 w-full sm:w-auto"
+                    >
+                      File for your 501c3
+                      <ArrowRight className="ml-2 h-4 w-4 sm:h-5 sm:w-5" />
+                    </Button>
+                  </Link>
+                </motion.div>
               </motion.div>
             </div>
           </div>

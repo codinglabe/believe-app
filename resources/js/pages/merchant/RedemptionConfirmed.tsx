@@ -1,18 +1,62 @@
-import React from 'react'
-import { Head } from '@inertiajs/react'
+import React, { useState } from 'react'
+import { Head, usePage } from '@inertiajs/react'
 import { MerchantHeader } from '@/components/merchant'
 import { PointsDisplay } from '@/components/merchant/PointsDisplay'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
-import { CheckCircle2, QrCode } from 'lucide-react'
+import { CheckCircle2, QrCode, Download, Share2 } from 'lucide-react'
 import { motion } from 'framer-motion'
-import { router } from '@inertiajs/react'
 
-export default function RedemptionConfirmed() {
-  const lockedPoints = 10000
+interface Redemption {
+  id?: string
+  code?: string
+  points_used?: number
+  cash_paid?: number
+  status?: string
+  qr_code_url?: string
+  redeemed_at?: string
+}
 
-  const handleShowQRCode = () => {
-    router.visit('/merchant/qr-code')
+interface Props {
+  redemption?: Redemption
+}
+
+export default function RedemptionConfirmed({ redemption: propRedemption }: Props) {
+  const { props } = usePage()
+  const redemption = propRedemption || (props as any).redemption || {
+    code: 'RED-XXXXXXXX',
+    points_used: 10000,
+    cash_paid: 0,
+    status: 'completed',
+    qr_code_url: '/merchant/redemption/qr-code/RED-XXXXXXXX',
+  }
+
+  const [showQRCode, setShowQRCode] = useState(false)
+  const lockedPoints = redemption.points_used || 10000
+
+  const handleDownloadQR = () => {
+    if (redemption.qr_code_url) {
+      const link = document.createElement('a')
+      link.href = redemption.qr_code_url
+      link.download = `redemption-${redemption.code}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }
+
+  const handleShare = async () => {
+    if (navigator.share && redemption.qr_code_url) {
+      try {
+        await navigator.share({
+          title: 'Redemption QR Code',
+          text: `Redemption Code: ${redemption.code}`,
+          url: redemption.qr_code_url,
+        })
+      } catch (error) {
+        console.error('Error sharing:', error)
+      }
+    }
   }
 
   return (
@@ -58,17 +102,74 @@ export default function RedemptionConfirmed() {
                     </div>
                   </div>
 
+                  {redemption.code && (
+                    <div className="bg-gray-50 dark:bg-gray-800 rounded-xl p-4 mb-6">
+                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">
+                        Redemption Code
+                      </p>
+                      <p className="text-xl font-mono font-bold text-gray-900 dark:text-gray-100">
+                        {redemption.code}
+                      </p>
+                    </div>
+                  )}
+
                   <p className="text-gray-700 dark:text-gray-300 mb-8">
-                    Your points are reserved for this offer.
+                    Your points are reserved for this offer. Show the QR code to the merchant to complete your redemption.
                   </p>
 
                   <Button 
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold h-12"
-                    onClick={handleShowQRCode}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold h-12 mb-3"
+                    onClick={() => setShowQRCode(!showQRCode)}
                   >
                     <QrCode className="w-5 h-5 mr-2" />
-                    Show QR Code
+                    {showQRCode ? 'Hide QR Code' : 'Show QR Code'}
                   </Button>
+
+                  {showQRCode && redemption.qr_code_url && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 20 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="mt-6"
+                    >
+                      <Card className="bg-white dark:bg-gray-800">
+                        <CardContent className="p-6">
+                          <div className="flex flex-col items-center">
+                            <div className="p-4 bg-white rounded-lg mb-4">
+                              <img
+                                src={redemption.qr_code_url}
+                                alt="Redemption QR Code"
+                                className="w-64 h-64"
+                                onError={(e) => {
+                                  console.error('QR code failed to load')
+                                }}
+                              />
+                            </div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-center">
+                              Scan this QR code at the merchant location
+                            </p>
+                            <div className="flex gap-3 w-full">
+                              <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={handleDownloadQR}
+                              >
+                                <Download className="w-4 h-4 mr-2" />
+                                Download
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="flex-1"
+                                onClick={handleShare}
+                              >
+                                <Share2 className="w-4 h-4 mr-2" />
+                                Share
+                              </Button>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )}
                 </div>
               </CardContent>
             </Card>

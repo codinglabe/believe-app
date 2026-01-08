@@ -22,7 +22,7 @@ class CheckTopicsSelected
             return $next($request);
         }
 
-        $user = $request->user();
+            $user = $request->user();
         
         // Allow admin users to bypass topic selection requirement
         if ($user && $user->role === 'admin') {

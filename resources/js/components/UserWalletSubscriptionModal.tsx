@@ -306,9 +306,9 @@ export function UserWalletSubscriptionModal({ isOpen, onClose }: UserWalletSubsc
 
                             {/* Additional Info */}
                             {plans.length > 0 && plans.some(p => p.trial_days && p.trial_days > 0) && (
-                                <p className="text-[10px] text-center text-muted-foreground mt-3">
+                            <p className="text-[10px] text-center text-muted-foreground mt-3">
                                     💡 Start with a {Math.max(...plans.filter(p => p.trial_days).map(p => p.trial_days || 0))}-day free trial membership!
-                                </p>
+                            </p>
                             )}
                         </div>
                     </motion.div>

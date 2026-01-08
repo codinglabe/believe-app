@@ -4257,9 +4257,9 @@ class BridgeWalletController extends Controller
                             if ($customerKycLinkResult['success'] && isset($customerKycLinkResult['data']['url'])) {
                                 $controlPersonKycLink = $customerKycLinkResult['data']['url'];
                                 Log::info('Using business customer KYC link for control person (same email)', [
-                                    'customer_id' => $integration->bridge_customer_id,
+                            'customer_id' => $integration->bridge_customer_id,
                                     'email' => $controlPersonEmail,
-                                ]);
+                        ]);
                             }
                         } else {
                             // Control person has different email - try to create individual KYC link

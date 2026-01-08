@@ -278,9 +278,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('
         ]);
     })->name('offers.show');
     
-    Route::get('/redemption-confirmed', function () {
-        return Inertia::render('merchant/RedemptionConfirmed');
-    })->name('redemption.confirmed');
+    // Redemption routes
+    Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption-confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
+    Route::get('/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
+    Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
     
     Route::get('/qr-code', function () {
         return Inertia::render('merchant/QRCode');
