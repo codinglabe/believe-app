@@ -258,6 +258,11 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     })->name('offer.show');
 });
 
+// Merchant Hub Redemption Routes (Requires auth)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
+});
+
 // Merchant Program Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
     Route::get('/welcome', function () {
