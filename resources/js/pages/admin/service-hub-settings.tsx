@@ -20,6 +20,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Info,
+  FileCheck,
 } from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
@@ -28,6 +29,13 @@ interface State {
   state: string
   state_code: string
   base_sales_tax_rate: number
+  rate_mode: string | null
+  sales_tax_status: string | null
+  services_vs_goods: string | null
+  charitable_vs_resale: string | null
+  requires_exemption_certificate: boolean
+  certificate_type_allowed: string | null
+  site_to_apply_for_certificate: string | null
   local_rates_apply: boolean
   last_updated: string | null
   notes: string | null
@@ -39,20 +47,21 @@ interface PageProps {
     stripe_transaction_fee_percentage: number
     believe_points_transaction_fee_percentage: number
     monthly_advertising_fee: number
-  }
+  } | null
   states: State[]
+  isAdmin: boolean
 }
 
-export default function ServiceHubSettings({ settings, states }: PageProps) {
-  const [activeTab, setActiveTab] = useState("fees")
+export default function ServiceHubSettings({ settings, states, certificates = [], isAdmin }: PageProps) {
+  const [activeTab, setActiveTab] = useState(isAdmin ? "fees" : "taxes")
   const [editingStates, setEditingStates] = useState<Record<number, number>>({})
   const [bulkEditMode, setBulkEditMode] = useState(false)
 
   const { data: feeData, setData: setFeeData, post: postFees, processing: processingFees, errors: feeErrors } = useForm({
-    platform_fee_percentage: settings.platform_fee_percentage,
-    stripe_transaction_fee_percentage: settings.stripe_transaction_fee_percentage,
-    believe_points_transaction_fee_percentage: settings.believe_points_transaction_fee_percentage,
-    monthly_advertising_fee: settings.monthly_advertising_fee,
+    platform_fee_percentage: settings?.platform_fee_percentage || 0,
+    stripe_transaction_fee_percentage: settings?.stripe_transaction_fee_percentage || 0,
+    believe_points_transaction_fee_percentage: settings?.believe_points_transaction_fee_percentage || 0,
+    monthly_advertising_fee: settings?.monthly_advertising_fee || 0,
   })
 
   const handleFeeSubmit = (e: React.FormEvent) => {
@@ -127,23 +136,6 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
     { title: "Service Hub Settings", href: "/settings/service-hub" },
   ]
 
-  // Check if user is admin
-  const { auth } = usePage().props as any
-  if (auth?.user?.role !== 'admin') {
-    return (
-      <AppLayout breadcrumbs={breadcrumbs}>
-        <Head title="Access Denied" />
-        <div className="p-6">
-          <Card>
-            <CardContent className="p-6 text-center">
-              <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-              <p className="text-muted-foreground">Only administrators can access Service Hub Settings.</p>
-            </CardContent>
-          </Card>
-        </div>
-      </AppLayout>
-    )
-  }
 
   return (
     <AppLayout breadcrumbs={breadcrumbs}>
@@ -160,13 +152,14 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="fees">Fee Settings</TabsTrigger>
-            <TabsTrigger value="taxes">Sales Tax Rates</TabsTrigger>
+          <TabsList className={`grid w-full ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'}`}>
+            {isAdmin && <TabsTrigger value="fees">Fee Settings</TabsTrigger>}
+            <TabsTrigger value="taxes">{isAdmin ? 'Sales Tax Rates' : 'State Sales Tax'}</TabsTrigger>
           </TabsList>
 
-          {/* Fee Settings Tab */}
-          <TabsContent value="fees" className="space-y-6">
+          {/* Fee Settings Tab - Admin Only */}
+          {isAdmin && settings && (
+            <TabsContent value="fees" className="space-y-6">
             {/* Fee Overview Card */}
             <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border-blue-200 dark:border-blue-800">
               <CardHeader>
@@ -398,6 +391,7 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
               </CardContent>
             </Card>
           </TabsContent>
+          )}
 
           {/* Sales Tax Rates Tab */}
           <TabsContent value="taxes" className="space-y-6">
@@ -410,32 +404,36 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
                       State Sales Tax Rates
                     </CardTitle>
                     <CardDescription>
-                      Manage sales tax rates for all US states. Total: {states.length} states
+                      {isAdmin
+                        ? `Manage sales tax rates for all US states. Total: ${states.length} states`
+                        : `View sales tax rates and certificate requirements for all US states. Total: ${states.length} states`}
                     </CardDescription>
                   </div>
-                  <div className="flex gap-2">
-                    {bulkEditMode ? (
-                      <>
-                        <Button
-                          variant="outline"
-                          onClick={() => {
-                            setBulkEditMode(false)
-                            setEditingStates({})
-                          }}
-                        >
-                          Cancel
+                  {isAdmin && (
+                    <div className="flex gap-2">
+                      {bulkEditMode ? (
+                        <>
+                          <Button
+                            variant="outline"
+                            onClick={() => {
+                              setBulkEditMode(false)
+                              setEditingStates({})
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button onClick={handleBulkUpdate} className="bg-green-600 hover:bg-green-700">
+                            <Save className="mr-2 h-4 w-4" />
+                            Save All Changes
+                          </Button>
+                        </>
+                      ) : (
+                        <Button variant="outline" onClick={() => setBulkEditMode(true)}>
+                          Bulk Edit
                         </Button>
-                        <Button onClick={handleBulkUpdate} className="bg-green-600 hover:bg-green-700">
-                          <Save className="mr-2 h-4 w-4" />
-                          Save All Changes
-                        </Button>
-                      </>
-                    ) : (
-                      <Button variant="outline" onClick={() => setBulkEditMode(true)}>
-                        Bulk Edit
-                      </Button>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </CardHeader>
               <CardContent>
@@ -455,7 +453,8 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
                             <th className="px-4 py-3 text-left text-sm font-semibold">State Code</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold">Tax Rate (%)</th>
                             <th className="px-4 py-3 text-left text-sm font-semibold">Local Rates</th>
-                            <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>
+                            <th className="px-4 py-3 text-left text-sm font-semibold">Requires Certificate</th>
+                            {isAdmin && <th className="px-4 py-3 text-left text-sm font-semibold">Actions</th>}
                           </tr>
                         </thead>
                         <tbody>
@@ -472,7 +471,7 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
                                   <Badge variant="outline">{state.state_code}</Badge>
                                 </td>
                                 <td className="px-4 py-3">
-                                  {bulkEditMode || isEditing ? (
+                                  {(isAdmin && (bulkEditMode || isEditing)) ? (
                                     <div className="flex items-center gap-2">
                                       <Input
                                         type="number"
@@ -499,44 +498,56 @@ export default function ServiceHubSettings({ settings, states }: PageProps) {
                                   )}
                                 </td>
                                 <td className="px-4 py-3">
-                                  {!bulkEditMode && (
-                                    <div className="flex items-center gap-2">
-                                      {isEditing ? (
-                                        <>
+                                  {state.requires_exemption_certificate ? (
+                                    <Badge className="bg-green-600">
+                                      <FileCheck className="h-3 w-3 mr-1" />
+                                      Yes
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="secondary">No</Badge>
+                                  )}
+                                </td>
+                                {isAdmin && (
+                                  <td className="px-4 py-3">
+                                    {!bulkEditMode && (
+                                      <div className="flex items-center gap-2">
+                                        {isEditing ? (
+                                          <>
+                                            <Button
+                                              size="sm"
+                                              variant="outline"
+                                              onClick={() => {
+                                                setEditingStates((prev) => {
+                                                  const updated = { ...prev }
+                                                  delete updated[state.id]
+                                                  return updated
+                                                })
+                                              }}
+                                            >
+                                              Cancel
+                                            </Button>
+                                            <Button
+                                              size="sm"
+                                              onClick={() => handleStateTaxUpdate(state.id)}
+                                              className="bg-green-600 hover:bg-green-700"
+                                            >
+                                              <Save className="h-3 w-3 mr-1" />
+                                              Save
+                                            </Button>
+                                          </>
+                                        ) : (
                                           <Button
                                             size="sm"
                                             variant="outline"
-                                            onClick={() => {
-                                              setEditingStates((prev) => {
-                                                const updated = { ...prev }
-                                                delete updated[state.id]
-                                                return updated
-                                              })
-                                            }}
+                                            onClick={() => handleStateTaxChange(state.id, state.base_sales_tax_rate)}
                                           >
-                                            Cancel
+                                            Edit
                                           </Button>
-                                          <Button
-                                            size="sm"
-                                            onClick={() => handleStateTaxUpdate(state.id)}
-                                            className="bg-green-600 hover:bg-green-700"
-                                          >
-                                            <Save className="h-3 w-3 mr-1" />
-                                            Save
-                                          </Button>
-                                        </>
-                                      ) : (
-                                        <Button
-                                          size="sm"
-                                          variant="outline"
-                                          onClick={() => handleStateTaxChange(state.id, state.base_sales_tax_rate)}
-                                        >
-                                          Edit
-                                        </Button>
-                                      )}
-                                    </div>
-                                  )}
-                                </td>
+                                        )}
+                                      </div>
+                                    )}
+                                  </td>
+                                )}
                               </tr>
                             )
                           })}

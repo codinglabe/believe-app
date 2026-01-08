@@ -250,7 +250,7 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::get('/', function () {
         return Inertia::render('frontend/merchant-hub/Index');
     })->name('index');
-    
+
     Route::get('/offers/{id}', function ($id) {
         return Inertia::render('frontend/merchant-hub/OfferDetail', [
             'offerId' => $id
@@ -263,31 +263,31 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('
     Route::get('/welcome', function () {
         return Inertia::render('merchant/Welcome');
     })->name('welcome');
-    
+
     Route::get('/hub', function () {
         return Inertia::render('merchant/Hub');
     })->name('hub');
-    
+
     Route::get('/earn-points', function () {
         return Inertia::render('merchant/EarnPoints');
     })->name('earn-points');
-    
+
     Route::get('/offers/{id}', function ($id) {
         return Inertia::render('merchant/OfferDetail', [
             'offer' => null // Replace with actual offer data from backend
         ]);
     })->name('offers.show');
-    
+
     // Redemption routes
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
     Route::get('/redemption-confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
     Route::get('/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
-    
+
     Route::get('/qr-code', function () {
         return Inertia::render('merchant/QRCode');
     })->name('qr-code');
-    
+
     Route::get('/dashboard', function () {
         return Inertia::render('merchant/Dashboard');
     })->name('dashboard');
@@ -1431,6 +1431,18 @@ Route::prefix('admin/service-categories')
         Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
         Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
     });
+
+// Admin Exemption Certificates Management
+Route::prefix('admin/exemption-certificates')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.exemption-certificates.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'index'])->name('index');
+        Route::get('/{exemptionCertificate}', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'show'])->name('show');
+        Route::post('/{exemptionCertificate}/approve', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'approve'])->name('approve');
+        Route::post('/{exemptionCertificate}/reject', [App\Http\Controllers\Admin\ExemptionCertificateController::class, 'reject'])->name('reject');
+    });
+
 
 // Admin Promotional Banners Management
 Route::prefix('admin/promotional-banners')

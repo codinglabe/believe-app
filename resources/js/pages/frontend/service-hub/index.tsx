@@ -97,7 +97,9 @@ const sortOptions = [
 ]
 
 export default function ServiceHubIndex() {
-  const { gigs, categories, favoriteIds, totalUnread: initialUnreadCount = 0, filters: initialFilters } = usePage<PageProps>().props
+  const pageProps = usePage<PageProps>().props as any
+  const { gigs, categories, favoriteIds, totalUnread: initialUnreadCount = 0, filters: initialFilters } = pageProps
+  const isAdmin = pageProps?.auth?.user?.role === 'admin'
 
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
   const [selectedCategory, setSelectedCategory] = useState(initialFilters.category || "all")
@@ -266,28 +268,77 @@ export default function ServiceHubIndex() {
                     )}
                   </Button>
                 </Link> */}
-                <Link href="/service-hub/my-orders">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <Package className="h-4 w-4" />
-                    My Orders
-                  </Button>
-                </Link>
-                <Link href="/service-hub/seller-dashboard">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <BarChart3 className="h-4 w-4" />
-                    Seller Dashboard
-                  </Button>
-                </Link>
-                <Link href="/service-hub/seller-orders">
-                  <Button variant="ghost" size="sm" className="gap-2">
-                    <ShoppingBag className="h-4 w-4" />
-                    My Sales
-                  </Button>
-                </Link>
+                {!isAdmin && (
+                  <>
+                    <Link href="/service-hub/my-orders">
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        <Package className="h-4 w-4" />
+                        My Orders
+                      </Button>
+                    </Link>
+                    <Link href="/service-hub/seller-dashboard">
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        <BarChart3 className="h-4 w-4" />
+                        Seller Dashboard
+                      </Button>
+                    </Link>
+                    <Link href="/service-hub/seller-orders">
+                      <Button variant="ghost" size="sm" className="gap-2">
+                        <ShoppingBag className="h-4 w-4" />
+                        My Sales
+                      </Button>
+                    </Link>
+                  </>
+                )}
               </div>
             </div>
           </div>
         </div>
+
+        {/* CTA Banner - Top Section */}
+        {!isAdmin && (
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 dark:from-indigo-950/30 dark:via-purple-950/30 dark:to-pink-950/30 border-b border-border/50"
+          >
+            <div className="container mx-auto px-4 py-6">
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div className="flex-1 text-center sm:text-left">
+                  <h2 className="text-xl md:text-2xl font-bold text-foreground mb-1">
+                    Ready to offer your services?
+                  </h2>
+                  <p className="text-sm md:text-base text-muted-foreground">
+                    Join thousands of professionals and start earning by offering your skills
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <Link href="/service-hub/seller-dashboard">
+                    <Button
+                      size="lg"
+                      className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <BarChart3 className="mr-2 h-4 w-4" />
+                      Go to Dashboard
+                    </Button>
+                  </Link>
+                  <Link href="/service-hub/create">
+                    <Button
+                      size="lg"
+                      variant="default"
+                      className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white shadow-lg hover:shadow-xl transition-all duration-200"
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Create Your Service
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -810,34 +861,35 @@ export default function ServiceHubIndex() {
           </div>
         </div>
 
-        {/* CTA Section */}
-        <motion.section
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true }}
-          className="bg-gradient-to-r from-blue-600 to-purple-600 py-16 mt-16"
-        >
-          <div className="container mx-auto px-4 text-center">
-            <h2 className="text-3xl font-bold text-white mb-4">Ready to offer your services?</h2>
-            <p className="text-white/90 mb-8 max-w-2xl mx-auto">
-              Join thousands of professionals and start earning by offering your skills
-            </p>
-            <div className="flex items-center gap-4 justify-center flex-wrap">
-              <Link href="/service-hub/seller-dashboard">
-                <Button size="lg" className="bg-white text-blue-600 hover:bg-white/90">
-                  <BarChart3 className="mr-2 h-5 w-5" />
-                  Go to Dashboard
-                </Button>
-              </Link>
-              <Link href="/service-hub/create">
-                <Button size="lg" variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20">
-                  <Plus className="mr-2 h-5 w-5" />
-                  Create Your Service
-                </Button>
-              </Link>
+        {!isAdmin && (
+          <motion.section
+            initial={{ opacity: 0 }}
+            whileInView={{ opacity: 1 }}
+            viewport={{ once: true }}
+            className="bg-gradient-to-r from-blue-600 to-purple-600 py-16 mt-16"
+          >
+            <div className="container mx-auto px-4 text-center">
+              <h2 className="text-3xl font-bold text-white mb-4">Ready to offer your services?</h2>
+              <p className="text-white/90 mb-8 max-w-2xl mx-auto">
+                Join thousands of professionals and start earning by offering your skills
+              </p>
+              <div className="flex items-center gap-4 justify-center flex-wrap">
+                <Link href="/service-hub/seller-dashboard">
+                  <Button size="lg" className="bg-white text-blue-600 hover:bg-white/90">
+                    <BarChart3 className="mr-2 h-5 w-5" />
+                    Go to Dashboard
+                  </Button>
+                </Link>
+                <Link href="/service-hub/create">
+                  <Button size="lg" variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20">
+                    <Plus className="mr-2 h-5 w-5" />
+                    Create Your Service
+                  </Button>
+                </Link>
+              </div>
             </div>
-          </div>
-        </motion.section>
+          </motion.section>
+        )}
       </div>
     </FrontendLayout>
   )

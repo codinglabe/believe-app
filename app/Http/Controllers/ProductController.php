@@ -484,14 +484,40 @@ class ProductController extends BaseController
     {
         $this->authorizePermission($request, 'product.create');
 
-        // Check if organization has active subscription
+        // Check if organization has active subscription (skip for admin users)
         $user = Auth::user();
-        if ($user->role === 'organization' || $user->role === 'organization_pending') {
+
+        // Skip subscription check for admin users
+        if ($user->role === 'admin') {
+            // Admin users can always create products
+        } elseif ($user->role === 'organization' || $user->role === 'organization_pending') {
             $organization = Organization::where('user_id', $user->id)->first();
-            if ($organization && $organization->user && $organization->user->current_plan_id === null) {
-                return redirect()->back()->withErrors([
-                    'subscription' => 'An active subscription is required to create and sell products. Please subscribe to continue.'
-                ])->with('subscription_required', true);
+            if ($organization && $organization->user) {
+                // Check if user has active subscription
+                // Allow if current_plan_id is set OR if subscription check is disabled via env
+                $subscriptionCheckEnabled = env('REQUIRE_SUBSCRIPTION_FOR_PRODUCTS', true);
+
+                if ($subscriptionCheckEnabled && $organization->user->current_plan_id === null) {
+                    // Also check if user has active subscription via Cashier
+                    $hasActiveSubscription = false;
+                    if (method_exists($organization->user, 'subscribed')) {
+                        try {
+                            $hasActiveSubscription = $organization->user->subscribed();
+                        } catch (\Exception $e) {
+                            // If subscription check fails, log but don't block
+                            \Log::warning('Failed to check subscription status', [
+                                'user_id' => $organization->user->id,
+                                'error' => $e->getMessage()
+                            ]);
+                        }
+                    }
+
+                    if (!$hasActiveSubscription) {
+                        return redirect()->back()->withErrors([
+                            'subscription' => 'An active subscription is required to create and sell products. Please subscribe to continue.'
+                        ])->with('subscription_required', true);
+                    }
+                }
             }
         }
 

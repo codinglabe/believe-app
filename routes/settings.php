@@ -51,6 +51,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
             Route::post('settings/exemption-certificates', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');
             Route::put('settings/exemption-certificates/{id}', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'update'])->name('exemption-certificates.update');
             Route::delete('settings/exemption-certificates/{id}', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'destroy'])->name('exemption-certificates.destroy');
+
+            // State Sales Tax - For organizations to view
+            Route::get('settings/state-sales-tax', [\App\Http\Controllers\Admin\StateSalesTaxController::class, 'index'])->name('state-sales-tax.index');
+            Route::get('settings/state-sales-tax/{stateSalesTax}', [\App\Http\Controllers\Admin\StateSalesTaxController::class, 'show'])->name('state-sales-tax.show');
         });
 
         Route::get('settings/billing', [\App\Http\Controllers\Settings\BillingController::class, 'index'])->name('billing.index');

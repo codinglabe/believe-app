@@ -102,7 +102,9 @@ interface PageProps extends Record<string, unknown> {
 }
 
 export default function ServiceShow() {
-  const { gig, recentReviews, isFavorite: initialIsFavorite, isOwner = false, sellerGigs = [], auth } = usePage<PageProps & { auth?: { user?: { id: number } } }>().props
+  const pageProps = usePage<PageProps>().props as any
+  const { gig, recentReviews, isFavorite: initialIsFavorite, isOwner = false, sellerGigs = [] } = pageProps
+  const isAdmin = pageProps?.auth?.user?.role === 'admin'
 
   const defaultPackage = gig.packages.length > 1 ? gig.packages[1] : gig.packages[0]
   const [selectedPackage, setSelectedPackage] = useState(defaultPackage)
@@ -138,13 +140,13 @@ export default function ServiceShow() {
       }
     }
 
-    if (auth?.user) {
+    if (pageProps?.auth?.user) {
       fetchUnreadCount()
       // Refresh every 10 seconds
       const interval = setInterval(fetchUnreadCount, 10000)
       return () => clearInterval(interval)
     }
-  }, [auth?.user])
+  }, [pageProps?.auth?.user])
 
   const toggleFavorite = async () => {
     try {
@@ -290,7 +292,7 @@ export default function ServiceShow() {
                               View Profile
                             </Button>
                           </Link>
-                          {isOwner && (
+                          {isOwner && !isAdmin && (
                             <Link href={`/service-hub/${gig.slug}/edit`}>
                               <Button variant="outline" size="sm">
                                 <Edit className="mr-2 h-4 w-4" />
@@ -487,7 +489,7 @@ export default function ServiceShow() {
                                 <Clock className="h-4 w-4" />
                                 <span>Delivery in {pkg.deliveryTime}</span>
                               </div>
-                              {!isOwner && (
+                              {!isOwner && !isAdmin && (
                                 <Button
                                   onClick={() => {
                                     setSelectedPackage(pkg)
@@ -499,6 +501,13 @@ export default function ServiceShow() {
                                   <Package className="mr-2 h-5 w-5" />
                                   Continue with {pkg.name} (${pkg.price})
                                 </Button>
+                              )}
+                              {isAdmin && (
+                                <div className="text-center p-4 bg-muted rounded-lg">
+                                  <p className="text-sm text-muted-foreground">
+                                    Administrators can only view services. Purchasing is not available.
+                                  </p>
+                                </div>
                               )}
                             </div>
                           </motion.div>

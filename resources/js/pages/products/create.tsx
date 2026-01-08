@@ -69,7 +69,7 @@ interface Props {
 }
 
 export default function Create({ categories, organizations = [], blueprints, printify_enabled }: Props) {
-    const { auth } = usePage<SharedData>().props
+    const { auth, flash } = usePage<SharedData>().props
 
 
 
@@ -367,6 +367,19 @@ const handleCategoryChange = (categoryId: number) => {
             onError: (err) => {
                 setErrors(err);
 
+                // Handle subscription error first (most important)
+                if (err.subscription || (flash as any)?.subscription_required) {
+                    const subscriptionError = err.subscription || 'An active subscription is required to create and sell products. Please subscribe to continue.';
+                    showErrorToast(subscriptionError);
+                    // Optionally redirect to subscription page
+                    setTimeout(() => {
+                        router.visit(route('plans.index'), {
+                            preserveState: false,
+                        });
+                    }, 2000);
+                    return;
+                }
+
                 // Handle 413 Request Entity Too Large error
                 if (err.message?.includes('413') || err.message?.includes('Request Entity Too Large')) {
                     showErrorToast(
@@ -515,6 +528,34 @@ const handleCategoryChange = (categoryId: number) => {
                         </div>
                     </CardHeader>
                     <CardContent className="px-4 md:px-6">
+                        {/* Subscription Error Alert */}
+                        {(errors.subscription || (flash as any)?.subscription_required) && (
+                            <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <div className="flex-shrink-0">
+                                        <svg className="w-6 h-6 text-red-600 dark:text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                    </div>
+                                    <div className="flex-1">
+                                        <h3 className="text-lg font-semibold text-red-800 dark:text-red-300 mb-2">
+                                            Subscription Required
+                                        </h3>
+                                        <p className="text-red-700 dark:text-red-400 mb-4">
+                                            {errors.subscription || 'An active subscription is required to create and sell products. Please subscribe to continue.'}
+                                        </p>
+                                        <Link
+                                            href={route('plans.index')}
+                                            className="inline-flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-medium rounded-lg transition-colors"
+                                        >
+                                            <span>Subscribe Now</span>
+                                            <ExternalLink className="h-4 w-4" />
+                                        </Link>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
                         <form onSubmit={handleSubmit} className="space-y-6">
                             {/* Printify Toggle */}
                             {printify_enabled && (

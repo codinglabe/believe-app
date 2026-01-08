@@ -13,10 +13,13 @@ class StateSalesTax extends Model
         'local_rates_apply',
         'last_updated',
         'notes',
+        'rate_mode',
         'sales_tax_status',
         'services_vs_goods',
         'charitable_vs_resale',
         'requires_exemption_certificate',
+        'certificate_type_allowed',
+        'site_to_apply_for_certificate',
     ];
 
     protected $casts = [

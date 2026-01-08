@@ -172,6 +172,11 @@ class ServiceHubController extends Controller
     {
         $user = Auth::user();
 
+        // Block admins from creating services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot create services. Only organizations and regular users can sell services.');
+        }
+
         // Check if user has a seller profile
         if (!$user->serviceSellerProfile) {
             return redirect()->route('service-hub.seller-profile.create')
@@ -190,6 +195,11 @@ class ServiceHubController extends Controller
     public function store(Request $request): RedirectResponse
     {
         $user = Auth::user();
+
+        // Block admins from creating services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot create services. Only organizations and regular users can sell services.');
+        }
 
         // Check if user has a seller profile
         if (!$user->serviceSellerProfile) {
@@ -280,6 +290,13 @@ class ServiceHubController extends Controller
 
     public function edit(Request $request, $slug): Response|RedirectResponse
     {
+        $user = Auth::user();
+
+        // Block admins from editing services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot edit services. Only organizations and regular users can manage services.');
+        }
+
         $gig = Gig::with(['category', 'packages', 'images'])
             ->where('slug', $slug)
             ->firstOrFail();
@@ -334,6 +351,13 @@ class ServiceHubController extends Controller
 
     public function update(Request $request, $slug): RedirectResponse
     {
+        $user = Auth::user();
+
+        // Block admins from updating services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot update services. Only organizations and regular users can manage services.');
+        }
+
         $gig = Gig::where('slug', $slug)->firstOrFail();
 
         // Check if user owns this service
@@ -612,6 +636,13 @@ class ServiceHubController extends Controller
 
     public function order(Request $request)
     {
+        $user = Auth::user();
+
+        // Block admins from purchasing services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot purchase services. Admins can only view services.');
+        }
+
         $gigId = $request->get('serviceId');
         $packageId = $request->get('packageId');
 
@@ -625,7 +656,6 @@ class ServiceHubController extends Controller
             ->findOrFail($gigId);
 
         // Security check: Prevent users from purchasing their own services
-        $user = Auth::user();
         if ($user && $gig->user_id === $user->id) {
             return redirect()->route('service-hub.show', $gig->slug)
                 ->with('error', 'You cannot purchase your own service.');
@@ -839,6 +869,11 @@ class ServiceHubController extends Controller
     public function createCheckoutSession(Request $request)
     {
         $user = Auth::user();
+
+        // Block admins from purchasing services
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot purchase services. Admins can only view services.');
+        }
 
         $validated = $request->validate([
             'gig_id' => [
@@ -1078,6 +1113,13 @@ class ServiceHubController extends Controller
 
     public function sellerOrders(Request $request): Response
     {
+        $user = Auth::user();
+
+        // Block admins from accessing seller orders
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot access seller orders. Admins can only view services.');
+        }
+
         $query = ServiceOrder::with(['gig', 'buyer', 'package'])
             ->where('seller_id', Auth::id());
 
@@ -1506,7 +1548,18 @@ class ServiceHubController extends Controller
                     ->with(['category', 'images', 'packages', 'reviews'])
                     ->orderBy('created_at', 'desc');
             },
+            'serviceSellerProfile',
         ])->findOrFail($id);
+
+        // Validation: Check if user has a seller profile
+        if (!$seller->serviceSellerProfile) {
+            abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        }
+
+        // Validation: Check if the seller profile is verified (optional - you can remove this if you want to show unverified profiles)
+        // if ($seller->serviceSellerProfile->verification_status !== 'verified') {
+        //     abort(404, 'Seller profile is not available. This profile is pending verification.');
+        // }
 
         // Calculate seller stats
         $totalSales = ServiceOrder::where('seller_id', $seller->id)
@@ -1612,8 +1665,13 @@ class ServiceHubController extends Controller
 
     public function sellerReviews(Request $request, $id): Response
     {
-        $seller = \App\Models\User::findOrFail($id);
+        $seller = \App\Models\User::with('serviceSellerProfile')->findOrFail($id);
         $sellerProfile = $seller->serviceSellerProfile;
+
+        // Validation: Check if user has a seller profile
+        if (!$sellerProfile) {
+            abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        }
 
         $reviews = ServiceReview::with(['user:id,name,image', 'gig:id,title,slug'])
             ->whereHas('order', function ($q) use ($seller) {
@@ -1875,6 +1933,11 @@ class ServiceHubController extends Controller
     {
         $user = Auth::user();
 
+        // Block admins from creating seller profiles
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot create seller profiles. Only organizations and regular users can be sellers.');
+        }
+
         // If user already has a seller profile, redirect to edit
         if ($user->serviceSellerProfile) {
             return redirect()->route('service-hub.seller-profile.edit')
@@ -1892,6 +1955,11 @@ class ServiceHubController extends Controller
     public function sellerProfileStore(Request $request): RedirectResponse
     {
         $user = Auth::user();
+
+        // Block admins from creating seller profiles
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot create seller profiles. Only organizations and regular users can be sellers.');
+        }
 
         // Check if user already has a seller profile
         if ($user->serviceSellerProfile) {
@@ -1962,6 +2030,12 @@ class ServiceHubController extends Controller
     public function sellerDashboard(Request $request): Response|RedirectResponse
     {
         $user = Auth::user();
+
+        // Block admins from accessing seller dashboard
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot access seller dashboard. Only organizations and regular users can be sellers.');
+        }
+
         $profile = $user->serviceSellerProfile;
 
         // If no seller profile, redirect to create one
@@ -2079,6 +2153,12 @@ class ServiceHubController extends Controller
     public function sellerProfileEdit(): Response|RedirectResponse
     {
         $user = Auth::user();
+
+        // Block admins from editing seller profiles
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot edit seller profiles. Only organizations and regular users can be sellers.');
+        }
+
         $profile = $user->serviceSellerProfile;
 
         if (!$profile) {
@@ -2116,6 +2196,12 @@ class ServiceHubController extends Controller
     public function sellerProfileUpdate(Request $request): RedirectResponse
     {
         $user = Auth::user();
+
+        // Block admins from updating seller profiles
+        if ($user->role === 'admin') {
+            abort(403, 'Administrators cannot update seller profiles. Only organizations and regular users can be sellers.');
+        }
+
         $profile = $user->serviceSellerProfile;
 
         if (!$profile) {
@@ -2583,6 +2669,13 @@ class ServiceHubController extends Controller
 
     public function createCustomOffer(Request $request, $slug): \Illuminate\Http\JsonResponse
     {
+        $user = Auth::user();
+
+        // Block admins from creating offers
+        if ($user->role === 'admin') {
+            return response()->json(['error' => 'Administrators cannot create offers. Admins can only view services.'], 403);
+        }
+
         $gig = Gig::where('slug', $slug)->firstOrFail();
 
         // Check if user is the seller

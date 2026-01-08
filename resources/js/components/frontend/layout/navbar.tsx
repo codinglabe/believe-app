@@ -674,7 +674,7 @@ export default function Navbar() {
                                                   </Button>
                                               </Link>
                                           )}
-                                          {auth?.user?.service_seller_profile && (
+                                          {auth?.user?.service_seller_profile && auth?.user?.role !== 'admin' && (
                                               <>
                                                   <Link href={route('service-hub.seller.profile', auth.user.id)}>
                                                       <Button variant="ghost" className="w-full justify-start">

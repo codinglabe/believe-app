@@ -15,7 +15,7 @@ class ServiceHubSettingsController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('role:admin');
+        $this->middleware('role:admin|organization');
     }
 
     /**
@@ -23,25 +23,44 @@ class ServiceHubSettingsController extends Controller
      */
     public function index(): Response
     {
-        // Double check admin authorization
-        if (Auth::user()->role !== 'admin') {
-            abort(403, 'Only administrators can access Service Hub settings.');
+        $user = Auth::user();
+        $isAdmin = $user->role === 'admin';
+
+        // Get current settings (only for admin)
+        $settings = null;
+        if ($isAdmin) {
+            $settings = [
+                'platform_fee_percentage' => ServiceHubFeeService::getPlatformFeePercentage(),
+                'stripe_transaction_fee_percentage' => ServiceHubFeeService::getStripeTransactionFeePercentage(),
+                'believe_points_transaction_fee_percentage' => ServiceHubFeeService::getBelievePointsTransactionFeePercentage(),
+                'monthly_advertising_fee' => ServiceHubFeeService::getMonthlyAdvertisingFee(),
+            ];
         }
 
-        // Get current settings
-        $settings = [
-            'platform_fee_percentage' => ServiceHubFeeService::getPlatformFeePercentage(),
-            'stripe_transaction_fee_percentage' => ServiceHubFeeService::getStripeTransactionFeePercentage(),
-            'believe_points_transaction_fee_percentage' => ServiceHubFeeService::getBelievePointsTransactionFeePercentage(),
-            'monthly_advertising_fee' => ServiceHubFeeService::getMonthlyAdvertisingFee(),
-        ];
-
-        // Get all states for sales tax management
-        $states = StateSalesTax::orderBy('state')->get();
+        // Get all states for sales tax management (for admin) or viewing (for organizations)
+        $states = StateSalesTax::orderBy('state')->get()->map(function ($state) {
+            return [
+                'id' => $state->id,
+                'state' => $state->state,
+                'state_code' => $state->state_code,
+                'base_sales_tax_rate' => (float) $state->base_sales_tax_rate,
+                'rate_mode' => $state->rate_mode,
+                'sales_tax_status' => $state->sales_tax_status,
+                'services_vs_goods' => $state->services_vs_goods,
+                'charitable_vs_resale' => $state->charitable_vs_resale,
+                'requires_exemption_certificate' => $state->requires_exemption_certificate,
+                'certificate_type_allowed' => $state->certificate_type_allowed,
+                'site_to_apply_for_certificate' => $state->site_to_apply_for_certificate,
+                'local_rates_apply' => $state->local_rates_apply,
+                'last_updated' => $state->last_updated,
+                'notes' => $state->notes,
+            ];
+        });
 
         return Inertia::render('admin/service-hub-settings', [
             'settings' => $settings,
             'states' => $states,
+            'isAdmin' => $isAdmin,
         ]);
     }
 

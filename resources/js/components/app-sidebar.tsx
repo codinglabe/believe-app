@@ -651,6 +651,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: UserCheck,
                         permission: "kyc.verification.read"
                     },
+                    {
+                        title: 'Exemption Certificates',
+                        href: '/admin/exemption-certificates',
+                        icon: FileCheck,
+                        role: "admin"
+                    },
                 ],
                 permission: "compliance.review"
             },
@@ -707,44 +713,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         href: '/admin/believe-points',
                         icon: Coins,
                         role: "admin"
-                    },
-                ],
-                permission: "wallet.plan.read"
-            },
-            // Additional settings items
-            {
-                title: 'About Page',
-                href: '/admin/about',
-                icon: Info,
-                role: "admin"
-            },
-            {
-                title: 'Billing / Plans',
-                icon: CreditCard,
-                items: [
-                    {
-                        title: 'Plans Management',
-                        href: '/admin/plans',
-                        icon: Sparkles,
-                        role: "admin"
-                    },
-                    {
-                        title: 'Wallet Plans Management',
-                        href: '/admin/wallet-plans',
-                        icon: Wallet,
-                        permission: "wallet.plan.read"
-                    },
-                    {
-                        title: 'Email Packages',
-                        href: '/admin/email-packages',
-                        icon: Mail,
-                        role: "admin"
-                    },
-                    {
-                        title: 'Reward Points',
-                        href: '/admin/reward-points',
-                        icon: Gift,
-                        permission: "reward.point.manage"
                     },
                 ],
                 permission: "wallet.plan.read"
