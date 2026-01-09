@@ -37,10 +37,13 @@ interface State {
 
 interface PageProps {
   states?: State[]
+  all_skills: string[]
+  all_languages: string[]
 }
 
 export default function CreateSellerProfile() {
-  const { states = [] } = usePage<PageProps>().props
+  const { states = [], all_skills = [], all_languages = [] } = usePage<PageProps>().props
+
   const { data, setData, post, processing, errors } = useForm({
     profile_image: null as File | null,
     bio: '',
@@ -60,26 +63,63 @@ export default function CreateSellerProfile() {
     instagram: '',
   })
 
-  // Get selected state's sales tax rate
-  const selectedState = states.find(s => s.state_code === data.state)
-  const salesTaxRate = selectedState?.base_sales_tax_rate || 0
-
-  const [newSkill, setNewSkill] = useState("")
   const [previewImage, setPreviewImage] = useState<string | null>(null)
 
-  const handleAddSkill = () => {
-    if (newSkill.trim() && !data.skills.includes(newSkill.trim())) {
-      setData('skills', [...data.skills, newSkill.trim()])
-      setNewSkill("")
+  // ── Language Add State (duplicate prevention) ──────────────────────
+  const [newLanguageName, setNewLanguageName] = useState("")
+  const [newLanguageLevel, setNewLanguageLevel] = useState("basic")
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null)
+
+  // ── Improved getError (supports array fields like education.0.institution) ──
+  const getError = (fieldName: string): string | null => {
+    if (!errors) return null
+
+    // Direct match
+    if ((errors as any)[fieldName]) {
+      const err = (errors as any)[fieldName]
+      return Array.isArray(err) ? err[0] : err
+    }
+
+    // Array field match (education.0.institution, etc.)
+    const keys = Object.keys(errors as any)
+    const matching = keys.find(k => k === fieldName || k.startsWith(fieldName + '.'))
+    if (matching) {
+      const err = (errors as any)[matching]
+      return Array.isArray(err) ? err[0] : err
+    }
+
+    return null
+  }
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setData('profile_image', file)
+      const reader = new FileReader()
+      reader.onloadend = () => setPreviewImage(reader.result as string)
+      reader.readAsDataURL(file)
     }
   }
 
-  const handleRemoveSkill = (skill: string) => {
-    setData('skills', data.skills.filter((s) => s !== skill))
-  }
+  const handleAddNewLanguage = () => {
+    if (!newLanguageName || !newLanguageLevel) return
 
-  const handleAddLanguage = () => {
-    setData('languages', [...data.languages, { name: '', level: 'basic' }])
+    const isDuplicate = data.languages.some(lang => lang.name === newLanguageName)
+
+    if (isDuplicate) {
+      setDuplicateWarning(`"${newLanguageName}" is already added. Each language can only be added once.`)
+      setTimeout(() => setDuplicateWarning(null), 5000)
+      return
+    }
+
+    setData('languages', [
+      ...data.languages,
+      { name: newLanguageName, level: newLanguageLevel }
+    ])
+
+    setNewLanguageName("")
+    setNewLanguageLevel("basic")
+    setDuplicateWarning(null)
   }
 
   const handleUpdateLanguage = (index: number, field: 'name' | 'level', value: string) => {
@@ -93,6 +133,7 @@ export default function CreateSellerProfile() {
     setData('languages', data.languages.filter((_, i) => i !== index))
   }
 
+  // ── Education & Experience handlers remain the same ──
   const handleAddEducation = () => {
     setData('education', [...data.education, { institution: '', degree: '', year: null }])
   }
@@ -123,89 +164,64 @@ export default function CreateSellerProfile() {
     setData('experience', data.experience.filter((_, i) => i !== index))
   }
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setData('profile_image', file)
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setPreviewImage(reader.result as string)
-      }
-      reader.readAsDataURL(file)
-    }
-  }
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
 
     const formData = new FormData()
 
-    // Handle profile image
     if (data.profile_image) {
       formData.append('profile_image', data.profile_image)
     }
 
-    // Handle basic fields
     formData.append('bio', data.bio)
     if (data.location) formData.append('location', data.location)
-    formData.append('state', data.state) // State is required
+    formData.append('state', data.state)
     if (data.timezone) formData.append('timezone', data.timezone)
     if (data.phone) formData.append('phone', data.phone)
     if (data.response_time) formData.append('response_time', data.response_time)
+
+    // Social links
     if (data.website) formData.append('website', data.website)
     if (data.linkedin) formData.append('linkedin', data.linkedin)
     if (data.twitter) formData.append('twitter', data.twitter)
     if (data.facebook) formData.append('facebook', data.facebook)
     if (data.instagram) formData.append('instagram', data.instagram)
 
-    // Handle skills array
-    if (data.skills.length > 0) {
-      data.skills.forEach((skill) => {
-        formData.append('skills[]', skill)
-      })
-    }
+    // Skills
+    data.skills.forEach(skill => formData.append('skills[]', skill))
 
-    // Handle languages array (only include valid entries)
-    const validLanguages = data.languages.filter(lang => lang.name && lang.name.trim() !== '')
-    validLanguages.forEach((lang, index) => {
-      formData.append(`languages[${index}][name]`, lang.name)
-      formData.append(`languages[${index}][level]`, lang.level)
+    // Languages (send all - backend will handle)
+    data.languages.forEach((lang, i) => {
+      formData.append(`languages[${i}][name]`, lang.name)
+      formData.append(`languages[${i}][level]`, lang.level)
     })
 
-    // Handle education array (only include valid entries)
-    const validEducation = data.education.filter(edu => edu.institution && edu.institution.trim() !== '' && edu.degree && edu.degree.trim() !== '')
-    validEducation.forEach((edu, index) => {
-      formData.append(`education[${index}][institution]`, edu.institution)
-      formData.append(`education[${index}][degree]`, edu.degree)
-      if (edu.year) {
-        formData.append(`education[${index}][year]`, edu.year.toString())
+    // Education (send all - backend validates)
+    data.education.forEach((edu, i) => {
+      formData.append(`education[${i}][institution]`, edu.institution || '')
+      formData.append(`education[${i}][degree]`, edu.degree || '')
+      if (edu.year !== null && edu.year !== undefined) {
+        formData.append(`education[${i}][year]`, edu.year.toString())
       }
     })
 
-    // Handle experience array (only include valid entries)
-    const validExperience = data.experience.filter(exp => exp.company && exp.company.trim() !== '' && exp.position && exp.position.trim() !== '' && exp.duration && exp.duration.trim() !== '')
-    validExperience.forEach((exp, index) => {
-      formData.append(`experience[${index}][company]`, exp.company)
-      formData.append(`experience[${index}][position]`, exp.position)
-      formData.append(`experience[${index}][duration]`, exp.duration)
+    // Experience (send all)
+    data.experience.forEach((exp, i) => {
+      formData.append(`experience[${i}][company]`, exp.company || '')
+      formData.append(`experience[${i}][position]`, exp.position || '')
+      formData.append(`experience[${i}][duration]`, exp.duration || '')
     })
 
-    router.post('/service-hub/seller-profile', formData, {
+    post('/service-hub/seller-profile', {
       forceFormData: true,
       onSuccess: () => {
         showSuccessToast("Seller profile created successfully!")
       },
-      onError: () => {
-        showErrorToast("Failed to create seller profile. Please check all fields.")
+      onError: (err) => {
+        console.log("Validation errors:", err) // debug
+        showErrorToast("Please check the form for errors")
       },
     })
-  }
-
-  const getError = (fieldName: string): string | null => {
-    if (!errors) return null
-    const error = (errors as any)[fieldName]
-    if (!error) return null
-    return Array.isArray(error) ? error[0] : error
   }
 
   return (
@@ -348,7 +364,7 @@ export default function CreateSellerProfile() {
                         <option value="">Select your state</option>
                         {states.map((state) => (
                           <option key={state.state_code} value={state.state_code}>
-                            {state.state} ({state.base_sales_tax_rate}% sales tax)
+                            {state.state}
                           </option>
                         ))}
                       </select>
@@ -357,7 +373,7 @@ export default function CreateSellerProfile() {
                           {getError('state')}
                         </p>
                       )}
-                      {data.state && (
+                      {/* {data.state && (
                         <div className="mt-2 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                           <p className="text-sm text-blue-800 dark:text-blue-200 font-medium">
                             <strong>Sales Tax Rate:</strong> {states.find(s => s.state_code === data.state)?.base_sales_tax_rate || 0}%
@@ -366,7 +382,7 @@ export default function CreateSellerProfile() {
                             This rate will be applied to all orders you receive. Buyers will pay this sales tax on top of the service price.
                           </p>
                         </div>
-                      )}
+                      )} */}
                     </div>
 
                     <div>
@@ -417,119 +433,196 @@ export default function CreateSellerProfile() {
               </Card>
             </motion.div>
 
-            {/* Skills */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.2 }}
-            >
+            {/* Skills - Checkbox grid + selected pills */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Award className="h-5 w-5" />
                     Skills
                   </CardTitle>
-                  <CardDescription>Add your top skills and expertise areas</CardDescription>
+                  <CardDescription>Select all skills that apply to you</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="flex gap-2">
-                    <Input
-                      placeholder="Add a skill (e.g., Logo Design, Web Development)"
-                      value={newSkill}
-                      onChange={(e) => setNewSkill(e.target.value)}
-                      onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddSkill())}
-                    />
-                    <Button type="button" onClick={handleAddSkill}>
-                      <Plus className="h-4 w-4" />
-                    </Button>
+                  <div className="space-y-6">
+                    {/* Selected pills */}
+                    <div>
+                      <Label className="text-base font-medium">Selected Skills</Label>
+                      <div className="flex flex-wrap gap-2 mt-3 min-h-[44px]">
+                        {data.skills.length === 0 ? (
+                          <p className="text-sm text-muted-foreground italic">No skills selected yet</p>
+                        ) : (
+                          data.skills.map(skill => (
+                            <Badge
+                              key={skill}
+                              variant="secondary"
+                              className="px-3 py-1.5 text-sm gap-2 bg-primary/10 hover:bg-primary/20 transition-colors"
+                            >
+                              {skill}
+                              <button
+                                type="button"
+                                onClick={() => setData("skills", data.skills.filter(s => s !== skill))}
+                                className="text-primary hover:text-primary/70"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
+                            </Badge>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Checkbox grid */}
+                    <div>
+                      <Label className="text-base font-medium mb-3 block">
+                        Choose your skills ({data.skills.length} / {all_skills.length} selected)
+                      </Label>
+                      <div className="max-h-[380px] overflow-y-auto pr-2 border rounded-lg p-4 bg-muted/30">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {all_skills.map(skill => (
+                            <label
+                              key={skill}
+                              htmlFor={`skill-${skill}`}
+                              className={`
+                                flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-all
+                                ${data.skills.includes(skill) ? "border-primary bg-primary/5" : "border-border hover:bg-muted/50"}
+                              `}
+                            >
+                              <input
+                                type="checkbox"
+                                id={`skill-${skill}`}
+                                checked={data.skills.includes(skill)}
+                                onChange={e => {
+                                  if (e.target.checked) {
+                                    setData("skills", [...data.skills, skill])
+                                  } else {
+                                    setData("skills", data.skills.filter(s => s !== skill))
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-primary text-primary focus:ring-primary"
+                              />
+                              <span className="text-sm">{skill}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 mt-4">
-                    {data.skills.map((skill) => (
-                      <Badge key={skill} variant="secondary" className="gap-2 text-sm py-1 px-3">
-                        {skill}
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveSkill(skill)}
-                          className="hover:text-destructive"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </Badge>
-                    ))}
-                  </div>
-                  {getError('skills') && (
-                    <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                      {getError('skills')}
-                    </p>
+
+                  {errors.skills && (
+                    <p className="text-sm text-red-600 mt-4">{errors.skills}</p>
                   )}
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* Languages */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-            >
+            {/* Languages - Duplicate safe + nice list */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Languages className="h-5 w-5" />
-                    Languages
+                    Languages You Speak
                   </CardTitle>
-                  <CardDescription>Add languages you speak</CardDescription>
+                  <CardDescription>
+                    Add languages you speak fluently or professionally (each only once)
+                  </CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
-                  {data.languages.map((lang, index) => (
-                    <div key={index} className="flex gap-2 items-start">
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2">
-                        <Input
-                          placeholder="Language (e.g., English)"
-                          value={lang.name}
-                          onChange={(e) => handleUpdateLanguage(index, 'name', e.target.value)}
-                          className={getError(`languages.${index}.name`) ? 'border-red-500' : ''}
-                        />
-                        <select
-                          value={lang.level}
-                          onChange={(e) => handleUpdateLanguage(index, 'level', e.target.value)}
-                          className={`px-3 py-2 rounded-md border bg-background ${getError(`languages.${index}.level`) ? 'border-red-500' : ''}`}
-                        >
-                          <option value="basic">Basic</option>
-                          <option value="conversational">Conversational</option>
-                          <option value="fluent">Fluent</option>
-                          <option value="native">Native</option>
-                        </select>
+                <CardContent className="space-y-5">
+                  {/* Selected languages */}
+                  {data.languages.length > 0 && (
+                    <div className="space-y-3">
+                      <Label className="text-base font-medium">Added Languages</Label>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {data.languages.map((lang, index) => (
+                          <div
+                            key={index}
+                            className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+                          >
+                            <div>
+                              <span className="font-medium">{lang.name}</span>
+                              <span className="text-sm text-muted-foreground ml-2">
+                                • {lang.level.charAt(0).toUpperCase() + lang.level.slice(1)}
+                              </span>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon"
+                              className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              onClick={() => handleRemoveLanguage(index)}
+                            >
+                              <X className="h-5 w-5" />
+                            </Button>
+                          </div>
+                        ))}
                       </div>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleRemoveLanguage(index)}
-                      >
-                        <X className="h-4 w-4" />
-                      </Button>
                     </div>
-                  ))}
-                  <Button type="button" variant="outline" onClick={handleAddLanguage} className="w-full">
-                    <Plus className="mr-2 h-4 w-4" />
-                    Add Language
-                  </Button>
-                  {getError('languages') && (
-                    <p className="text-sm text-red-600 dark:text-red-400">
-                      {getError('languages')}
+                  )}
+
+                  {/* Add new */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
+                    <div>
+                      <Label>Language</Label>
+                      <select
+                        value={newLanguageName}
+                        onChange={e => setNewLanguageName(e.target.value)}
+                        className="mt-1.5 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">Select language</option>
+                        {all_languages
+                          .filter(lang => !data.languages.some(l => l.name === lang))
+                          .map(name => (
+                            <option key={name} value={name}>
+                              {name}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <Label>Proficiency Level</Label>
+                      <select
+                        value={newLanguageLevel}
+                        onChange={e => setNewLanguageLevel(e.target.value)}
+                        className="mt-1.5 w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="basic">Basic</option>
+                        <option value="conversational">Conversational</option>
+                        <option value="fluent">Fluent</option>
+                        <option value="native">Native</option>
+                      </select>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-full sm:w-auto"
+                      onClick={handleAddNewLanguage}
+                      disabled={!newLanguageName || !newLanguageLevel}
+                    >
+                      <Plus className="mr-2 h-4 w-4" />
+                      Add Language
+                    </Button>
+                  </div>
+
+                  {duplicateWarning && (
+                    <p className="text-sm text-amber-600 bg-amber-50 p-3 rounded-md border border-amber-200">
+                      {duplicateWarning}
+                    </p>
+                  )}
+
+                  {errors.languages && (
+                    <p className="text-sm text-red-600 mt-2">
+                      {typeof errors.languages === 'string' ? errors.languages : 'Please check language entries'}
                     </p>
                   )}
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* Education */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-            >
+            {/* Education - with per-field errors */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -540,7 +633,7 @@ export default function CreateSellerProfile() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {data.education.map((edu, index) => (
-                    <div key={index} className="p-4 border rounded-lg space-y-3">
+                    <div key={index} className="p-4 border rounded-lg space-y-4 bg-muted/20">
                       <div className="flex justify-between items-center">
                         <h4 className="font-semibold">Education #{index + 1}</h4>
                         <Button
@@ -552,38 +645,59 @@ export default function CreateSellerProfile() {
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <Label>Institution *</Label>
+                          <Label>Institution</Label>
                           <Input
                             placeholder="University/School name"
                             value={edu.institution}
-                            onChange={(e) => handleUpdateEducation(index, 'institution', e.target.value)}
-                            className={getError(`education.${index}.institution`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateEducation(index, 'institution', e.target.value)}
+                            className={`mt-1 ${getError(`education.${index}.institution`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`education.${index}.institution`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`education.${index}.institution`)}
+                            </p>
+                          )}
                         </div>
+
                         <div>
-                          <Label>Degree *</Label>
+                          <Label>Degree</Label>
                           <Input
                             placeholder="Degree/Certification"
                             value={edu.degree}
-                            onChange={(e) => handleUpdateEducation(index, 'degree', e.target.value)}
-                            className={getError(`education.${index}.degree`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateEducation(index, 'degree', e.target.value)}
+                            className={`mt-1 ${getError(`education.${index}.degree`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`education.${index}.degree`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`education.${index}.degree`)}
+                            </p>
+                          )}
                         </div>
-                        <div>
-                          <Label>Year</Label>
+
+                        <div className="md:col-span-2">
+                          <Label>Year (Optional)</Label>
                           <Input
                             type="number"
-                            placeholder="Graduation year"
+                            placeholder="e.g., 2023"
+                            min="1900"
+                            max={new Date().getFullYear()}
                             value={edu.year || ''}
-                            onChange={(e) => handleUpdateEducation(index, 'year', e.target.value ? parseInt(e.target.value) : null)}
-                            className={getError(`education.${index}.year`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateEducation(index, 'year', e.target.value ? parseInt(e.target.value) : null)}
+                            className={`mt-1 ${getError(`education.${index}.year`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`education.${index}.year`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`education.${index}.year`)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
+
                   <Button type="button" variant="outline" onClick={handleAddEducation} className="w-full">
                     <Plus className="mr-2 h-4 w-4" />
                     Add Education
@@ -592,12 +706,8 @@ export default function CreateSellerProfile() {
               </Card>
             </motion.div>
 
-            {/* Experience */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.4 }}
-            >
+            {/* Experience - with per-field errors */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -608,7 +718,7 @@ export default function CreateSellerProfile() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {data.experience.map((exp, index) => (
-                    <div key={index} className="p-4 border rounded-lg space-y-3">
+                    <div key={index} className="p-4 border rounded-lg space-y-4 bg-muted/20">
                       <div className="flex justify-between items-center">
                         <h4 className="font-semibold">Experience #{index + 1}</h4>
                         <Button
@@ -620,37 +730,56 @@ export default function CreateSellerProfile() {
                           <X className="h-4 w-4" />
                         </Button>
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
-                          <Label>Company *</Label>
+                          <Label>Company</Label>
                           <Input
                             placeholder="Company name"
                             value={exp.company}
-                            onChange={(e) => handleUpdateExperience(index, 'company', e.target.value)}
-                            className={getError(`experience.${index}.company`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateExperience(index, 'company', e.target.value)}
+                            className={`mt-1 ${getError(`experience.${index}.company`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`experience.${index}.company`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`experience.${index}.company`)}
+                            </p>
+                          )}
                         </div>
+
                         <div>
-                          <Label>Position *</Label>
+                          <Label>Position</Label>
                           <Input
                             placeholder="Job title"
                             value={exp.position}
-                            onChange={(e) => handleUpdateExperience(index, 'position', e.target.value)}
-                            className={getError(`experience.${index}.position`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateExperience(index, 'position', e.target.value)}
+                            className={`mt-1 ${getError(`experience.${index}.position`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`experience.${index}.position`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`experience.${index}.position`)}
+                            </p>
+                          )}
                         </div>
+
                         <div className="md:col-span-2">
-                          <Label>Duration *</Label>
+                          <Label>Duration</Label>
                           <Input
                             placeholder="e.g., Jan 2020 - Present, 2 years"
                             value={exp.duration}
-                            onChange={(e) => handleUpdateExperience(index, 'duration', e.target.value)}
-                            className={getError(`experience.${index}.duration`) ? 'border-red-500' : ''}
+                            onChange={e => handleUpdateExperience(index, 'duration', e.target.value)}
+                            className={`mt-1 ${getError(`experience.${index}.duration`) ? 'border-red-500 focus:ring-red-500' : ''}`}
                           />
+                          {getError(`experience.${index}.duration`) && (
+                            <p className="text-xs text-red-600 mt-1">
+                              {getError(`experience.${index}.duration`)}
+                            </p>
+                          )}
                         </div>
                       </div>
                     </div>
                   ))}
+
                   <Button type="button" variant="outline" onClick={handleAddExperience} className="w-full">
                     <Plus className="mr-2 h-4 w-4" />
                     Add Experience
@@ -659,90 +788,119 @@ export default function CreateSellerProfile() {
               </Card>
             </motion.div>
 
-            {/* Social Links */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.45 }}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <LinkIcon className="h-5 w-5" />
-                    Social Links & Portfolio
-                  </CardTitle>
-                  <CardDescription>Add links to your portfolio and social media</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label htmlFor="website">
-                      <Globe className="h-4 w-4 inline mr-2" />
-                      Website/Portfolio
-                    </Label>
-                    <Input
-                      id="website"
-                      type="url"
-                      placeholder="https://yourwebsite.com"
-                      value={data.website}
-                      onChange={(e) => setData('website', e.target.value)}
-                      className={`mt-2 ${getError('website') ? 'border-red-500' : ''}`}
-                    />
-                    {getError('website') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('website')}
-                      </p>
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="linkedin">LinkedIn</Label>
-                      <Input
-                        id="linkedin"
-                        type="url"
-                        placeholder="https://linkedin.com/in/yourprofile"
-                        value={data.linkedin}
-                        onChange={(e) => setData('linkedin', e.target.value)}
-                        className={`mt-2 ${getError('linkedin') ? 'border-red-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="twitter">Twitter</Label>
-                      <Input
-                        id="twitter"
-                        type="url"
-                        placeholder="https://twitter.com/yourhandle"
-                        value={data.twitter}
-                        onChange={(e) => setData('twitter', e.target.value)}
-                        className={`mt-2 ${getError('twitter') ? 'border-red-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="facebook">Facebook</Label>
-                      <Input
-                        id="facebook"
-                        type="url"
-                        placeholder="https://facebook.com/yourpage"
-                        value={data.facebook}
-                        onChange={(e) => setData('facebook', e.target.value)}
-                        className={`mt-2 ${getError('facebook') ? 'border-red-500' : ''}`}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="instagram">Instagram</Label>
-                      <Input
-                        id="instagram"
-                        type="url"
-                        placeholder="https://instagram.com/yourhandle"
-                        value={data.instagram}
-                        onChange={(e) => setData('instagram', e.target.value)}
-                        className={`mt-2 ${getError('instagram') ? 'border-red-500' : ''}`}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
 
+{/* Social Links Section */}
+<motion.div
+  initial={{ opacity: 0, y: 20 }}
+  animate={{ opacity: 1, y: 0 }}
+  transition={{ delay: 0.45 }}
+>
+  <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2">
+        <LinkIcon className="h-5 w-5" />
+        Social Links & Portfolio
+      </CardTitle>
+      <CardDescription>
+        Just enter username or domain (we will add https:// automatically)
+      </CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-6">
+      <div>
+        <Label htmlFor="website">
+          <Globe className="h-4 w-4 inline mr-2" />
+          Website / Portfolio
+        </Label>
+        <Input
+          id="website"
+          type="text"  // ← url এর বদলে text করা যায়, কারণ আমরা নিজেরা https যোগ করব
+          placeholder="believeinunity.org"
+          value={data.website}
+          onChange={(e) => setData('website', e.target.value.trim())}
+          className={`mt-2 ${getError('website') ? 'border-red-500' : ''}`}
+        />
+        {data.website && !data.website.startsWith('http') && (
+          <p className="text-xs text-muted-foreground mt-1">
+            Will be saved as: https://{data.website}
+          </p>
+        )}
+        {getError('website') && (
+          <p className="text-sm text-red-600 mt-1">{getError('website')}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <Label htmlFor="linkedin">LinkedIn</Label>
+          <Input
+            id="linkedin"
+            type="text"
+            placeholder="in/yourusername"
+            value={data.linkedin}
+            onChange={(e) => setData('linkedin', e.target.value.trim())}
+            className={`mt-2 ${getError('linkedin') ? 'border-red-500' : ''}`}
+          />
+          {data.linkedin && !data.linkedin.startsWith('http') && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Will be saved as: https://linkedin.com/{data.linkedin}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="twitter">Twitter / X</Label>
+          <Input
+            id="twitter"
+            type="text"
+            placeholder="yourhandle"
+            value={data.twitter}
+            onChange={(e) => setData('twitter', e.target.value.trim())}
+            className={`mt-2 ${getError('twitter') ? 'border-red-500' : ''}`}
+          />
+          {data.twitter && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Will be saved as: https://twitter.com/{data.twitter.replace('@', '')}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="facebook">Facebook</Label>
+          <Input
+            id="facebook"
+            type="text"
+            placeholder="yourpage"
+            value={data.facebook}
+            onChange={(e) => setData('facebook', e.target.value.trim())}
+            className={`mt-2 ${getError('facebook') ? 'border-red-500' : ''}`}
+          />
+          {data.facebook && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Will be saved as: https://facebook.com/{data.facebook}
+            </p>
+          )}
+        </div>
+
+        <div>
+          <Label htmlFor="instagram">Instagram</Label>
+          <Input
+            id="instagram"
+            type="text"
+            placeholder="yourhandle"
+            value={data.instagram}
+            onChange={(e) => setData('instagram', e.target.value.trim())}
+            className={`mt-2 ${getError('instagram') ? 'border-red-500' : ''}`}
+          />
+          {data.instagram && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Will be saved as: https://instagram.com/{data.instagram}
+            </p>
+          )}
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+</motion.div>
             {/* Submit Button */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}

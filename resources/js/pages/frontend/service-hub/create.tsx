@@ -25,6 +25,7 @@ import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import WhatsAppButton from "@/components/frontend/WhatsAppButton"
 
 interface Category {
   id: number
@@ -70,7 +71,7 @@ export default function CreateService() {
     {
       id: 1,
       name: "Basic",
-      price: 0,
+      price: null,
       deliveryTime: "3 days",
       description: "",
       features: [""],
@@ -179,15 +180,26 @@ export default function CreateService() {
   }
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files
-    if (files) {
-      const newImages = Array.from(files)
-      setFormData({
-        ...formData,
-        images: [...formData.images, ...newImages],
-      })
+  const files = Array.from(e.target.files || []);
+
+  const validFiles = files.filter((file) => {
+    if (file.size > 3 * 1024 * 1024) {
+      showErrorToast(`File "${file.name}" is too large (max 3MB)`);
+      return false;
     }
+    return true;
+  });
+
+  if (formData.images.length + validFiles.length > 3) {
+    showErrorToast(`You can upload maximum 3 images in total`);
+    return;
   }
+
+  setFormData((prev) => ({
+    ...prev,
+    images: [...prev.images, ...validFiles],
+  }));
+};
 
   const handleRemoveImage = (index: number) => {
     setFormData({
@@ -196,8 +208,14 @@ export default function CreateService() {
     })
   }
 
+const [imageErrors, setImageErrors] = useState<string[]>([]); // per-image errors
+
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+      e.preventDefault()
+
+            // Reset previous image-specific errors
+      setImageErrors([]);
+
     // Validate form
     if (!formData.title || !formData.category_id || !formData.description) {
       showErrorToast("Please fill in all required fields")
@@ -213,6 +231,11 @@ export default function CreateService() {
       showErrorToast("Please upload at least one image")
       return
     }
+
+  if (formData.images.length > 3) {
+    showErrorToast("You can upload maximum 3 images");
+    return;
+  }
 
     // Prepare FormData for submission
     const formDataToSubmit = new FormData()
@@ -255,27 +278,62 @@ export default function CreateService() {
     })
 
     // Append images
-    formData.images.forEach((image) => {
-      formDataToSubmit.append('images[]', image)
-    })
+    formData.images.forEach((image, index) => {
+        formDataToSubmit.append(`images[${index}]`, image); // ← better key format
+    });
 
     // Append Believe Points acceptance
     formDataToSubmit.append('accepts_believe_points', formData.accepts_believe_points ? '1' : '0')
 
-    // Submit to backend
-    router.post('/service-hub', formDataToSubmit, {
-      forceFormData: true,
-      onSuccess: () => {
-        showSuccessToast("Service created successfully!")
-      },
-      onError: (errors) => {
-        // Field-level errors are displayed below each input field
-        // Only show a general error if there's no specific field errors
-        if (errors.message && !Object.keys(errors).some(key => key !== 'message')) {
-          showErrorToast(errors.message)
-        }
-      },
-    })
+    // // Submit to backend
+    // router.post('/service-hub', formDataToSubmit, {
+    //   forceFormData: true,
+    //   onSuccess: () => {
+    //     showSuccessToast("Service created successfully!")
+    //   },
+    //   onError: (errors) => {
+    //     // Field-level errors are displayed below each input field
+    //     // Only show a general error if there's no specific field errors
+    //     if (errors.message && !Object.keys(errors).some(key => key !== 'message')) {
+    //       showErrorToast(errors.message)
+    //     }
+    //   },
+    // })
+
+      router.post('/service-hub', formDataToSubmit, {
+            forceFormData: true,
+            preserveState: true,
+            preserveScroll: true,
+            onSuccess: () => {
+            showSuccessToast("Service created successfully!");
+            },
+            onError: (errors: Record<string, string | string[]>) => {
+            // Handle per-image errors from Laravel
+            const newImageErrors: string[] = [];
+
+            Object.keys(errors).forEach((key) => {
+                if (key.startsWith('images.')) {
+                const indexMatch = key.match(/images\.(\d+)/);
+                if (indexMatch) {
+                    const idx = parseInt(indexMatch[1], 10);
+                    const errorMsg = Array.isArray(errors[key]) ? errors[key][0] : errors[key];
+                    newImageErrors[idx] = errorMsg as string;
+                }
+                }
+            });
+
+            setImageErrors(newImageErrors);
+
+            // Still show general toast if needed
+            if (errors.images || errors.message) {
+                showErrorToast(
+                (Array.isArray(errors.images) ? errors.images[0] : errors.images) ||
+                errors.message ||
+                "Please check the form for errors"
+                );
+            }
+            },
+        });
   }
 
   return (
@@ -474,11 +532,11 @@ export default function CreateService() {
               <Card>
                 <CardHeader>
                   <CardTitle>Service Images</CardTitle>
-                  <CardDescription>Upload images showcasing your work (up to 5 images)</CardDescription>
+                 <CardDescription>Upload up to 3 images showcasing your work</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    {formData.images.map((image, index) => (
+                    {/* {formData.images.map((image, index) => (
                       <div key={index} className="relative aspect-video group">
                         <img
                           src={URL.createObjectURL(image)}
@@ -493,8 +551,31 @@ export default function CreateService() {
                           <X className="h-4 w-4" />
                         </button>
                       </div>
-                    ))}
-                    {formData.images.length < 5 && (
+                    ))} */}
+                                      {formData.images.map((image, index) => (
+                                        <div key={index} className="relative aspect-video group">
+                                            <img
+                                            src={URL.createObjectURL(image)}
+                                            alt={`Service preview ${index + 1}`}
+                                            className="w-full h-full object-cover rounded-lg border"
+                                            />
+                                            <button
+                                            type="button"
+                                            onClick={() => handleRemoveImage(index)}
+                                            className="absolute top-2 right-2 p-1.5 bg-background/90 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-sm"
+                                            >
+                                            <X className="h-4 w-4" />
+                                            </button>
+
+                                            {/* ← Per image error */}
+                                            {imageErrors[index] && (
+                                            <p className="text-xs text-red-600 dark:text-red-400 mt-1 text-center">
+                                                {imageErrors[index]}
+                                            </p>
+                                            )}
+                                        </div>
+                                        ))}
+                    {formData.images.length < 3 && (
                       <label className="aspect-video border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
                         <div className="text-center">
                           <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
@@ -510,11 +591,12 @@ export default function CreateService() {
                       </label>
                     )}
                   </div>
-                  {getError('images') && (
-                    <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                      {getError('images')}
-                    </p>
-                  )}
+                  {/* General images error (when not per-image specific) */}
+                    {getError('images') && !imageErrors.some(Boolean) && (
+                        <p className="text-sm text-red-600 dark:text-red-400 mt-3 text-center">
+                        {getError('images')}
+                        </p>
+                    )}
                 </CardContent>
               </Card>
             </motion.div>
@@ -587,7 +669,7 @@ export default function CreateService() {
                           </Label>
                           <Input
                             type="number"
-                            placeholder="0"
+                            placeholder="Enter package price"
                             value={pkg.price}
                             onChange={(e) => handleUpdatePackage(pkg.id, "price", Number(e.target.value))}
                             className={`mt-2 ${getError(`packages.${index}.price`) ? 'border-red-500' : ''}`}
@@ -764,7 +846,9 @@ export default function CreateService() {
                   )}
                 </CardContent>
               </Card>
-            </motion.div>
+                      </motion.div>
+
+
 
             {/* Submit */}
             <motion.div
@@ -778,6 +862,7 @@ export default function CreateService() {
                   Cancel
                 </Button>
               </Link>
+
               <Button type="submit" size="lg" className="bg-gradient-to-r from-blue-600 to-purple-600">
                 <Save className="mr-2 h-5 w-5" />
                 Publish Service

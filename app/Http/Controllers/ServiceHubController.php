@@ -224,9 +224,15 @@ class ServiceHubController extends Controller
             'packages.*.description' => 'nullable|string',
             'packages.*.features' => 'nullable|array',
             'packages.*.features.*' => 'string|max:255',
-            'images' => 'required|array|min:1|max:5',
-            'images.*' => 'required|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'images' => 'required|array|min:1|max:3',
+            'images.*' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:3072',
             'accepts_believe_points' => 'nullable|boolean',
+        ], [
+            'images.required' => 'Please upload at least one image.',
+            'images.max' => 'You can upload maximum 3 images.',
+            'images.*.image' => 'File :position must be an image.',
+            'images.*.mimes' => 'Image :position must be jpeg, png, jpg, gif or webp.',
+            'images.*.max' => 'Each image may not be larger than 3MB.',
         ]);
 
         try {
@@ -382,13 +388,19 @@ class ServiceHubController extends Controller
             'packages.*.description' => 'nullable|string',
             'packages.*.features' => 'nullable|array',
             'packages.*.features.*' => 'string|max:255',
-            'images' => 'nullable|array|max:5',
-            'images.*' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'images' => 'nullable|array|max:3',
+            'images.*' => 'image|mimes:jpeg,png,jpg,gif,webp|max:3072', // 3MB
             'existing_images' => 'nullable|array',
             'existing_images.*' => 'nullable|string',
             'deleted_images' => 'nullable|array',
             'deleted_images.*' => 'nullable|integer',
             'accepts_believe_points' => 'nullable|boolean',
+        ], [
+            'images.required' => 'Please upload at least one image.',
+            'images.max' => 'You can upload maximum 3 images.',
+            'images.*.image' => 'File :position must be an image.',
+            'images.*.mimes' => 'Image :position must be jpeg, png, jpg, gif or webp.',
+            'images.*.max' => 'Each image may not be larger than 3MB.',
         ]);
 
         try {
@@ -1947,8 +1959,13 @@ class ServiceHubController extends Controller
         // Get all states for sales tax dropdown
         $states = \App\Models\StateSalesTax::orderBy('state')->get(['state', 'state_code', 'base_sales_tax_rate']);
 
+        $allSkills = \App\Models\SellerSkill::orderBy('name')->pluck('name')->toArray();
+        $allLanguages = \App\Models\Language::orderBy('name')->pluck('name')->toArray();
+
         return Inertia::render('frontend/service-hub/seller-profile/create', [
             'states' => $states,
+            'all_skills' => $allSkills,
+            'all_languages' => $allLanguages,
         ]);
     }
 
@@ -1956,17 +1973,14 @@ class ServiceHubController extends Controller
     {
         $user = Auth::user();
 
-        // Block admins from creating seller profiles
         if ($user->role === 'admin') {
-            abort(403, 'Administrators cannot create seller profiles. Only organizations and regular users can be sellers.');
+            abort(403, 'Administrators cannot create seller profiles.');
         }
 
-        // Check if user already has a seller profile
         if ($user->serviceSellerProfile) {
             return redirect()->route('service-hub.seller-profile.edit')
                 ->with('error', 'You already have a seller profile.');
         }
-
 
         $validated = $request->validate([
             'profile_image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
@@ -1981,26 +1995,46 @@ class ServiceHubController extends Controller
             'languages.*.name' => 'nullable|string|max:100',
             'languages.*.level' => 'nullable|in:basic,conversational,fluent,native',
             'education' => 'nullable|array',
-            'education.*.institution' => 'nullable|string|max:255',
-            'education.*.degree' => 'nullable|string|max:255',
-            'education.*.year' => 'nullable|integer|min:1900|max:' . date('Y'),
             'experience' => 'nullable|array',
-            'experience.*.company' => 'nullable|string|max:255',
-            'experience.*.position' => 'nullable|string|max:255',
-            'experience.*.duration' => 'nullable|string|max:100',
             'response_time' => 'nullable|string|max:50',
-            'website' => 'nullable|url|max:255',
-            'linkedin' => 'nullable|url|max:255',
-            'twitter' => 'nullable|url|max:255',
-            'facebook' => 'nullable|url|max:255',
-            'instagram' => 'nullable|url|max:255',
+            'website' => 'nullable|string|max:255',      // ← url এর বদলে string
+            'linkedin' => 'nullable|string|max:255',
+            'twitter' => 'nullable|string|max:255',
+            'facebook' => 'nullable|string|max:255',
+            'instagram' => 'nullable|string|max:255',
         ]);
 
-        // Handle profile image upload
+        $languages = $validated['languages'] ?? [];
+
+        // Remove duplicates (just in case frontend fails or API abuse)
+        $uniqueLanguages = [];
+        $seen = [];
+
+        foreach ($languages as $lang) {
+            $name = trim($lang['name'] ?? '');
+            if ($name && !in_array($name, $seen)) {
+                $uniqueLanguages[] = [
+                    'name' => $name,
+                    'level' => $lang['level'] ?? 'basic'
+                ];
+                $seen[] = $name;
+            }
+        }
+
+        // Profile image
         $profileImage = null;
         if ($request->hasFile('profile_image')) {
             $profileImage = $request->file('profile_image')->store('seller-profiles', 'public');
         }
+
+        // Normalize social links (add https:// automatically)
+        $socialLinks = [
+            'website' => $this->normalizeSocialUrl($validated['website'] ?? null, 'https://'),
+            'linkedin' => $this->normalizeSocialUrl($validated['linkedin'] ?? null, 'https://www.linkedin.com/in/'),
+            'twitter' => $this->normalizeSocialUrl($validated['twitter'] ?? null, 'https://twitter.com/', true),
+            'facebook' => $this->normalizeSocialUrl($validated['facebook'] ?? null, 'https://facebook.com/'),
+            'instagram' => $this->normalizeSocialUrl($validated['instagram'] ?? null, 'https://instagram.com/'),
+        ];
 
         $profile = ServiceSellerProfile::create([
             'user_id' => $user->id,
@@ -2010,21 +2044,51 @@ class ServiceHubController extends Controller
             'timezone' => $validated['timezone'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'skills' => $validated['skills'] ?? [],
-            'languages' => $validated['languages'] ?? [],
+            'languages' => $uniqueLanguages,
             'education' => $validated['education'] ?? [],
             'experience' => $validated['experience'] ?? [],
             'response_time' => $validated['response_time'] ?? null,
-            'website' => $validated['website'] ?? null,
-            'linkedin' => $validated['linkedin'] ?? null,
-            'twitter' => $validated['twitter'] ?? null,
-            'facebook' => $validated['facebook'] ?? null,
-            'instagram' => $validated['instagram'] ?? null,
+            'website' => $socialLinks['website'],
+            'linkedin' => $socialLinks['linkedin'],
+            'twitter' => $socialLinks['twitter'],
+            'facebook' => $socialLinks['facebook'],
+            'instagram' => $socialLinks['instagram'],
             'profile_image' => $profileImage,
             'member_since' => now()->format('Y-m-d'),
         ]);
 
         return redirect()->route('service-hub.seller.profile', $user->id)
             ->with('success', 'Seller profile created successfully!');
+    }
+
+    /**
+     * Normalize social URL: add protocol + correct prefix if missing
+     */
+    private function normalizeSocialUrl(?string $input, string $defaultPrefix, bool $removeAt = false): ?string
+    {
+        if (empty(trim($input ?? ''))) {
+            return null;
+        }
+
+        $url = trim($input);
+
+        // Already full URL → return as is
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        // Remove @ for twitter/x handles
+        if ($removeAt && str_starts_with($url, '@')) {
+            $url = substr($url, 1);
+        }
+
+        // Remove any accidental protocol/prefix user might have added
+        $url = preg_replace('#^(https?://|http://|www\.)+#i', '', $url);
+
+        // Remove trailing slash if any
+        $url = rtrim($url, '/');
+
+        return $defaultPrefix . $url;
     }
 
     public function sellerDashboard(Request $request): Response|RedirectResponse
@@ -2169,6 +2233,9 @@ class ServiceHubController extends Controller
         // Get all states for sales tax dropdown
         $states = \App\Models\StateSalesTax::orderBy('state')->get(['state', 'state_code', 'base_sales_tax_rate']);
 
+        $allSkills = \App\Models\SellerSkill::orderBy('name')->pluck('name')->toArray();
+        $allLanguages = \App\Models\Language::orderBy('name')->pluck('name')->toArray();
+
         return Inertia::render('frontend/service-hub/seller-profile/edit', [
             'profile' => [
                 'id' => $profile->id,
@@ -2190,6 +2257,8 @@ class ServiceHubController extends Controller
                 'profile_image' => $profile->profile_image,
             ],
             'states' => $states,
+            'all_skills' => $allSkills,
+            'all_languages' => $allLanguages,
         ]);
     }
 
@@ -2230,12 +2299,38 @@ class ServiceHubController extends Controller
             'experience.*.position' => 'nullable|string|max:255',
             'experience.*.duration' => 'nullable|string|max:100',
             'response_time' => 'nullable|string|max:50',
-            'website' => 'nullable|url|max:255',
-            'linkedin' => 'nullable|url|max:255',
-            'twitter' => 'nullable|url|max:255',
-            'facebook' => 'nullable|url|max:255',
-            'instagram' => 'nullable|url|max:255',
+            'website' => 'nullable|string|max:255',  // ← changed from url
+            'linkedin' => 'nullable|string|max:255',
+            'twitter' => 'nullable|string|max:255',
+            'facebook' => 'nullable|string|max:255',
+            'instagram' => 'nullable|string|max:255',
         ]);
+
+        $languages = $validated['languages'] ?? [];
+
+        // Remove duplicates (just in case frontend fails or API abuse)
+        $uniqueLanguages = [];
+        $seen = [];
+
+        foreach ($languages as $lang) {
+            $name = trim($lang['name'] ?? '');
+            if ($name && !in_array($name, $seen)) {
+                $uniqueLanguages[] = [
+                    'name' => $name,
+                    'level' => $lang['level'] ?? 'basic'
+                ];
+                $seen[] = $name;
+            }
+        }
+
+        // Normalize social links (same logic as create)
+        $social = [
+            'website' => $this->normalizeSocialUrl($validated['website'] ?? null, 'https://'),
+            'linkedin' => $this->normalizeSocialUrl($validated['linkedin'] ?? null, 'https://www.linkedin.com/in/'),
+            'twitter' => $this->normalizeSocialUrl($validated['twitter'] ?? null, 'https://twitter.com/', true),
+            'facebook' => $this->normalizeSocialUrl($validated['facebook'] ?? null, 'https://www.facebook.com/'),
+            'instagram' => $this->normalizeSocialUrl($validated['instagram'] ?? null, 'https://www.instagram.com/'),
+        ];
 
         // Handle profile image upload
         $updateData = [
@@ -2245,15 +2340,15 @@ class ServiceHubController extends Controller
             'timezone' => $validated['timezone'] ?? null,
             'phone' => $validated['phone'] ?? null,
             'skills' => $validated['skills'] ?? [],
-            'languages' => $validated['languages'] ?? [],
+            'languages' => $uniqueLanguages ?? [],
             'education' => $validated['education'] ?? [],
             'experience' => $validated['experience'] ?? [],
             'response_time' => $validated['response_time'] ?? null,
-            'website' => $validated['website'] ?? null,
-            'linkedin' => $validated['linkedin'] ?? null,
-            'twitter' => $validated['twitter'] ?? null,
-            'facebook' => $validated['facebook'] ?? null,
-            'instagram' => $validated['instagram'] ?? null,
+            'website' => $social['website'],
+            'linkedin' => $social['linkedin'],
+            'twitter' => $social['twitter'],
+            'facebook' => $social['facebook'],
+            'instagram' => $social['instagram'],
         ];
 
         if ($request->hasFile('profile_image')) {

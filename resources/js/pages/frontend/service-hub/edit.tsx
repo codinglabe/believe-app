@@ -1,3 +1,5 @@
+
+
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
@@ -19,10 +21,9 @@ import {
   DollarSign,
   Clock,
   Package,
-  Check,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
-import { useState, useEffect } from "react"
+import { useState } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
@@ -74,12 +75,10 @@ interface Package {
 export default function EditService() {
   const { gig, categories, errors: backendErrors } = usePage<PageProps & { errors?: Record<string, string | string[]> }>().props
 
-  // Helper function to get error message for a field
   const getError = (fieldName: string): string | null => {
     if (!backendErrors) return null
     const error = backendErrors[fieldName]
-    if (!error) return null
-    return Array.isArray(error) ? error[0] : error
+    return error ? (Array.isArray(error) ? error[0] : error) : null
   }
 
   const [formData, setFormData] = useState({
@@ -90,10 +89,13 @@ export default function EditService() {
     tags: gig.tags || [],
     images: [] as File[],
     faqs: gig.faqs || [] as Array<{ question: string; answer: string }>,
-    accepts_believe_points: (gig as any).accepts_believe_points || false,
+    accepts_believe_points: gig.accepts_believe_points || false,
   })
+
   const [existingImages, setExistingImages] = useState<ExistingImage[]>(gig.images || [])
   const [deletedImages, setDeletedImages] = useState<number[]>([])
+  const [imageErrors, setImageErrors] = useState<string[]>([]) // per new image errors
+
   const [packages, setPackages] = useState<Package[]>(
     gig.packages && gig.packages.length > 0
       ? gig.packages.map((pkg) => ({
@@ -115,9 +117,49 @@ export default function EditService() {
           },
         ]
   )
-  const [newTag, setNewTag] = useState("")
-  const [newFeature, setNewFeature] = useState<{ packageId: number; feature: string } | null>(null)
 
+  const [newTag, setNewTag] = useState("")
+
+  // ── Image Handlers ────────────────────────────────────────────────
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+
+    const validFiles = files.filter((file) => {
+      if (file.size > 3 * 1024 * 1024) {
+        showErrorToast(`"${file.name}" is too large (max 3MB)`)
+        return false
+      }
+      return true
+    })
+
+    if (existingImages.length + formData.images.length + validFiles.length > 3) {
+      showErrorToast(`Maximum 3 images allowed in total`)
+      return
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      images: [...prev.images, ...validFiles],
+    }))
+
+    // Initialize empty error slots for new images
+    setImageErrors((prev) => [...prev, ...Array(validFiles.length).fill("")])
+  }
+
+  const handleRemoveNewImage = (index: number) => {
+    setFormData((prev) => ({
+      ...prev,
+      images: prev.images.filter((_, i) => i !== index),
+    }))
+    setImageErrors((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const handleRemoveExistingImage = (imageId: number) => {
+    setExistingImages((prev) => prev.filter((img) => img.id !== imageId))
+    setDeletedImages((prev) => [...prev, imageId])
+  }
+
+  // ── Other Handlers (Tags, Packages, FAQs) ─────────────────────────
   const handleAddTag = () => {
     if (newTag.trim() && !formData.tags.includes(newTag.trim())) {
       setFormData({
@@ -150,19 +192,17 @@ export default function EditService() {
     ])
   }
 
-  const handleRemovePackage = (id: number | undefined) => {
+  const handleRemovePackage = (id?: number) => {
     if (packages.length > 1) {
       setPackages(packages.filter((p) => p.id !== id))
     }
   }
 
   const handleUpdatePackage = (id: number | undefined, field: keyof Package, value: any) => {
-    setPackages(
-      packages.map((pkg) => (pkg.id === id ? { ...pkg, [field]: value } : pkg))
-    )
+    setPackages(packages.map((pkg) => (pkg.id === id ? { ...pkg, [field]: value } : pkg)))
   }
 
-  const handleAddFeature = (packageId: number | undefined) => {
+  const handleAddFeature = (packageId?: number) => {
     setPackages(
       packages.map((pkg) =>
         pkg.id === packageId ? { ...pkg, features: [...pkg.features, ""] } : pkg
@@ -170,56 +210,27 @@ export default function EditService() {
     )
   }
 
-  const handleRemoveFeature = (packageId: number | undefined, featureIndex: number) => {
-    setPackages(
-      packages.map((pkg) =>
-        pkg.id === packageId
-          ? { ...pkg, features: pkg.features.filter((_, i) => i !== featureIndex) }
-          : pkg
-      )
-    )
-  }
-
-  const handleUpdateFeature = (
-    packageId: number | undefined,
-    featureIndex: number,
-    value: string
-  ) => {
+  const handleUpdateFeature = (packageId: number | undefined, index: number, value: string) => {
     setPackages(
       packages.map((pkg) =>
         pkg.id === packageId
           ? {
               ...pkg,
-              features: pkg.features.map((f, i) => (i === featureIndex ? value : f)),
+              features: pkg.features.map((f, i) => (i === index ? value : f)),
             }
           : pkg
       )
     )
   }
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || [])
-    const totalImages = existingImages.length + formData.images.length + files.length
-    if (totalImages > 5) {
-      showErrorToast("You can only upload up to 5 images")
-      return
-    }
-    setFormData({
-      ...formData,
-      images: [...formData.images, ...files],
-    })
-  }
-
-  const handleRemoveImage = (index: number) => {
-    setFormData({
-      ...formData,
-      images: formData.images.filter((_, i) => i !== index),
-    })
-  }
-
-  const handleRemoveExistingImage = (imageId: number) => {
-    setExistingImages(existingImages.filter((img) => img.id !== imageId))
-    setDeletedImages([...deletedImages, imageId])
+  const handleRemoveFeature = (packageId: number | undefined, index: number) => {
+    setPackages(
+      packages.map((pkg) =>
+        pkg.id === packageId
+          ? { ...pkg, features: pkg.features.filter((_, i) => i !== index) }
+          : pkg
+      )
+    )
   }
 
   const handleAddFAQ = () => {
@@ -236,18 +247,21 @@ export default function EditService() {
     })
   }
 
-  const handleUpdateFAQ = (index: number, field: 'question' | 'answer', value: string) => {
+  const handleUpdateFAQ = (index: number, field: "question" | "answer", value: string) => {
     setFormData({
       ...formData,
-      faqs: formData.faqs.map((faq, i) =>
-        i === index ? { ...faq, [field]: value } : faq
-      ),
+      faqs: formData.faqs.map((faq, i) => (i === index ? { ...faq, [field]: value } : faq)),
     })
   }
 
+  // ── Form Submission ────────────────────────────────────────────────
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    // Validate form
+
+    // Reset per-image errors
+    setImageErrors([])
+
+    // Basic validation
     if (!formData.title || !formData.category_id || !formData.description) {
       showErrorToast("Please fill in all required fields")
       return
@@ -259,27 +273,22 @@ export default function EditService() {
     }
 
     if (existingImages.length + formData.images.length === 0) {
-      showErrorToast("Please upload at least one image")
+      showErrorToast("Please keep at least one image")
       return
     }
 
-    // Prepare FormData for submission
     const formDataToSubmit = new FormData()
 
-    // Append basic fields
-    formDataToSubmit.append('title', formData.title)
-    formDataToSubmit.append('category_id', formData.category_id)
-    formDataToSubmit.append('description', formData.description)
-    if (formData.fullDescription) {
-      formDataToSubmit.append('full_description', formData.fullDescription)
-    }
+    // Basic fields
+    formDataToSubmit.append("title", formData.title)
+    formDataToSubmit.append("category_id", formData.category_id)
+    formDataToSubmit.append("description", formData.description)
+    if (formData.fullDescription) formDataToSubmit.append("full_description", formData.fullDescription)
 
-    // Append tags
-    formData.tags.forEach((tag) => {
-      formDataToSubmit.append('tags[]', tag)
-    })
+    // Tags
+    formData.tags.forEach((tag) => formDataToSubmit.append("tags[]", tag))
 
-    // Append FAQs
+    // FAQs
     formData.faqs.forEach((faq, index) => {
       if (faq.question.trim() && faq.answer.trim()) {
         formDataToSubmit.append(`faqs[${index}][question]`, faq.question)
@@ -287,63 +296,71 @@ export default function EditService() {
       }
     })
 
-    // Append packages
+    // Packages
     packages.forEach((pkg, index) => {
-      if (pkg.id) {
-        formDataToSubmit.append(`packages[${index}][id]`, pkg.id.toString())
-      }
+      if (pkg.id) formDataToSubmit.append(`packages[${index}][id]`, pkg.id.toString())
       formDataToSubmit.append(`packages[${index}][name]`, pkg.name)
       formDataToSubmit.append(`packages[${index}][price]`, pkg.price.toString())
       formDataToSubmit.append(`packages[${index}][delivery_time]`, pkg.deliveryTime)
-      if (pkg.description) {
-        formDataToSubmit.append(`packages[${index}][description]`, pkg.description)
-      }
+      if (pkg.description) formDataToSubmit.append(`packages[${index}][description]`, pkg.description)
 
-      // Append features (filter out empty strings)
-      const validFeatures = pkg.features.filter(f => f.trim() !== '')
-      validFeatures.forEach((feature, featureIndex) => {
-        formDataToSubmit.append(`packages[${index}][features][${featureIndex}]`, feature)
+      const validFeatures = pkg.features.filter((f) => f.trim())
+      validFeatures.forEach((feature, fIndex) => {
+        formDataToSubmit.append(`packages[${index}][features][${fIndex}]`, feature)
       })
     })
 
-    // Append existing images
+    // Images management
     existingImages.forEach((img) => {
-      formDataToSubmit.append('existing_images[]', img.path)
+      formDataToSubmit.append("existing_images[]", img.path)
     })
 
-    // Append deleted images
-    deletedImages.forEach((imgId) => {
-      formDataToSubmit.append('deleted_images[]', imgId.toString())
+    deletedImages.forEach((id) => {
+      formDataToSubmit.append("deleted_images[]", id.toString())
     })
 
-    // Append new images
-    formData.images.forEach((image) => {
-      formDataToSubmit.append('images[]', image)
+    formData.images.forEach((image, index) => {
+      formDataToSubmit.append(`images[${index}]`, image)
     })
 
-    // Append Believe Points acceptance
-    formDataToSubmit.append('accepts_believe_points', formData.accepts_believe_points ? '1' : '0')
+    formDataToSubmit.append("accepts_believe_points", formData.accepts_believe_points ? "1" : "0")
+    formDataToSubmit.append("_method", "PUT")
 
-    // Submit to backend
-    formDataToSubmit.append('_method', 'PUT')
     router.post(`/service-hub/${gig.slug}`, formDataToSubmit, {
       forceFormData: true,
+      preserveState: true,
+      preserveScroll: true,
       onSuccess: () => {
         showSuccessToast("Service updated successfully!")
       },
       onError: (errors) => {
-        // Field-level errors are displayed below each input field
-        // Only show a general error if there's no specific field errors
-        if (errors.message && !Object.keys(errors).some(key => key !== 'message')) {
-          showErrorToast(errors.message)
+        const newImageErrors: string[] = []
+
+        Object.keys(errors).forEach((key) => {
+          if (key.startsWith("images.")) {
+            const match = key.match(/images\.(\d+)/)
+            if (match) {
+              const idx = parseInt(match[1], 10)
+              newImageErrors[idx] = Array.isArray(errors[key]) ? errors[key][0] : (errors[key] as string)
+            }
+          }
+        })
+
+        setImageErrors(newImageErrors)
+
+        if (Object.keys(errors).length > 0) {
+          showErrorToast(errors.message || "Please check the form for errors")
         }
       },
     })
   }
 
+  const totalImages = existingImages.length + formData.images.length
+
   return (
     <FrontendLayout>
       <Head title="Edit Service - Service Hub" />
+
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -377,75 +394,66 @@ export default function EditService() {
         </div>
 
         <div className="container mx-auto px-4 py-8">
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-8">
             {/* Basic Information */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-            >
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
               <Card>
                 <CardHeader>
-                  <CardTitle>Basic Information</CardTitle>
-                  <CardDescription>Tell us about your service</CardDescription>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5" />
+                    Basic Information
+                  </CardTitle>
+                  <CardDescription>Update your service details</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-4">
+                <CardContent className="space-y-6">
                   <div>
-                    <Label htmlFor="title">Service Title *</Label>
+                    <Label htmlFor="title">
+                      Service Title <span className="text-red-500">*</span>
+                    </Label>
                     <Input
                       id="title"
-                      placeholder="e.g., Professional Logo Design"
                       value={formData.title}
                       onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      required
+                      className="mt-2"
                     />
-                    {getError('title') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('title')}
-                      </p>
-                    )}
+                    {getError("title") && <p className="text-sm text-red-600 mt-1">{getError("title")}</p>}
                   </div>
 
                   <div>
-                    <Label htmlFor="category">Category *</Label>
+                    <Label htmlFor="category_id">
+                      Category <span className="text-red-500">*</span>
+                    </Label>
                     <select
-                      id="category"
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      id="category_id"
                       value={formData.category_id}
                       onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
-                      required
+                      className={`mt-2 w-full rounded-md border bg-background px-3 py-2 ${getError("category_id") ? "border-red-500" : ""}`}
                     >
                       <option value="">Select a category</option>
-                      {categories.map((category) => (
-                        <option key={category.id} value={category.id}>
-                          {category.name}
+                      {categories.map((cat) => (
+                        <option key={cat.id} value={cat.id}>
+                          {cat.name}
                         </option>
                       ))}
                     </select>
-                    {getError('category_id') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('category_id')}
-                      </p>
+                    {getError("category_id") && (
+                      <p className="text-sm text-red-600 mt-1">{getError("category_id")}</p>
                     )}
                   </div>
 
                   <div>
-                    <Label htmlFor="description">Short Description *</Label>
+                    <Label htmlFor="description">
+                      Short Description <span className="text-red-500">*</span>
+                    </Label>
                     <Textarea
                       id="description"
-                      placeholder="Brief description of your service (max 500 characters)"
                       value={formData.description}
                       onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      maxLength={500}
+                      className={`mt-2 ${getError("description") ? "border-red-500" : ""}`}
                       rows={3}
-                      required
                     />
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {formData.description.length}/500 characters
-                    </p>
-                    {getError('description') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('description')}
-                      </p>
+                    {getError("description") && (
+                      <p className="text-sm text-red-600 mt-1">{getError("description")}</p>
                     )}
                   </div>
 
@@ -453,76 +461,60 @@ export default function EditService() {
                     <Label htmlFor="fullDescription">Full Description</Label>
                     <Textarea
                       id="fullDescription"
-                      placeholder="Detailed description of your service..."
                       value={formData.fullDescription}
                       onChange={(e) => setFormData({ ...formData, fullDescription: e.target.value })}
+                      className={`mt-2 ${getError("full_description") ? "border-red-500" : ""}`}
                       rows={8}
                     />
-                    {getError('full_description') && (
-                      <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-                        {getError('full_description')}
-                      </p>
+                    {getError("full_description") && (
+                      <p className="text-sm text-red-600 mt-1">{getError("full_description")}</p>
                     )}
                   </div>
 
                   <div>
                     <Label>Tags</Label>
-                    <div className="flex gap-2 flex-wrap mb-2">
-                      {formData.tags.map((tag, index) => (
-                        <Badge key={index} variant="secondary" className="gap-2">
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      {formData.tags.map((tag) => (
+                        <Badge key={tag} variant="secondary" className="gap-2">
                           {tag}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveTag(tag)}
-                            className="ml-1 hover:text-destructive"
-                          >
+                          <button type="button" onClick={() => handleRemoveTag(tag)}>
                             <X className="h-3 w-3" />
                           </button>
                         </Badge>
                       ))}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 mt-3">
                       <Input
-                        placeholder="Add a tag"
+                        placeholder="Add a tag..."
                         value={newTag}
                         onChange={(e) => setNewTag(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault()
-                            handleAddTag()
-                          }
-                        }}
+                        onKeyPress={(e) => e.key === "Enter" && (e.preventDefault(), handleAddTag())}
                       />
                       <Button type="button" onClick={handleAddTag}>
-                        Add
+                        <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
 
-                  {/* Believe Points Acceptance */}
+                  {/* Believe Points */}
                   <div className="p-4 border rounded-lg bg-muted/50">
                     <div className="flex items-start gap-3">
                       <input
                         type="checkbox"
                         id="accepts_believe_points"
                         checked={formData.accepts_believe_points}
-                        onChange={(e) => setFormData({ ...formData, accepts_believe_points: e.target.checked })}
-                        className="mt-1 h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        onChange={(e) =>
+                          setFormData({ ...formData, accepts_believe_points: e.target.checked })
+                        }
+                        className="mt-1 h-4 w-4"
                       />
-                      <div className="flex-1">
-                        <Label htmlFor="accepts_believe_points" className="font-semibold cursor-pointer">
+                      <div>
+                        <Label htmlFor="accepts_believe_points" className="font-semibold">
                           Accept Believe Points Payments
                         </Label>
                         <p className="text-sm text-muted-foreground mt-1">
-                          Allow buyers to pay with Believe Points. You'll pay only 1% transaction fee instead of 3% for Stripe payments.
+                          Allow buyers to pay with Believe Points (1% fee instead of 3%)
                         </p>
-                        {formData.accepts_believe_points && (
-                          <div className="mt-2 p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded text-sm">
-                            <p className="text-green-800 dark:text-green-200 font-medium">
-                              ✓ Transaction fee discount: 1% (vs 3% for Stripe)
-                            </p>
-                          </div>
-                        )}
                       </div>
                     </div>
                   </div>
@@ -530,16 +522,14 @@ export default function EditService() {
               </Card>
             </motion.div>
 
-            {/* Images */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-            >
+            {/* Images Section */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
               <Card>
                 <CardHeader>
                   <CardTitle>Service Images</CardTitle>
-                  <CardDescription>Upload images showcasing your work (up to 5 images total)</CardDescription>
+                  <CardDescription>
+                    Up to <strong>3 images total</strong> (existing + new). Max 3MB each.
+                  </CardDescription>
                 </CardHeader>
                 <CardContent>
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -548,36 +538,45 @@ export default function EditService() {
                       <div key={image.id} className="relative aspect-video group">
                         <img
                           src={image.url}
-                          alt={`Service image ${image.id}`}
+                          alt="Existing image"
                           className="w-full h-full object-cover rounded-lg"
                         />
                         <button
                           type="button"
                           onClick={() => handleRemoveExistingImage(image.id)}
-                          className="absolute top-2 right-2 p-1 bg-background/80 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
                     ))}
+
                     {/* New Images */}
                     {formData.images.map((image, index) => (
                       <div key={`new-${index}`} className="relative aspect-video group">
                         <img
                           src={URL.createObjectURL(image)}
-                          alt={`Service image ${index + 1}`}
+                          alt={`New image ${index + 1}`}
                           className="w-full h-full object-cover rounded-lg"
                         />
                         <button
                           type="button"
-                          onClick={() => handleRemoveImage(index)}
-                          className="absolute top-2 right-2 p-1 bg-background/80 backdrop-blur-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          onClick={() => handleRemoveNewImage(index)}
+                          className="absolute top-2 right-2 p-1.5 bg-red-600 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <X className="h-4 w-4" />
                         </button>
+
+                        {imageErrors[index] && (
+                          <p className="text-xs text-red-600 mt-1 text-center">
+                            {imageErrors[index]}
+                          </p>
+                        )}
                       </div>
                     ))}
-                    {existingImages.length + formData.images.length < 5 && (
+
+                    {/* Upload Area */}
+                    {totalImages < 3 && (
                       <label className="aspect-video border-2 border-dashed rounded-lg flex items-center justify-center cursor-pointer hover:border-primary transition-colors">
                         <div className="text-center">
                           <Upload className="h-8 w-8 mx-auto mb-2 text-muted-foreground" />
@@ -593,16 +592,15 @@ export default function EditService() {
                       </label>
                     )}
                   </div>
-                  {getError('images') && (
-                    <p className="text-sm text-red-600 dark:text-red-400 mt-2">
-                      {getError('images')}
-                    </p>
+
+                  {getError("images") && (
+                    <p className="text-sm text-red-600 mt-3 text-center">{getError("images")}</p>
                   )}
                 </CardContent>
               </Card>
             </motion.div>
 
-            {/* Packages */}
+           {/* Packages */}
             <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -671,18 +669,28 @@ export default function EditService() {
                             required
                           />
                         </div>
-                        <div>
-                          <Label className="flex items-center gap-2">
-                            <Clock className="h-4 w-4" />
-                            Delivery Time *
-                          </Label>
-                          <Input
-                            placeholder="e.g., 3 days, 1 week"
-                            value={pkg.deliveryTime}
-                            onChange={(e) => handleUpdatePackage(pkg.id, 'deliveryTime', e.target.value)}
-                            required
-                          />
-                        </div>
+                              <div>
+                                                        <Label>
+                                                          Delivery Time <span className="text-red-500">*</span>
+                                                        </Label>
+                                                        <select
+                                                          value={pkg.deliveryTime}
+                                                          onChange={(e) => handleUpdatePackage(pkg.id, "deliveryTime", e.target.value)}
+                                                          className={`mt-2 w-full px-3 py-2 rounded-md border bg-background ${getError(`packages.${index}.delivery_time`) ? 'border-red-500' : ''}`}
+                                                        >
+                                                          <option value="1 day">1 day</option>
+                                                          <option value="2 days">2 days</option>
+                                                          <option value="3 days">3 days</option>
+                                                          <option value="5 days">5 days</option>
+                                                          <option value="7 days">7 days</option>
+                                                          <option value="14 days">14 days</option>
+                                                        </select>
+                                                        {getError(`packages.${index}.delivery_time`) && (
+                                                          <p className="text-sm text-red-600 dark:text-red-400 mt-1">
+                                                            {getError(`packages.${index}.delivery_time`)}
+                                                          </p>
+                                                        )}
+                                                      </div>
                       </div>
                       <div>
                         <Label>Package Description</Label>
@@ -813,13 +821,8 @@ export default function EditService() {
               </Card>
             </motion.div>
 
-            {/* Submit */}
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3 }}
-              className="flex justify-end gap-4"
-            >
+            {/* Submit Buttons */}
+            <div className="flex justify-end gap-4 pt-6">
               <Link href={`/service-hub/${gig.slug}`}>
                 <Button type="button" variant="outline">
                   Cancel
@@ -829,11 +832,10 @@ export default function EditService() {
                 <Save className="mr-2 h-5 w-5" />
                 Update Service
               </Button>
-            </motion.div>
+            </div>
           </form>
         </div>
       </div>
     </FrontendLayout>
   )
 }
-

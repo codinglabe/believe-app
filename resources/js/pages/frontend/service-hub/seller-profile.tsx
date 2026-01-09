@@ -30,6 +30,7 @@ import {
   User,
   Briefcase,
   Edit,
+  LayoutDashboard,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState } from "react"
@@ -216,12 +217,21 @@ export default function SellerProfile() {
                       {/* Action Buttons */}
                       <div className="flex flex-wrap gap-3 pt-2">
                         {isOwner ? (
-                          <Link href="/service-hub/seller-profile/edit">
+                          <>
+                        <Link href="/service-hub/seller-profile/edit">
                             <Button className="bg-blue-600 hover:bg-blue-700">
-                              <Edit className="mr-2 h-4 w-4" />
-                              Edit Profile
+                            <Edit className="mr-2 h-4 w-4" />
+                            Edit Profile
                             </Button>
-                          </Link>
+                        </Link>
+
+                        <Link href={route("service-hub.seller-dashboard")}>  {/* ← Change this route to your actual seller dashboard URL */}
+                            <Button variant="outline" className="border-primary text-primary hover:bg-primary/10">
+                            <LayoutDashboard className="mr-2 h-4 w-4" />  {/* Optional icon */}
+                            Seller Dashboard
+                            </Button>
+                        </Link>
+                        </>
                         ) : (
                           <>
                             {/* Only show WhatsApp contact if user has a successful order */}

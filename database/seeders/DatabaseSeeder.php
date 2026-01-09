@@ -76,5 +76,10 @@ class DatabaseSeeder extends Seeder
 
         // Step 7: Seed merchant data
         $this->call(MerchantSeeder::class);
+
+        $this->call(StateSalesTaxCompleteSeeder::class);
+
+        $this->call(SellerSkillsSeeder::class);
+        $this->call(LanguagesSeeder::class);
     }
 }
