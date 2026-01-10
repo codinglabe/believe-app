@@ -28,29 +28,27 @@ class HomeController extends Controller
             ->prepend('All Categories');
 
         // Get featured organizations (latest 6 verified organizations)
+        // Optimized: Use simple filter instead of expensive subquery
         $featuredOrganizations = ExcelData::where('status', 'complete')
-            ->whereNotIn('id', function ($subQuery) {
-                $subQuery->select(DB::raw('MIN(id)'))
-                    ->from('excel_data')
-                    ->where('status', 'complete')
-                    ->groupBy('file_id');
-            })
+            ->where('ein', '!=', 'EIN')
+            ->whereNotNull('ein')
+            ->orderBy('id', 'desc')
             ->take(6) // Limit to 6 featured organizations
             ->get();
 
+        // Optimized: Use virtual columns directly instead of expensive transformer
         $transformedOrganizations = $featuredOrganizations->map(function ($item) {
             $rowData = $item->row_data;
-            $transformedData = ExcelDataTransformer::transform($rowData);
 
             return [
                 'id' => $item->id,
                 'ein' => $item->ein,
-                'name' => $transformedData[1] ?? $rowData[1] ?? '',
-                'city' => $transformedData[4] ?? $rowData[4] ?? '',
-                'state' => $transformedData[5] ?? $rowData[5] ?? '',
-                'zip' => $transformedData[6] ?? $rowData[6] ?? '',
-                'classification' => $transformedData[10] ?? $rowData[10] ?? '',
-                'ntee_code' => $transformedData[26] ?? $rowData[26] ?? '',
+                'name' => $item->name_virtual ?? $rowData[1] ?? '',
+                'city' => $item->city_virtual ?? $rowData[4] ?? '',
+                'state' => $item->state_virtual ?? $rowData[5] ?? '',
+                'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
+                'classification' => $rowData[10] ?? '',
+                'ntee_code' => $item->ntee_code_virtual ?? $rowData[26] ?? '',
                 'created_at' => $item->created_at,
             ];
         });

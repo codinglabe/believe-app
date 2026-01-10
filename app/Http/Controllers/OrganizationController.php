@@ -40,28 +40,23 @@ class OrganizationController extends BaseController
         $sort = $request->get('sort', 'id');
         $perPage = min($request->get("per_page", 6), 50); // Limit per_page to prevent abuse
 
-        // Build the query using virtual columns for better performance
+        // Optimized query: Simply exclude header rows (ein = 'EIN') - much faster than subquery
         $query = ExcelData::where('status', 'complete')
-            ->whereNotIn('id', function ($subQuery) {
-                $subQuery->select(DB::raw('MIN(id)'))
-                    ->from('excel_data')
-                    ->where('status', 'complete')
-                    ->groupBy('file_id');
-            });
+            ->where('ein', '!=', 'EIN')
+            ->whereNotNull('ein');
 
-        // Search in name (using virtual column)
+        // Optimized search: Search in name and sort_name virtual columns
         if ($search) {
             $query->where(function ($q) use ($search) {
-                $q->where('name_virtual', 'LIKE', "%{$search}%")
-                    ->orWhere('sort_name_virtual', 'LIKE', "%{$search}%");
+                $q->where('name_virtual', 'LIKE', '%' . $search . '%')
+                  ->orWhere('sort_name_virtual', 'LIKE', '%' . $search . '%');
             });
         }
 
-        // Filter by category (using virtual column)
+        // Optimized category filter: Use direct join instead of whereHas for better performance
         if ($category && $category !== 'All Categories') {
-            $query->whereHas('nteeCode', function ($q) use ($category) {
-                $q->where('category', $category);
-            });
+            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
+                  ->where('ntee_codes.category', $category);
         }
 
         // Filter by location (using virtual columns)
@@ -74,8 +69,27 @@ class OrganizationController extends BaseController
         }
 
         if ($zip) {
-            $query->where('zip_virtual', 'LIKE', "%{$zip}%");
+            // For zip, use prefix matching when possible
+            if (strlen($zip) >= 3) {
+                $query->where('zip_virtual', 'LIKE', $zip . '%');
+            } else {
+                $query->where('zip_virtual', 'LIKE', '%' . $zip . '%');
+            }
         }
+
+        // Get only the necessary columns (do this before pagination)
+        $query->select([
+            'excel_data.id',
+            'excel_data.ein',
+            'excel_data.row_data',
+            'excel_data.created_at',
+            'excel_data.updated_at',
+            'excel_data.name_virtual',
+            'excel_data.state_virtual',
+            'excel_data.city_virtual',
+            'excel_data.ntee_code_virtual',
+            'excel_data.file_id'
+        ]);
 
         // Apply sorting
         switch ($sort) {
@@ -92,20 +106,6 @@ class OrganizationController extends BaseController
                 $query->orderBy('id', 'asc');
                 break;
         }
-
-        // Get only the necessary columns
-        $query->select([
-            'id',
-            'ein',
-            'row_data',
-            'created_at',
-            'updated_at',
-            'name_virtual',
-            'state_virtual',
-            'city_virtual',
-            'ntee_code_virtual',
-            'file_id' // Added file_id for debugging purposes
-        ]);
 
         // Get organizations with pagination
         $organizations = $query->paginate($perPage);
@@ -134,10 +134,9 @@ class OrganizationController extends BaseController
             }
         }
 
-        // Transform the data
+        // Transform the data - optimized to use virtual columns directly (no expensive transformer calls)
         $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites) {
             $rowData = $item->row_data;
-            $transformedData = ExcelDataTransformer::transform($rowData);
 
             // Check if this excel data organization is registered
             $isRegistered = isset($registeredOrgs[$item->ein]);
@@ -149,15 +148,16 @@ class OrganizationController extends BaseController
                 $isFavorited = in_array($registeredOrg->id, $userFavorites);
             }
 
+            // Use virtual columns directly (much faster than transformer which does DB lookups)
             return [
                 'id' => $item->id,
                 'ein' => $item->ein,
-                'name' => $transformedData[1] ?? $rowData[1] ?? '',
-                'city' => $transformedData[4] ?? $rowData[4] ?? '',
-                'state' => $transformedData[5] ?? $rowData[5] ?? '',
-                'zip' => $transformedData[6] ?? $rowData[6] ?? '',
-                'classification' => $transformedData[10] ?? $rowData[10] ?? '',
-                'ntee_code' => $transformedData[26] ?? $rowData[26] ?? '',
+                'name' => $item->name_virtual ?? $rowData[1] ?? '',
+                'city' => $item->city_virtual ?? $rowData[4] ?? '',
+                'state' => $item->state_virtual ?? $rowData[5] ?? '',
+                'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
+                'classification' => $rowData[10] ?? '', // Use raw data, transformer not needed for list
+                'ntee_code' => $item->ntee_code_virtual ?? $rowData[26] ?? '',
                 'created_at' => $item->created_at,
                 'is_registered' => $isRegistered,
                 'is_favorited' => $isFavorited,
@@ -170,11 +170,14 @@ class OrganizationController extends BaseController
         //     ->pluck('category')
         //     ->prepend('All Categories');
 
-        $categories = DB::table('ntee_codes')
-            ->distinct()
-            ->orderBy('category')
-            ->pluck('category')
-            ->prepend('All Categories');
+        // Cache filter options for better performance
+        $categories = cache()->remember('orgs_categories', 3600, function () {
+            return DB::table('ntee_codes')
+                ->distinct()
+                ->orderBy('category')
+                ->pluck('category')
+                ->prepend('All Categories');
+        });
 
         $filterOptions = [
             'categories' => $categories,
@@ -320,12 +323,8 @@ class OrganizationController extends BaseController
 
         $cities = cache()->remember($cacheKey, 3600, function () use ($state) {
             return ExcelData::where('status', 'complete')
-                ->whereNotIn('id', function ($subQuery) {
-                    $subQuery->select(DB::raw('MIN(id)'))
-                        ->from('excel_data')
-                        ->where('status', 'complete')
-                        ->groupBy('file_id');
-                })
+                ->where('ein', '!=', 'EIN')
+                ->whereNotNull('ein')
                 ->whereNotNull('city_virtual')
                 ->when($state && $state !== 'All States', function ($q) use ($state) {
                     return $q->where('state_virtual', $state);
