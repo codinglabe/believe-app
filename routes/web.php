@@ -251,20 +251,17 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->
 
 // Merchant Hub Routes (Public - for viewing offers)
 Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
-    Route::get('/', function () {
-        return Inertia::render('frontend/merchant-hub/Index');
-    })->name('index');
+    Route::get('/', [App\Http\Controllers\MerchantHubOfferController::class, 'index'])->name('index');
 
-    Route::get('/offers/{id}', function ($id) {
-        return Inertia::render('frontend/merchant-hub/OfferDetail', [
-            'offerId' => $id
-        ]);
-    })->name('offer.show');
+    Route::get('/offers/{id}', [App\Http\Controllers\MerchantHubOfferController::class, 'show'])->name('offer.show');
 });
 
 // Merchant Hub Redemption Routes (Requires auth)
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
+    Route::get('/redemption/confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
+    Route::get('/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
+    Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
 
 // Merchant Program Routes
@@ -1439,6 +1436,54 @@ Route::prefix('admin/service-categories')
         Route::get('/{serviceCategory}/edit', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'edit'])->name('edit');
         Route::put('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'update'])->name('update');
         Route::delete('/{serviceCategory}', [App\Http\Controllers\Admin\ServiceCategoryController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Merchant Hub Categories Management
+Route::prefix('admin/merchant-hub-categories')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.merchant-hub-categories.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'store'])->name('store');
+        Route::get('/{merchantHubCategory}/edit', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'edit'])->name('edit');
+        Route::put('/{merchantHubCategory}', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'update'])->name('update');
+        Route::delete('/{merchantHubCategory}', [App\Http\Controllers\Admin\MerchantHubCategoryController::class, 'destroy'])->name('destroy');
+    });
+
+// Admin Merchant Hub Management
+Route::prefix('admin/merchant-hub')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.merchant-hub.')
+    ->group(function () {
+        // Dashboard
+        Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'index'])->name('index');
+
+        // Merchants
+        Route::prefix('merchants')->name('merchants.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsIndex'])->name('index');
+            Route::get('/create', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsCreate'])->name('create');
+            Route::post('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsStore'])->name('store');
+            Route::get('/{merchant}/edit', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsEdit'])->name('edit');
+            Route::put('/{merchant}', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsUpdate'])->name('update');
+            Route::delete('/{merchant}', [App\Http\Controllers\Admin\MerchantHubController::class, 'merchantsDestroy'])->name('destroy');
+        });
+
+        // Offers
+        Route::prefix('offers')->name('offers.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersIndex'])->name('index');
+            Route::get('/create', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersCreate'])->name('create');
+            Route::post('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersStore'])->name('store');
+            Route::get('/{offer}/edit', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersEdit'])->name('edit');
+            Route::put('/{offer}', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersUpdate'])->name('update');
+            Route::delete('/{offer}', [App\Http\Controllers\Admin\MerchantHubController::class, 'offersDestroy'])->name('destroy');
+        });
+
+        // Redemptions
+        Route::prefix('redemptions')->name('redemptions.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Admin\MerchantHubController::class, 'redemptionsIndex'])->name('index');
+            Route::put('/{redemption}/status', [App\Http\Controllers\Admin\MerchantHubController::class, 'redemptionsUpdateStatus'])->name('update-status');
+        });
     });
 
 // Admin Exemption Certificates Management
