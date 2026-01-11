@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Str;
 
 class MerchantHubOffer extends Model
 {
@@ -15,6 +16,7 @@ class MerchantHubOffer extends Model
         'merchant_hub_merchant_id',
         'merchant_hub_category_id',
         'title',
+        'slug',
         'short_description',
         'description',
         'image_url',
@@ -57,6 +59,68 @@ class MerchantHubOffer extends Model
     public function redemptions(): HasMany
     {
         return $this->hasMany(MerchantHubOfferRedemption::class, 'merchant_hub_offer_id');
+    }
+
+    /**
+     * Boot the model.
+     */
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function ($offer) {
+            if (empty($offer->slug) && !empty($offer->title)) {
+                $offer->slug = static::generateUniqueSlug($offer->title);
+            }
+        });
+
+        static::updating(function ($offer) {
+            // Always regenerate slug if title changes or if slug is missing
+            if ($offer->isDirty('title') || empty($offer->slug)) {
+                $offer->slug = static::generateUniqueSlug($offer->title, $offer->id);
+            }
+        });
+    }
+
+    /**
+     * Generate a unique slug for the offer.
+     */
+    protected static function generateUniqueSlug(string $title, ?int $excludeId = null): string
+    {
+        if (empty($title)) {
+            return '';
+        }
+
+        $slug = Str::slug($title);
+        if (empty($slug)) {
+            // Fallback if slug is empty (e.g., title has only special characters)
+            $slug = 'offer-' . ($excludeId ?? time());
+        }
+
+        $originalSlug = $slug;
+        $counter = 1;
+
+        while (true) {
+            $query = static::where('slug', $slug);
+            if ($excludeId) {
+                $query->where('id', '!=', $excludeId);
+            }
+
+            if (!$query->exists()) {
+                break;
+            }
+
+            $slug = $originalSlug . '-' . $counter;
+            $counter++;
+
+            // Safety check to prevent infinite loops
+            if ($counter > 1000) {
+                $slug = $originalSlug . '-' . time();
+                break;
+            }
+        }
+
+        return $slug;
     }
 
     /**
