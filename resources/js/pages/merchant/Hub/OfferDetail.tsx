@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import { Head, Link } from '@inertiajs/react'
+import { Head, Link, router } from '@inertiajs/react'
 import { MerchantHeader, MerchantFooter } from '@/components/merchant'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
@@ -7,33 +7,47 @@ import { MerchantBadge } from '@/components/merchant-ui'
 import { ArrowLeft, Heart, Share2, Store, Clock, Check, Star, Shield, Gift, DollarSign } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-interface Props {
-  offerId: string
+interface Offer {
+  id: string
+  slug: string
+  title: string
+  image: string
+  pointsRequired: number
+  cashRequired?: number
+  merchantName: string
+  merchantId?: string
+  merchantSlug?: string
+  category: string
+  categorySlug?: string
+  description: string
+  shortDescription?: string
+  currency?: string
+  inventoryQty?: number
+  startsAt?: string
+  endsAt?: string
+  isAvailable: boolean
+  redemptionsCount?: number
 }
 
-export default function HubOfferDetail({ offerId }: Props) {
-  const [isFavorite, setIsFavorite] = useState(false)
+interface RelatedOffer {
+  id: string
+  slug: string
+  title: string
+  image: string
+  pointsRequired: number
+  cashRequired?: number
+  merchantName: string
+  category: string
+  description: string
+}
 
-  // Mock data - replace with actual data from backend
-  const offer = {
-    id: offerId,
-    title: 'Wireless Earbuds',
-    description: 'Premium wireless earbuds with noise cancellation and long battery life. Perfect for music lovers and professionals who need high-quality audio on the go.',
-    image: '/placeholder.jpg',
-    images: ['/placeholder.jpg', '/placeholder.jpg', '/placeholder.jpg'],
-    pointsRequired: 10000,
-    cashRequired: 25,
-    merchantName: 'Tech Store',
-    merchantId: 'merchant-1',
-    merchantAvatar: null,
-    category: 'Electronics',
-    termsAndConditions: 'This offer is valid for in-store redemption only. Cannot be combined with other offers. Limit 1 per member.',
-    validUntil: '2024-12-31',
-    redemptionsCount: 45,
-    rating: 4.5,
-    reviewsCount: 12,
-    isVerified: true,
-  }
+interface Props {
+  offer: Offer
+  relatedOffers?: RelatedOffer[]
+}
+
+export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
+  const [isFavorite, setIsFavorite] = useState(false)
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -50,7 +64,7 @@ export default function HubOfferDetail({ offerId }: Props) {
     if (navigator.share) {
       await navigator.share({
         title: offer.title,
-        text: offer.description,
+        text: offer.shortDescription || offer.description,
         url: window.location.href,
       })
     } else {
@@ -59,15 +73,24 @@ export default function HubOfferDetail({ offerId }: Props) {
     }
   }
 
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return null
+    return new Date(dateString).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+    })
+  }
+
   return (
     <>
       <Head title={`${offer.title} - Merchant Hub`} />
       <div className="min-h-screen bg-gradient-to-br from-black via-[#1a0a0a] to-[#2d1b1b] dark:from-black dark:via-[#1a0a0a] dark:to-[#2d1b1b] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/5 via-[#DC143C]/5 to-[#E97451]/5 pointer-events-none"></div>
-        
+
         {/* Header */}
-        <MerchantHeader 
-          variant="public" 
+        <MerchantHeader
+          variant="public"
           title={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant`}
           showMenu={true}
         />
@@ -118,22 +141,59 @@ export default function HubOfferDetail({ offerId }: Props) {
                   <MerchantCardTitle className="text-white">Description</MerchantCardTitle>
                 </MerchantCardHeader>
                 <MerchantCardContent>
-                  <p className="text-gray-300 leading-relaxed">
+                  <p className="text-gray-300 leading-relaxed whitespace-pre-wrap">
                     {offer.description}
                   </p>
                 </MerchantCardContent>
               </MerchantCard>
 
-              {/* Terms and Conditions */}
-              {offer.termsAndConditions && (
+              {/* Related Offers */}
+              {relatedOffers.length > 0 && (
                 <MerchantCard>
                   <MerchantCardHeader>
-                    <MerchantCardTitle className="text-white">Terms & Conditions</MerchantCardTitle>
+                    <MerchantCardTitle className="text-white">Related Offers</MerchantCardTitle>
                   </MerchantCardHeader>
                   <MerchantCardContent>
-                    <p className="text-gray-300 leading-relaxed">
-                      {offer.termsAndConditions}
-                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {relatedOffers.map((relatedOffer) => (
+                        <Link
+                          key={relatedOffer.id}
+                          href={`/hub/offers/${relatedOffer.slug}`}
+                          className="block"
+                        >
+                          <motion.div
+                            whileHover={{ scale: 1.02 }}
+                            className="bg-gray-800/50 rounded-lg overflow-hidden border border-gray-700 hover:border-[#FF1493]/50 transition-colors"
+                          >
+                            <div className="aspect-video bg-gray-700">
+                              <img
+                                src={relatedOffer.image}
+                                alt={relatedOffer.title}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  (e.target as HTMLImageElement).src = '/placeholder.jpg'
+                                }}
+                              />
+                            </div>
+                            <div className="p-4">
+                              <h3 className="text-white font-semibold mb-2 line-clamp-2">
+                                {relatedOffer.title}
+                              </h3>
+                              <div className="flex items-center justify-between text-sm">
+                                <span className="text-[#FF1493] font-bold">
+                                  {relatedOffer.pointsRequired.toLocaleString()} pts
+                                </span>
+                                {relatedOffer.cashRequired && (
+                                  <span className="text-gray-400">
+                                    + ${relatedOffer.cashRequired.toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </motion.div>
+                        </Link>
+                      ))}
+                    </div>
                   </MerchantCardContent>
                 </MerchantCard>
               )}
@@ -151,9 +211,7 @@ export default function HubOfferDetail({ offerId }: Props) {
                   <div className="flex items-center gap-1 text-gray-400">
                     <Store className="w-4 h-4" />
                     <span>{offer.merchantName}</span>
-                    {offer.isVerified && (
-                      <Shield className="w-4 h-4 text-green-500 ml-1" />
-                    )}
+                    <Shield className="w-4 h-4 text-green-500 ml-1" />
                   </div>
                 </MerchantCardHeader>
                 <MerchantCardContent className="space-y-6">
@@ -168,72 +226,92 @@ export default function HubOfferDetail({ offerId }: Props) {
                       <div className="flex items-center justify-between text-lg">
                         <span className="font-medium text-gray-300">Cash Required:</span>
                         <span className="font-bold text-white">
-                          ${offer.cashRequired.toFixed(2)}
+                          {offer.currency || 'USD'} {offer.cashRequired.toFixed(2)}
                         </span>
                       </div>
                     )}
                   </div>
 
-                  <MerchantButton
-                    className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] text-white text-lg py-3 h-auto"
-                  >
-                    Redeem Offer
-                  </MerchantButton>
+                  {offer.isAvailable ? (
+                    <MerchantButton
+                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] text-white text-lg py-3 h-auto"
+                    >
+                      Redeem Offer
+                    </MerchantButton>
+                  ) : (
+                    <MerchantButton
+                      disabled
+                      className="w-full bg-gray-600 text-gray-400 text-lg py-3 h-auto cursor-not-allowed"
+                    >
+                      Not Available
+                    </MerchantButton>
+                  )}
 
                   <div className="space-y-2 text-sm text-gray-400">
-                    {offer.validUntil && (
+                    {offer.endsAt && (
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4" />
-                        <span>Valid until: {new Date(offer.validUntil).toLocaleDateString()}</span>
+                        <span>Valid until: {formatDate(offer.endsAt)}</span>
                       </div>
                     )}
-                    <div className="flex items-center gap-2">
-                      <Check className="h-4 w-4" />
-                      <span>{offer.redemptionsCount.toLocaleString()} redemptions</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Star className="h-4 w-4 text-yellow-500" />
-                      <span>{offer.rating} ({offer.reviewsCount} reviews)</span>
-                    </div>
+                    {offer.startsAt && (
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        <span>Starts: {formatDate(offer.startsAt)}</span>
+                      </div>
+                    )}
+                    {offer.redemptionsCount !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <Check className="h-4 w-4" />
+                        <span>{offer.redemptionsCount.toLocaleString()} redemptions</span>
+                      </div>
+                    )}
+                    {offer.inventoryQty !== null && offer.inventoryQty !== undefined && (
+                      <div className="flex items-center gap-2">
+                        <Gift className="h-4 w-4" />
+                        <span>{offer.inventoryQty} available</span>
+                      </div>
+                    )}
                   </div>
                 </MerchantCardContent>
               </MerchantCard>
 
               {/* Merchant Info Card */}
-              <MerchantCard>
-                <MerchantCardHeader>
-                  <MerchantCardTitle className="text-white">About {offer.merchantName}</MerchantCardTitle>
-                </MerchantCardHeader>
-                <MerchantCardContent className="space-y-4">
-                  <div className="flex items-center gap-4">
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] flex items-center justify-center">
-                      <span className="text-white font-bold text-xl">
-                        {offer.merchantName.charAt(0).toUpperCase()}
-                      </span>
-                    </div>
-                    <div>
-                      <p className="text-lg font-semibold text-white">{offer.merchantName}</p>
-                      <div className="flex items-center gap-2 text-sm text-gray-400">
-                        {offer.isVerified && <Shield className="h-4 w-4 text-green-500" />}
-                        <span>{offer.isVerified ? 'Verified Merchant' : 'Merchant'}</span>
+              {offer.merchantSlug && (
+                <MerchantCard>
+                  <MerchantCardHeader>
+                    <MerchantCardTitle className="text-white">About {offer.merchantName}</MerchantCardTitle>
+                  </MerchantCardHeader>
+                  <MerchantCardContent className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <div className="w-16 h-16 rounded-full bg-gradient-to-br from-[#FF1493] via-[#DC143C] to-[#E97451] flex items-center justify-center">
+                        <span className="text-white font-bold text-xl">
+                          {offer.merchantName.charAt(0).toUpperCase()}
+                        </span>
+                      </div>
+                      <div>
+                        <p className="text-lg font-semibold text-white">{offer.merchantName}</p>
+                        <div className="flex items-center gap-2 text-sm text-gray-400">
+                          <Shield className="h-4 w-4 text-green-500" />
+                          <span>Verified Merchant</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <Link href={`/hub?merchantId=${offer.merchantId}`}>
-                    <MerchantButton variant="outline" className="w-full">
-                      View All Offers from {offer.merchantName}
-                    </MerchantButton>
-                  </Link>
-                </MerchantCardContent>
-              </MerchantCard>
+                    <Link href={`/hub?merchant=${offer.merchantSlug}`}>
+                      <MerchantButton variant="outline" className="w-full">
+                        View All Offers from {offer.merchantName}
+                      </MerchantButton>
+                    </Link>
+                  </MerchantCardContent>
+                </MerchantCard>
+              )}
             </div>
           </div>
         </div>
-        
+
         {/* Footer */}
         <MerchantFooter />
       </div>
     </>
   )
 }
-

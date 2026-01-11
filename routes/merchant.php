@@ -47,25 +47,13 @@ Route::middleware(['auth:merchant'])->group(function () {
     })->name('merchant.dashboard');
     // Offers Management
     Route::prefix('offers')->name('offers.')->group(function () {
-        Route::get('/', function () {
-            return Inertia::render('merchant/Offers/Index');
-        })->name('index');
-        
-        Route::get('/create', function () {
-            return Inertia::render('merchant/Offers/Create');
-        })->name('create');
-        
-        Route::get('/{id}', function ($id) {
-            return Inertia::render('merchant/Offers/Show', [
-                'offerId' => $id
-            ]);
-        })->name('show');
-        
-        Route::get('/{id}/edit', function ($id) {
-            return Inertia::render('merchant/Offers/Edit', [
-                'offerId' => $id
-            ]);
-        })->name('edit');
+        Route::get('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'index'])->name('index');
+        Route::get('/create', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'create'])->name('create');
+        Route::post('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'store'])->name('store');
+        Route::get('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'show'])->name('show');
+        Route::get('/{offer}/edit', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'edit'])->name('edit');
+        Route::put('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'update'])->name('update');
+        Route::delete('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'destroy'])->name('destroy');
     });
 
     // Redemptions
@@ -73,7 +61,7 @@ Route::middleware(['auth:merchant'])->group(function () {
         Route::get('/', function () {
             return Inertia::render('merchant/Redemptions/Index');
         })->name('index');
-        
+
         Route::get('/{id}', function ($id) {
             return Inertia::render('merchant/Redemptions/Show', [
                 'redemptionId' => $id
@@ -98,14 +86,8 @@ Route::middleware(['auth:merchant'])->group(function () {
 
 // Public Routes (for supporters to view offers)
 Route::prefix('hub')->name('hub.')->group(function () {
-    Route::get('/', function () {
-        return Inertia::render('merchant/Hub');
-    })->name('index');
-    
-    Route::get('/offers/{id}', function ($id) {
-        return Inertia::render('merchant/Hub/OfferDetail', [
-            'offerId' => $id
-        ]);
-    })->name('offer.show');
+    Route::get('/', [App\Http\Controllers\Merchant\HubController::class, 'index'])->name('index');
+
+    Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
 });
 
