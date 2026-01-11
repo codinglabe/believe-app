@@ -582,6 +582,46 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ]
     },
+
+    // Merchant Hub Section (Admin Only)
+    {
+        title: 'Merchant Hub',
+        icon: Store,
+        role: "admin",
+        items: [
+            // {
+            //     title: 'Dashboard',
+            //     href: '/admin/merchant-hub',
+            //     icon: ShoppingBag,
+            //     role: "admin"
+            // },
+            {
+                title: 'Merchants',
+                href: '/admin/merchant-hub/merchants',
+                icon: Store,
+                role: "admin"
+            },
+            {
+                title: 'Offers',
+                href: '/admin/merchant-hub/offers',
+                icon: Gift,
+                role: "admin"
+            },
+            {
+                title: 'Redemptions',
+                href: '/admin/merchant-hub/redemptions',
+                icon: ShoppingCart,
+                role: "admin"
+            },
+            {
+                title: 'Categories',
+                href: '/admin/merchant-hub-categories',
+                icon: Tag,
+                role: "admin"
+            },
+        ],
+    },
+
     // Country Management Section
     {
         title: 'Country Management',

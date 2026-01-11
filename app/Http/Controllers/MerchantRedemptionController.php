@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\MerchantHubOffer;
+use App\Models\MerchantHubOfferRedemption;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use SimpleSoftwareIO\QrCode\Facades\QrCode;
-use Illuminate\Support\Str;
 
 class MerchantRedemptionController extends Controller
 {
@@ -16,39 +20,86 @@ class MerchantRedemptionController extends Controller
     public function redeem(Request $request)
     {
         $request->validate([
-            'offer_id' => 'required|string',
-            'points_used' => 'required|integer|min:1',
-            'cash_paid' => 'nullable|numeric|min:0',
+            'offer_id' => 'required|integer|exists:merchant_hub_offers,id',
         ]);
 
         $user = Auth::user();
 
-        // Generate unique redemption code
-        $redemptionCode = 'RED-' . strtoupper(Str::random(8));
-        $redemptionId = Str::uuid()->toString();
+        if (!$user) {
+            return back()->withErrors(['error' => 'You must be logged in to redeem offers.']);
+        }
 
-        // Create verification URL for QR code
-        $verificationUrl = route('merchant.redemption.verify', ['code' => $redemptionCode]);
+        DB::beginTransaction();
 
-        // Store redemption data (in production, save to database)
-        // For now, we'll just return the data
-        $redemption = [
-            'id' => $redemptionId,
-            'code' => $redemptionCode,
-            'offer_id' => $request->offer_id,
-            'points_used' => $request->points_used,
-            'cash_paid' => $request->cash_paid ?? 0,
-            'user_id' => $user->id,
-            'user_name' => $user->name,
-            'user_email' => $user->email,
-            'redeemed_at' => now()->toIso8601String(),
-            'status' => 'completed',
-            'qr_code_url' => route('merchant.redemption.qr-code', ['code' => $redemptionCode]),
-        ];
+        try {
+            $offer = MerchantHubOffer::with(['merchant', 'category'])->findOrFail($request->offer_id);
 
-        return redirect()->route('merchant.redemption.confirmed', [
-            'code' => $redemptionCode
-        ])->with('redemption', $redemption);
+            // Validate offer is available
+            if (!$offer->isAvailable()) {
+                return back()->withErrors(['error' => 'This offer is no longer available.']);
+            }
+
+            // Check user has enough points
+            $userPoints = $user->currentBelievePoints();
+            if ($userPoints < $offer->points_required) {
+                return back()->withErrors([
+                    'error' => 'You do not have enough points. You need ' . number_format($offer->points_required) . ' points, but you only have ' . number_format($userPoints) . ' points.'
+                ]);
+            }
+
+            // Generate unique receipt code
+            $receiptCode = 'RED-' . strtoupper(Str::random(8));
+
+            // Check if cash payment is required
+            $cashRequired = $offer->cash_required ?? 0;
+
+            // Create redemption record (pending status if cash required, approved if not)
+            $status = $cashRequired > 0 ? 'pending' : 'approved';
+
+            $redemption = MerchantHubOfferRedemption::create([
+                'merchant_hub_offer_id' => $offer->id,
+                'user_id' => $user->id,
+                'points_spent' => $offer->points_required,
+                'cash_spent' => $cashRequired,
+                'status' => $status,
+                'receipt_code' => $receiptCode,
+            ]);
+
+            // Deduct points immediately
+            $user->deductBelievePoints($offer->points_required);
+
+            // If cash is required, create Stripe checkout session
+            if ($cashRequired > 0) {
+                // For now, we'll mark as pending and redirect to payment
+                // In production, you'd create a Stripe checkout session here
+                DB::commit();
+
+                return redirect()->route('merchant-hub.offer.show', $offer->id)
+                    ->with('error', 'Cash payment processing not yet implemented. Please contact support.');
+            }
+
+            DB::commit();
+
+            return redirect()->route('merchant-hub.redemption.confirmed', [
+                'code' => $receiptCode
+            ])->with('redemption', [
+                'id' => $redemption->id,
+                'code' => $receiptCode,
+                'offer' => [
+                    'id' => $offer->id,
+                    'title' => $offer->title,
+                ],
+                'points_spent' => $offer->points_required,
+                'cash_spent' => $cashRequired,
+                'status' => $status,
+                'redeemed_at' => $redemption->created_at->toIso8601String(),
+            ]);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            Log::error('Redemption failed: ' . $e->getMessage());
+            return back()->withErrors(['error' => 'An error occurred during redemption. Please try again.']);
+        }
     }
 
     /**
@@ -56,21 +107,36 @@ class MerchantRedemptionController extends Controller
      */
     public function confirmed(Request $request, $code = null)
     {
-        $redemption = $request->session()->get('redemption');
+        $redemptionData = $request->session()->get('redemption');
 
-        // If no redemption in session, create a mock one for demo
-        if (!$redemption && $code) {
-            $redemption = [
-                'code' => $code,
-                'points_used' => 5000,
-                'cash_paid' => 10,
-                'status' => 'completed',
-                'qr_code_url' => route('merchant.redemption.qr-code', ['code' => $code]),
+        if (!$redemptionData && $code) {
+            $redemption = MerchantHubOfferRedemption::with(['offer', 'user'])
+                ->where('receipt_code', $code)
+                ->firstOrFail();
+
+            $redemptionData = [
+                'id' => $redemption->id,
+                'code' => $redemption->receipt_code,
+                'offer' => [
+                    'id' => $redemption->offer->id,
+                    'title' => $redemption->offer->title,
+                    'image' => $redemption->offer->image_url ?: '/placeholder.jpg',
+                ],
+                'points_spent' => $redemption->points_spent,
+                'cash_spent' => $redemption->cash_spent,
+                'status' => $redemption->status,
+                'redeemed_at' => $redemption->created_at->toIso8601String(),
+                'qr_code_url' => route('merchant-hub.redemption.qr-code', ['code' => $redemption->receipt_code]),
             ];
         }
 
-        return Inertia::render('merchant/RedemptionConfirmed', [
-            'redemption' => $redemption,
+        if (!$redemptionData) {
+            return redirect()->route('merchant-hub.index')
+                ->with('error', 'Redemption not found.');
+        }
+
+        return Inertia::render('frontend/merchant-hub/RedemptionConfirmed', [
+            'redemption' => $redemptionData,
         ]);
     }
 
@@ -81,7 +147,7 @@ class MerchantRedemptionController extends Controller
     {
         try {
             // Create verification URL
-            $verificationUrl = route('merchant.redemption.verify', ['code' => $code]);
+            $verificationUrl = route('merchant-hub.redemption.verify', ['code' => $code]);
 
             // Generate QR code as PNG
             $qrCode = QrCode::format('png')
@@ -99,8 +165,8 @@ class MerchantRedemptionController extends Controller
                 'Expires' => '0'
             ]);
         } catch (\Exception $e) {
-            \Illuminate\Support\Facades\Log::error('QR Code generation failed: ' . $e->getMessage());
-            
+            Log::error('QR Code generation failed: ' . $e->getMessage());
+
             // Return error QR code
             $errorQr = QrCode::format('png')
                 ->size(300)
@@ -123,10 +189,30 @@ class MerchantRedemptionController extends Controller
      */
     public function verify(Request $request, $code)
     {
-        // In production, verify code against database
-        return Inertia::render('merchant/RedemptionVerify', [
+        $redemption = MerchantHubOfferRedemption::with(['offer', 'user'])
+            ->where('receipt_code', $code)
+            ->first();
+
+        $valid = $redemption && in_array($redemption->status, ['approved', 'fulfilled']);
+
+        return Inertia::render('frontend/merchant-hub/RedemptionVerify', [
             'code' => $code,
-            'valid' => true, // In production, check database
+            'valid' => $valid,
+            'redemption' => $valid ? [
+                'id' => $redemption->id,
+                'code' => $redemption->receipt_code,
+                'offer' => [
+                    'title' => $redemption->offer->title,
+                ],
+                'user' => [
+                    'name' => $redemption->user->name,
+                    'email' => $redemption->user->email,
+                ],
+                'points_spent' => $redemption->points_spent,
+                'cash_spent' => $redemption->cash_spent,
+                'status' => $redemption->status,
+                'redeemed_at' => $redemption->created_at->toIso8601String(),
+            ] : null,
         ]);
     }
 }
