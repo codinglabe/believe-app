@@ -80,111 +80,167 @@ export function PWAUpdatePrompt() {
     return () => clearInterval(interval)
   }, [])
 
-  const handleUpdate = async () => {
-    if (!registration?.waiting) {
-      console.log("[PWA] No waiting service worker found")
-      return
-    }
+//   const handleUpdate = async () => {
+//     if (!registration?.waiting) {
+//       console.log("[PWA] No waiting service worker found")
+//       return
+//     }
 
-    setIsUpdating(true)
+//     setIsUpdating(true)
 
-    try {
-      // Send skip waiting message to the waiting service worker
-      registration.waiting.postMessage({ type: "SKIP_WAITING" })
+//     try {
+//       // Send skip waiting message to the waiting service worker
+//       registration.waiting.postMessage({ type: "SKIP_WAITING" })
 
-      // Wait for the new service worker to take control
-      return new Promise<void>((resolve) => {
-        const handleControllerChange = async () => {
-          console.log("[PWA] Controller changed, re-initializing push notifications")
+//       // Wait for the new service worker to take control
+//       return new Promise<void>((resolve) => {
+//         const handleControllerChange = async () => {
+//           console.log("[PWA] Controller changed, re-initializing push notifications")
 
-          try {
-            // Re-initialize Firebase messaging after service worker update
-            await initializeMessaging()
-            console.log("[PWA] Firebase messaging re-initialized")
+//           try {
+//             // Re-initialize Firebase messaging after service worker update
+//             await initializeMessaging()
+//             console.log("[PWA] Firebase messaging re-initialized")
 
-            // Re-register push token if user is logged in
-            const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
-            const userId = windowWithLaravel.Laravel?.user?.id ||
-                          (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
+//             // Re-register push token if user is logged in
+//             const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
+//             const userId = windowWithLaravel.Laravel?.user?.id ||
+//                           (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
 
-            if (userId) {
-              const fcmToken = await requestNotificationPermission()
-              if (fcmToken) {
-                const deviceInfo = {
-                  device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
-                  device_type: 'web',
-                  device_name: navigator.userAgent,
-                  browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
-                  platform: navigator.platform,
-                  user_agent: navigator.userAgent
-                }
+//             if (userId) {
+//               const fcmToken = await requestNotificationPermission()
+//               if (fcmToken) {
+//                 const deviceInfo = {
+//                   device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
+//                   device_type: 'web',
+//                   device_name: navigator.userAgent,
+//                   browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
+//                   platform: navigator.platform,
+//                   user_agent: navigator.userAgent
+//                 }
 
-                await axios.post("/push-token", {
-                  token: fcmToken,
-                  device_info: deviceInfo
-                })
-                console.log("[PWA] Push token re-registered after update")
-              }
-            }
-          } catch (error) {
-            console.error("[PWA] Failed to re-initialize push notifications:", error)
-          }
+//                 await axios.post("/push-token", {
+//                   token: fcmToken,
+//                   device_info: deviceInfo
+//                 })
+//                 console.log("[PWA] Push token re-registered after update")
+//               }
+//             }
+//           } catch (error) {
+//             console.error("[PWA] Failed to re-initialize push notifications:", error)
+//           }
 
-          navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
-          window.location.reload()
-          resolve()
-        }
+//           navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
+//           window.location.reload()
+//           resolve()
+//         }
 
-        navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange)
+//         navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange)
 
-        // Fallback: reload after 3 seconds if controller doesn't change
-        setTimeout(async () => {
-          try {
-            // Try to re-initialize push notifications even on fallback
-            await initializeMessaging()
-            const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
-            const userId = windowWithLaravel.Laravel?.user?.id ||
-                          (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
-            if (userId) {
-              const fcmToken = await requestNotificationPermission()
-              if (fcmToken) {
-                const deviceInfo = {
-                  device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
-                  device_type: 'web',
-                  device_name: navigator.userAgent,
-                  browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
-                  platform: navigator.platform,
-                  user_agent: navigator.userAgent
-                }
-                await axios.post("/push-token", {
-                  token: fcmToken,
-                  device_info: deviceInfo
-                })
-              }
-            }
-          } catch (error) {
-            console.error("[PWA] Fallback re-initialization failed:", error)
-          }
+//         // Fallback: reload after 3 seconds if controller doesn't change
+//         setTimeout(async () => {
+//           try {
+//             // Try to re-initialize push notifications even on fallback
+//             await initializeMessaging()
+//             const windowWithLaravel = window as typeof window & { Laravel?: { user?: { id?: string | number } } }
+//             const userId = windowWithLaravel.Laravel?.user?.id ||
+//                           (document.querySelector('meta[name="user-id"]') as HTMLMetaElement)?.content
+//             if (userId) {
+//               const fcmToken = await requestNotificationPermission()
+//               if (fcmToken) {
+//                 const deviceInfo = {
+//                   device_id: localStorage.getItem('device_id') || `device_${Math.random().toString(36).substr(2, 9)}`,
+//                   device_type: 'web',
+//                   device_name: navigator.userAgent,
+//                   browser: (navigator as typeof navigator & { userAgentData?: { brands?: Array<{ brand?: string }> } }).userAgentData?.brands?.[0]?.brand || 'Unknown',
+//                   platform: navigator.platform,
+//                   user_agent: navigator.userAgent
+//                 }
+//                 await axios.post("/push-token", {
+//                   token: fcmToken,
+//                   device_info: deviceInfo
+//                 })
+//               }
+//             }
+//           } catch (error) {
+//             console.error("[PWA] Fallback re-initialization failed:", error)
+//           }
 
-          console.log("[PWA] Fallback reload")
-          navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
-          window.location.reload()
-          resolve()
-        }, 3000)
-      })
-    } catch (error) {
-      console.error("[PWA] Update failed:", error)
-      // Fallback: simple reload
-      window.location.reload()
-    } finally {
-      setIsUpdating(false)
-      setShowUpdate(false)
+//           console.log("[PWA] Fallback reload")
+//           navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange)
+//           window.location.reload()
+//           resolve()
+//         }, 3000)
+//       })
+//     } catch (error) {
+//       console.error("[PWA] Update failed:", error)
+//       // Fallback: simple reload
+//       window.location.reload()
+//     } finally {
+//       setIsUpdating(false)
+//       setShowUpdate(false)
 
-      // Clear dismissal flags on update
-      localStorage.removeItem("pwaUpdateLater")
-      localStorage.removeItem("pwaUpdateDismissed")
-    }
+//       // Clear dismissal flags on update
+//       localStorage.removeItem("pwaUpdateLater")
+//       localStorage.removeItem("pwaUpdateDismissed")
+//     }
+    //   }
+
+    const handleUpdate = async () => {
+  if (!registration?.waiting) return;
+
+  setIsUpdating(true);
+
+  try {
+    registration.waiting.postMessage({ type: "SKIP_WAITING" });
+
+    await new Promise<void>((resolve) => {
+      const onControllerChange = () => {
+        console.log("[PWA] Controller changed → doing full hard reload");
+
+        // Re-init push (your existing code)
+        initializeMessaging().catch(console.error);
+        // ... your push token logic ...
+
+        navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+
+        // ── Modern strong reload approach ───────────────────────
+        const url = new URL(window.location.href);
+        url.searchParams.set('_', Date.now().toString()); // cache buster
+        window.location.href = url.toString();
+
+        // Alternative (sometimes works better):
+        // window.location.href = window.location.href;
+        // setTimeout(() => window.location.reload(true), 80);
+
+        resolve();
+      };
+
+      navigator.serviceWorker.addEventListener("controllerchange", onControllerChange);
+
+      // Fallback (very important!)
+      setTimeout(() => {
+        navigator.serviceWorker.removeEventListener("controllerchange", onControllerChange);
+
+        console.log("[PWA] Fallback hard reload");
+        const url = new URL(window.location.href);
+        url.searchParams.set('_', Date.now().toString());
+        window.location.href = url.toString();
+
+        // or: window.location.reload(true);
+      }, 4000);
+    });
+  } catch (err) {
+    console.error("[PWA] Update failed:", err);
+    // Last resort
+    window.location.reload(true);
+  } finally {
+    setIsUpdating(false);
+    setShowUpdate(false);
+    localStorage.removeItem("pwaUpdateLater");
+    localStorage.removeItem("pwaUpdateDismissed");
   }
+};
 
   const handleDismissLater = () => {
     localStorage.setItem("pwaUpdateLater", Date.now().toString())

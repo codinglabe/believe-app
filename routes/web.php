@@ -194,6 +194,10 @@ Route::get('/service-hub/seller-profile/edit', [App\Http\Controllers\ServiceHubC
 Route::post('/service-hub/seller-profile/update', [App\Http\Controllers\ServiceHubController::class, 'sellerProfileUpdate'])->name('service-hub.seller-profile.update')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/edit', [App\Http\Controllers\ServiceHubController::class, 'edit'])->name('service-hub.edit')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::put('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'update'])->name('service-hub.update')->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::delete('/service-hub/services/{gig}', [App\Http\Controllers\ServiceHubController::class, 'destroyService'])
+    ->name('service-hub.services.destroy')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
 Route::post('/service-hub/{slug}/create-offer', [App\Http\Controllers\ServiceHubController::class, 'createCustomOffer'])->name('service-hub.create-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/offers/{offerId}/accept', [App\Http\Controllers\ServiceHubController::class, 'acceptCustomOffer'])->name('service-hub.accept-offer')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::post('/service-hub/offers/{offerId}/reject', [App\Http\Controllers\ServiceHubController::class, 'rejectCustomOffer'])->name('service-hub.reject-offer')->middleware(['auth', 'EnsureEmailIsVerified']);

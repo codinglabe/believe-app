@@ -78,6 +78,7 @@ class DatabaseSeeder extends Seeder
         $this->call(MerchantSeeder::class);
 
         $this->call(StateSalesTaxCompleteSeeder::class);
+        $this->call(ServiceCategorySeeder::class);
 
         $this->call(SellerSkillsSeeder::class);
         $this->call(LanguagesSeeder::class);
