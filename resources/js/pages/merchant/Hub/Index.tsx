@@ -122,10 +122,10 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
       <Head title="Merchant Hub - Browse Offers" />
       <div className="min-h-screen bg-gradient-to-br from-black via-[#1a0a0a] to-[#2d1b1b] dark:from-black dark:via-[#1a0a0a] dark:to-[#2d1b1b] relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-r from-[#FF1493]/5 via-[#DC143C]/5 to-[#E97451]/5 pointer-events-none"></div>
-        
+
         {/* Header */}
-        <MerchantHeader 
-          variant="public" 
+        <MerchantHeader
+          variant="public"
           title={`${import.meta.env.VITE_APP_NAME || 'Believe'} Merchant Hub`}
           showMenu={true}
         />
@@ -291,7 +291,7 @@ export default function HubIndex({ offers, categories, filters: initialFilters }
             </MerchantCard>
           )}
         </div>
-        
+
         {/* Footer */}
         <MerchantFooter />
       </div>
