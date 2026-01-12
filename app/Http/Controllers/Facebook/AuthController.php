@@ -25,7 +25,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Show Facebook connection page
+     * Show Facebook connection page with app selection
      */
     public function connect(Request $request)
     {
@@ -33,16 +33,42 @@ class AuthController extends Controller
         $organization = $user->organization;
 
         if (!$organization) {
-            return redirect()->route('dashboard')
-                ->with('error', 'You need to have an organization to connect Facebook');
+            return Inertia::render('Facebook/Connect', [
+                'apps' => [],
+                'accounts' => [],
+                'organization' => null,
+            ]);
         }
 
+        // Get Facebook apps for this organization
+        $apps = FacebookAccount::where('organization_id', $organization->id)
+            ->whereNotNull('facebook_app_id')
+            ->whereNotNull('facebook_app_secret')
+            ->latest()
+            ->get()
+            ->map(function ($app) use ($organization) {
+                return [
+                    'id' => $app->id,
+                    'app_name' => $app->app_name,
+                    'facebook_app_id' => $app->facebook_app_id,
+                    'is_default_app' => $app->is_default_app,
+                    'connected_pages_count' => FacebookAccount::where('organization_id', $organization->id)
+                        ->where('facebook_app_id', $app->facebook_app_id)
+                        ->whereNotNull('facebook_page_id')
+                        ->count(),
+                ];
+            });
+
+        // Get connected pages for this organization
         $accounts = FacebookAccount::where('organization_id', $organization->id)
+            ->whereNotNull('facebook_page_id')
             ->latest()
             ->get()
             ->map(function ($account) {
                 return [
                     'id' => $account->id,
+                    'app_id' => $account->facebook_app_id,
+                    'app_name' => $account->app_name,
                     'facebook_page_id' => $account->facebook_page_id,
                     'facebook_page_name' => $account->facebook_page_name,
                     'page_category' => $account->page_category,
@@ -54,16 +80,61 @@ class AuthController extends Controller
                 ];
             });
 
-        $oauthUrl = $this->authService->getOAuthUrl($organization->id);
-
         return Inertia::render('Facebook/Connect', [
+            'apps' => $apps,
             'accounts' => $accounts,
-            'oauthUrl' => $oauthUrl,
             'organization' => [
                 'id' => $organization->id,
                 'name' => $organization->name,
             ],
         ]);
+    }
+
+
+    /**
+     * Generate OAuth URL for specific app
+     */
+    public function generateOAuthUrl(Request $request)
+    {
+        $request->validate([
+            'app_id' => 'required|exists:facebook_accounts,id',
+        ]);
+
+        $user = $request->user();
+        $organization = $user->organization;
+
+        if (!$organization) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Organization not found'
+            ], 400);
+        }
+
+        $app = FacebookAccount::where('id', $request->app_id)
+            ->where('organization_id', $organization->id)
+            ->whereNotNull('facebook_app_id')
+            ->whereNotNull('facebook_app_secret')
+            ->firstOrFail();
+
+        try {
+            $oauthUrl = $this->authService->getOAuthUrlForApp(
+                $app->facebook_app_id,
+                $app->facebook_app_secret,
+                $app->callback_url ?: route('facebook.callback')
+            );
+
+            return response()->json([
+                'success' => true,
+                'oauth_url' => $oauthUrl,
+                'app_name' => $app->app_name,
+            ]);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to generate OAuth URL: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 
     /**
@@ -84,18 +155,42 @@ class AuthController extends Controller
                 ->with('error', 'Organization not found');
         }
 
+        // Decode state to get app_id
+        $state = json_decode(base64_decode($request->state), true);
+        $appId = $state['app_id'] ?? null;
+
+        if (!$appId) {
+            return redirect()->route('facebook.connect')
+                ->with('error', 'Invalid OAuth state');
+        }
+
+        $app = FacebookAccount::where('id', $appId)
+            ->where('organization_id', $organization->id)
+            ->whereNotNull('facebook_app_id')
+            ->whereNotNull('facebook_app_secret')
+            ->firstOrFail();
+
         DB::beginTransaction();
 
         try {
-            // Get access token
-            $tokenData = $this->authService->getAccessToken($request->code);
+            // Get access token using app credentials
+            $tokenData = $this->authService->getAccessTokenForApp(
+                $request->code,
+                $app->facebook_app_id,
+                $app->facebook_app_secret,
+                $app->callback_url ?: route('facebook.callback')
+            );
 
             if (!isset($tokenData['access_token'])) {
                 throw new \Exception('Failed to get access token from Facebook');
             }
 
             // Get long-lived token
-            $longLivedToken = $this->authService->getLongLivedToken($tokenData['access_token']);
+            $longLivedToken = $this->authService->getLongLivedTokenForApp(
+                $tokenData['access_token'],
+                $app->facebook_app_id,
+                $app->facebook_app_secret
+            );
 
             // Get user's pages
             $pages = $this->authService->getUserPages($longLivedToken['access_token']);
@@ -104,7 +199,7 @@ class AuthController extends Controller
                 throw new \Exception('No Facebook pages found for this account');
             }
 
-            // Save each page
+            // Save each page with app reference
             foreach ($pages as $page) {
                 FacebookAccount::updateOrCreate(
                     [
@@ -113,6 +208,10 @@ class AuthController extends Controller
                     ],
                     [
                         'user_id' => $user->id,
+                        'facebook_app_id' => $app->facebook_app_id,
+                        'facebook_app_secret' => $app->facebook_app_secret,
+                        'app_name' => $app->app_name,
+                        'callback_url' => $app->callback_url,
                         'facebook_page_name' => $page['name'],
                         'page_access_token' => $page['access_token'],
                         'page_category' => $page['category'] ?? null,
@@ -128,7 +227,7 @@ class AuthController extends Controller
             DB::commit();
 
             return redirect()->route('facebook.connect')
-                ->with('success', 'Successfully connected ' . count($pages) . ' Facebook page(s)');
+                ->with('success', 'Successfully connected ' . count($pages) . ' Facebook page(s) using ' . $app->app_name);
 
         } catch (\Exception $e) {
             DB::rollBack();
@@ -150,11 +249,17 @@ class AuthController extends Controller
 
         $account = FacebookAccount::where('id', $id)
             ->where('organization_id', $organization->id)
+            ->whereNotNull('facebook_page_id')
             ->firstOrFail();
 
         try {
             // Try to revoke token from Facebook
-            $this->authService->revokeToken($account->facebook_page_id, $account->page_access_token);
+            $this->authService->revokeToken(
+                $account->facebook_page_id,
+                $account->page_access_token,
+                $account->facebook_app_id,
+                $account->facebook_app_secret
+            );
         } catch (\Exception $e) {
             \Log::warning('Failed to revoke Facebook token: ' . $e->getMessage());
         }
@@ -166,7 +271,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Reconnect/refresh Facebook page
+     * Refresh Facebook page connection
      */
     public function refresh(Request $request, $id)
     {
@@ -175,11 +280,17 @@ class AuthController extends Controller
 
         $account = FacebookAccount::where('id', $id)
             ->where('organization_id', $organization->id)
+            ->whereNotNull('facebook_page_id')
             ->firstOrFail();
 
+        if (!$account->hasValidAppCredentials()) {
+            return redirect()->route('facebook.connect')
+                ->with('error', 'Facebook app credentials are missing for this page');
+        }
+
         try {
-            // Get updated page info
-            $pageInfo = $this->postService->getPageInfo($account);
+            // Get updated page info using app-specific service
+            $pageInfo = $this->postService->getPageInfoForApp($account);
 
             $account->update([
                 'facebook_page_name' => $pageInfo['name'] ?? $account->facebook_page_name,
@@ -212,6 +323,7 @@ class AuthController extends Controller
 
         $account = FacebookAccount::where('id', $id)
             ->where('organization_id', $organization->id)
+            ->whereNotNull('facebook_page_id')
             ->firstOrFail();
 
         // Update organization's default Facebook page

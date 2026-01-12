@@ -10,6 +10,11 @@ class FacebookAccount extends Model
     protected $fillable = [
         'user_id',
         'organization_id',
+        'facebook_app_id',
+        'facebook_app_secret',
+        'app_name',
+        'is_default_app',
+        'callback_url',
         'facebook_page_id',
         'facebook_page_name',
         'page_access_token',
@@ -24,9 +29,9 @@ class FacebookAccount extends Model
     protected $casts = [
         'page_data' => 'array',
         'is_connected' => 'boolean',
-        'last_synced_at' => 'datetime',
+        'is_default_app' => 'boolean',
         'token_expires_at' => 'datetime',
-        'followers_count' => 'integer',
+        'last_synced_at' => 'datetime',
     ];
 
     public function user()
@@ -98,5 +103,47 @@ class FacebookAccount extends Model
         }
 
         return true;
+    }
+
+
+
+    public function scopeByUser($query, $userId)
+    {
+        return $query->where('user_id', $userId);
+    }
+
+    public function scopeByOrganization($query, $organizationId)
+    {
+        return $query->where('organization_id', $organizationId);
+    }
+
+    public function scopeWithAppCredentials($query)
+    {
+        return $query->whereNotNull('facebook_app_id')
+            ->whereNotNull('facebook_app_secret');
+    }
+
+
+
+
+
+    public function hasValidAppCredentials()
+    {
+        return !empty($this->facebook_app_id) && !empty($this->facebook_app_secret);
+    }
+
+    // Mask sensitive data for display
+    public function getMaskedAppSecret()
+    {
+        if (!$this->facebook_app_secret) {
+            return null;
+        }
+
+        $length = strlen($this->facebook_app_secret);
+        if ($length <= 8) {
+            return str_repeat('*', $length);
+        }
+
+        return substr($this->facebook_app_secret, 0, 4) . str_repeat('*', $length - 8) . substr($this->facebook_app_secret, -4);
     }
 }

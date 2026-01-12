@@ -82,6 +82,7 @@ use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
+use App\Http\Controllers\FacebookAppController;
 use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\PrintifyProductController;
@@ -678,13 +679,45 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     });
 
 
+    // old Facebook Integration Routes
+    // Route::prefix('facebook')->group(function () {
+    //     // Connection Management
+    //     Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
+    //     Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
+    //     Route::get('/configure', [ConfigurationController::class, 'index'])
+    //         ->name('facebook.configure');
+    //     Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
+    //     Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
+    //     Route::post('/{id}/set-default', [AuthController::class, 'setDefault'])->name('facebook.set-default');
+
+    //     // Posts Management
+    //     Route::prefix('/posts')->group(function () {
+    //         Route::get('/', [PostController::class, 'index'])->name('facebook.posts.index');
+    //         Route::get('/create', [PostController::class, 'create'])->name('facebook.posts.create');
+    //         Route::post('/', [PostController::class, 'store'])->name('facebook.posts.store');
+    //         Route::post('/{id}/publish', [PostController::class, 'publish'])->name('facebook.posts.publish');
+    //         Route::delete('/{id}', [PostController::class, 'destroy'])->name('facebook.posts.destroy');
+    //         Route::get('/{id}/analytics', [PostController::class, 'analytics'])->name('facebook.posts.analytics');
+    //     });
+    // });
+
     // Facebook Integration Routes
     Route::prefix('facebook')->group(function () {
+        // Facebook Apps Management
+        Route::prefix('apps')->group(function () {
+            Route::get('/', [FacebookAppController::class, 'index'])->name('facebook.apps.index');
+            Route::get('/create', [FacebookAppController::class, 'create'])->name('facebook.apps.create');
+            Route::post('/', [FacebookAppController::class, 'store'])->name('facebook.apps.store');
+            Route::get('/{id}/edit', [FacebookAppController::class, 'edit'])->name('facebook.apps.edit');
+            Route::put('/{id}', [FacebookAppController::class, 'update'])->name('facebook.apps.update');
+            Route::delete('/{id}', [FacebookAppController::class, 'destroy'])->name('facebook.apps.destroy');
+            Route::get('/{id}/test', [FacebookAppController::class, 'test'])->name('facebook.apps.test');
+        });
+
         // Connection Management
         Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
+        Route::post('/generate-oauth-url', [AuthController::class, 'generateOAuthUrl'])->name('facebook.generate-oauth-url');
         Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
-        Route::get('/configure', [ConfigurationController::class, 'index'])
-            ->name('facebook.configure');
         Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
         Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
         Route::post('/{id}/set-default', [AuthController::class, 'setDefault'])->name('facebook.set-default');

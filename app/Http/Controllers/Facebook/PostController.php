@@ -41,8 +41,10 @@ class PostController extends Controller
                 ->with('error', 'You need to have an organization to manage Facebook posts');
         }
 
-        // Get connected accounts
+        // Get connected accounts for this user's organization
         $accounts = FacebookAccount::where('organization_id', $organization->id)
+            ->where('user_id', $user->id) // Only user's accounts
+            ->whereNotNull('facebook_page_id')
             ->connected()
             ->get()
             ->map(function ($account) {
@@ -53,8 +55,9 @@ class PostController extends Controller
                 ];
             });
 
-        // Get posts for this organization
+        // Get posts for this user's organization and user's accounts only
         $posts = FacebookPost::where('organization_id', $organization->id)
+            ->where('user_id', $user->id) // Only user's posts
             ->with('facebookAccount')
             ->latest()
             ->paginate(20)
@@ -106,12 +109,17 @@ class PostController extends Controller
                 ->with('error', 'You need to have an organization to create Facebook posts');
         }
 
-        // Check Facebook connection
-        $facebookConnected = $this->connectionService->isOrganizationConnected($organization);
-        $connectedAccount = $this->connectionService->getConnectedAccount($organization);
+        // Check Facebook connection - only user's accounts
+        $connectedAccounts = FacebookAccount::where('organization_id', $organization->id)
+            ->where('user_id', $user->id)
+            ->whereNotNull('facebook_page_id')
+            ->connected()
+            ->count() > 0;
 
-        // Get accounts for dropdown
+        // Get accounts for dropdown - only user's accounts
         $accounts = FacebookAccount::where('organization_id', $organization->id)
+            ->where('user_id', $user->id) // Only user's accounts
+            ->whereNotNull('facebook_page_id')
             ->connected()
             ->get()
             ->map(function ($account) {
@@ -125,12 +133,7 @@ class PostController extends Controller
 
         return Inertia::render('Facebook/Posts/Create', [
             'accounts' => $accounts,
-            'facebookConnected' => $facebookConnected,
-            'connectedAccount' => $connectedAccount ? [
-                'id' => $connectedAccount->id,
-                'name' => $connectedAccount->facebook_page_name,
-                'picture_url' => $connectedAccount->getPagePictureUrl('small'),
-            ] : null,
+            'facebookConnected' => $connectedAccounts,
             'hasConnectedAccounts' => $accounts->count() > 0,
         ]);
     }
@@ -148,6 +151,9 @@ class PostController extends Controller
                 ->withErrors(['error' => 'Organization not found'])
                 ->withInput();
         }
+
+
+
 
         \Log::info('Facebook post store request received', [
             'user_id' => $user->id,
@@ -181,6 +187,7 @@ class PostController extends Controller
         // Verify account belongs to organization
         $account = FacebookAccount::where('id', $request->facebook_account_id)
             ->where('organization_id', $organization->id)
+            ->where('user_id', $user->id)
             ->connected()
             ->first();
 

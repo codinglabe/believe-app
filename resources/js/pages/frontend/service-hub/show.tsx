@@ -41,6 +41,7 @@ import {
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
+import { ContactSellerButton } from "@/components/frontend/service-hub/contact-seller-button"
 
 interface Gig {
   id: number
@@ -535,6 +536,14 @@ export default function ServiceShow() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {!isOwner && !isAdmin && (
+                <Card className="border shadow-sm">
+                  <CardContent className="pt-6 space-y-3">
+                      <ContactSellerButton sellerId={gig.seller.id} sellerName={gig.seller.name} gigSlug={gig.slug} gigTitle={gig.title}></ContactSellerButton>
+                  </CardContent>
+                </Card>
+                )}
               </motion.div>
             </div>
           </div>
