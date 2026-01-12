@@ -58,15 +58,10 @@ Route::middleware(['auth:merchant'])->group(function () {
 
     // Redemptions
     Route::prefix('redemptions')->name('redemptions.')->group(function () {
-        Route::get('/', function () {
-            return Inertia::render('merchant/Redemptions/Index');
-        })->name('index');
-
-        Route::get('/{id}', function ($id) {
-            return Inertia::render('merchant/Redemptions/Show', [
-                'redemptionId' => $id
-            ]);
-        })->name('show');
+        Route::get('/', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'index'])->name('index');
+        Route::get('/{id}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'show'])->name('show');
+        Route::get('/qr-code/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'generateQrCode'])->name('qr-code');
+        Route::get('/verify/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'verify'])->name('verify');
     });
 
     // Analytics
@@ -88,6 +83,15 @@ Route::middleware(['auth:merchant'])->group(function () {
 Route::prefix('hub')->name('hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\Merchant\HubController::class, 'index'])->name('index');
 
+    // Success route (must be before /offers/{slug} to avoid route conflict)
+    Route::get('/offers/stripe/success', [App\Http\Controllers\Merchant\HubController::class, 'success'])->name('offer.success');
+
+    // Checkout route (requires auth - accepts both web and merchant guards)
+    Route::middleware(['auth:web,merchant'])->group(function () {
+        Route::post('/offers/checkout', [App\Http\Controllers\Merchant\HubController::class, 'checkout'])->name('offer.checkout');
+    });
+
+    // Offer detail route (must be last to avoid matching "success" as slug)
     Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
 });
 

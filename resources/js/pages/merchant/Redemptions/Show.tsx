@@ -1,39 +1,41 @@
 import React from 'react'
-import { Head, Link, usePage } from '@inertiajs/react'
+import { Head, Link } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { ArrowLeft, CheckCircle2, Clock, XCircle, Calendar, Gift, DollarSign, User, Mail, Hash } from 'lucide-react'
+import { ArrowLeft, CheckCircle2, Clock, XCircle, Calendar, Gift, DollarSign, User, Mail, Hash, Download, Share2, QrCode } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-interface Props {
-  redemptionId: string
+interface Redemption {
+  id: string
+  code: string
+  offerTitle: string
+  offerDescription?: string
+  offerImage?: string
+  customerName: string
+  customerEmail: string
+  pointsUsed: number
+  cashPaid?: number
+  status: 'pending' | 'approved' | 'fulfilled' | 'canceled'
+  redeemedAt: string
+  updatedAt?: string
+  qrCodeUrl: string
 }
 
-export default function RedemptionShow({ redemptionId }: Props) {
-  // Mock data - replace with actual data from backend
-  const redemption = {
-    id: redemptionId,
-    offerTitle: 'Wireless Earbuds',
-    customerName: 'Alice Smith',
-    customerEmail: 'alice@example.com',
-    pointsUsed: 10000,
-    cashPaid: 25,
-    status: 'completed' as 'pending' | 'completed' | 'cancelled',
-    redeemedAt: '2024-01-20T10:30:00Z',
-    code: 'RED-2024-001',
-    qrCode: '/placeholder.jpg',
-    notes: 'Customer redeemed in-store. Product delivered successfully.'
-  }
+interface Props {
+  redemption: Redemption
+}
 
+export default function RedemptionShow({ redemption }: Props) {
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'completed':
+      case 'approved':
+      case 'fulfilled':
         return (
           <MerchantBadge className="bg-green-600/30 text-green-400 border-green-600/50 flex items-center gap-1">
             <CheckCircle2 className="w-3 h-3" />
-            Completed
+            {status === 'fulfilled' ? 'Fulfilled' : 'Approved'}
           </MerchantBadge>
         )
       case 'pending':
@@ -43,11 +45,11 @@ export default function RedemptionShow({ redemptionId }: Props) {
             Pending
           </MerchantBadge>
         )
-      case 'cancelled':
+      case 'canceled':
         return (
           <MerchantBadge className="bg-red-600/30 text-red-400 border-red-600/50 flex items-center gap-1">
             <XCircle className="w-3 h-3" />
-            Cancelled
+            Canceled
           </MerchantBadge>
         )
       default:
@@ -55,9 +57,38 @@ export default function RedemptionShow({ redemptionId }: Props) {
     }
   }
 
+  const handleDownloadQR = () => {
+    if (redemption.qrCodeUrl) {
+      const link = document.createElement('a')
+      link.href = redemption.qrCodeUrl
+      link.download = `redemption-${redemption.code}.png`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+    }
+  }
+
+  const handleShare = async () => {
+    if (navigator.share && redemption.qrCodeUrl) {
+      try {
+        await navigator.share({
+          title: 'Redemption QR Code',
+          text: `Redemption Code: ${redemption.code}`,
+          url: redemption.qrCodeUrl,
+        })
+      } catch (error) {
+        console.error('Error sharing:', error)
+      }
+    } else {
+      // Fallback: copy to clipboard
+      navigator.clipboard.writeText(redemption.code)
+      alert('Redemption code copied to clipboard!')
+    }
+  }
+
   return (
     <>
-      <Head title={`Redemption ${redemption.id} - Merchant Dashboard`} />
+      <Head title={`Redemption ${redemption.code} - Merchant Dashboard`} />
       <MerchantDashboardLayout>
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -87,8 +118,24 @@ export default function RedemptionShow({ redemptionId }: Props) {
                 <MerchantCardContent className="space-y-6">
                   <div>
                     <h2 className="text-2xl font-bold text-white mb-2">{redemption.offerTitle}</h2>
+                    {redemption.offerDescription && (
+                      <p className="text-gray-400 mb-2">{redemption.offerDescription}</p>
+                    )}
                     <p className="text-gray-400">Redemption ID: {redemption.id}</p>
                   </div>
+
+                  {redemption.offerImage && (
+                    <div className="w-full h-48 bg-gray-800 rounded-lg overflow-hidden">
+                      <img
+                        src={redemption.offerImage}
+                        alt={redemption.offerTitle}
+                        className="w-full h-full object-cover"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = '/placeholder.jpg'
+                        }}
+                      />
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-[#FF1493]/20">
                     <div className="flex items-center gap-3 p-3 bg-gradient-to-br from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 rounded-lg border border-[#FF1493]/20">
@@ -118,38 +165,85 @@ export default function RedemptionShow({ redemptionId }: Props) {
                       <p className="text-xl font-mono font-bold text-[#FF1493]">{redemption.code}</p>
                     </div>
                   )}
-
-                  {redemption.notes && (
-                    <div>
-                      <p className="text-sm font-semibold text-gray-400 mb-2">Notes</p>
-                      <p className="text-gray-300">{redemption.notes}</p>
-                    </div>
-                  )}
                 </MerchantCardContent>
               </MerchantCard>
 
               {/* QR Code */}
-              {redemption.qrCode && (
-                <MerchantCard>
-                  <MerchantCardHeader>
-                    <MerchantCardTitle className="text-white">QR Code</MerchantCardTitle>
-                  </MerchantCardHeader>
-                  <MerchantCardContent>
-                    <div className="flex justify-center">
-                      <div className="p-4 bg-white rounded-lg">
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white flex items-center gap-2">
+                    <QrCode className="w-5 h-5" />
+                    QR Code
+                  </MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent>
+                  <div className="flex flex-col items-center space-y-4">
+                    <div className="p-4 bg-white rounded-lg">
+                      {redemption.qrCodeUrl ? (
                         <img
-                          src={redemption.qrCode}
+                          key={redemption.qrCodeUrl}
+                          src={redemption.qrCodeUrl + '?t=' + Date.now()}
                           alt="QR Code"
-                          className="w-48 h-48"
+                          className="w-64 h-64 object-contain"
                           onError={(e) => {
-                            (e.target as HTMLImageElement).src = '/placeholder.jpg'
+                            console.error('QR Code failed to load:', redemption.qrCodeUrl)
+                            const img = e.target as HTMLImageElement
+                            // Try to reload with fresh timestamp
+                            if (!img.src.includes('error')) {
+                              img.src = redemption.qrCodeUrl + '?t=' + Date.now() + '&retry=1'
+                            } else {
+                              // Show error message
+                              const parent = img.parentElement
+                              if (parent) {
+                                parent.innerHTML = `
+                                  <div class="w-64 h-64 flex flex-col items-center justify-center text-red-500 p-4 border-2 border-red-300 rounded">
+                                    <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                    </svg>
+                                    <p class="text-sm text-center font-semibold">Failed to load QR code</p>
+                                    <p class="text-xs text-gray-500 mt-2 text-center">Code: ${redemption.code}</p>
+                                    <p class="text-xs text-gray-400 mt-1 text-center">Please refresh the page</p>
+                                  </div>
+                                `
+                              }
+                            }
+                          }}
+                          onLoad={() => {
+                            console.log('QR Code loaded successfully')
                           }}
                         />
-                      </div>
+                      ) : (
+                        <div className="w-64 h-64 flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300 rounded">
+                          QR Code not available
+                        </div>
+                      )}
                     </div>
-                  </MerchantCardContent>
-                </MerchantCard>
-              )}
+                    <p className="text-sm text-gray-400 text-center">
+                      Scan this QR code to verify the redemption
+                    </p>
+                    {redemption.qrCodeUrl && (
+                      <div className="flex gap-3">
+                        <MerchantButton
+                          variant="outline"
+                          size="sm"
+                          onClick={handleDownloadQR}
+                        >
+                          <Download className="w-4 h-4 mr-2" />
+                          Download
+                        </MerchantButton>
+                        {/* <MerchantButton
+                          variant="outline"
+                          size="sm"
+                          onClick={handleShare}
+                        >
+                          <Share2 className="w-4 h-4 mr-2" />
+                          Share
+                        </MerchantButton> */}
+                      </div>
+                    )}
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
             </div>
 
             {/* Sidebar */}
@@ -166,7 +260,10 @@ export default function RedemptionShow({ redemptionId }: Props) {
                     </div>
                     <div>
                       <p className="text-white font-semibold">{redemption.customerName}</p>
-                      <p className="text-sm text-gray-400">{redemption.customerEmail}</p>
+                      <p className="text-sm text-gray-400 flex items-center gap-1">
+                        <Mail className="w-3 h-3" />
+                        {redemption.customerEmail}
+                      </p>
                     </div>
                   </div>
                 </MerchantCardContent>
@@ -175,7 +272,10 @@ export default function RedemptionShow({ redemptionId }: Props) {
               {/* Timeline */}
               <MerchantCard>
                 <MerchantCardHeader>
-                  <MerchantCardTitle className="text-white">Timeline</MerchantCardTitle>
+                  <MerchantCardTitle className="text-white flex items-center gap-2">
+                    <Calendar className="w-5 h-5" />
+                    Timeline
+                  </MerchantCardTitle>
                 </MerchantCardHeader>
                 <MerchantCardContent className="space-y-4">
                   <div className="flex items-start gap-3">
@@ -187,38 +287,57 @@ export default function RedemptionShow({ redemptionId }: Props) {
                       </p>
                     </div>
                   </div>
-                  {redemption.status === 'completed' && (
+                  {(redemption.status === 'approved' || redemption.status === 'fulfilled') && (
                     <div className="flex items-start gap-3">
                       <div className="w-2 h-2 rounded-full bg-green-500 mt-2"></div>
                       <div>
-                        <p className="text-sm font-semibold text-white">Completed</p>
-                        <p className="text-xs text-gray-400">
-                          {new Date(redemption.redeemedAt).toLocaleString()}
+                        <p className="text-sm font-semibold text-white">
+                          {redemption.status === 'fulfilled' ? 'Fulfilled' : 'Approved'}
                         </p>
+                        {redemption.updatedAt && (
+                          <p className="text-xs text-gray-400">
+                            {new Date(redemption.updatedAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}
                 </MerchantCardContent>
               </MerchantCard>
 
-              {/* Actions */}
-              {redemption.status === 'pending' && (
-                <MerchantCard>
-                  <MerchantCardHeader>
-                    <MerchantCardTitle className="text-white">Actions</MerchantCardTitle>
-                  </MerchantCardHeader>
-                  <MerchantCardContent className="space-y-3">
-                    <MerchantButton className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800">
-                      <CheckCircle2 className="w-4 h-4 mr-2" />
-                      Mark as Completed
-                    </MerchantButton>
-                    <MerchantButton variant="outline" className="w-full text-red-400 hover:text-red-300 border-red-500/50">
-                      <XCircle className="w-4 h-4 mr-2" />
-                      Cancel Redemption
-                    </MerchantButton>
-                  </MerchantCardContent>
-                </MerchantCard>
-              )}
+              {/* Status Info */}
+              <MerchantCard>
+                <MerchantCardHeader>
+                  <MerchantCardTitle className="text-white">Status Information</MerchantCardTitle>
+                </MerchantCardHeader>
+                <MerchantCardContent className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-400">Current Status</span>
+                    {getStatusBadge(redemption.status)}
+                  </div>
+                  <div className="pt-3 border-t border-[#FF1493]/20">
+                    <p className="text-xs text-gray-400 mb-2">Status Guide</p>
+                    <div className="space-y-2 text-xs">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-yellow-500"></div>
+                        <span className="text-gray-300">Pending - Awaiting approval</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-500"></div>
+                        <span className="text-gray-300">Approved - Ready for fulfillment</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-500"></div>
+                        <span className="text-gray-300">Fulfilled - Completed</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-500"></div>
+                        <span className="text-gray-300">Canceled - Cancelled redemption</span>
+                      </div>
+                    </div>
+                  </div>
+                </MerchantCardContent>
+              </MerchantCard>
             </div>
           </div>
         </motion.div>
@@ -226,4 +345,3 @@ export default function RedemptionShow({ redemptionId }: Props) {
     </>
   )
 }
-

@@ -63,7 +63,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
     <>
       <Head title="Redemption Confirmed - Believe" />
       <div className="min-h-screen bg-gradient-to-br from-green-50 to-white dark:from-gray-900 dark:to-gray-800">
-        <MerchantHeader 
+        <MerchantHeader
           onMenuClick={() => console.log('Menu clicked')}
         />
 
@@ -84,7 +84,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                   >
                     <CheckCircle2 className="w-20 h-20 text-green-600 dark:text-green-400 mx-auto mb-4" />
                   </motion.div>
-                  
+
                   <h2 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-6">
                     Redemption Confirmed!
                   </h2>
@@ -94,8 +94,8 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                       <span className="text-sm text-gray-600 dark:text-gray-400 mb-2">
                         Points Locked
                       </span>
-                      <PointsDisplay 
-                        points={lockedPoints} 
+                      <PointsDisplay
+                        points={lockedPoints}
                         size="md"
                         showLabel={false}
                       />
@@ -117,7 +117,7 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                     Your points are reserved for this offer. Show the QR code to the merchant to complete your redemption.
                   </p>
 
-                  <Button 
+                  <Button
                     className="w-full bg-blue-600 hover:bg-blue-700 text-white text-lg font-semibold h-12 mb-3"
                     onClick={() => setShowQRCode(!showQRCode)}
                   >
@@ -135,14 +135,56 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                         <CardContent className="p-6">
                           <div className="flex flex-col items-center">
                             <div className="p-4 bg-white rounded-lg mb-4">
-                              <img
-                                src={redemption.qr_code_url}
-                                alt="Redemption QR Code"
-                                className="w-64 h-64"
-                                onError={(e) => {
-                                  console.error('QR code failed to load')
-                                }}
-                              />
+                              {redemption.qr_code_url ? (
+                                <img
+                                  key={redemption.qr_code_url}
+                                  src={redemption.qr_code_url + '?t=' + Date.now()}
+                                  alt="Redemption QR Code"
+                                  className="w-64 h-64 object-contain"
+                                  onError={(e) => {
+                                    console.error('QR code failed to load:', redemption.qr_code_url)
+                                    console.error('Error event:', e)
+                                    const img = e.target as HTMLImageElement
+                                    console.error('Image src:', img.src)
+                                    console.error('Image naturalWidth:', img.naturalWidth, 'naturalHeight:', img.naturalHeight)
+
+                                    // Try to fetch the URL to see what the actual error is
+                                    fetch(redemption.qr_code_url)
+                                      .then(response => {
+                                        console.error('QR code fetch response status:', response.status)
+                                        console.error('QR code fetch response headers:', response.headers)
+                                        return response.text()
+                                      })
+                                      .then(text => {
+                                        console.error('QR code fetch response text (first 200 chars):', text.substring(0, 200))
+                                      })
+                                      .catch(err => {
+                                        console.error('QR code fetch error:', err)
+                                      })
+
+                                    const parent = img.parentElement
+                                    if (parent) {
+                                      parent.innerHTML = `
+                                        <div class="w-64 h-64 flex flex-col items-center justify-center text-red-500 p-4 border-2 border-red-300 rounded">
+                                          <svg class="w-12 h-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                          </svg>
+                                          <p class="text-sm text-center font-semibold">Failed to load QR code</p>
+                                          <p class="text-xs text-gray-500 mt-2 text-center">Code: ${redemption.code}</p>
+                                          <p class="text-xs text-gray-400 mt-1 text-center">Check console for details</p>
+                                        </div>
+                                      `
+                                    }
+                                  }}
+                                  onLoad={() => {
+                                    console.log('QR Code loaded successfully')
+                                  }}
+                                />
+                              ) : (
+                                <div className="w-64 h-64 flex items-center justify-center text-gray-400 border-2 border-dashed border-gray-300 rounded">
+                                  QR Code not available
+                                </div>
+                              )}
                             </div>
                             <p className="text-sm text-gray-600 dark:text-gray-400 mb-4 text-center">
                               Scan this QR code at the merchant location
@@ -156,14 +198,14 @@ export default function RedemptionConfirmed({ redemption: propRedemption }: Prop
                                 <Download className="w-4 h-4 mr-2" />
                                 Download
                               </Button>
-                              <Button
+                              {/* <Button
                                 variant="outline"
                                 className="flex-1"
                                 onClick={handleShare}
                               >
                                 <Share2 className="w-4 h-4 mr-2" />
                                 Share
-                              </Button>
+                              </Button> */}
                             </div>
                           </div>
                         </CardContent>

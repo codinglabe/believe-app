@@ -146,20 +146,45 @@ class MerchantRedemptionController extends Controller
     public function generateQrCode(Request $request, $code)
     {
         try {
+            Log::info('QR Code generation requested', [
+                'code' => $code,
+                'user_id' => Auth::id(),
+                'authenticated' => Auth::check(),
+                'ip' => $request->ip()
+            ]);
+
+            // Verify the redemption exists (no auth required for QR code generation)
+            $redemption = MerchantHubOfferRedemption::where('receipt_code', $code)->first();
+
+            if (!$redemption) {
+                Log::warning('QR Code generation attempted for non-existent redemption code: ' . $code);
+                // Still generate a QR code with error message
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Redemption not found: ' . $code);
+
+                return response($errorQr, 200, [
+                    'Content-Type' => 'image/svg+xml',
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                ]);
+            }
+
             // Create verification URL
             $verificationUrl = route('merchant-hub.redemption.verify', ['code' => $code]);
+            Log::info('QR Code verification URL generated', ['url' => $verificationUrl]);
 
-            // Generate QR code as PNG
-            $qrCode = QrCode::format('png')
+            // Generate QR code as SVG (doesn't require imagick)
+            $qrCode = QrCode::format('svg')
                 ->size(300)
                 ->margin(2)
                 ->errorCorrection('M')
-                ->color(0, 0, 0)
-                ->backgroundColor(255, 255, 255)
                 ->generate($verificationUrl);
 
+            Log::info('QR Code generated successfully', ['code' => $code]);
+
             return response($qrCode, 200, [
-                'Content-Type' => 'image/png',
+                'Content-Type' => 'image/svg+xml',
                 'Cache-Control' => 'no-cache, no-store, must-revalidate',
                 'Pragma' => 'no-cache',
                 'Expires' => '0'
@@ -167,20 +192,22 @@ class MerchantRedemptionController extends Controller
         } catch (\Exception $e) {
             Log::error('QR Code generation failed: ' . $e->getMessage());
 
-            // Return error QR code
-            $errorQr = QrCode::format('png')
-                ->size(300)
-                ->margin(2)
-                ->color(0, 0, 0)
-                ->backgroundColor(255, 255, 255)
-                ->generate('Error: Unable to generate QR code');
+            // Return error QR code as SVG
+            try {
+                $errorQr = QrCode::format('svg')
+                    ->size(300)
+                    ->margin(2)
+                    ->generate('Error: Unable to generate QR code');
 
-            return response($errorQr, 200, [
-                'Content-Type' => 'image/png',
-                'Cache-Control' => 'no-cache, no-store, must-revalidate',
-                'Pragma' => 'no-cache',
-                'Expires' => '0'
-            ]);
+                return response($errorQr, 200, [
+                    'Content-Type' => 'image/svg+xml',
+                    'Cache-Control' => 'no-cache, no-store, must-revalidate',
+                    'Pragma' => 'no-cache',
+                    'Expires' => '0'
+                ]);
+            } catch (\Exception $e2) {
+                return response('QR Code generation failed', 500);
+            }
         }
     }
 

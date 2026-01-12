@@ -1,11 +1,12 @@
 import React, { useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Head, Link, router, usePage } from '@inertiajs/react'
 import { MerchantHeader, MerchantFooter } from '@/components/merchant'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { ArrowLeft, Heart, Share2, Store, Clock, Check, Star, Shield, Gift, DollarSign } from 'lucide-react'
 import { motion } from 'framer-motion'
+import axios from 'axios'
 
 interface Offer {
   id: string
@@ -47,7 +48,9 @@ interface Props {
 }
 
 export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
+  const { auth } = usePage().props as any
   const [isFavorite, setIsFavorite] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -80,6 +83,37 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
       month: 'long',
       day: 'numeric',
     })
+  }
+
+  const handleRedeemOffer = async () => {
+    // Check if user is logged in
+    if (!auth?.user) {
+      router.visit('/login', {
+        data: { redirect: window.location.pathname }
+      })
+      return
+    }
+
+    setIsProcessing(true)
+
+    try {
+      // Create Stripe checkout session
+      const response = await axios.post('/hub/offers/checkout', {
+        offer_id: offer.id,
+      })
+
+      if (response.data.success && response.data.url) {
+        // Redirect to Stripe checkout
+        window.location.href = response.data.url
+      } else {
+        setIsProcessing(false)
+        alert('Failed to create payment session. Please try again.')
+      }
+    } catch (error: any) {
+      setIsProcessing(false)
+      const errorMessage = error.response?.data?.error || error.response?.data?.message || 'Failed to process redemption. Please try again.'
+      alert(errorMessage)
+    }
   }
 
   return (
@@ -234,9 +268,11 @@ export default function HubOfferDetail({ offer, relatedOffers = [] }: Props) {
 
                   {offer.isAvailable ? (
                     <MerchantButton
-                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] text-white text-lg py-3 h-auto"
+                      onClick={handleRedeemOffer}
+                      disabled={isProcessing}
+                      className="w-full bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] hover:from-[#FF1FA3] hover:via-[#EC1F4C] hover:to-[#F98461] text-white text-lg py-3 h-auto disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      Redeem Offer
+                      {isProcessing ? 'Processing...' : 'Redeem Offer'}
                     </MerchantButton>
                   ) : (
                     <MerchantButton
