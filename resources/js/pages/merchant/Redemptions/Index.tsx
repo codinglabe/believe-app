@@ -1,5 +1,5 @@
-import React, { useState } from 'react'
-import { Head, Link } from '@inertiajs/react'
+import React, { useState, useEffect } from 'react'
+import { Head, Link, router, usePage } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
@@ -14,101 +14,89 @@ interface Redemption {
   customerEmail: string
   pointsUsed: number
   cashPaid?: number
-  status: 'pending' | 'completed' | 'cancelled'
+  status: 'pending' | 'approved' | 'fulfilled' | 'canceled'
   redeemedAt: string
   code?: string
 }
 
-export default function RedemptionsIndex() {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<string | null>(null)
+interface Props {
+  redemptions: {
+    data: Redemption[]
+    current_page: number
+    last_page: number
+    per_page: number
+    total: number
+  }
+  stats: {
+    total: number
+    completed: number
+    pending: number
+    totalPoints: number
+    totalCash: number
+  }
+  filters: {
+    search: string
+    status: string
+  }
+}
 
-  // Mock data - replace with actual data from backend
-  const redemptions: Redemption[] = [
-    {
-      id: '1',
-      offerTitle: 'Gift Card - $50 Value',
-      customerName: 'John Doe',
-      customerEmail: 'john@example.com',
-      pointsUsed: 5000,
-      cashPaid: 10,
-      status: 'completed',
-      redeemedAt: '2024-01-15T10:30:00',
-      code: 'RED-12345'
-    },
-    {
-      id: '2',
-      offerTitle: 'Wireless Earbuds',
-      customerName: 'Jane Smith',
-      customerEmail: 'jane@example.com',
-      pointsUsed: 10000,
-      cashPaid: 25,
-      status: 'pending',
-      redeemedAt: '2024-01-16T14:20:00',
-      code: 'RED-12346'
-    },
-    {
-      id: '3',
-      offerTitle: 'Fitness Class Pass',
-      customerName: 'Bob Johnson',
-      customerEmail: 'bob@example.com',
-      pointsUsed: 7500,
-      status: 'completed',
-      redeemedAt: '2024-01-14T09:15:00',
-      code: 'RED-12347'
-    },
-    {
-      id: '4',
-      offerTitle: 'Dinner for Two',
-      customerName: 'Alice Williams',
-      customerEmail: 'alice@example.com',
-      pointsUsed: 8000,
-      cashPaid: 30,
-      status: 'cancelled',
-      redeemedAt: '2024-01-13T18:45:00',
-      code: 'RED-12348'
-    }
-  ]
+export default function RedemptionsIndex({ redemptions, stats, filters: initialFilters }: Props) {
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search || '')
+  // Set statusFilter to null if status is empty string (means "All")
+  const [statusFilter, setStatusFilter] = useState<string | null>(
+    initialFilters.status && initialFilters.status !== '' ? initialFilters.status : null
+  )
 
-  const filteredRedemptions = redemptions.filter(redemption => {
-    const matchesSearch = 
-      redemption.offerTitle.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      redemption.customerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      redemption.customerEmail.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      redemption.code?.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesStatus = !statusFilter || redemption.status === statusFilter
-    return matchesSearch && matchesStatus
-  })
+  // Handle filter changes with debounce
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      const params: any = {
+        search: searchQuery || '',
+      }
+
+      // Only add status if it's not null (null means "All")
+      if (statusFilter !== null) {
+        params.status = statusFilter
+      }
+
+      router.get('/redemptions', params, {
+        preserveState: true,
+        replace: true,
+      })
+    }, 300)
+
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, statusFilter])
+
+  const handleStatusFilter = (status: string | null) => {
+    setStatusFilter(status)
+  }
 
   const getStatusBadge = (status: string) => {
     const styles = {
-      completed: 'bg-green-500/20 text-green-400 border-green-500/30',
+      approved: 'bg-green-500/20 text-green-400 border-green-500/30',
+      fulfilled: 'bg-blue-500/20 text-blue-400 border-blue-500/30',
       pending: 'bg-yellow-500/20 text-yellow-400 border-yellow-500/30',
-      cancelled: 'bg-red-500/20 text-red-400 border-red-500/30'
+      canceled: 'bg-red-500/20 text-red-400 border-red-500/30'
     }
     return styles[status as keyof typeof styles] || 'bg-gray-500/20 text-gray-400 border-gray-500/30'
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'completed':
+      case 'approved':
+      case 'fulfilled':
         return <CheckCircle2 className="h-4 w-4" />
       case 'pending':
         return <Clock className="h-4 w-4" />
-      case 'cancelled':
+      case 'canceled':
         return <XCircle className="h-4 w-4" />
       default:
         return null
     }
   }
 
-  const stats = {
-    total: redemptions.length,
-    completed: redemptions.filter(r => r.status === 'completed').length,
-    pending: redemptions.filter(r => r.status === 'pending').length,
-    totalPoints: redemptions.reduce((sum, r) => sum + r.pointsUsed, 0),
-    totalCash: redemptions.reduce((sum, r) => sum + (r.cashPaid || 0), 0)
-  }
+  // Use stats from props
 
   return (
     <>
@@ -162,37 +150,60 @@ export default function RedemptionsIndex() {
                     placeholder="Search by offer, customer, or code..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const params: any = {
+                          search: searchQuery || '',
+                        }
+
+                        if (statusFilter !== null) {
+                          params.status = statusFilter
+                        }
+
+                        router.get('/redemptions', params, {
+                          preserveState: true,
+                          replace: true,
+                        })
+                      }
+                    }}
                     className="w-full pl-10 pr-4 py-2 bg-black/50 border border-[#FF1493]/20 rounded-lg text-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#FF1493]/50 focus:border-[#FF1493]/50"
                   />
                 </div>
                 <div className="flex gap-2">
                   <MerchantButton
                     variant={statusFilter === null ? 'default' : 'outline'}
-                    onClick={() => setStatusFilter(null)}
+                    onClick={() => handleStatusFilter(null)}
                     size="sm"
                   >
                     All
                   </MerchantButton>
                   <MerchantButton
-                    variant={statusFilter === 'completed' ? 'default' : 'outline'}
-                    onClick={() => setStatusFilter('completed')}
+                    variant={statusFilter === 'approved' ? 'default' : 'outline'}
+                    onClick={() => handleStatusFilter('approved')}
                     size="sm"
                   >
-                    Completed
+                    Approved
+                  </MerchantButton>
+                  <MerchantButton
+                    variant={statusFilter === 'fulfilled' ? 'default' : 'outline'}
+                    onClick={() => handleStatusFilter('fulfilled')}
+                    size="sm"
+                  >
+                    Fulfilled
                   </MerchantButton>
                   <MerchantButton
                     variant={statusFilter === 'pending' ? 'default' : 'outline'}
-                    onClick={() => setStatusFilter('pending')}
+                    onClick={() => handleStatusFilter('pending')}
                     size="sm"
                   >
                     Pending
                   </MerchantButton>
                   <MerchantButton
-                    variant={statusFilter === 'cancelled' ? 'default' : 'outline'}
-                    onClick={() => setStatusFilter('cancelled')}
+                    variant={statusFilter === 'canceled' ? 'default' : 'outline'}
+                    onClick={() => handleStatusFilter('canceled')}
                     size="sm"
                   >
-                    Cancelled
+                    Canceled
                   </MerchantButton>
                 </div>
               </div>
@@ -225,7 +236,7 @@ export default function RedemptionsIndex() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredRedemptions.map((redemption, index) => (
+                    {redemptions.data.map((redemption, index) => (
                       <motion.tr
                         key={redemption.id}
                         initial={{ opacity: 0, y: 10 }}
@@ -282,11 +293,46 @@ export default function RedemptionsIndex() {
                 </table>
               </div>
 
-              {filteredRedemptions.length === 0 && (
+              {redemptions.data.length === 0 && (
                 <div className="text-center py-12">
                   <p className="text-gray-400 mb-4">
                     {searchQuery || statusFilter ? 'No redemptions found matching your filters.' : 'No redemptions yet.'}
                   </p>
+                </div>
+              )}
+
+              {/* Pagination */}
+              {redemptions.last_page > 1 && (
+                <div className="flex items-center justify-between mt-4 pt-4 border-t border-[#FF1493]/20">
+                  <div className="text-sm text-gray-400">
+                    Showing {((redemptions.current_page - 1) * redemptions.per_page) + 1} to {Math.min(redemptions.current_page * redemptions.per_page, redemptions.total)} of {redemptions.total} redemptions
+                  </div>
+                  <div className="flex gap-2">
+                    {redemptions.current_page > 1 && (
+                      <MerchantButton
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.get('/redemptions', {
+                          ...initialFilters,
+                          page: redemptions.current_page - 1,
+                        })}
+                      >
+                        Previous
+                      </MerchantButton>
+                    )}
+                    {redemptions.current_page < redemptions.last_page && (
+                      <MerchantButton
+                        variant="outline"
+                        size="sm"
+                        onClick={() => router.get('/redemptions', {
+                          ...initialFilters,
+                          page: redemptions.current_page + 1,
+                        })}
+                      >
+                        Next
+                      </MerchantButton>
+                    )}
+                  </div>
                 </div>
               )}
             </MerchantCardContent>

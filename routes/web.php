@@ -261,9 +261,11 @@ Route::prefix('merchant-hub')->name('merchant-hub.')->group(function () {
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::post('/redeem', [App\Http\Controllers\MerchantRedemptionController::class, 'redeem'])->name('redeem');
     Route::get('/redemption/confirmed/{code?}', [App\Http\Controllers\MerchantRedemptionController::class, 'confirmed'])->name('redemption.confirmed');
-    Route::get('/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('redemption.qr-code');
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
+
+// Public QR code route (no auth required - code in URL is sufficient security)
+Route::get('/merchant-hub/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
 
 // Merchant Program Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
