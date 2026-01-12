@@ -101,6 +101,15 @@ class MerchantRedemptionsController extends Controller
             ->paginate(20)
             ->withQueryString();
 
+        // Log for debugging
+        \Illuminate\Support\Facades\Log::info('Merchant Redemptions Query', [
+            'merchant_id' => $merchant->id,
+            'offer_ids' => $offerIds,
+            'status_filter' => $request->status,
+            'total_results' => $redemptions->total(),
+            'current_page' => $redemptions->currentPage(),
+        ]);
+
         // Transform redemptions for frontend
         $transformedRedemptions = $redemptions->through(function ($redemption) {
             return [

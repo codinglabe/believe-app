@@ -42,9 +42,7 @@ Route::middleware('guest:merchant')->group(function () {
 // Authenticated Merchant Routes
 Route::middleware(['auth:merchant'])->group(function () {
     // Dashboard
-    Route::get('/dashboard', function () {
-        return Inertia::render('merchant/Dashboard');
-    })->name('merchant.dashboard');
+    Route::get('/dashboard', [App\Http\Controllers\Merchant\MerchantDashboardController::class, 'index'])->name('merchant.dashboard');
     // Offers Management
     Route::prefix('offers')->name('offers.')->group(function () {
         Route::get('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'index'])->name('index');
@@ -65,14 +63,15 @@ Route::middleware(['auth:merchant'])->group(function () {
     });
 
     // Analytics
-    Route::get('/analytics', function () {
-        return Inertia::render('merchant/Analytics');
-    })->name('merchant.analytics');
+    Route::get('/analytics', [App\Http\Controllers\Merchant\MerchantAnalyticsController::class, 'index'])->name('merchant.analytics');
 
     // Settings
     Route::get('/settings', function () {
         return Inertia::render('merchant/Settings');
     })->name('merchant.settings');
+
+    Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
+    Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
 
     // Logout
     Route::post('logout', [MerchantAuthController::class, 'destroy'])

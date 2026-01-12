@@ -34,7 +34,7 @@ export default function Settings() {
 
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    profileForm.put('/settings/profile', {
+    profileForm.patch('/settings/profile', {
       onSuccess: () => {
         // Show success message
       }
@@ -43,7 +43,7 @@ export default function Settings() {
 
   const handleBusinessSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    businessForm.put('/settings/business', {
+    businessForm.patch('/settings/business', {
       onSuccess: () => {
         // Show success message
       }
