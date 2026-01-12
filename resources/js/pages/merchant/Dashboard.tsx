@@ -7,33 +7,38 @@ import { Building2, Gift, BarChart3, CheckCircle2, TrendingUp, ArrowRight, Plus 
 import { motion } from 'framer-motion'
 import { AnalyticsChart } from '@/components/merchant/AnalyticsChart'
 
-export default function MerchantDashboard() {
-  // Mock data
-  const weeklyRedemptions = [
-    { week: 'Week 1', value: 1200 },
-    { week: 'Week 2', value: 1800 },
-    { week: 'Week 3', value: 1500 },
-    { week: 'Week 4', value: 2200 },
-    { week: 'Week 5', value: 1900 },
-    { week: 'Week 6', value: 2500 },
-    { week: 'Week 7', value: 2100 }
-  ]
+interface WeeklyData {
+  week: string
+  value: number
+}
 
-  const recentRedemptions = [
-    { id: '1', points: 10000, status: 'completed' },
-    { id: '2', points: 5000, status: 'completed' },
-    { id: '3', points: 7500, status: 'completed' }
-  ]
+interface RecentRedemption {
+  id: string
+  points: number
+  status: string
+  code?: string
+  customer_name?: string
+  offer_title?: string
+  created_at?: string
+}
 
-  const rewardsData = [
-    { week: 'W1', value: 800 },
-    { week: 'W2', value: 1200 },
-    { week: 'W3', value: 1000 },
-    { week: 'W4', value: 1500 },
-    { week: 'W5', value: 1300 },
-    { week: 'W6', value: 1800 },
-    { week: 'W7', value: 1600 }
-  ]
+interface Props {
+  stats: {
+    activeOffers: number
+    totalRedemptions: number
+    totalPointsEarned: number
+    totalRewardsRedeemed: number
+  }
+  weeklyRedemptions: WeeklyData[]
+  recentRedemptions: RecentRedemption[]
+  rewardsData: WeeklyData[]
+}
+
+export default function MerchantDashboard({ stats, weeklyRedemptions, recentRedemptions, rewardsData }: Props) {
+  // Use data from props, fallback to empty arrays if not provided
+  const weeklyData = weeklyRedemptions || []
+  const recentData = recentRedemptions || []
+  const rewardsWeeklyData = rewardsData || []
 
   return (
     <>
@@ -74,7 +79,7 @@ export default function MerchantDashboard() {
                   <div className="flex items-center gap-2">
                     <Building2 className="w-4 h-4 text-[#FF1493]" />
                     <span className="text-2xl font-bold text-white">
-                      3 Active Deals
+                      {stats?.activeOffers || 0} Active {stats?.activeOffers === 1 ? 'Offer' : 'Offers'}
                     </span>
                   </div>
                 </MerchantCardContent>
@@ -96,7 +101,7 @@ export default function MerchantDashboard() {
                   <div className="flex items-center gap-2">
                     <Gift className="w-4 h-4 text-[#FF1493]" />
                     <span className="text-2xl font-bold text-white">
-                      4,265 Redemptions
+                      {stats?.totalRedemptions?.toLocaleString() || 0} Redemptions
                     </span>
                   </div>
                 </MerchantCardContent>
@@ -113,9 +118,9 @@ export default function MerchantDashboard() {
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <AnalyticsChart
                   title="Weekly Points Redemptions"
-                  data={weeklyRedemptions}
+                  data={weeklyData}
                   totalLabel="Total Points Earned"
-                  totalValue="18,500"
+                  totalValue={stats?.totalPointsEarned?.toLocaleString() || '0'}
                   icon={<BarChart3 className="w-5 h-5 text-gray-600 dark:text-gray-400" />}
                 />
 
@@ -125,19 +130,40 @@ export default function MerchantDashboard() {
                   </MerchantCardHeader>
                   <MerchantCardContent>
                     <div className="space-y-4">
-                      {recentRedemptions.map((redemption) => (
-                        <div 
-                          key={redemption.id}
-                          className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg"
-                        >
-                          <div className="flex items-center gap-3">
-                            <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
-                            <span className="text-white font-semibold">
-                              {redemption.points.toLocaleString()} Points Used
-                            </span>
-                          </div>
+                      {recentData.length > 0 ? (
+                        recentData.map((redemption) => (
+                          <Link
+                            key={redemption.id}
+                            href={`/redemptions/${redemption.id}`}
+                            className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                          >
+                            <div className="flex items-center gap-3 flex-1">
+                              <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                              <div className="flex-1 min-w-0">
+                                <span className="text-white font-semibold block">
+                                  {redemption.points?.toLocaleString() || 0} Points Used
+                                </span>
+                                {redemption.offer_title && (
+                                  <span className="text-xs text-gray-400 block truncate">
+                                    {redemption.offer_title}
+                                  </span>
+                                )}
+                                {redemption.customer_name && (
+                                  <span className="text-xs text-gray-500 block">
+                                    {redemption.customer_name}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            <ArrowRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
+                          </Link>
+                        ))
+                      ) : (
+                        <div className="text-center py-8 text-gray-400">
+                          <Gift className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                          <p>No redemptions yet</p>
                         </div>
-                      ))}
+                      )}
                       <div className="pt-4 border-t">
                         <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                           <CheckCircle2 className="w-5 h-5" />
@@ -160,9 +186,9 @@ export default function MerchantDashboard() {
                   </MerchantCardHeader>
                   <MerchantCardContent>
                     <div className="h-32 flex items-end gap-2">
-                      {rewardsData.map((item, index) => {
-                        const maxValue = Math.max(...rewardsData.map(d => d.value))
-                        const height = (item.value / maxValue) * 100
+                      {rewardsWeeklyData.map((item, index) => {
+                        const maxValue = Math.max(...rewardsWeeklyData.map(d => d.value), 1)
+                        const height = maxValue > 0 ? (item.value / maxValue) * 100 : 0
                         return (
                           <motion.div
                             key={index}
@@ -189,7 +215,7 @@ export default function MerchantDashboard() {
                           Total Rewards Redeemed
                         </span>
                         <span className="text-lg font-bold text-white">
-                          12,700
+                          {stats?.totalRewardsRedeemed?.toLocaleString() || 0}
                         </span>
                       </div>
                     </div>

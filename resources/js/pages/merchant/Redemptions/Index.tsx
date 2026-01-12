@@ -4,7 +4,7 @@ import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitl
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download } from 'lucide-react'
+import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download, Gift } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 interface Redemption {
@@ -47,8 +47,15 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
     initialFilters.status && initialFilters.status !== '' ? initialFilters.status : null
   )
 
-  // Handle filter changes with debounce
+  // Don't trigger effect on initial load if filters are already set from URL
+  const [isInitialLoad, setIsInitialLoad] = useState(true)
+
   useEffect(() => {
+    if (isInitialLoad) {
+      setIsInitialLoad(false)
+      return
+    }
+
     const timeoutId = setTimeout(() => {
       const params: any = {
         search: searchQuery || '',
@@ -236,7 +243,8 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                     </tr>
                   </thead>
                   <tbody>
-                    {redemptions.data.map((redemption, index) => (
+                    {redemptions && redemptions.data && redemptions.data.length > 0 ? (
+                      redemptions.data.map((redemption, index) => (
                       <motion.tr
                         key={redemption.id}
                         initial={{ opacity: 0, y: 10 }}
@@ -288,7 +296,24 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                           </Link>
                         </td>
                       </motion.tr>
-                    ))}
+                      ))
+                    ) : (
+                      <tr>
+                        <td colSpan={7} className="py-12 text-center">
+                          <div className="flex flex-col items-center justify-center">
+                            <Gift className="w-16 h-16 text-gray-500 mb-4 opacity-50" />
+                            <p className="text-gray-400 text-lg font-medium mb-2">
+                              {searchQuery || statusFilter ? 'No redemptions found matching your filters.' : 'No redemptions yet.'}
+                            </p>
+                            {statusFilter && (
+                              <p className="text-gray-500 text-sm">
+                                Try selecting "All" to see all redemptions, or check other status filters.
+                              </p>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
