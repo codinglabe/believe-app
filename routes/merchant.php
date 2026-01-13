@@ -42,9 +42,7 @@ Route::middleware('guest:merchant')->group(function () {
 // Authenticated Merchant Routes
 Route::middleware(['auth:merchant'])->group(function () {
     // Dashboard
-    Route::get('/dashboard', function () {
-        return Inertia::render('merchant/Dashboard');
-    })->name('merchant.dashboard');
+    Route::get('/dashboard', [App\Http\Controllers\Merchant\MerchantDashboardController::class, 'index'])->name('merchant.dashboard');
     // Offers Management
     Route::prefix('offers')->name('offers.')->group(function () {
         Route::get('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'index'])->name('index');
@@ -58,26 +56,22 @@ Route::middleware(['auth:merchant'])->group(function () {
 
     // Redemptions
     Route::prefix('redemptions')->name('redemptions.')->group(function () {
-        Route::get('/', function () {
-            return Inertia::render('merchant/Redemptions/Index');
-        })->name('index');
-
-        Route::get('/{id}', function ($id) {
-            return Inertia::render('merchant/Redemptions/Show', [
-                'redemptionId' => $id
-            ]);
-        })->name('show');
+        Route::get('/', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'index'])->name('index');
+        Route::get('/{id}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'show'])->name('show');
+        Route::get('/qr-code/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'generateQrCode'])->name('qr-code');
+        Route::get('/verify/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'verify'])->name('verify');
     });
 
     // Analytics
-    Route::get('/analytics', function () {
-        return Inertia::render('merchant/Analytics');
-    })->name('merchant.analytics');
+    Route::get('/analytics', [App\Http\Controllers\Merchant\MerchantAnalyticsController::class, 'index'])->name('merchant.analytics');
 
     // Settings
     Route::get('/settings', function () {
         return Inertia::render('merchant/Settings');
     })->name('merchant.settings');
+
+    Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
+    Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
 
     // Logout
     Route::post('logout', [MerchantAuthController::class, 'destroy'])
@@ -88,6 +82,15 @@ Route::middleware(['auth:merchant'])->group(function () {
 Route::prefix('hub')->name('hub.')->group(function () {
     Route::get('/', [App\Http\Controllers\Merchant\HubController::class, 'index'])->name('index');
 
+    // Success route (must be before /offers/{slug} to avoid route conflict)
+    Route::get('/offers/stripe/success', [App\Http\Controllers\Merchant\HubController::class, 'success'])->name('offer.success');
+
+    // Checkout route (requires auth - accepts both web and merchant guards)
+    Route::middleware(['auth:web,merchant'])->group(function () {
+        Route::post('/offers/checkout', [App\Http\Controllers\Merchant\HubController::class, 'checkout'])->name('offer.checkout');
+    });
+
+    // Offer detail route (must be last to avoid matching "success" as slug)
     Route::get('/offers/{slug}', [App\Http\Controllers\Merchant\HubOfferController::class, 'show'])->name('offer.show');
 });
 

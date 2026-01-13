@@ -1,49 +1,49 @@
 import React, { useState } from 'react'
-import { Head } from '@inertiajs/react'
+import { Head, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
 import { AnalyticsChart } from '@/components/merchant/AnalyticsChart'
 import { TrendingUp, TrendingDown, DollarSign, Gift, Users, BarChart3 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
-export default function Analytics() {
-  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>('30d')
+interface WeeklyData {
+  week: string
+  value: number
+}
 
-  // Mock data - replace with actual data from backend
-  const weeklyRedemptions = [
-    { week: 'Week 1', value: 1200 },
-    { week: 'Week 2', value: 1800 },
-    { week: 'Week 3', value: 1500 },
-    { week: 'Week 4', value: 2200 },
-    { week: 'Week 5', value: 1900 },
-    { week: 'Week 6', value: 2500 },
-    { week: 'Week 7', value: 2100 }
-  ]
+interface TopOffer {
+  id: string
+  title: string
+  redemptions: number
+  revenue: number
+}
 
-  const revenueData = [
-    { week: 'W1', value: 800 },
-    { week: 'W2', value: 1200 },
-    { week: 'W3', value: 1000 },
-    { week: 'W4', value: 1500 },
-    { week: 'W5', value: 1300 },
-    { week: 'W6', value: 1800 },
-    { week: 'W7', value: 1600 }
-  ]
+interface Stats {
+  totalRedemptions: number
+  totalRevenue: number
+  averagePointsPerRedemption: number
+  activeCustomers: number
+  redemptionGrowth: number
+  revenueGrowth: number
+}
 
-  const topOffers = [
-    { id: '1', title: 'Gift Card - $50 Value', redemptions: 245, revenue: 2450 },
-    { id: '2', title: 'Wireless Earbuds', redemptions: 120, revenue: 3000 },
-    { id: '3', title: 'Fitness Class Pass', redemptions: 89, revenue: 0 },
-    { id: '4', title: 'Dinner for Two', redemptions: 67, revenue: 2010 }
-  ]
+interface Props {
+  stats: Stats
+  weeklyRedemptions: WeeklyData[]
+  revenueData: WeeklyData[]
+  topOffers: TopOffer[]
+  timeRange?: '7d' | '30d' | '90d' | '1y'
+}
 
-  const stats = {
-    totalRedemptions: 521,
-    totalRevenue: 7460,
-    averagePointsPerRedemption: 7500,
-    activeCustomers: 342,
-    redemptionGrowth: 12.5,
-    revenueGrowth: 8.3
+export default function Analytics({ stats, weeklyRedemptions, revenueData, topOffers, timeRange: initialTimeRange = '30d' }: Props) {
+  const [timeRange, setTimeRange] = useState<'7d' | '30d' | '90d' | '1y'>(initialTimeRange)
+
+  const handleTimeRangeChange = (range: '7d' | '30d' | '90d' | '1y') => {
+    setTimeRange(range)
+    router.get('/analytics', { timeRange: range }, {
+      preserveState: true,
+      replace: true,
+    })
   }
 
   return (
@@ -61,7 +61,7 @@ export default function Analytics() {
               {(['7d', '30d', '90d', '1y'] as const).map((range) => (
                 <button
                   key={range}
-                  onClick={() => setTimeRange(range)}
+                  onClick={() => handleTimeRangeChange(range)}
                   className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                     timeRange === range
                       ? 'bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] text-white'
@@ -84,11 +84,11 @@ export default function Analytics() {
                   </div>
                   <div className="flex items-center gap-1 text-green-400">
                     <TrendingUp className="h-4 w-4" />
-                    <span className="text-sm font-medium">+{stats.redemptionGrowth}%</span>
+                    <span className="text-sm font-medium">{stats?.redemptionGrowth >= 0 ? '+' : ''}{stats?.redemptionGrowth?.toFixed(1) || 0}%</span>
                   </div>
                 </div>
                 <p className="text-sm text-gray-400 mb-1">Total Redemptions</p>
-                <p className="text-3xl font-bold text-white">{stats.totalRedemptions.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{(stats?.totalRedemptions || 0).toLocaleString()}</p>
               </MerchantCardContent>
             </MerchantCard>
 
@@ -100,11 +100,11 @@ export default function Analytics() {
                   </div>
                   <div className="flex items-center gap-1 text-green-400">
                     <TrendingUp className="h-4 w-4" />
-                    <span className="text-sm font-medium">+{stats.revenueGrowth}%</span>
+                    <span className="text-sm font-medium">{stats?.revenueGrowth >= 0 ? '+' : ''}{stats?.revenueGrowth?.toFixed(1) || 0}%</span>
                   </div>
                 </div>
                 <p className="text-sm text-gray-400 mb-1">Total Revenue</p>
-                <p className="text-3xl font-bold text-white">${stats.totalRevenue.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">${(stats?.totalRevenue || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
               </MerchantCardContent>
             </MerchantCard>
 
@@ -116,7 +116,7 @@ export default function Analytics() {
                   </div>
                 </div>
                 <p className="text-sm text-gray-400 mb-1">Avg Points/Redemption</p>
-                <p className="text-3xl font-bold text-white">{stats.averagePointsPerRedemption.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{(stats?.averagePointsPerRedemption || 0).toLocaleString()}</p>
               </MerchantCardContent>
             </MerchantCard>
 
@@ -128,7 +128,7 @@ export default function Analytics() {
                   </div>
                 </div>
                 <p className="text-sm text-gray-400 mb-1">Active Customers</p>
-                <p className="text-3xl font-bold text-white">{stats.activeCustomers.toLocaleString()}</p>
+                <p className="text-3xl font-bold text-white">{(stats?.activeCustomers || 0).toLocaleString()}</p>
               </MerchantCardContent>
             </MerchantCard>
           </div>
@@ -136,10 +136,10 @@ export default function Analytics() {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <AnalyticsChart
-              title="Weekly Points Redemptions"
-              data={weeklyRedemptions}
+              title={timeRange === '7d' || timeRange === '30d' ? "Weekly Points Redemptions" : "Monthly Points Redemptions"}
+              data={weeklyRedemptions || []}
               totalLabel="Total Points Redeemed"
-              totalValue={weeklyRedemptions.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+              totalValue={(weeklyRedemptions || []).reduce((sum, item) => sum + item.value, 0).toLocaleString()}
               icon={<BarChart3 className="w-5 h-5 text-gray-600 dark:text-gray-400" />}
             />
 
@@ -149,9 +149,10 @@ export default function Analytics() {
               </MerchantCardHeader>
               <MerchantCardContent>
                 <div className="h-64 flex items-end gap-2">
-                  {revenueData.map((item, index) => {
-                    const maxValue = Math.max(...revenueData.map(d => d.value))
-                    const height = (item.value / maxValue) * 100
+                  {(revenueData || []).length > 0 ? (
+                    revenueData.map((item, index) => {
+                      const maxValue = Math.max(...revenueData.map(d => d.value), 1)
+                      const height = maxValue > 0 ? (item.value / maxValue) * 100 : 0
                     return (
                       <motion.div
                         key={index}
@@ -170,7 +171,11 @@ export default function Analytics() {
                         </span>
                       </motion.div>
                     )
-                  })}
+                  })) : (
+                    <div className="w-full h-full flex items-center justify-center text-gray-400">
+                      <p>No revenue data available</p>
+                    </div>
+                  )}
                 </div>
                 <div className="pt-4 border-t mt-4">
                   <div className="flex items-center justify-between">
@@ -178,7 +183,7 @@ export default function Analytics() {
                       Total Revenue
                     </span>
                     <span className="text-lg font-bold text-white">
-                      ${revenueData.reduce((sum, item) => sum + item.value, 0).toLocaleString()}
+                      ${(revenueData || []).reduce((sum, item) => sum + item.value, 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </span>
                   </div>
                 </div>
@@ -193,7 +198,8 @@ export default function Analytics() {
             </MerchantCardHeader>
             <MerchantCardContent>
               <div className="space-y-4">
-                {topOffers.map((offer, index) => (
+                {(topOffers || []).length > 0 ? (
+                  topOffers.map((offer, index) => (
                   <motion.div
                     key={offer.id}
                     initial={{ opacity: 0, x: -20 }}
@@ -215,7 +221,13 @@ export default function Analytics() {
                       <p className="text-sm text-gray-400">Revenue</p>
                     </div>
                   </motion.div>
-                ))}
+                ))
+                ) : (
+                  <div className="text-center py-8 text-gray-400">
+                    <Gift className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                    <p>No offers data available</p>
+                  </div>
+                )}
               </div>
             </MerchantCardContent>
           </MerchantCard>

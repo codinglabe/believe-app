@@ -6,13 +6,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/frontend/ui/button'
 import { Badge } from '@/components/frontend/ui/badge'
 import { Avatar, AvatarFallback } from '@/components/frontend/ui/avatar'
-import { 
-  ArrowLeft, 
-  Store, 
-  Gift, 
-  Star, 
-  Check, 
-  Share2, 
+import {
+  ArrowLeft,
+  Store,
+  Gift,
+  Star,
+  Check,
+  Share2,
   Heart,
   ShoppingBag,
   DollarSign,
@@ -429,7 +429,7 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                             (e.target as HTMLImageElement).src = '/placeholder.jpg'
                           }}
                         />
-                        <Badge 
+                        <Badge
                           className={`absolute top-2 right-2 ${getCategoryColor(relatedOffer.category)}`}
                         >
                           {relatedOffer.category}
