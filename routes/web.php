@@ -700,20 +700,9 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
     // Facebook Integration Routes
     Route::prefix('facebook')->group(function () {
-        // Facebook Apps Management
-        Route::prefix('apps')->group(function () {
-            Route::get('/', [FacebookAppController::class, 'index'])->name('facebook.apps.index');
-            Route::get('/create', [FacebookAppController::class, 'create'])->name('facebook.apps.create');
-            Route::post('/', [FacebookAppController::class, 'store'])->name('facebook.apps.store');
-            Route::get('/{id}/edit', [FacebookAppController::class, 'edit'])->name('facebook.apps.edit');
-            Route::put('/{id}', [FacebookAppController::class, 'update'])->name('facebook.apps.update');
-            Route::delete('/{id}', [FacebookAppController::class, 'destroy'])->name('facebook.apps.destroy');
-            Route::get('/{id}/test', [FacebookAppController::class, 'test'])->name('facebook.apps.test');
-        });
-
-        // Connection Management
+        // Connection Management (একটি App ID দিয়ে)
         Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
-        Route::post('/generate-oauth-url', [AuthController::class, 'generateOAuthUrl'])->name('facebook.generate-oauth-url');
+        Route::get('/oauth/redirect', [AuthController::class, 'redirectToFacebook'])->name('facebook.redirect');
         Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
         Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
         Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
@@ -726,7 +715,6 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
             Route::post('/', [PostController::class, 'store'])->name('facebook.posts.store');
             Route::post('/{id}/publish', [PostController::class, 'publish'])->name('facebook.posts.publish');
             Route::delete('/{id}', [PostController::class, 'destroy'])->name('facebook.posts.destroy');
-            Route::get('/{id}/analytics', [PostController::class, 'analytics'])->name('facebook.posts.analytics');
         });
     });
 });

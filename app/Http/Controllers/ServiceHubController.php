@@ -2211,6 +2211,7 @@ class ServiceHubController extends Controller
             ],
             'activeServices' => $activeServices,
             'recentOrders' => $recentOrders,
+            'deleteUrl' => route('service-hub.services.destroy', ':id')
         ]);
     }
 
@@ -2567,22 +2568,27 @@ class ServiceHubController extends Controller
         ]);
     }
 
-    public function destroyService(Gig $gig)
+    public function destroyService(int $id)
     {
-        $this->authorize('delete', $gig); // Optional: if you use policies
+        $gig = Gig::findOrFail($id);
 
+        // Check authorization
         if ($gig->user_id !== Auth::id()) {
-            abort(403);
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // Optional: soft delete or check if has active orders
+        // Check for active orders
         if ($gig->orders()->whereIn('status', ['pending', 'in_progress'])->exists()) {
-            return redirect()->back()->with('error', 'Cannot delete service with active/pending orders.');
+            return response()->json([
+                'error' => 'Cannot delete service with active/pending orders.'
+            ], 422);
         }
 
-        $gig->delete(); // or $gig->forceDelete() if you don't use soft deletes
+        // Soft delete if using soft deletes
+        $gig->delete();
 
-        return redirect()->back()->with('success', 'Service deleted successfully.');
+        // Return JSON response for Inertia
+        return response()->json(['success' => 'Service deleted successfully.']);
     }
 
     public function getServiceChats(Request $request)

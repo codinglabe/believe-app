@@ -32,6 +32,8 @@ import {
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { Head } from "@inertiajs/react"
+import toast from "react-hot-toast"
+import axios from "axios"
 
 interface Profile {
   id: number
@@ -85,27 +87,51 @@ interface PageProps extends Record<string, unknown> {
   profile: Profile
   stats: Stats
   activeServices: Service[]
-  recentOrders: Order[]
+    recentOrders: Order[],
+      deleteUrl: string // Add this
 }
 
 export default function SellerDashboard() {
-  const { profile, stats, activeServices, recentOrders } = usePage<PageProps>().props
+  const { profile, stats, activeServices, recentOrders, deleteUrl } = usePage<PageProps>().props
 
-  const handleDeleteService = (serviceId: number, serviceTitle: string) => {
-    if (!confirm(`Are you sure you want to delete "${serviceTitle}"?\nThis action cannot be undone.`)) {
-      return
+  const handleDeleteService = async (serviceId: number, serviceTitle: string) => {
+  if (!confirm(`Are you sure you want to delete "${serviceTitle}"?\nThis action cannot be undone.`)) {
+    return;
+  }
+
+  try {
+    const url = deleteUrl.replace(':id', serviceId.toString());
+    const response = await axios.delete(url);
+
+    if (response.data.success) {
+      toast.success(`Service "${serviceTitle}" has been deleted.`);
+      // Update UI or reload
+      router.reload();
+    } else if (response.data.error) {
+      // Handle server-side error response
+      toast.error(response.data.error);
     }
 
-    router.delete(`/service-hub/services/${serviceId}`, {
-      preserveScroll: true,
-      onSuccess: () => {
-        // Page will automatically refresh via Inertia
-      },
-      onError: (errors) => {
-        alert(errors?.message || "Failed to delete service. Please try again.")
-      },
-    })
+  } catch (error: any) {
+    console.error('Delete error:', error);
+
+    // Handle different types of errors
+    if (error.response) {
+      // Server responded with an error status (4xx, 5xx)
+      const errorMessage = error.response.data?.error ||
+                          error.response.data?.message ||
+                          "Failed to delete service.";
+      toast.error(errorMessage);
+
+    } else if (error.request) {
+      // Request was made but no response received
+      toast.error("Network error. Please check your connection.");
+    } else {
+      // Something else happened
+      toast.error("An unexpected error occurred.");
+    }
   }
+};
 
   const statCards = [
     {
@@ -323,63 +349,62 @@ export default function SellerDashboard() {
                   {activeServices.length > 0 ? (
                     <div className="space-y-4">
                       {activeServices.map((service) => (
-                        <Link key={service.id} href={`/service-hub/${service.slug}`}>
-                          <motion.div
-                            whileHover={{ scale: 1.02 }}
-                            className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors cursor-pointer group relative"
-                          >
-                            <div className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0">
-                              {service.image && (
-                                <img
-                                  src={service.image}
-                                  alt={service.title}
-                                  className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover flex-shrink-0"
-                                />
-                              )}
-                              <div className="flex-1 min-w-0">
-                                <h4 className="font-semibold text-base sm:text-lg truncate">{service.title}</h4>
-                                <p className="text-xs sm:text-sm text-muted-foreground">{service.category}</p>
-                                <div className="flex flex-wrap items-center gap-3 mt-2 text-sm">
-                                  <span className="font-medium">${service.price.toFixed(2)}</span>
-                                  <div className="flex items-center gap-1">
-                                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                                    <span>{service.rating.toFixed(1)}</span>
-                                  </div>
-                                  <span className="text-xs sm:text-sm text-muted-foreground">
-                                    {service.orders_count} orders
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
+  <motion.div
+    key={service.id}
+    whileHover={{ scale: 1.02 }}
+    className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 p-4 border rounded-lg hover:bg-muted/50 transition-colors group relative"
+  >
+    {/* Make the main content clickable */}
+    <Link
+      href={`/service-hub/${service.slug}`}
+      className="flex items-start sm:items-center gap-3 sm:gap-4 flex-1 min-w-0 cursor-pointer"
+    >
+      {service.image && (
+        <img
+          src={service.image}
+          alt={service.title}
+          className="w-16 h-16 sm:w-20 sm:h-20 rounded-lg object-cover flex-shrink-0"
+        />
+      )}
+      <div className="flex-1 min-w-0">
+        <h4 className="font-semibold text-base sm:text-lg truncate">{service.title}</h4>
+        <p className="text-xs sm:text-sm text-muted-foreground">{service.category}</p>
+        <div className="flex flex-wrap items-center gap-3 mt-2 text-sm">
+          <span className="font-medium">${service.price.toFixed(2)}</span>
+          <div className="flex items-center gap-1">
+            <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+            <span>{service.rating.toFixed(1)}</span>
+          </div>
+          <span className="text-xs sm:text-sm text-muted-foreground">
+            {service.orders_count} orders
+          </span>
+        </div>
+      </div>
+    </Link>
 
-                            <div className="flex items-center gap-1 absolute top-3 right-3 sm:relative sm:top-auto sm:right-auto">
-                              <Link href={`/service-hub/${service.slug}/edit`}>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8"
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <Edit className="h-4 w-4" />
-                                </Button>
-                              </Link>
+    {/* Action buttons outside the Link */}
+    <div className="flex items-center gap-1 absolute top-3 right-3 sm:relative sm:top-auto sm:right-auto z-10">
+      <Link href={`/service-hub/${service.slug}/edit`}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8"
+        >
+          <Edit className="h-4 w-4" />
+        </Button>
+      </Link>
 
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  handleDeleteService(service.id, service.title)
-                                }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </motion.div>
-                        </Link>
-                      ))}
-
+      <Button
+        variant="ghost"
+        size="icon"
+        className="h-8 w-8 text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+        onClick={() => handleDeleteService(service.id, service.title)}
+      >
+        <Trash2 className="h-4 w-4" />
+      </Button>
+    </div>
+  </motion.div>
+))}
                       <Link href="/service-hub">
                         <Button variant="outline" className="w-full mt-4">
                           View All Services

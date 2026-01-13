@@ -10,11 +10,8 @@ class FacebookAccount extends Model
     protected $fillable = [
         'user_id',
         'organization_id',
-        'facebook_app_id',
-        'facebook_app_secret',
-        'app_name',
-        'is_default_app',
-        'callback_url',
+        'facebook_user_id',      // Facebook user ID
+        'facebook_user_name',    // Facebook user name
         'facebook_page_id',
         'facebook_page_name',
         'page_access_token',
@@ -29,7 +26,6 @@ class FacebookAccount extends Model
     protected $casts = [
         'page_data' => 'array',
         'is_connected' => 'boolean',
-        'is_default_app' => 'boolean',
         'token_expires_at' => 'datetime',
         'last_synced_at' => 'datetime',
     ];
@@ -59,7 +55,7 @@ class FacebookAccount extends Model
         return $query->where('organization_id', $organizationId);
     }
 
-    protected function isTokenExpired(): Attribute
+    public function isTokenExpired(): Attribute
     {
         return Attribute::make(
             get: fn() => $this->token_expires_at && $this->token_expires_at->isPast()
@@ -124,26 +120,23 @@ class FacebookAccount extends Model
     }
 
 
+    // public function hasValidAppCredentials()
+    // {
+    //     return !empty($this->facebook_app_id) && !empty($this->facebook_app_secret);
+    // }
 
+    // // Mask sensitive data for display
+    // public function getMaskedAppSecret()
+    // {
+    //     if (!$this->facebook_app_secret) {
+    //         return null;
+    //     }
 
+    //     $length = strlen($this->facebook_app_secret);
+    //     if ($length <= 8) {
+    //         return str_repeat('*', $length);
+    //     }
 
-    public function hasValidAppCredentials()
-    {
-        return !empty($this->facebook_app_id) && !empty($this->facebook_app_secret);
-    }
-
-    // Mask sensitive data for display
-    public function getMaskedAppSecret()
-    {
-        if (!$this->facebook_app_secret) {
-            return null;
-        }
-
-        $length = strlen($this->facebook_app_secret);
-        if ($length <= 8) {
-            return str_repeat('*', $length);
-        }
-
-        return substr($this->facebook_app_secret, 0, 4) . str_repeat('*', $length - 8) . substr($this->facebook_app_secret, -4);
-    }
+    //     return substr($this->facebook_app_secret, 0, 4) . str_repeat('*', $length - 8) . substr($this->facebook_app_secret, -4);
+    // }
 }
