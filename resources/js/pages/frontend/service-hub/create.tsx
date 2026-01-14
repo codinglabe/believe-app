@@ -305,7 +305,7 @@ const [imageErrors, setImageErrors] = useState<string[]>([]); // per-image error
             preserveState: true,
             preserveScroll: true,
             onSuccess: () => {
-            showSuccessToast("Service created successfully!");
+            // showSuccessToast("Service created successfully!");
             },
             onError: (errors: Record<string, string | string[]>) => {
             // Handle per-image errors from Laravel

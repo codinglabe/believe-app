@@ -28,182 +28,201 @@ class OrganizationController extends BaseController
     }
 
     public function index(Request $request)
-    {
-        // $this->authorizePermission($request, 'organization.read');
-        // Get search parameters
-        $search = $request->get('search');
-        $category = $request->get('category');
-        $state = $request->get('state');
-        $city = $request->get('city');
-        $zip = $request->get('zip');
-        $page = $request->get('page', 1);
-        $sort = $request->get('sort', 'id');
-        $perPage = min($request->get("per_page", 6), 50); // Limit per_page to prevent abuse
+{
+    // $this->authorizePermission($request, 'organization.read');
+    // Get search parameters
+    $search = $request->get('search');
+    $category = $request->get('category');
+    $state = $request->get('state');
+    $city = $request->get('city');
+    $zip = $request->get('zip');
+    $page = $request->get('page', 1);
+    $sort = $request->get('sort', 'id');
+    $perPage = min($request->get("per_page", 6), 50); // Limit per_page to prevent abuse
 
-        // Optimized query: Simply exclude header rows (ein = 'EIN') - much faster than subquery
-        $query = ExcelData::where('status', 'complete')
-            ->where('ein', '!=', 'EIN')
-            ->whereNotNull('ein');
+    // Optimized query: Simply exclude header rows (ein = 'EIN') - much faster than subquery
+    $query = ExcelData::where('status', 'complete')
+        ->where('ein', '!=', 'EIN')
+        ->whereNotNull('ein');
 
-        // Optimized search: Search in name and sort_name virtual columns
-        if ($search) {
-            $query->where(function ($q) use ($search) {
-                $q->where('name_virtual', 'LIKE', '%' . $search . '%')
-                  ->orWhere('sort_name_virtual', 'LIKE', '%' . $search . '%');
-            });
-        }
-
-        // Optimized category filter: Use direct join instead of whereHas for better performance
-        if ($category && $category !== 'All Categories') {
-            $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
-                  ->where('ntee_codes.category', $category);
-        }
-
-        // Filter by location (using virtual columns)
-        if ($state && $state !== 'All States') {
-            $query->where('state_virtual', $state);
-        }
-
-        if ($city && $city !== 'All Cities') {
-            $query->where('city_virtual', $city);
-        }
-
-        if ($zip) {
-            // For zip, use prefix matching when possible
-            if (strlen($zip) >= 3) {
-                $query->where('zip_virtual', 'LIKE', $zip . '%');
-            } else {
-                $query->where('zip_virtual', 'LIKE', '%' . $zip . '%');
-            }
-        }
-
-        // Get only the necessary columns (do this before pagination)
-        $query->select([
-            'excel_data.id',
-            'excel_data.ein',
-            'excel_data.row_data',
-            'excel_data.created_at',
-            'excel_data.updated_at',
-            'excel_data.name_virtual',
-            'excel_data.state_virtual',
-            'excel_data.city_virtual',
-            'excel_data.ntee_code_virtual',
-            'excel_data.file_id'
-        ]);
-
-        // Apply sorting
-        switch ($sort) {
-            case 'name':
-                $query->orderBy('name_virtual', 'asc');
-                break;
-            case 'state':
-                $query->orderBy('state_virtual', 'asc');
-                break;
-            case 'city':
-                $query->orderBy('city_virtual', 'asc');
-                break;
-            default:
-                $query->orderBy('id', 'asc');
-                break;
-        }
-
-        // Get organizations with pagination
-        $organizations = $query->paginate($perPage);
-
-        // dd($organizations);
-
-        // Get all EINs from the excel data results
-        $eins = $organizations->pluck('ein')->filter()->toArray();
-
-        // Find registered organizations with these EINs
-        $registeredOrgs = [];
-        $userFavorites = [];
-
-        if (!empty($eins)) {
-            $registeredOrgs = Organization::whereIn('ein', $eins)
-                ->where('registration_status', 'approved')
-                ->get()
-                ->keyBy('ein'); // Key by EIN for easy lookup
-
-            // Get user favorites if authenticated
-            if (Auth::check() && !$registeredOrgs->isEmpty()) {
-                $userFavorites = UserFavoriteOrganization::where('user_id', Auth::id())
-                    ->whereIn('organization_id', $registeredOrgs->pluck('id'))
-                    ->pluck('organization_id')
-                    ->toArray();
-            }
-        }
-
-        // Transform the data - optimized to use virtual columns directly (no expensive transformer calls)
-        $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites) {
-            $rowData = $item->row_data;
-
-            // Check if this excel data organization is registered
-            $isRegistered = isset($registeredOrgs[$item->ein]);
-
-            // For registered organizations, check if they're favorited by the user
-            $isFavorited = false;
-            if ($isRegistered && Auth::check()) {
-                $registeredOrg = $registeredOrgs[$item->ein];
-                $isFavorited = in_array($registeredOrg->id, $userFavorites);
-            }
-
-            // Use virtual columns directly (much faster than transformer which does DB lookups)
-            return [
-                'id' => $item->id,
-                'ein' => $item->ein,
-                'name' => $item->name_virtual ?? $rowData[1] ?? '',
-                'city' => $item->city_virtual ?? $rowData[4] ?? '',
-                'state' => $item->state_virtual ?? $rowData[5] ?? '',
-                'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
-                'classification' => $rowData[10] ?? '', // Use raw data, transformer not needed for list
-                'ntee_code' => $item->ntee_code_virtual ?? $rowData[26] ?? '',
-                'created_at' => $item->created_at,
-                'is_registered' => $isRegistered,
-                'is_favorited' => $isFavorited,
-            ];
+    // Optimized search: Search in name and sort_name virtual columns
+    if ($search) {
+        $query->where(function ($q) use ($search) {
+            $q->where('name_virtual', 'LIKE', '%' . $search . '%')
+              ->orWhere('sort_name_virtual', 'LIKE', '%' . $search . '%');
         });
-
-        // $categories = NteeCode::select('category')
-        //     ->distinct()
-        //     ->orderBy('category')
-        //     ->pluck('category')
-        //     ->prepend('All Categories');
-
-        // Cache filter options for better performance
-        $categories = cache()->remember('orgs_categories', 3600, function () {
-            return DB::table('ntee_codes')
-                ->distinct()
-                ->orderBy('category')
-                ->pluck('category')
-                ->prepend('All Categories');
-        });
-
-        $filterOptions = [
-            'categories' => $categories,
-            'states' => $this->getStates(),
-            'cities' => ['All Cities'], // Initially empty, will be loaded dynamically
-        ];
-
-        $organizations->setCollection($transformedOrganizations);
-
-        return Inertia::render('frontend/organization/organizations', [
-            'organizations' => $organizations,
-            'filters' => [
-                'search' => $search,
-                'category' => $category,
-                'state' => $state,
-                'city' => $city,
-                'zip' => $zip,
-                'sort' => $sort,
-                'per_page' => $perPage,
-            ],
-            'filterOptions' => $filterOptions,
-            'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
-                ($state && $state !== 'All States') ||
-                ($city && $city !== 'All Cities') || $zip,
-        ]);
     }
+
+    // Optimized category filter: Use direct join instead of whereHas for better performance
+    if ($category && $category !== 'All Categories') {
+        $query->join('ntee_codes', 'excel_data.ntee_code_virtual', '=', 'ntee_codes.ntee_codes')
+              ->where('ntee_codes.category', $category);
+    }
+
+    // Filter by location (using virtual columns)
+    if ($state && $state !== 'All States') {
+        $query->where('state_virtual', $state);
+    }
+
+    if ($city && $city !== 'All Cities') {
+        $query->where('city_virtual', $city);
+    }
+
+    if ($zip) {
+        // For zip, use prefix matching when possible
+        if (strlen($zip) >= 3) {
+            $query->where('zip_virtual', 'LIKE', $zip . '%');
+        } else {
+            $query->where('zip_virtual', 'LIKE', '%' . $zip . '%');
+        }
+    }
+
+    // Get only the necessary columns (do this before pagination)
+    $query->select([
+        'excel_data.id',
+        'excel_data.ein',
+        'excel_data.row_data',
+        'excel_data.created_at',
+        'excel_data.updated_at',
+        'excel_data.name_virtual',
+        'excel_data.state_virtual',
+        'excel_data.city_virtual',
+        'excel_data.ntee_code_virtual',
+        'excel_data.zip_virtual',
+        'excel_data.file_id'
+    ]);
+
+    // Apply sorting
+    switch ($sort) {
+        case 'name':
+            $query->orderBy('name_virtual', 'asc');
+            break;
+        case 'state':
+            $query->orderBy('state_virtual', 'asc');
+            break;
+        case 'city':
+            $query->orderBy('city_virtual', 'asc');
+            break;
+        default:
+            $query->orderBy('id', 'asc');
+            break;
+    }
+
+    // Get organizations with pagination
+    $organizations = $query->paginate($perPage);
+
+    // Get all EINs from the excel data results
+    $eins = $organizations->pluck('ein')->filter()->toArray();
+
+    // Find registered organizations with these EINs
+    $registeredOrgs = [];
+    $userFavorites = [];
+
+    if (!empty($eins)) {
+        $registeredOrgs = Organization::whereIn('ein', $eins)
+            ->where('registration_status', 'approved')
+            ->get()
+            ->keyBy('ein'); // Key by EIN for easy lookup
+
+        // Get user favorites if authenticated
+        if (Auth::check() && !$registeredOrgs->isEmpty()) {
+            $userFavorites = UserFavoriteOrganization::where('user_id', Auth::id())
+                ->whereIn('organization_id', $registeredOrgs->pluck('id'))
+                ->pluck('organization_id')
+                ->toArray();
+        }
+    }
+
+    // Get NTEE codes and their categories for the organizations
+    $nteeCodes = $organizations->pluck('ntee_code_virtual')->filter()->toArray();
+    $nteeCategories = [];
+
+    if (!empty($nteeCodes)) {
+        $nteeCategories = NteeCode::whereIn('ntee_codes', $nteeCodes)
+            ->select('ntee_codes', 'category')
+            ->get()
+            ->keyBy('ntee_codes');
+    }
+
+    // Transform the data - optimized to use virtual columns directly (no expensive transformer calls)
+    $transformedOrganizations = $organizations->getCollection()->map(function ($item) use ($registeredOrgs, $userFavorites, $nteeCategories) {
+        $rowData = $item->row_data;
+        $nteeCode = $item->ntee_code_virtual ?? $rowData[26] ?? '';
+
+        // Get NTEE category
+        $nteeCategory = '';
+        if ($nteeCode && isset($nteeCategories[$nteeCode])) {
+            $nteeCategory = $nteeCategories[$nteeCode]->category;
+        }
+
+        // Format NTEE code with category like in ExcelDataTransformer
+        $formattedNteeCode = $nteeCode;
+        if ($nteeCode && $nteeCategory) {
+            $formattedNteeCode = $nteeCode . " - " . $nteeCategory;
+        }
+
+        // Check if this excel data organization is registered
+        $isRegistered = isset($registeredOrgs[$item->ein]);
+
+        // For registered organizations, check if they're favorited by the user
+        $isFavorited = false;
+        if ($isRegistered && Auth::check()) {
+            $registeredOrg = $registeredOrgs[$item->ein];
+            $isFavorited = in_array($registeredOrg->id, $userFavorites);
+        }
+
+        // Use virtual columns directly (much faster than transformer which does DB lookups)
+        return [
+            'id' => $item->id,
+            'ein' => $item->ein,
+            'name' => $item->name_virtual ?? $rowData[1] ?? '',
+            'city' => $item->city_virtual ?? $rowData[4] ?? '',
+            'state' => $item->state_virtual ?? $rowData[5] ?? '',
+            'zip' => $item->zip_virtual ?? $rowData[6] ?? '',
+            'classification' => $rowData[10] ?? '',
+            'ntee_code' => $formattedNteeCode,
+            'ntee_code_raw' => $nteeCode, // Keep raw code for filtering/sorting if needed
+            'ntee_category' => $nteeCategory, // Add category separately if needed
+            'created_at' => $item->created_at,
+            'is_registered' => $isRegistered,
+            'is_favorited' => $isFavorited,
+        ];
+    });
+
+    // Cache filter options for better performance
+    $categories = cache()->remember('orgs_categories', 3600, function () {
+        return DB::table('ntee_codes')
+            ->distinct()
+            ->orderBy('category')
+            ->pluck('category')
+            ->prepend('All Categories');
+    });
+
+    $filterOptions = [
+        'categories' => $categories,
+        'states' => $this->getStates(),
+        'cities' => ['All Cities'], // Initially empty, will be loaded dynamically
+    ];
+
+    $organizations->setCollection($transformedOrganizations);
+
+    return Inertia::render('frontend/organization/organizations', [
+        'organizations' => $organizations,
+        'filters' => [
+            'search' => $search,
+            'category' => $category,
+            'state' => $state,
+            'city' => $city,
+            'zip' => $zip,
+            'sort' => $sort,
+            'per_page' => $perPage,
+        ],
+        'filterOptions' => $filterOptions,
+        'hasActiveFilters' => $search || ($category && $category !== 'All Categories') ||
+            ($state && $state !== 'All States') ||
+            ($city && $city !== 'All Cities') || $zip,
+    ]);
+}
 
     private function getStates()
     {

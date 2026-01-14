@@ -27,6 +27,7 @@ use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianc
 use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
 use App\Http\Controllers\Admin\FeesController;
 use App\Http\Controllers\Admin\RewardPointController;
+use App\Http\Controllers\Admin\ServiceSellerController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
@@ -227,6 +228,14 @@ Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers
 Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
+
+// Admin seller management routes
+Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/service-sellers', [ServiceSellerController::class, 'index'])->name('admin.service-sellers.index');
+    Route::get('/service-sellers/{id}', [ServiceSellerController::class, 'show'])->name('admin.service-sellers.show');
+    Route::post('/service-sellers/{id}/suspend', [ServiceSellerController::class, 'suspend'])->name('admin.service-sellers.suspend');
+    Route::post('/service-sellers/{id}/unsuspend', [ServiceSellerController::class, 'unsuspend'])->name('admin.service-sellers.unsuspend');
+});
 
 // Service Chat Routes
 Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->name('service-hub.chat.')->group(function () {

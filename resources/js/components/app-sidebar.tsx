@@ -107,6 +107,25 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ],
         role: "organization"
     },
+    {
+    title: 'Service Hub Management',
+    icon: ShoppingBag,
+    role: "admin",
+    items: [
+        {
+            title: 'Service Sellers',
+            href: '/admin/service-sellers',
+            icon: Users,
+            role: "admin"
+        },
+        {
+            title: 'Service Categories',
+            href: '/admin/service-categories',
+            icon: FolderOpen,
+            role: "admin"
+        },
+    ],
+},
 
     // 4. People & Community
     {

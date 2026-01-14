@@ -27,6 +27,7 @@
         "phpoffice/phpspreadsheet": "^4.3",
         "simplepie/simplepie": "^1.8",
         "simplesoftwareio/simple-qrcode": "^4.2",
+        "spatie/laravel-activitylog": "^4.10",
         "spatie/laravel-permission": "^6.20",
         "srmklive/paypal": "*",
         "stripe/stripe-php": "^16.6",
