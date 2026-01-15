@@ -12,6 +12,7 @@ use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
         web: __DIR__ . '/../routes/web.php',
+        api: __DIR__ . '/../routes/api.php',
         commands: __DIR__ . '/../routes/console.php',
         health: '/up',
     )
@@ -20,6 +21,7 @@ return Application::configure(basePath: dirname(__DIR__))
         // Security is handled in the webhook controller via signature verification.
         $middleware->validateCsrfTokens(except: [
             'webhooks/bridge',
+            'api/*', // Exclude all API routes from CSRF protection
         ]);
 
         $middleware->encryptCookies(except: [
@@ -44,6 +46,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.permission' => \App\Http\Middleware\CheckPermission::class,
             'check.role' => \App\Http\Middleware\CheckRole::class,
             'EnsureEmailIsVerified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
+            'api.email.verified' => \App\Http\Middleware\EnsureApiEmailVerified::class, // Secure API email verification guard
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

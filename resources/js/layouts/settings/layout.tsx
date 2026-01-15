@@ -41,10 +41,11 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
         <div className="grid grid-cols-1 md:grid-cols-12 gap-4 md:gap-6">
           {/* Sidebar Navigation */}
           <div className="md:col-span-3">
-            <Card className="border-gray-200 dark:border-gray-800 sticky top-4 md:top-6 max-h-[calc(100vh-2rem)] overflow-y-auto">
-              <CardContent className="p-0">
-                {/* Mobile/Tablet Navigation - Scrollable */}
-                <nav className="md:hidden p-2 max-h-[400px] overflow-y-auto">
+            <div className="md:sticky md:top-4">
+              <Card className="border-gray-200 dark:border-gray-800">
+                <CardContent className="p-0">
+                {/* Mobile/Tablet Navigation */}
+                <nav className="md:hidden p-2">
                   <div className="space-y-1">
                     <div className="px-3 py-2 mb-2">
                       <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Account</h3>
@@ -333,7 +334,8 @@ export default function SettingsLayout({ children, activeTab = "profile" }: Sett
                   </div>
                 </nav>
               </CardContent>
-            </Card>
+              </Card>
+            </div>
           </div>
 
           {/* Main Content Area */}

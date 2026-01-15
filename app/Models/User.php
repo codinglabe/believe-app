@@ -14,11 +14,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
+use Laravel\Passport\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasRoles, Billable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, Billable;
 
     /**
      * The guard name for Spatie Permission
@@ -60,6 +61,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'referral_code',
         'referred_by',
         "is_verified",
+        "email_verified_at",
         "ownership_verified_at",
         "verification_status",
         'primary_bank_account_id',

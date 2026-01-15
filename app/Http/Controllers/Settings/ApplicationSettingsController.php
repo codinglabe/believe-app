@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Settings;
 
 use App\Http\Controllers\Controller;
+use App\Models\AdminSetting;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -23,9 +24,13 @@ class ApplicationSettingsController extends Controller
             abort(403, 'Unauthorized');
         }
 
+        // Get footer settings
+        $footerSettings = AdminSetting::get('footer_settings', null);
+
         return Inertia::render('settings/application', [
             'cache_stats' => $this->getCacheStats(),
             'storage_stats' => $this->getStorageStats(),
+            'footer_settings' => $footerSettings,
         ]);
     }
 
@@ -310,6 +315,60 @@ class ApplicationSettingsController extends Controller
             Log::warning('Error checking for domain-based routing', ['error' => $e->getMessage()]);
             return false;
         }
+    }
+
+    /**
+     * Update footer settings
+     */
+    public function updateFooter(Request $request)
+    {
+        // Only allow admin access
+        if ($request->user()->role !== 'admin') {
+            abort(403, 'Unauthorized');
+        }
+
+        $validated = $request->validate([
+            'description' => 'nullable|string|max:500',
+            'social_links' => 'nullable|array',
+            'social_links.facebook' => 'nullable|string|max:255',
+            'social_links.twitter' => 'nullable|string|max:255',
+            'social_links.instagram' => 'nullable|string|max:255',
+            'social_links.linkedin' => 'nullable|string|max:255',
+            'quick_links' => 'nullable|array',
+            'quick_links.*.title' => 'nullable|string|max:100',
+            'quick_links.*.url' => 'nullable|string|max:255',
+            'contact_email' => 'nullable|email|max:255',
+            'contact_phone' => 'nullable|string|max:50',
+            'contact_address' => 'nullable|string|max:500',
+            'copyright_text' => 'nullable|string|max:200',
+            'legal_links' => 'nullable|array',
+            'legal_links.*.title' => 'nullable|string|max:100',
+            'legal_links.*.url' => 'nullable|string|max:255',
+        ]);
+
+        // Filter out empty values from arrays
+        if (isset($validated['quick_links'])) {
+            $validated['quick_links'] = array_filter($validated['quick_links'], function($link) {
+                return !empty($link['title']) || !empty($link['url']);
+            });
+            $validated['quick_links'] = array_values($validated['quick_links']); // Re-index array
+        }
+
+        if (isset($validated['legal_links'])) {
+            $validated['legal_links'] = array_filter($validated['legal_links'], function($link) {
+                return !empty($link['title']) || !empty($link['url']);
+            });
+            $validated['legal_links'] = array_values($validated['legal_links']); // Re-index array
+        }
+
+        // Store as JSON
+        AdminSetting::set('footer_settings', $validated, 'json');
+
+        Log::info('Footer settings updated by admin', [
+            'admin_id' => $request->user()->id,
+        ]);
+
+        return redirect()->back()->with('success', 'Footer settings updated successfully');
     }
 }
 
