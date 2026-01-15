@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import axios from 'axios';
+import FacebookPermissionModal from '@/components/facebook/FacebookPermissionModal';
 
 interface FacebookAccount {
     id: number;
@@ -49,11 +50,28 @@ export default function Connect({
 }: Props) {
     const [disconnecting, setDisconnecting] = useState<Record<number, boolean>>({});
     const [refreshing, setRefreshing] = useState<Record<number, boolean>>({});
+    const [showPermissionModal, setShowPermissionModal] = useState(false);
+
+    const connectToFacebook = () => {
+        // Show permission modal first
+        setShowPermissionModal(true);
+    };
+
+    const handleAcceptPermissions = () => {
+        setShowPermissionModal(false);
+
+        // Redirect to Facebook OAuth with accepted permissions
+        const params = new URLSearchParams({
+            'accepted_permissions': JSON.stringify(['pages_manage_posts', 'pages_read_engagement', 'pages_show_list', 'public_profile'])
+        });
+
+        window.location.href = `/facebook/oauth/redirect?${params.toString()}`;
+    };
 
     // সরাসরি Facebook OAuth এ redirect
-    const connectToFacebook = () => {
-        window.location.href = '/facebook/oauth/redirect';
-    };
+    // const connectToFacebook = () => {
+    //     window.location.href = '/facebook/oauth/redirect';
+    // };
 
     const handleDisconnect = async (accountId: number, pageName: string) => {
         if (!confirm(`Are you sure you want to disconnect "${pageName}"?`)) {
@@ -201,6 +219,13 @@ export default function Connect({
                             </div>
                         </CardContent>
                     </Card>
+
+                     {/* Permission Modal */}
+      <FacebookPermissionModal
+        isOpen={showPermissionModal}
+        onClose={() => setShowPermissionModal(false)}
+        onAccept={handleAcceptPermissions}
+      />
                 </div>
 
                 {/* Connected Accounts */}
