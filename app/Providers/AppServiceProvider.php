@@ -5,8 +5,11 @@ namespace App\Providers;
 use App\Models\NodeSell;
 use App\Models\User;
 use App\Observers\NodeSellObserver;
+use App\Listeners\AwardInviteRewardPoints;
+use Illuminate\Auth\Events\Verified;
 use Illuminate\Notifications\Notification;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Event;
 use Inertia\Inertia;
 use Laravel\Cashier\Cashier;
 
@@ -31,6 +34,9 @@ class AppServiceProvider extends ServiceProvider
     {
         NodeSell::observe(NodeSellObserver::class);
         Cashier::useCustomerModel(User::class);
+        
+        // Register event listener for email verification
+        Event::listen(Verified::class, AwardInviteRewardPoints::class);
         
         Inertia::share([
             'auth' => function () {

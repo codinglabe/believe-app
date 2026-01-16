@@ -44,6 +44,7 @@ class UserController extends Controller
             'name' => 'sometimes|string|max:255',
             'contact_number' => 'sometimes|string|max:20',
             'dob' => 'sometimes|date',
+            'image' => 'sometimes|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
         ]);
 
         if ($validator->fails()) {
@@ -54,7 +55,22 @@ class UserController extends Controller
             ], 422);
         }
 
-        $user->update($request->only(['name', 'contact_number', 'dob']));
+        $updateData = $request->only(['name', 'contact_number', 'dob']);
+
+        // Handle image upload
+        if ($request->hasFile('image')) {
+            // Delete old image if exists
+            if ($user->image) {
+                \Illuminate\Support\Facades\Storage::disk('public')->delete($user->image);
+            }
+
+            // Store new image
+            $filename = 'profile-' . $user->id . '-' . time() . '.' . $request->file('image')->extension();
+            $path = $request->file('image')->storeAs('profile-photos', $filename, 'public');
+            $updateData['image'] = $path;
+        }
+
+        $user->update($updateData);
 
         return response()->json([
             'success' => true,
@@ -65,6 +81,7 @@ class UserController extends Controller
                 'email' => $user->email,
                 'contact_number' => $user->contact_number,
                 'dob' => $user->dob,
+                'image' => $user->image,
             ]
         ]);
     }

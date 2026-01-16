@@ -45,6 +45,14 @@ class LivestockRegisteredUserController extends Controller
 
         event(new Registered($user));
 
+        // Send verification email with current domain (where user is registering from)
+        // Use actual request host, not config value
+        $scheme = $request->getScheme();
+        $host = $request->getHost();
+        $port = $request->getPort();
+        $currentDomain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+        $user->sendEmailVerificationNotification($currentDomain);
+
         Auth::guard('livestock')->login($user);
 
         // Redirect to livestock seller dashboard or home

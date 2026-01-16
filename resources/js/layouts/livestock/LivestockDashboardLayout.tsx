@@ -210,7 +210,7 @@ export default function LivestockDashboardLayout({ children }: LivestockDashboar
 
     const handleLogout = (e: React.FormEvent) => {
         e.preventDefault()
-        post(route('logout'))
+        post(route('logout.livestock'))
     }
 
     // Check if user should be blocked from navigation

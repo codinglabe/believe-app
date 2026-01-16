@@ -34,12 +34,29 @@ class CheckRole
                 ], 403);
             }
 
+            // Get role-specific back URL
+            $backUrl = $request->header('referer');
+            if (!$backUrl) {
+                $userRole = $user->getRoleNames()->first();
+                if ($userRole === 'admin' || $userRole === 'organization' || $userRole === 'organization_pending') {
+                    $backUrl = route('dashboard');
+                } elseif ($userRole === 'merchant') {
+                    $backUrl = route('merchant.dashboard');
+                } elseif ($userRole === 'user') {
+                    $backUrl = route('profile.index');
+                } else {
+                    $backUrl = '/';
+                }
+            }
+
             // For web requests, show permission denied page
             return Inertia::render('errors/permission-denied', [
                 'permission' => 'role_access',
                 'userRole' => $user->getRoleNames()->first(),
+                'userRoles' => $user->getRoleNames()->toArray(),
+                'userPermissions' => $user->getAllPermissions()->pluck('name')->toArray(),
                 'requiredRoles' => $roles,
-                'backUrl' => $request->header('referer') ?: route('dashboard')
+                'backUrl' => $backUrl
             ])->toResponse($request);
         }
 

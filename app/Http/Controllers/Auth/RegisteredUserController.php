@@ -81,6 +81,14 @@ class RegisteredUserController extends Controller
         event(new Registered($user));
         $user->assignRole('user');
 
+        // Send verification email with current domain (where user is registering from)
+        // Use actual request host, not config value
+        $scheme = $request->getScheme();
+        $host = $request->getHost();
+        $port = $request->getPort();
+        $currentDomain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+        $user->sendEmailVerificationNotification($currentDomain);
+
         Auth::login($user);
 
         // Initialize Bridge for the user (non-blocking)

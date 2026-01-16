@@ -38,6 +38,7 @@ import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/fr
 import type React from "react"
 import { useEffect, useState } from "react"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
+import InviteOrganizationPopup from "@/components/frontend/InviteOrganizationPopup"
 
 // Helper to extract channel ID from a YouTube URL
 function extractYouTubeChannelId(url: string): string | null {
@@ -159,6 +160,7 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
   const [description, setDescription] = useState(organization.description || '')
   const [isGeneratingDescription, setIsGeneratingDescription] = useState(false)
   const [showCartModal, setShowCartModal] = useState(false)
+  const [showInvitePopup, setShowInvitePopup] = useState(false)
 
   const { post, processing } = useForm()
 
@@ -716,18 +718,38 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
               )}
 
               {!organization.is_registered && (
-                <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
+                <Card className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border-blue-200 dark:border-blue-800">
                   <CardHeader>
-                    <CardTitle className="text-yellow-800 dark:text-yellow-200 flex items-center">
-                      <Info className="mr-2 h-5 w-5" />
-                      Organization Status
+                    <CardTitle className="text-blue-900 dark:text-blue-100 flex items-center justify-between">
+                      <span className="flex items-center">
+                        <Info className="mr-2 h-5 w-5" />
+                        Organization Status
+                      </span>
+                      {auth?.user && (
+                        <Button
+                          onClick={() => setShowInvitePopup(true)}
+                          size="sm"
+                          className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white"
+                        >
+                          <Mail className="mr-2 h-4 w-4" />
+                          Invite Them
+                        </Button>
+                      )}
                     </CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                      This organization is listed in our database but has not yet registered for additional features
-                      like donations, detailed profiles, and community engagement.
+                    <p className="text-blue-800 dark:text-blue-200 text-sm mb-3">
+                      The organization <span className="font-semibold">"{organization.name}"</span> isn't part of our community yet.
                     </p>
+                    {auth?.user ? (
+                      <p className="text-blue-700 dark:text-blue-300 text-sm">
+                        If you know this organization, you can invite them to join. Once they sign up, you'll receive 100 points to spend in the Merchant Hub! 🎉
+                      </p>
+                    ) : (
+                      <p className="text-blue-700 dark:text-blue-300 text-sm">
+                        This organization is listed in our database but has not yet registered for additional features like donations, detailed profiles, and community engagement.
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               )}
@@ -753,6 +775,19 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
             isOpen={showDonationModal}
             onClose={() => setShowDonationModal(false)}
             organization={organization}
+          />
+        )}
+
+        {/* Invite Organization Popup - Show for unregistered organizations */}
+        {!organization.is_registered && auth?.user && (
+          <InviteOrganizationPopup
+            isOpen={showInvitePopup}
+            onClose={() => setShowInvitePopup(false)}
+            organization={{
+              id: organization.id,
+              name: organization.name,
+              ein: organization.ein,
+            }}
           />
         )}
       </div>

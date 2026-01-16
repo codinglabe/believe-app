@@ -1,17 +1,11 @@
 "use client"
 
 import { motion } from "framer-motion"
-import { ArrowLeft, Home, Lock, Settings, User } from "lucide-react"
+import { ArrowLeft, Home, Search } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { router, usePage } from "@inertiajs/react"
 
 interface PageProps {
-  permission?: string
-  userRole?: string
-  userRoles?: string[]
-  userPermissions?: string[]
-  requiredPermission?: string
-  requiredRoles?: string[]
   backUrl?: string
   errorMessage?: string
   auth?: {
@@ -27,15 +21,15 @@ interface PageProps {
   [key: string]: any
 }
 
-export default function PermissionDenied() {
+export default function NotFound404() {
   const pageProps = usePage<PageProps>().props
-  const { permission, userRole, userRoles = [], userPermissions = [], requiredPermission, requiredRoles, backUrl, errorMessage } = pageProps
+  const { backUrl, errorMessage } = pageProps
   const auth = pageProps.auth || (pageProps as any).auth
 
   // Determine which buttons to show based on user role
   const getAvailableButtons = () => {
     const buttons = []
-    const currentRole = userRole || auth?.user?.role
+    const currentRole = auth?.user?.role
 
     // Get role-specific home/back URL
     const getRoleBackUrl = () => {
@@ -53,14 +47,14 @@ export default function PermissionDenied() {
       return '/'
     }
 
-    // Go Back button - always use role-specific URL to ensure it works
+    // Go Back button
     const roleBackUrl = getRoleBackUrl()
     let finalBackUrl = roleBackUrl
     
     if (backUrl) {
       const isSafeBackUrl = backUrl && 
         !backUrl.includes('/errors/') && 
-        !backUrl.includes('permission-denied') &&
+        !backUrl.includes('404') &&
         backUrl !== window.location.pathname
       
       if (isSafeBackUrl) {
@@ -95,7 +89,7 @@ export default function PermissionDenied() {
       if (currentRole === 'admin') {
         buttons.push({
           label: 'Admin Dashboard',
-          icon: Settings,
+          icon: Home,
           variant: 'default' as const,
           onClick: () => router.visit('/dashboard'),
           className: 'flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-6 py-3'
@@ -127,7 +121,7 @@ export default function PermissionDenied() {
       } else if (currentRole === 'user') {
         buttons.push({
           label: 'My Profile',
-          icon: User,
+          icon: Home,
           variant: 'default' as const,
           onClick: () => router.visit('/profile'),
           className: 'flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-6 py-3'
@@ -143,18 +137,11 @@ export default function PermissionDenied() {
       }
     } else {
       buttons.push({
-        label: 'Sign In',
-        icon: Lock,
+        label: 'Go to Home',
+        icon: Home,
         variant: 'default' as const,
-        onClick: () => router.visit('/login'),
+        onClick: () => router.visit('/'),
         className: 'flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 px-6 py-3'
-      })
-      buttons.push({
-        label: 'Create Account',
-        icon: User,
-        variant: 'outline' as const,
-        onClick: () => router.visit('/register'),
-        className: 'flex items-center gap-2 border-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-600 dark:text-blue-300 dark:hover:bg-blue-900/20 transition-all duration-200 px-6 py-3'
       })
     }
 
@@ -177,8 +164,8 @@ export default function PermissionDenied() {
           className="flex items-center justify-center p-8 md:p-12 w-full"
         >
           <img 
-            src="/images/permissin-denied.png" 
-            alt="Access Denied" 
+            src="/images/404.png" 
+            alt="404 Not Found" 
             className="w-full max-w-2xl h-auto object-contain"
           />
         </motion.div>
@@ -217,7 +204,7 @@ export default function PermissionDenied() {
             className="pt-6 border-t border-gray-200 dark:border-gray-700"
           >
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              If you believe this is an error, please contact your administrator for assistance.
+              The page you're looking for might have been moved, deleted, or doesn't exist.
             </p>
           </motion.div>
         </div>

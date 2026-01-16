@@ -154,7 +154,7 @@ export function AppSidebarHeader({ breadcrumbs = [] }: { breadcrumbs?: Breadcrum
 
                 {/* Notification Bell */}
                 {auth?.user?.id && (
-                    <NotificationBell userId={auth.user.id} />
+                    <NotificationBell userId={auth.user.id} emailVerified={!!auth?.user?.email_verified_at} />
                 )}
 
                 {/* Wallet Balance Display for Organization Users - Always visible */}

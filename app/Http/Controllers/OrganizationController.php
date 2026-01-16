@@ -13,6 +13,7 @@ use App\Services\OpenAiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use App\Jobs\SendOrganizationInviteJob;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
 use App\Services\ExcelDataTransformer;
@@ -1107,5 +1108,94 @@ class OrganizationController extends BaseController
             'organization' => $organizationData,
             'auth' => Auth::user() ? ['user' => Auth::user()] : null,
         ]);
+    }
+
+    /**
+     * Invite an unregistered organization via email
+     */
+    public function inviteOrganization(Request $request)
+    {
+        $request->validate([
+            'organization_id' => 'required|exists:excel_data,id',
+            'organization_name' => 'required|string|max:255',
+            'email' => 'required|email|max:255',
+        ]);
+
+        $user = Auth::user();
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You must be logged in to invite organizations',
+            ], 401);
+        }
+
+        try {
+            // Get organization data
+            $organization = ExcelData::findOrFail($request->organization_id);
+            
+            // Check if organization is already registered
+            $registeredOrg = Organization::where('ein', $organization->ein)
+                ->where('registration_status', 'approved')
+                ->first();
+            
+            if ($registeredOrg) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This organization is already registered',
+                ], 400);
+            }
+
+            // Check if user has already invited this organization
+            $existingInvite = \App\Models\OrganizationInvite::where('excel_data_id', $organization->id)
+                ->where('inviter_id', $user->id)
+                ->where('email', $request->email)
+                ->first();
+            
+            if ($existingInvite) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You have already invited this organization to this email address',
+                ], 400);
+            }
+
+            // Create invite record
+            $invite = \App\Models\OrganizationInvite::create([
+                'excel_data_id' => $organization->id,
+                'inviter_id' => $user->id,
+                'email' => $request->email,
+                'organization_name' => $request->organization_name,
+                'ein' => $organization->ein,
+                'status' => 'pending',
+            ]);
+
+            // Dispatch job to send email via queue
+            SendOrganizationInviteJob::dispatch($invite);
+
+            Log::info('Organization invite job dispatched', [
+                'inviter_id' => $user->id,
+                'organization_id' => $organization->id,
+                'email' => $request->email,
+                'invite_id' => $invite->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Invitation sent successfully!',
+                'data' => [
+                    'invite_id' => $invite->id,
+                ],
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Failed to send organization invite', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id ?? null,
+                'organization_id' => $request->organization_id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to send invitation. Please try again later.',
+            ], 500);
+        }
     }
 }
