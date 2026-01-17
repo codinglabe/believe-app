@@ -166,6 +166,7 @@ Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
     ->name('nonprofit.news');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
+Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
 
@@ -1646,8 +1647,8 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 // Email Invite Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
     Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
-    Route::post('/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
-    Route::post('/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
+    Route::match(['get', 'post'], '/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
+    Route::match(['get', 'post'], '/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
     Route::get('/callback', [App\Http\Controllers\EmailInviteController::class, 'callback'])->name('callback');
     Route::post('/connections/{connection}/sync', [App\Http\Controllers\EmailInviteController::class, 'syncContacts'])->name('sync');
     Route::get('/connections/{connection}/sync-status', [App\Http\Controllers\EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');

@@ -36,6 +36,7 @@ import {
   Mail,
   Sparkles,
   Coins,
+  HeartHandshake,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -109,6 +110,7 @@ export default function Navbar() {
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+    { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
     { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Courses & Events", href: route("course.index"), icon: GraduationCap },
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
@@ -408,8 +410,8 @@ export default function Navbar() {
                   </div>
                 )}
 
-                              {/* Coins Icon Dropdown - Shows Believe Points and Reward Points */}
-                              {isLoggedIn && (auth?.user?.believe_points !== undefined || auth?.user?.reward_points !== undefined) && (
+                              {/* Coins Icon Dropdown - Shows Believe Points and Reward Points (hidden for admin) */}
+                              {isLoggedIn && auth?.user?.role !== 'admin' && (auth?.user?.believe_points !== undefined || auth?.user?.reward_points !== undefined) && (
                                   <DropdownMenu>
                                       <DropdownMenuTrigger asChild>
                                           <Button variant="ghost" size="sm" className="h-9 w-9 px-0 relative">
@@ -423,7 +425,7 @@ export default function Navbar() {
                                                   <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
                                                       <div className="flex items-center gap-2">
                                                           <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
-                                                              <span className="text-xs text-white font-bold">RP</span>
+                                                              <Gift className="h-4 w-4 text-white" />
                                                           </div>
                                                           <div>
                                                               <p className="text-xs text-muted-foreground">Reward Points</p>
@@ -440,7 +442,7 @@ export default function Navbar() {
                                                   <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
                                                       <div className="flex items-center gap-2">
                                                           <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
-                                                              <span className="text-xs text-white font-bold">BP</span>
+                                                              <Sparkles className="h-4 w-4 text-white" />
                                                           </div>
                                                           <div>
                                                               <p className="text-xs text-muted-foreground">Believe Points</p>
@@ -659,8 +661,8 @@ export default function Navbar() {
                                               </div>
                                           </div>
                                           
-                                          {/* Points Display for Mobile - Shows Reward Points and Believe Points */}
-                                          {(auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
+                                          {/* Points Display for Mobile - Shows Reward Points and Believe Points (hidden for admin) */}
+                                          {auth?.user?.role !== 'admin' && (auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
                                               <div className="px-3 py-2 space-y-2">
                                                   {/* Reward Points */}
                                                   {auth?.user?.reward_points !== undefined && (

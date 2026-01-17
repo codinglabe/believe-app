@@ -15,7 +15,7 @@ class JobsController extends Controller
 {
     public function __construct()
     {
-        $this->middleware(['auth', 'role:user'])->except(['index', 'getJobPositions', 'show']);
+        $this->middleware(['auth', 'role:user'])->except(['index', 'volunteerOpportunities', 'getJobPositions', 'show']);
     }
 
     public function index(Request $request)
@@ -86,6 +86,80 @@ class JobsController extends Controller
                 'search',
                 'location_type',
                 'type',
+                'city',
+                'state',
+                'organization_id',
+                'position_category_id',
+                'position_id'
+            ]),
+        ]);
+    }
+
+    public function volunteerOpportunities(Request $request)
+    {
+        $jobs = JobPost::query()
+            ->with(['organization', 'position'])
+            ->where('type', 'volunteer')
+            ->whereIn('status', ['open', 'filled', 'closed'])
+            ->when($request->search, function ($query, $search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('title', 'like', "%{$search}%")
+                        ->orWhere('description', 'like', "%{$search}%");
+                });
+            })
+            ->when($request->location_type, function ($query, $locationType) {
+                $query->where('location_type', $locationType);
+            })
+            ->when($request->city, function ($query, $city) {
+                $query->where('city', 'like', "%{$city}%");
+            })
+            ->when($request->state, function ($query, $state) {
+                $query->where('state', 'like', "%{$state}%");
+            })
+            ->when($request->position_category_id, function ($query, $categoryId) {
+                $query->whereHas('position', function ($q) use ($categoryId) {
+                    $q->where('category_id', $categoryId);
+                });
+            })
+            ->when($request->position_id, function ($query, $positionId) {
+                $query->where('position_id', $positionId);
+            })
+            ->when($request->organization_id, function ($query, $organizationId) {
+                $query->where('organization_id', $organizationId);
+            })
+            ->when(auth()->check(), function ($query) {
+                $query->withExists([
+                    'applications as has_applied' => function ($q) {
+                        $q->where('user_id', auth()->id());
+                    }
+                ]);
+            })
+            ->orderBy('created_at', 'desc')
+            ->paginate(12)
+            ->withQueryString();
+
+        $positionCategories = PositionCategory::pluck('name', 'id')->toArray();
+
+        // Load positions if category filter is applied
+        $positions = [];
+        if ($request->position_category_id) {
+            $positions = JobPosition::where('category_id', $request->position_category_id)
+                ->pluck('title', 'id')
+                ->toArray();
+        }
+
+        $organizations = Organization::orderBy('name')
+                ->pluck('name', 'id')
+                ->toArray();
+
+        return Inertia::render('frontend/jobs/volunteer-opportunities', [
+            'jobs' => $jobs,
+            'organizations' => $organizations,
+            'positionCategories' => $positionCategories,
+            'positions' => $positions,
+            'filters' => $request->only([
+                'search',
+                'location_type',
                 'city',
                 'state',
                 'organization_id',

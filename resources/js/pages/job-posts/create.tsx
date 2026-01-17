@@ -39,6 +39,7 @@ export default function Create({
         requirements: '',
         pay_rate: '',
         currency: '',
+        points: '',
         type: '',
         location_type: '',
         city: '',
@@ -199,39 +200,57 @@ export default function Create({
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="pay_rate">Pay Rate</Label>
-                                    <div className="flex gap-2">
+                                {formData.type === 'volunteer' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="points">Points (Reward Points)</Label>
                                         <Input
-                                            id="pay_rate"
+                                            id="points"
                                             type="number"
                                             min="0"
-                                            step="0.01"
-                                            value={formData.pay_rate}
-                                            onChange={(e) => handleChange('pay_rate', e.target.value)}
-                                            placeholder="Enter pay rate"
-                                            className={errors.pay_rate ? 'border-red-500' : ''}
+                                            value={formData.points}
+                                            onChange={(e) => handleChange('points', e.target.value)}
+                                            placeholder="Enter reward points"
+                                            className={errors.points ? 'border-red-500' : ''}
                                         />
-                                        <Select
-                                            value={formData.currency}
-                                            onValueChange={(value) => handleChange('currency', value)}
-                                        >
-                                            <SelectTrigger className="w-[100px]">
-                                                <SelectValue placeholder="Currency" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {Object.entries(currencyOptions).map(([value, label]) => (
-                                                    <SelectItem key={value} value={value}>
-                                                        {label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        {errors.points && (
+                                            <p className="text-sm text-red-500">{errors.points}</p>
+                                        )}
                                     </div>
-                                    {errors.pay_rate && (
-                                        <p className="text-sm text-red-500">{errors.pay_rate}</p>
-                                    )}
-                                </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="pay_rate">Pay Rate</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="pay_rate"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={formData.pay_rate}
+                                                onChange={(e) => handleChange('pay_rate', e.target.value)}
+                                                placeholder="Enter pay rate"
+                                                className={errors.pay_rate ? 'border-red-500' : ''}
+                                            />
+                                            <Select
+                                                value={formData.currency}
+                                                onValueChange={(value) => handleChange('currency', value)}
+                                            >
+                                                <SelectTrigger className="w-[100px]">
+                                                    <SelectValue placeholder="Currency" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {Object.entries(currencyOptions).map(([value, label]) => (
+                                                        <SelectItem key={value} value={value}>
+                                                            {label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {errors.pay_rate && (
+                                            <p className="text-sm text-red-500">{errors.pay_rate}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="time_commitment_min_hours">Time Commitment (hours)</Label>
