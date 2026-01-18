@@ -106,7 +106,7 @@ export function Sidebar() {
 </Link> / {getBreadcrumbText()}
               </h2>
               <div>
-                  <NotificationBell userId={currentUser?.id}/>
+                  <NotificationBell userId={currentUser?.id} emailVerified={!!auth?.user?.email_verified_at} />
         {canCreateGroups && (
           <Button variant="ghost" size="icon" onClick={() => setIsGroupCreateOpen(true)}>
             <PlusIcon className="h-5 w-5" />

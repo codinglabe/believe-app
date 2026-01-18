@@ -12,6 +12,7 @@ class JobPost extends Model
         'requirements',
         'pay_rate',
         'currency',
+        'points',
         'type',
         'location_type',
         'city',

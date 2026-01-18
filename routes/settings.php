@@ -40,6 +40,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
             Route::get('/settings/application', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'index'])->name('application.index');
             Route::post('/settings/application/optimize', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'optimize'])->name('application.optimize');
             Route::post('/settings/application/clear', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'clear'])->name('application.clear');
+            Route::post('/settings/application/footer', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'updateFooter'])->name('application.footer.update');
         });
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');

@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Input } from "@/components/frontend/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select";
 import { useState, useEffect } from "react";
-import { MapPin, Clock, DollarSign, Briefcase, Search, Loader2, ChevronRight, ChevronLeft, X } from "lucide-react";
+import { MapPin, Clock, DollarSign, Briefcase, Search, Loader2, ChevronRight, ChevronLeft, X, Filter, SlidersHorizontal, Building2, Tag, Award } from "lucide-react";
 import { motion } from "framer-motion";
 import {
   Pagination,
@@ -28,6 +28,7 @@ interface JobPost {
   location_type: string;
   pay_rate: number | null;
   currency: string | null;
+  points: number | null;
   city: string | null;
   state: string | null;
   status: string | null;
@@ -85,9 +86,10 @@ export default function JobsIndex({ jobs, organizations, positionCategories,posi
     const [positionCategoryId, setPositionCategoryId] = useState(filters.position_category_id || '');
     const [organizationId, setOrganizationId] = useState(filters.organization_id || '');
 const [positionId, setPositionId] = useState(filters.position_id || '');
-const [positions, setPositions] = useState<Array<{id: number, title: string}>>([]);
+const [positions, setPositions] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(false);
      const [currentPage, setCurrentPage] = useState(jobs.current_page || 1); // Initialize with current page from server
+  const [showFilters, setShowFilters] = useState(false);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -221,119 +223,295 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
         </section>
 
         <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+          {/* Search Bar Section */}
+          <div className="mb-6">
+            <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6">
+              <div className="flex flex-col lg:flex-row gap-4">
+                {/* Main Search Input */}
+                <div className="flex-1 relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5 z-10" />
+                  <Input
+                    placeholder="Search jobs by title, keywords, or company..."
+                    className="pl-12 pr-4 h-14 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 rounded-xl text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 text-base"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                  />
+                </div>
+                
+                {/* Filter Toggle Button (Mobile) */}
+                <Button
+                  variant="outline"
+                  onClick={() => setShowFilters(!showFilters)}
+                  className="lg:hidden h-14 border-gray-300 dark:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <SlidersHorizontal className="h-5 w-5 mr-2" />
+                  Filters
+                  {(locationType || jobType || city || state || positionCategoryId || positionId || organizationId) && (
+                    <span className="ml-2 px-2 py-0.5 bg-purple-600 text-white text-xs rounded-full">
+                      {[locationType, jobType, city, state, positionCategoryId, positionId, organizationId].filter(Boolean).length}
+                    </span>
+                  )}
+                </Button>
+              </div>
 
-        {/* Filters */}
-        <div className="mb-8 p-6 sm:p-8 rounded-xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Search & Filter</h2>
-            {(search || locationType || jobType || city || state || positionCategoryId || positionId || organizationId) && (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={clearFilters}
-                className="text-purple-600 hover:text-purple-700 dark:text-purple-400 dark:hover:text-purple-300 text-sm font-medium"
-              >
-                <X className="h-4 w-4 mr-1" />
-                Clear all
-              </Button>
-            )}
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            <div className="md:col-span-2 xl:col-span-2 relative">
-              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-400 h-5 w-5" />
-              <Input
-                placeholder="Search jobs..."
-                className="pl-12 pr-4 h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              {/* Active Filters Chips */}
+              {(search || locationType || jobType || city || state || positionCategoryId || positionId || organizationId) && (
+                <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">Active filters:</span>
+                    {search && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300">
+                        Search: {search}
+                        <button
+                          onClick={() => setSearch('')}
+                          className="ml-2 hover:text-purple-900 dark:hover:text-purple-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {locationType && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                        Location: {locationType}
+                        <button
+                          onClick={() => setLocationType('')}
+                          className="ml-2 hover:text-blue-900 dark:hover:text-blue-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {jobType && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300">
+                        Type: {jobType}
+                        <button
+                          onClick={() => setJobType('')}
+                          className="ml-2 hover:text-green-900 dark:hover:text-green-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {city && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300">
+                        City: {city}
+                        <button
+                          onClick={() => setCity('')}
+                          className="ml-2 hover:text-orange-900 dark:hover:text-orange-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {state && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-pink-100 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300">
+                        State: {state}
+                        <button
+                          onClick={() => setState('')}
+                          className="ml-2 hover:text-pink-900 dark:hover:text-pink-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {positionCategoryId && positionCategories[positionCategoryId] && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">
+                        Category: {positionCategories[positionCategoryId]}
+                        <button
+                          onClick={() => {
+                            setPositionCategoryId('')
+                            setPositionId('')
+                          }}
+                          className="ml-2 hover:text-indigo-900 dark:hover:text-indigo-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {positionId && positions[positionId] && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300">
+                        Position: {positions[positionId]}
+                        <button
+                          onClick={() => setPositionId('')}
+                          className="ml-2 hover:text-cyan-900 dark:hover:text-cyan-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    {organizationId && organizations[organizationId] && (
+                      <Badge variant="secondary" className="px-3 py-1 bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300">
+                        Org: {organizations[organizationId]}
+                        <button
+                          onClick={() => setOrganizationId('')}
+                          className="ml-2 hover:text-teal-900 dark:hover:text-teal-100"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={clearFilters}
+                      className="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300 text-sm font-medium h-7"
+                    >
+                      Clear all
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Position Category Filter */}
-            <Select value={positionCategoryId || undefined} onValueChange={(value) => setPositionCategoryId(value || '')}>
-              <SelectTrigger className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(positionCategories).map(([id, title]) => (
-                  <SelectItem key={id} value={id}>{title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* Position Filter (dependent on category) */}
-            <Select value={positionId || undefined} onValueChange={(value) => setPositionId(value || '')} disabled={!positionCategoryId}>
-              <SelectTrigger className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                <SelectValue placeholder={positionCategoryId ? "All Positions" : "Select Category First"} />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(positions).map(([id, title]) => (
-                  <SelectItem key={id} value={id}>{title}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {/* City Input */}
-            <Input
-              placeholder="City"
-              value={city}
-              onChange={(e) => setCity(e.target.value)}
-              className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-            />
-
-            {/* State Input */}
-            <Input
-              placeholder="State"
-              value={state}
-              onChange={(e) => setState(e.target.value)}
-              className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
-            />
-
-            <Select value={locationType || undefined} onValueChange={(value) => setLocationType(value || '')}>
-              <SelectTrigger className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                <SelectValue placeholder="All Locations" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="onsite">Onsite</SelectItem>
-                <SelectItem value="remote">Remote</SelectItem>
-                <SelectItem value="hybrid">Hybrid</SelectItem>
-              </SelectContent>
-            </Select>
-
-            <Select value={jobType || undefined} onValueChange={(value) => setJobType(value || '')}>
-              <SelectTrigger className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                <SelectValue placeholder="All Types" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="volunteer">Volunteer</SelectItem>
-                <SelectItem value="paid">Paid</SelectItem>
-                <SelectItem value="internship">Internship</SelectItem>
-              </SelectContent>
-            </Select>
-
-            {/* Organization Filter */}
-            <Select value={organizationId || undefined} onValueChange={(value) => setOrganizationId(value || '')}>
-              <SelectTrigger className="h-12 sm:h-14 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
-                <SelectValue placeholder="All Organizations" />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(organizations).map(([id, name]) => (
-                  <SelectItem key={id} value={id}>{name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
-          {loading && (
-            <div className="mt-4 text-center text-sm text-purple-600 dark:text-purple-400">
-              <Loader2 className="animate-spin inline-block w-5 h-5 mr-2" />
-              Loading results...
-            </div>
-          )}
-        </div>
+          <div className="flex flex-col lg:flex-row gap-6">
+            {/* Filters Sidebar */}
+            <aside className={`lg:w-80 flex-shrink-0 ${showFilters ? 'block' : 'hidden lg:block'}`}>
+              <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700 p-6 sticky top-24">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-2">
+                    <Filter className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">Filters</h3>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowFilters(false)}
+                    className="lg:hidden"
+                  >
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
 
-        {/* Job Listings */}
-        {jobs.data.length > 0 ? (
+                <div className="space-y-6">
+                  {/* Job Type Filter */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                      <Tag className="h-4 w-4" />
+                      Job Type
+                    </label>
+                    <Select value={jobType || undefined} onValueChange={(value) => setJobType(value || '')}>
+                      <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                        <SelectValue placeholder="All Types" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="volunteer">Volunteer</SelectItem>
+                        <SelectItem value="paid">Paid</SelectItem>
+                        <SelectItem value="internship">Internship</SelectItem>
+                        <SelectItem value="contract">Contract</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Location Type Filter */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Location Type
+                    </label>
+                    <Select value={locationType || undefined} onValueChange={(value) => setLocationType(value || '')}>
+                      <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                        <SelectValue placeholder="All Locations" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="onsite">Onsite</SelectItem>
+                        <SelectItem value="remote">Remote</SelectItem>
+                        <SelectItem value="hybrid">Hybrid</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Category Filter */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                      <Briefcase className="h-4 w-4" />
+                      Category
+                    </label>
+                    <Select value={positionCategoryId || undefined} onValueChange={(value) => setPositionCategoryId(value || '')}>
+                      <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                        <SelectValue placeholder="All Categories" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(positionCategories).map(([id, title]) => (
+                          <SelectItem key={id} value={id}>{title}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Position Filter */}
+                  {positionCategoryId && (
+                    <div>
+                      <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                        <Tag className="h-4 w-4" />
+                        Position
+                      </label>
+                      <Select value={positionId || undefined} onValueChange={(value) => setPositionId(value || '')}>
+                        <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                          <SelectValue placeholder="All Positions" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Object.entries(positions).map(([id, title]) => (
+                            <SelectItem key={id} value={id}>{title}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  {/* Organization Filter */}
+                  <div>
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 block flex items-center gap-2">
+                      <Building2 className="h-4 w-4" />
+                      Organization
+                    </label>
+                    <Select value={organizationId || undefined} onValueChange={(value) => setOrganizationId(value || '')}>
+                      <SelectTrigger className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20">
+                        <SelectValue placeholder="All Organizations" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.entries(organizations).map(([id, name]) => (
+                          <SelectItem key={id} value={id}>{name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Location Filters */}
+                  <div className="space-y-4">
+                    <label className="text-sm font-semibold text-gray-700 dark:text-gray-300 block flex items-center gap-2">
+                      <MapPin className="h-4 w-4" />
+                      Location
+                    </label>
+                    <Input
+                      placeholder="City"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                      className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    />
+                    <Input
+                      placeholder="State"
+                      value={state}
+                      onChange={(e) => setState(e.target.value)}
+                      className="h-11 bg-gray-50 dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20"
+                    />
+                  </div>
+                </div>
+
+                {loading && (
+                  <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700 text-center text-sm text-purple-600 dark:text-purple-400">
+                    <Loader2 className="animate-spin inline-block w-5 h-5 mr-2" />
+                    Loading results...
+                  </div>
+                )}
+              </div>
+            </aside>
+
+            {/* Main Content Area */}
+            <div className="flex-1 min-w-0">
+
+              {/* Job Listings */}
+              {jobs.data.length > 0 ? (
           <>
             {/* Results Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-3 pb-4 border-b border-gray-200 dark:border-gray-700">
@@ -392,8 +570,17 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
                         </div>
 
                         <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
-                          <DollarSign className="h-4 w-4 mr-2 text-purple-600 dark:text-purple-400 flex-shrink-0" />
-                          <span>{formatCurrency(job.pay_rate, job.currency)}</span>
+                          {job.type === 'volunteer' ? (
+                            <>
+                              <Award className="h-4 w-4 mr-2 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                              <span>{job.points ? `${job.points.toLocaleString()} Reward Points` : 'Points not specified'}</span>
+                            </>
+                          ) : (
+                            <>
+                              <DollarSign className="h-4 w-4 mr-2 text-purple-600 dark:text-purple-400 flex-shrink-0" />
+                              <span>{formatCurrency(job.pay_rate, job.currency)}</span>
+                            </>
+                          )}
                         </div>
 
                         <div className="flex items-center text-sm text-gray-700 dark:text-gray-300">
@@ -518,29 +705,31 @@ const [positions, setPositions] = useState<Array<{id: number, title: string}>>([
               </div>
             )}
 
-          </>
-        ) : (
-          <div className="text-center py-16 sm:py-20">
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-800 rounded-full mb-6">
-              <Briefcase className="h-10 w-10 text-gray-400" />
+              </>
+              ) : (
+                <div className="text-center py-16 sm:py-20 bg-white dark:bg-gray-800 rounded-2xl shadow-lg border border-gray-200 dark:border-gray-700">
+                  <div className="inline-flex items-center justify-center w-20 h-20 bg-gray-100 dark:bg-gray-700 rounded-full mb-6">
+                    <Briefcase className="h-10 w-10 text-gray-400" />
+                  </div>
+                  <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
+                    No jobs found
+                  </h3>
+                  <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
+                    Try adjusting your search or filters to find what you're looking for.
+                  </p>
+                  {(search || locationType || jobType || city || state || positionCategoryId || positionId || organizationId) && (
+                    <Button
+                      onClick={clearFilters}
+                      variant="outline"
+                      className="border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20 h-11 px-6"
+                    >
+                      Clear all filters
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
-            <h3 className="text-2xl font-bold text-gray-900 dark:text-white mb-3">
-              No jobs found
-            </h3>
-            <p className="text-gray-600 dark:text-gray-400 mb-8 max-w-md mx-auto">
-              Try adjusting your search or filters to find what you're looking for.
-            </p>
-            {(search || locationType || jobType || city || state || positionCategoryId || positionId || organizationId) && (
-              <Button
-                onClick={clearFilters}
-                variant="outline"
-                className="border-purple-600 text-purple-600 hover:bg-purple-50 dark:border-purple-400 dark:text-purple-400 dark:hover:bg-purple-900/20 h-11 px-6"
-              >
-                Clear all filters
-              </Button>
-            )}
           </div>
-        )}
         </div>
       </div>
     </FrontendLayout>

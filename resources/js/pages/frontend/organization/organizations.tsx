@@ -10,6 +10,7 @@ import { motion } from "framer-motion"
 import { router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import OrganizationCard from "@/components/frontend/OrganizationCard"
+import SignInPopup from "@/components/frontend/SignInPopup"
 
 interface Organization {
   id: number
@@ -49,6 +50,13 @@ interface PageProps {
     cities: string[]
   }
   hasActiveFilters: boolean
+  auth?: {
+    user?: {
+      id: number
+      name: string
+      email: string
+    } | null
+  }
 }
 
 const sortOptions = [
@@ -59,14 +67,32 @@ const sortOptions = [
 ]
 
 export default function OrganizationsPage() {
-  const { organizations, filters, filterOptions, hasActiveFilters } = usePage<PageProps>().props
+  const { organizations, filters, filterOptions, hasActiveFilters, auth } = usePage<PageProps>().props
 
   const [sortBy, setSortBy] = useState(filters.sort || "id")
   const [resultsPerPage, setResultsPerPage] = useState(Number(filters.per_page) || 12)
   const [isLoading, setIsLoading] = useState(false)
+  const [showSignInPopup, setShowSignInPopup] = useState(false)
+
+  // Check if user is authenticated
+  const isAuthenticated = auth?.user !== null && auth?.user !== undefined
 
   // Handle search from SearchSection component
   const handleSearch = (params: Record<string, string>) => {
+    // Check if user is trying to search with actual search terms
+    const hasSearchQuery = params.search && params.search.trim() !== ""
+    const hasFilters = 
+      (params.category && params.category !== "All Categories") ||
+      (params.state && params.state !== "All States") ||
+      (params.city && params.city !== "All Cities") ||
+      (params.zip && params.zip.trim() !== "")
+
+    // If user is not authenticated and trying to search, show popup
+    if (!isAuthenticated && (hasSearchQuery || hasFilters)) {
+      setShowSignInPopup(true)
+      return
+    }
+
     setIsLoading(true)
     const searchParams = new URLSearchParams()
 
@@ -164,6 +190,13 @@ export default function OrganizationsPage() {
 
   return (
     <FrontendLayout>
+      {/* Sign In Popup */}
+      <SignInPopup
+        isOpen={showSignInPopup}
+        onClose={() => setShowSignInPopup(false)}
+        onSignIn={() => setShowSignInPopup(false)}
+      />
+
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-8">
         <div className="container mx-auto px-4">
           {/* Header */}

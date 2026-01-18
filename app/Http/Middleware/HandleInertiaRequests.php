@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AdminSetting;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -179,6 +180,14 @@ class HandleInertiaRequests extends Middleware
             }
         }
 
+        // Get footer settings
+        $footerSettings = \App\Models\AdminSetting::get('footer_settings', null);
+        if ($footerSettings && is_array($footerSettings)) {
+            // Settings are already decoded from JSON
+        } else {
+            $footerSettings = null;
+        }
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -203,6 +212,7 @@ class HandleInertiaRequests extends Middleware
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),
             'merchantDomain' => config('merchant.domain'),
+            'footerSettings' => $footerSettings,
         ];
     }
 }

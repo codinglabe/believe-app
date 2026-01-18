@@ -68,7 +68,7 @@ export default function SellerDashboardLayout({ children }: SellerDashboardLayou
 
     const handleLogout = (e: React.FormEvent) => {
         e.preventDefault()
-        post(route('logout'))
+        post(route('logout.livestock'))
     }
 
     return (

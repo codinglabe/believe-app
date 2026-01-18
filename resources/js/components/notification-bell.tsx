@@ -35,10 +35,11 @@ interface DatabaseNotification {
 
 interface NotificationBellProps {
   userId: number
+  emailVerified?: boolean
   onNotificationClick?: (notification: Notification) => void
 }
 
-export function NotificationBell({ userId, onNotificationClick }: NotificationBellProps) {
+export function NotificationBell({ userId, emailVerified = true, onNotificationClick }: NotificationBellProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOpen, setIsOpen] = useState(false)
@@ -59,6 +60,11 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
 
   const fetchNotifications = async () => {
     if (!userId) return
+    
+    // Don't fetch notifications if email is not verified
+    if (!emailVerified) {
+      return
+    }
 
     setIsLoading(true)
 
@@ -140,8 +146,10 @@ export function NotificationBell({ userId, onNotificationClick }: NotificationBe
   }
 
   useEffect(() => {
-    // Fetch initial notifications
-    fetchNotifications()
+    // Fetch initial notifications only if email is verified
+    if (emailVerified) {
+      fetchNotifications()
+    }
 
     if (typeof window !== "undefined" && (window as any).Echo) {
       const echo = (window as any).Echo

@@ -2,6 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
+import { createPortal } from "react-dom"
 
 import { MapPin, Star, ArrowRight, Heart, UserCheck, UserPlus, Building2, Target } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -9,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/frontend/ui/badge"
 import { motion } from "framer-motion"
 import { Link, router, usePage } from "@inertiajs/react"
+import SignInPopup from "@/components/frontend/SignInPopup"
 
 interface Organization {
   id: number
@@ -49,6 +51,24 @@ export default function OrganizationCard({
   const defaultLinkUrl = linkUrl || `/organizations/${organization.id}`
   const [isFavorited, setIsFavorited] = useState(organization.is_favorited || false)
   const [isLoading, setIsLoading] = useState(false)
+  const [showSignInPopup, setShowSignInPopup] = useState(false)
+
+  // Check if user is authenticated
+  const isAuthenticated = auth?.user !== null && auth?.user !== undefined
+
+  // Handle Learn More button click
+  const handleLearnMore = (e: React.MouseEvent) => {
+    e.preventDefault()
+    
+    // If user is not authenticated, show sign-in popup
+    if (!isAuthenticated) {
+      setShowSignInPopup(true)
+      return
+    }
+
+    // If authenticated, navigate to organization page
+    router.visit(defaultLinkUrl)
+  }
 
   const handleToggleFavorite = async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -212,12 +232,13 @@ export default function OrganizationCard({
                   ) : (
          <div className="flex gap-3">
   {/* Learn More Button */}
-  <Link href={defaultLinkUrl} className="flex-1">
-    <Button className="w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 group/btn">
-      <span>Learn More</span>
-      <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
-    </Button>
-  </Link>
+  <Button 
+    onClick={handleLearnMore}
+    className="flex-1 w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 group/btn"
+  >
+    <span>Learn More</span>
+    <ArrowRight className="ml-2 h-4 w-4 group-hover/btn:translate-x-1 transition-transform" />
+  </Button>
 
   {/* Claim Ownership Button - শুধু যদি unregistered হয় */}
   {!organization.is_registered && !auth.user && (
@@ -241,6 +262,16 @@ export default function OrganizationCard({
         {/* Subtle border for better separation in light mode */}
         <div className="absolute inset-0 border border-gray-100 dark:border-gray-700 pointer-events-none rounded-lg"></div>
       </Card>
+
+      {/* Sign In Popup - Rendered via portal to document body */}
+      {typeof window !== 'undefined' && createPortal(
+        <SignInPopup
+          isOpen={showSignInPopup}
+          onClose={() => setShowSignInPopup(false)}
+          onSignIn={() => setShowSignInPopup(false)}
+        />,
+        document.body
+      )}
     </motion.div>
   )
 }

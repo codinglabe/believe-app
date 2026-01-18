@@ -2,10 +2,14 @@
 
 import type React from "react"
 import { useState, useEffect } from "react"
-import { router, usePage } from "@inertiajs/react"
+import { router, usePage, useForm } from "@inertiajs/react"
 import SettingsLayout from "@/layouts/settings/layout"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/frontend/ui/card"
 import { Button } from "@/components/frontend/ui/button"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/frontend/ui/tabs"
+import { Input } from "@/components/frontend/ui/input"
+import { Label } from "@/components/frontend/ui/label"
+import { Textarea } from "@/components/frontend/ui/textarea"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   Zap,
@@ -19,8 +23,13 @@ import {
   RefreshCw,
   AlertTriangle,
   Sparkles,
+  Save,
+  Plus,
+  X,
+  Layout,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
 
 interface TerminalLine {
   id: string
@@ -43,17 +52,57 @@ interface StorageStats {
   total_size_formatted: string
 }
 
+interface FooterSettings {
+  description?: string
+  social_links?: {
+    facebook?: string
+    twitter?: string
+    instagram?: string
+    linkedin?: string
+  }
+  quick_links?: Array<{
+    title: string
+    url: string
+  }>
+  contact_email?: string
+  contact_phone?: string
+  contact_address?: string
+  copyright_text?: string
+  legal_links?: Array<{
+    title: string
+    url: string
+  }>
+}
+
 interface Props {
   cache_stats: CacheStats
   storage_stats: StorageStats
+  footer_settings?: FooterSettings | null
 }
 
-export default function ApplicationSettings({ cache_stats, storage_stats }: Props) {
+export default function ApplicationSettings({ cache_stats, storage_stats, footer_settings }: Props) {
   const [isOptimizing, setIsOptimizing] = useState(false)
   const [isClearing, setIsClearing] = useState(false)
   const [terminalLines, setTerminalLines] = useState<TerminalLine[]>([])
   const [showTerminal, setShowTerminal] = useState(false)
   const [clearType, setClearType] = useState<'all' | 'cache' | 'config' | 'route' | 'view'>('all')
+  
+  // Footer settings form
+  const { data: footerData, setData: setFooterData, post: postFooter, processing: isSavingFooter, errors: footerErrors } = useForm<FooterSettings>({
+    description: footer_settings?.description || '',
+    social_links: footer_settings?.social_links || {
+      facebook: '',
+      twitter: '',
+      instagram: '',
+      linkedin: ''
+    },
+    quick_links: footer_settings?.quick_links || [],
+    contact_email: footer_settings?.contact_email || '',
+    contact_phone: footer_settings?.contact_phone || '',
+    contact_address: footer_settings?.contact_address || '',
+    copyright_text: footer_settings?.copyright_text || '',
+    legal_links: footer_settings?.legal_links || []
+  })
 
   const addTerminalLine = (type: TerminalLine['type'], content: string) => {
     const line: TerminalLine = {
@@ -154,6 +203,50 @@ export default function ApplicationSettings({ cache_stats, storage_stats }: Prop
     return date.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })
   }
 
+  const handleFooterSave = (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    postFooter(route('application.footer.update'), {
+      preserveScroll: true,
+      onSuccess: () => {
+        router.reload({ only: ['footer_settings'] })
+      },
+      onError: (errors) => {
+        console.error('Footer save errors:', errors)
+      }
+    })
+  }
+
+  const addQuickLink = () => {
+    setFooterData('quick_links', [...(footerData.quick_links || []), { title: '', url: '' }])
+  }
+
+  const removeQuickLink = (index: number) => {
+    setFooterData('quick_links', footerData.quick_links?.filter((_, i) => i !== index) || [])
+  }
+
+  const updateQuickLink = (index: number, field: 'title' | 'url', value: string) => {
+    const updatedLinks = footerData.quick_links?.map((link, i) => 
+      i === index ? { ...link, [field]: value } : link
+    ) || []
+    setFooterData('quick_links', updatedLinks)
+  }
+
+  const addLegalLink = () => {
+    setFooterData('legal_links', [...(footerData.legal_links || []), { title: '', url: '' }])
+  }
+
+  const removeLegalLink = (index: number) => {
+    setFooterData('legal_links', footerData.legal_links?.filter((_, i) => i !== index) || [])
+  }
+
+  const updateLegalLink = (index: number, field: 'title' | 'url', value: string) => {
+    const updatedLinks = footerData.legal_links?.map((link, i) => 
+      i === index ? { ...link, [field]: value } : link
+    ) || []
+    setFooterData('legal_links', updatedLinks)
+  }
+
   return (
     <SettingsLayout activeTab="application">
       <div className="space-y-6">
@@ -161,9 +254,23 @@ export default function ApplicationSettings({ cache_stats, storage_stats }: Prop
         <div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Application Settings</h2>
           <p className="text-gray-600 dark:text-gray-400 mt-1">
-            Optimize and manage application performance and caches
+            Manage application performance, caches, and footer settings
           </p>
         </div>
+
+        <Tabs defaultValue="performance" className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="performance">
+              <Zap className="h-4 w-4 mr-2" />
+              Performance
+            </TabsTrigger>
+            <TabsTrigger value="footer">
+              <Layout className="h-4 w-4 mr-2" />
+              Footer
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="performance" className="space-y-6 mt-6">
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -441,6 +548,244 @@ export default function ApplicationSettings({ cache_stats, storage_stats }: Prop
             </AlertDescription>
           </Alert>
         </motion.div>
+          </TabsContent>
+
+          <TabsContent value="footer" className="space-y-6 mt-6">
+            <Card className="border-gray-200 dark:border-gray-800">
+              <CardHeader>
+                <CardTitle>Footer Settings</CardTitle>
+                <CardDescription>
+                  Customize the landing page footer content. All fields are optional.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                {/* Description */}
+                <div className="space-y-2">
+                  <Label htmlFor="description">Description</Label>
+                    <Textarea
+                      id="description"
+                      value={footerData.description || ''}
+                      onChange={(e) => setFooterData('description', e.target.value)}
+                      placeholder="Enter footer description..."
+                      rows={4}
+                      className="w-full"
+                    />
+                </div>
+
+                {/* Social Links */}
+                <div className="space-y-4">
+                  <Label>Social Media Links</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="facebook">Facebook URL</Label>
+                      <Input
+                        id="facebook"
+                        type="url"
+                        value={footerData.social_links?.facebook || ''}
+                        onChange={(e) => setFooterData('social_links', { ...footerData.social_links, facebook: e.target.value })}
+                        placeholder="https://facebook.com/..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="twitter">Twitter URL</Label>
+                      <Input
+                        id="twitter"
+                        type="url"
+                        value={footerData.social_links?.twitter || ''}
+                        onChange={(e) => setFooterData(prev => ({
+                          ...prev,
+                          social_links: { ...prev.social_links, twitter: e.target.value }
+                        }))}
+                        placeholder="https://twitter.com/..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="instagram">Instagram URL</Label>
+                      <Input
+                        id="instagram"
+                        type="url"
+                        value={footerData.social_links?.instagram || ''}
+                        onChange={(e) => setFooterData('social_links', { ...footerData.social_links, instagram: e.target.value })}
+                        placeholder="https://instagram.com/..."
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="linkedin">LinkedIn URL</Label>
+                      <Input
+                        id="linkedin"
+                        type="url"
+                        value={footerData.social_links?.linkedin || ''}
+                        onChange={(e) => setFooterData('social_links', { ...footerData.social_links, linkedin: e.target.value })}
+                        placeholder="https://linkedin.com/..."
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Quick Links */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Quick Links</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addQuickLink}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Link
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {footerData.quick_links?.map((link, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          placeholder="Link Title"
+                          value={link.title}
+                          onChange={(e) => updateQuickLink(index, 'title', e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          placeholder="URL"
+                          value={link.url}
+                          onChange={(e) => updateQuickLink(index, 'url', e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeQuickLink(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {(!footerData.quick_links || footerData.quick_links.length === 0) && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No quick links added yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Contact Info */}
+                <div className="space-y-4">
+                  <Label>Contact Information</Label>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="contact_email">Email</Label>
+                      <Input
+                        id="contact_email"
+                        type="email"
+                        value={footerData.contact_email || ''}
+                        onChange={(e) => setFooterData(prev => ({ ...prev, contact_email: e.target.value }))}
+                        placeholder="support@example.com"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="contact_phone">Phone</Label>
+                      <Input
+                        id="contact_phone"
+                        type="tel"
+                        value={footerData.contact_phone || ''}
+                        onChange={(e) => setFooterData('contact_phone', e.target.value)}
+                        placeholder="+1 (555) 123-4567"
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="contact_address">Address</Label>
+                    <Textarea
+                      id="contact_address"
+                      value={footerData.contact_address || ''}
+                      onChange={(e) => setFooterData(prev => ({ ...prev, contact_address: e.target.value }))}
+                      placeholder="123 Street Name&#10;City, State ZIP"
+                      rows={3}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400">Use line breaks for multi-line addresses</p>
+                  </div>
+                </div>
+
+                {/* Copyright */}
+                <div className="space-y-2">
+                  <Label htmlFor="copyright_text">Copyright Text</Label>
+                  <Input
+                    id="copyright_text"
+                    value={footerData.copyright_text || ''}
+                    onChange={(e) => setFooterData('copyright_text', e.target.value)}
+                    placeholder={`${new Date().getFullYear()} ${import.meta.env.VITE_APP_NAME}. All rights reserved.`}
+                  />
+                </div>
+
+                {/* Legal Links */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Label>Legal Links</Label>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={addLegalLink}
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Link
+                    </Button>
+                  </div>
+                  <div className="space-y-3">
+                    {footerData.legal_links?.map((link, index) => (
+                      <div key={index} className="flex gap-2">
+                        <Input
+                          placeholder="Link Title"
+                          value={link.title}
+                          onChange={(e) => updateLegalLink(index, 'title', e.target.value)}
+                          className="flex-1"
+                        />
+                        <Input
+                          placeholder="URL"
+                          value={link.url}
+                          onChange={(e) => updateLegalLink(index, 'url', e.target.value)}
+                          className="flex-1"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeLegalLink(index)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                    {(!footerData.legal_links || footerData.legal_links.length === 0) && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No legal links added yet.</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Save Button */}
+                <div className="flex items-center justify-end pt-4 border-t border-gray-200 dark:border-gray-800">
+                  <Button
+                    onClick={handleFooterSave}
+                    disabled={isSavingFooter}
+                    type="submit"
+                    className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                  >
+                    {isSavingFooter ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="h-4 w-4 mr-2" />
+                        Save Footer Settings
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
     </SettingsLayout>
   )

@@ -176,7 +176,7 @@ Route::middleware('auth:livestock')->group(function () {
 
     Route::get('verify-email/{id}/{hash}', LivestockVerifyEmailController::class)
         ->middleware(['signed', 'throttle:6,1'])
-        ->name('verification.verify');
+        ->name('livestock.verification.verify');
 
     Route::post('email/verification-notification', [LivestockEmailVerificationNotificationController::class, 'store'])
         ->middleware('throttle:6,1')
@@ -188,7 +188,7 @@ Route::middleware('auth:livestock')->group(function () {
     Route::post('confirm-password', [ConfirmablePasswordController::class, 'store']);
 
     Route::post('logout', [LivestockAuthenticatedSessionController::class, 'destroy'])
-        ->name('logout');
+        ->name('logout.livestock');
 });
 
 // API Routes for livestock domain

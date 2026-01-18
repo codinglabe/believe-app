@@ -14,11 +14,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
+use Laravel\Passport\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasRoles, Billable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, Billable;
 
     /**
      * The guard name for Spatie Permission
@@ -60,6 +61,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'referral_code',
         'referred_by',
         "is_verified",
+        "email_verified_at",
         "ownership_verified_at",
         "verification_status",
         'primary_bank_account_id',
@@ -735,5 +737,25 @@ class User extends Authenticatable implements MustVerifyEmail
     public function currentBelievePoints(): float
     {
         return (float) ($this->believe_points ?? 0);
+    }
+
+    /**
+     * Send the email verification notification.
+     *
+     * @param string|null $domain The domain from the request context (where user is accessing from)
+     * @return void
+     */
+    public function sendEmailVerificationNotification(?string $domain = null)
+    {
+        // Get domain from request if not provided
+        if (!$domain && request()) {
+            // Use actual request host, not config value
+            $scheme = request()->getScheme();
+            $host = request()->getHost();
+            $port = request()->getPort();
+            $domain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+        }
+        
+        $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
     }
 }

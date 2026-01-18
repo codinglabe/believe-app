@@ -78,11 +78,16 @@ class MerchantHubOfferController extends Controller
         $perPage = $request->get('per_page', 12);
         $offers = $query->paginate($perPage)->withQueryString();
 
-        // Get categories with counts
+        // Get categories directly from database that have offers
+        // Only show categories that have at least one active offer
         $categories = MerchantHubCategory::where('is_active', true)
+            ->whereHas('offers', function ($query) {
+                $query->active()->withAvailableInventory();
+            })
             ->withCount(['offers' => function ($query) {
                 $query->active()->withAvailableInventory();
             }])
+            ->orderBy('created_at', 'desc')
             ->get()
             ->map(function ($category) {
                 return [
