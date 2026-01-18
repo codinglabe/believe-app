@@ -49,8 +49,7 @@ class NonprofitExemptionCertificateController extends Controller
                 ];
             });
 
-        $states = StateSalesTax::where('requires_exemption_certificate', true)
-            ->orderBy('state')
+        $states = StateSalesTax::orderBy('state')
             ->get(['id', 'state', 'state_code', 'base_sales_tax_rate']);
 
         return Inertia::render('settings/exemption-certificates', [
