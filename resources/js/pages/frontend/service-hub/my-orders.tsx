@@ -6,7 +6,16 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/frontend/ui/tabs"
+import { Label } from "@/components/frontend/ui/label" // <-- ADD THIS IMPORT
+import { Textarea } from "@/components/frontend/ui/textarea" // <-- ADD THIS IMPORT
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
 import {
   ArrowLeft,
   Package,
@@ -15,7 +24,7 @@ import {
   Clock,
   CheckCircle2,
   XCircle,
-  AlertCircle,
+  AlertTriangle,
   FileText,
   MessageCircle,
   Download,
@@ -24,10 +33,14 @@ import {
   Sparkles,
   Filter,
   Search,
+  AlertCircle,
+  Timer,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
+import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import { ContactSellerButton } from "@/components/frontend/service-hub/contact-seller-button"
 
 interface Order {
   id: number
@@ -57,6 +70,10 @@ interface Order {
   deliverables: Array<{ name: string; url: string; type: string }>
   canReview: boolean
   canCancel: boolean
+  canCancelByBuyer?: boolean
+  remainingCancellationHours?: number
+  remainingAutoApprovalHours?: number
+  isWithinCancellationWindow?: boolean
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -110,6 +127,10 @@ export default function MyOrders() {
   const { orders, filters: initialFilters } = usePage<PageProps>().props
   const [selectedStatus, setSelectedStatus] = useState<string>(initialFilters.status || "all")
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || "")
+  const [showCancelModal, setShowCancelModal] = useState<number | null>(null)
+  const [cancelReason, setCancelReason] = useState("")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [statusInfoMap, setStatusInfoMap] = useState<Record<number, any>>({})
 
   const applyFilters = () => {
     const params: any = {
@@ -132,6 +153,31 @@ export default function MyOrders() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStatus])
 
+  // Fetch real-time status info for orders
+  useEffect(() => {
+    const fetchStatusInfo = async () => {
+      const newStatusInfoMap: Record<number, any> = {}
+
+      for (const order of orders.data) {
+        try {
+          const response = await fetch(`/service-hub/orders/${order.id}/status-info`)
+          if (response.ok) {
+            const data = await response.json()
+            newStatusInfoMap[order.id] = data
+          }
+        } catch (error) {
+          console.error(`Failed to fetch status info for order ${order.id}:`, error)
+        }
+      }
+
+      setStatusInfoMap(newStatusInfoMap)
+    }
+
+    fetchStatusInfo()
+    const interval = setInterval(fetchStatusInfo, 60000) // Update every minute
+    return () => clearInterval(interval)
+  }, [orders.data])
+
   const handleSearch = () => {
     applyFilters()
   }
@@ -148,6 +194,43 @@ export default function MyOrders() {
     })
   }
 
+  const handleCancelOrder = async (orderId: number) => {
+    if (!cancelReason.trim()) {
+      showErrorToast("Please provide a reason for cancellation")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${orderId}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          cancellation_reason: cancelReason,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        showSuccessToast("Order cancelled successfully!")
+        setShowCancelModal(null)
+        setCancelReason("")
+        router.reload()
+      } else {
+        showErrorToast(data.error || "Failed to cancel order")
+      }
+    } catch (error) {
+      showErrorToast("Failed to cancel order")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleReview = (orderId: number) => {
     const order = orders.data.find((o) => o.id === orderId)
     if (order) {
@@ -155,9 +238,34 @@ export default function MyOrders() {
     }
   }
 
-  const handleCancel = (orderId: number) => {
-    // Handle cancellation
-    console.log("Cancel order:", orderId)
+  const handleAcceptDelivery = async (orderId: number) => {
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${orderId}/accept-delivery`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+      })
+
+      if (response.ok) {
+        showSuccessToast("Order completed! You can now leave a review.")
+        router.reload()
+      } else {
+        const data = await response.json()
+        showErrorToast(data.error || "Failed to accept delivery")
+      }
+    } catch (error) {
+      showErrorToast("Failed to accept delivery")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const getOrderStatusInfo = (orderId: number) => {
+    return statusInfoMap[orderId] || {}
   }
 
   return (
@@ -233,6 +341,11 @@ export default function MyOrders() {
                   orders.data.map((order, index) => {
                     const statusInfo = getStatusConfig(order.status)
                     const StatusIcon = statusInfo.icon
+                    const orderStatusInfo = getOrderStatusInfo(order.id)
+                    const canCancelByBuyer = orderStatusInfo.can_cancel_by_buyer ?? order.canCancelByBuyer
+                    const remainingCancellationHours = orderStatusInfo.remaining_cancellation_hours ?? order.remainingCancellationHours
+                    const remainingAutoApprovalHours = orderStatusInfo.remaining_auto_approval_hours ?? order.remainingAutoApprovalHours
+                    const isWithinCancellationWindow = orderStatusInfo.is_within_cancellation_window ?? order.isWithinCancellationWindow
 
                     return (
                       <motion.div
@@ -320,6 +433,42 @@ export default function MyOrders() {
                                 </div>
                               </div>
                             </div>
+
+                            {/* Cancellation Notice */}
+                            {order.status === 'in_progress' && !isWithinCancellationWindow && (
+                              <div className="mb-4 p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                                  <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">
+                                    Cancellation Period Expired
+                                  </span>
+                                </div>
+                                <p className="text-xs text-yellow-600 dark:text-yellow-400">
+                                  You cannot cancel this order anymore. The 24-hour cancellation period has expired since the seller approved it.
+                                </p>
+                              </div>
+                            )}
+
+                            {/* Auto-approval Notice */}
+                            {order.status === 'delivered' && remainingAutoApprovalHours && remainingAutoApprovalHours > 0 && (
+                              <div className="mb-4 p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <Timer className="h-4 w-4 text-blue-600" />
+                                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                    Auto-Completion Timer
+                                  </span>
+                                </div>
+                                <p className="text-xs text-blue-600 dark:text-blue-400">
+                                  This order will be automatically completed in {remainingAutoApprovalHours} hours if not accepted.
+                                </p>
+                                <div className="w-full bg-gray-200 rounded-full h-1.5 dark:bg-gray-700 mt-2">
+                                  <div
+                                    className="bg-blue-600 h-1.5 rounded-full"
+                                    style={{ width: `${Math.max(0, 100 - (remainingAutoApprovalHours / 48 * 100))}%` }}
+                                  ></div>
+                                </div>
+                              </div>
+                            )}
 
                             {/* Approval/Rejection Status */}
                             {order.status === 'cancelled' && order.cancellationReason && (
@@ -415,12 +564,12 @@ export default function MyOrders() {
                                   View Service
                                 </Button>
                               </Link>
-                              <Link href={`/service-hub/seller/${order.seller.id}`}>
-                                <Button variant="outline" size="sm">
-                                  <MessageCircle className="mr-2 h-4 w-4" />
-                                  Contact Seller
-                                </Button>
-                              </Link>
+                              <ContactSellerButton
+                                sellerId={order.seller.id}
+                                sellerName={order.seller.name}
+                                gigSlug={order.service.slug}
+                                gigTitle={order.service.title}
+                              />
                               {order.canReview && (
                                 <Button
                                   size="sm"
@@ -431,44 +580,31 @@ export default function MyOrders() {
                                   Leave Review
                                 </Button>
                               )}
-                              {order.canCancel && (
+                              {canCancelByBuyer && (
                                 <Button
                                   variant="destructive"
                                   size="sm"
                                   className="bg-red-600 hover:bg-red-700 text-white"
-                                  onClick={() => handleCancel(order.id)}
+                                  onClick={() => setShowCancelModal(order.id)}
                                 >
                                   <XCircle className="mr-2 h-4 w-4" />
                                   Cancel Order
+                                  {remainingCancellationHours && remainingCancellationHours > 0 && (
+                                    <span className="ml-2 text-xs">
+                                      ({remainingCancellationHours}h left)
+                                    </span>
+                                  )}
                                 </Button>
                               )}
                               {order.status === "delivered" && (
                                 <Button
                                   size="sm"
                                   className="bg-green-600 hover:bg-green-700"
-                                  onClick={async () => {
-                                    try {
-                                      const response = await fetch(`/service-hub/orders/${order.id}/accept-delivery`, {
-                                        method: 'POST',
-                                        headers: {
-                                          'Content-Type': 'application/json',
-                                          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-                                        },
-                                        credentials: 'same-origin',
-                                      })
-                                      if (response.ok) {
-                                        router.visit(`/service-hub/orders/${order.id}`)
-                                      } else {
-                                        const data = await response.json()
-                                        alert(data.error || "Failed to accept delivery")
-                                      }
-                                    } catch (error) {
-                                      alert("Failed to accept delivery")
-                                    }
-                                  }}
+                                  onClick={() => handleAcceptDelivery(order.id)}
+                                  disabled={isSubmitting}
                                 >
                                   <CheckCircle2 className="mr-2 h-4 w-4" />
-                                  Accept & Complete
+                                  {isSubmitting ? "Processing..." : "Accept & Complete"}
                                 </Button>
                               )}
                             </div>
@@ -509,7 +645,43 @@ export default function MyOrders() {
           </div>
         </div>
       </div>
+
+      {/* Cancel Order Modal */}
+      <Dialog open={showCancelModal !== null} onOpenChange={(open) => !open && setShowCancelModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Order</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this order? Please provide a reason.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Reason for Cancellation *</Label>
+              <Textarea
+                placeholder="Why are you cancelling this order?"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelModal(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => showCancelModal && handleCancelOrder(showCancelModal)}
+              disabled={isSubmitting || !cancelReason.trim()}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {isSubmitting ? "Processing..." : "Confirm Cancellation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </FrontendLayout>
   )
 }
-

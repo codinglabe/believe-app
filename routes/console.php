@@ -56,3 +56,9 @@ Schedule::command('log:clean --size=10')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();
+
+
+Schedule::command('service-orders:auto-complete')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();

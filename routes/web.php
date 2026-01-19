@@ -88,6 +88,7 @@ use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
+use App\Http\Controllers\ServiceHubController;
 use App\Http\Controllers\WebhookManagementController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
@@ -229,6 +230,21 @@ Route::post('/service-hub/orders/{orderId}/seller-review', [App\Http\Controllers
 Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController::class, 'testEmailNotifications'])->name('service-hub.test-email')->middleware(['auth', 'EnsureEmailIsVerified']);
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
+
+// Cancel order route
+Route::post('/service-hub/orders/{orderId}/cancel', [ServiceHubController::class, 'cancelOrder'])
+    ->name('service-hub.order.cancel')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+// Resubmit delivery route
+Route::post('/service-hub/orders/{orderId}/resubmit', [ServiceHubController::class, 'resubmitDelivery'])
+    ->name('service-hub.order.resubmit')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+// Get order status info route
+Route::get('/service-hub/orders/{orderId}/status-info', [ServiceHubController::class, 'getOrderStatusInfo'])
+    ->name('service-hub.order.status-info')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Admin seller management routes
 Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {

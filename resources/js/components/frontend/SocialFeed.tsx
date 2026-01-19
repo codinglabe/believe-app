@@ -865,31 +865,30 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                       <input
                         ref={fileInputRefExpanded}
                         type="file"
-                        multiple
                         accept="image/*"
                         onChange={(e) => handleImageSelect(e, false)}
                         className="hidden"
                       />
-                      <Button
+                       <Button
                         type="button"
                         variant="ghost"
                         size="sm"
                         className="text-gray-600 dark:text-gray-400 hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl px-4 py-2 transition-all duration-200 font-medium"
                         onClick={() => {
-                          if (postImages.length < 10) {
+                          if (postImages.length < 1) {
                             fileInputRefExpanded.current?.click()
                           } else {
-                            toast.error('Maximum 10 images allowed', {
+                            toast.error('Maximum 1 images allowed', {
                               duration: 4000,
                             })
                           }
                         }}
-                        disabled={postImages.length >= 10}
+                        disabled={postImages.length >= 1}
                       >
                         <ImageIcon className="w-5 h-5 mr-2" />
                         {postImages.length > 0 ? 'Add More' : 'Add Photo'}
-                        {postImages.length > 0 && postImages.length < 10 && (
-                          <span className="ml-1 text-xs">({10 - postImages.length})</span>
+                        {postImages.length > 0 && postImages.length < 1 && (
+                          <span className="ml-1 text-xs">({1 - postImages.length})</span>
                         )}
                       </Button>
                     </div>
@@ -1073,12 +1072,11 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                             ))}
                           </div>
                         )}
-                        {totalImages < 10 && (
+                        {totalImages < 1 && (
                           <div className="flex items-center gap-2">
                             <input
                               ref={(el) => { editFileInputRefs.current[post.id] = el }}
                               type="file"
-                              multiple
                               accept="image/*"
                               onChange={(e) => {
                                 handleImageSelect(e, true, post.id)
@@ -1091,10 +1089,10 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                               variant="outline"
                               size="sm"
                               onClick={() => {
-                                if (totalImages < 10) {
+                                if (totalImages < 1) {
                                   editFileInputRefs.current[post.id]?.click()
                                 } else {
-                                  toast.error('Maximum 10 images allowed', {
+                                  toast.error('Maximum 1 images allowed', {
                               duration: 4000,
                             })
                                 }
@@ -1102,13 +1100,13 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                               className="text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400"
                             >
                               <ImageIcon className="w-4 h-4 mr-2" />
-                              {allImages.length > 0 ? 'Add More Photos' : 'Add Photos'} ({10 - totalImages} remaining)
+                              {allImages.length > 0 ? 'Add More Photos' : 'Add Photos'} ({1 - totalImages} remaining)
                             </Button>
                           </div>
                         )}
-                        {totalImages >= 10 && (
+                        {totalImages >= 1 && (
                           <p className="text-xs text-gray-500 dark:text-gray-400">
-                            Maximum 10 photos reached. Remove some to add more.
+                            Maximum 1 photos reached. Remove some to add more.
                           </p>
                         )}
                       </>

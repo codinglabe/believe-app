@@ -11,7 +11,8 @@ interface ContactSellerButtonProps {
   sellerName: string
   gigSlug: string
   gigTitle: string
-  isOwner?: boolean
+    isOwner?: boolean
+    sellerOrNot?: boolean
 }
 
 export function ContactSellerButton({
@@ -19,9 +20,11 @@ export function ContactSellerButton({
   sellerName,
   gigSlug,
   gigTitle,
-  isOwner = false,
+    isOwner = false,
+  sellerOrNot,
 }: ContactSellerButtonProps) {
-  const [showDialog, setShowDialog] = useState(false)
+    const [showDialog, setShowDialog] = useState(false)
+    const [seller, setSeller] = useState(sellerOrNot);
 
   if (isOwner) {
     return null
@@ -47,7 +50,7 @@ export function ContactSellerButton({
     <>
       <Button onClick={() => setShowDialog(true)} className="gap-2 h-10 bg-primary hover:bg-primary/90" size="sm">
         <MessageCircle className="h-4 w-4" />
-        Contact Seller
+        Contact {seller ? "Seller" : "Buyer"}
       </Button>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>

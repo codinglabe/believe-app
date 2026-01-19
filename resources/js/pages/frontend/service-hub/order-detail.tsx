@@ -36,11 +36,15 @@ import {
   Send,
   Check,
   Sparkles,
+  AlertTriangle,
+  RotateCcw,
+  Timer,
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
+import { ContactSellerButton } from "@/components/frontend/service-hub/contact-seller-button"
 
 interface Order {
   id: number
@@ -104,6 +108,13 @@ interface Order {
     comment: string
     created_at: string
   } | null
+  canCancelByBuyer: boolean
+  remainingCancellationHours: number
+  remainingAutoApprovalHours: number
+  needsAutoApproval: boolean
+  needsResubmission: boolean
+  isWithinCancellationWindow: boolean
+  canResubmit: boolean
 }
 
 interface PageProps extends Record<string, unknown> {
@@ -146,16 +157,47 @@ export default function OrderDetail() {
   const [showReviewModal, setShowReviewModal] = useState(false)
   const [showSellerReviewModal, setShowSellerReviewModal] = useState(false)
   const [showRejectModal, setShowRejectModal] = useState(false)
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [showResubmitModal, setShowResubmitModal] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
+  const [cancelReason, setCancelReason] = useState("")
   const [deliverables, setDeliverables] = useState<Array<{ description: string; file: File | null; url?: string; type?: string }>>([
+    { description: "", file: null }
+  ])
+  const [resubmitDeliverables, setResubmitDeliverables] = useState<Array<{ description: string; file: File | null; url?: string; type?: string }>>([
     { description: "", file: null }
   ])
   const [review, setReview] = useState({ rating: 5, comment: "" })
   const [sellerReview, setSellerReview] = useState({ rating: 5, comment: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [statusInfo, setStatusInfo] = useState<{ can_cancel_by_buyer?: boolean; remaining_cancellation_hours?: number; remaining_auto_approval_hours?: number }>({})
 
-  const statusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
-  const StatusIcon = statusInfo.icon
+  useEffect(() => {
+    // Fetch real-time status info
+    const fetchStatusInfo = async () => {
+      try {
+        const response = await fetch(`/service-hub/orders/${order.id}/status-info`)
+        if (response.ok) {
+          const data = await response.json()
+          setStatusInfo(data)
+        }
+      } catch (error) {
+        console.error("Failed to fetch status info:", error)
+      }
+    }
+
+    fetchStatusInfo()
+    const interval = setInterval(fetchStatusInfo, 60000) // Update every minute
+    return () => clearInterval(interval)
+  }, [order.id])
+
+  const currentStatusInfo = statusConfig[order.status as keyof typeof statusConfig] || statusConfig.pending
+  const StatusIcon = currentStatusInfo.icon
+
+  // Get the real-time values or fallback to order props
+  const canCancelByBuyer = statusInfo.can_cancel_by_buyer ?? order.canCancelByBuyer
+  const remainingCancellationHours = statusInfo.remaining_cancellation_hours ?? order.remainingCancellationHours
+  const remainingAutoApprovalHours = statusInfo.remaining_auto_approval_hours ?? order.remainingAutoApprovalHours
 
   const handleAddDeliverable = () => {
     setDeliverables([...deliverables, { description: "", file: null }])
@@ -184,6 +226,122 @@ export default function OrderDetail() {
     }))
   }
 
+  // Resubmit deliverable handlers
+  const handleAddResubmitDeliverable = () => {
+    setResubmitDeliverables([...resubmitDeliverables, { description: "", file: null }])
+  }
+
+  const handleRemoveResubmitDeliverable = (index: number) => {
+    if (resubmitDeliverables.length > 1) {
+      setResubmitDeliverables(resubmitDeliverables.filter((_, i) => i !== index))
+    }
+  }
+
+  const handleUpdateResubmitDeliverable = (index: number, field: 'description', value: string) => {
+    setResubmitDeliverables(resubmitDeliverables.map((d, i) => i === index ? { ...d, [field]: value } : d))
+  }
+
+  const handleResubmitFileChange = (index: number, file: File | null) => {
+    setResubmitDeliverables(resubmitDeliverables.map((d, i) => {
+      if (i === index) {
+        return {
+          ...d,
+          file: file,
+          type: file ? file.type : d.type,
+        }
+      }
+      return d
+    }))
+  }
+
+  const handleCancelOrder = async () => {
+    if (!cancelReason.trim()) {
+      showErrorToast("Please provide a reason for cancellation")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const response = await fetch(`/service-hub/orders/${order.id}/cancel`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+        body: JSON.stringify({
+          cancellation_reason: cancelReason,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        showSuccessToast("Order cancelled successfully!")
+        setShowCancelModal(false)
+        setCancelReason("")
+        router.reload()
+      } else {
+        showErrorToast(data.error || "Failed to cancel order")
+      }
+    } catch (error) {
+      showErrorToast("Failed to cancel order")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleResubmitDelivery = async () => {
+    if (resubmitDeliverables.some(d => !d.file && !d.url)) {
+      showErrorToast("Please upload a file for each deliverable")
+      return
+    }
+
+    setIsSubmitting(true)
+    try {
+      const formData = new FormData()
+
+      resubmitDeliverables.forEach((deliverable, index) => {
+        const fileName = deliverable.file ? deliverable.file.name : `Deliverable ${index + 1}`
+        formData.append(`deliverables[${index}][name]`, fileName)
+        formData.append(`deliverables[${index}][description]`, deliverable.description || '')
+        if (deliverable.file) {
+          formData.append(`deliverables[${index}][file]`, deliverable.file)
+        }
+        if (deliverable.url) {
+          formData.append(`deliverables[${index}][url]`, deliverable.url)
+        }
+        if (deliverable.type) {
+          formData.append(`deliverables[${index}][type]`, deliverable.type)
+        }
+      })
+
+      const response = await fetch(`/service-hub/orders/${order.id}/resubmit`, {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+        },
+        credentials: 'same-origin',
+        body: formData,
+      })
+
+      const data = await response.json()
+
+      if (response.ok && data.success) {
+        showSuccessToast("Delivery resubmitted successfully!")
+        setShowResubmitModal(false)
+        setResubmitDeliverables([{ description: "", file: null }])
+        router.reload()
+      } else {
+        showErrorToast(data.error || "Failed to resubmit delivery")
+      }
+    } catch (error) {
+      showErrorToast("Failed to resubmit delivery")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
   const handleDeliver = async () => {
     if (deliverables.some(d => !d.file && !d.url)) {
       showErrorToast("Please upload a file for each deliverable")
@@ -195,7 +353,6 @@ export default function OrderDetail() {
       const formData = new FormData()
 
       deliverables.forEach((deliverable, index) => {
-        // Auto-generate name from file if available
         const fileName = deliverable.file ? deliverable.file.name : `Deliverable ${index + 1}`
         formData.append(`deliverables[${index}][name]`, fileName)
         formData.append(`deliverables[${index}][description]`, deliverable.description || '')
@@ -317,38 +474,6 @@ export default function OrderDetail() {
     }
   }
 
-  const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel this order?")) {
-      return
-    }
-    setIsSubmitting(true)
-    try {
-      const response = await fetch(`/service-hub/orders/${order.id}/reject`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-        credentials: 'same-origin',
-        body: JSON.stringify({
-          rejection_reason: 'Cancelled by user',
-        }),
-      })
-
-      if (response.ok) {
-        showSuccessToast("Order cancelled successfully.")
-        router.reload()
-      } else {
-        const data = await response.json()
-        showErrorToast(data.error || "Failed to cancel order")
-      }
-    } catch (error) {
-      showErrorToast("Failed to cancel order")
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
   const handleSubmitReview = async () => {
     if (!review.comment.trim()) {
       showErrorToast("Please write a review comment")
@@ -407,9 +532,9 @@ export default function OrderDetail() {
                   </p>
                 </div>
               </div>
-              <Badge className={statusInfo.color}>
+              <Badge className={currentStatusInfo.color}>
                 <StatusIcon className="h-4 w-4 mr-1" />
-                {statusInfo.label}
+                {currentStatusInfo.label}
               </Badge>
             </div>
           </div>
@@ -450,67 +575,68 @@ export default function OrderDetail() {
                 </CardContent>
               </Card>
 
-              {/* Approval/Rejection Status for Buyers */}
-              {isBuyer && (
-                <>
-                  {order.status === 'cancelled' && order.cancellationReason && (
-                    <Card className="border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/20">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-red-700 dark:text-red-300">
-                          <XCircle className="h-5 w-5" />
-                          Order Rejected by Seller
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-2">
-                          {order.cancelledAt && (
-                            <p className="text-sm text-muted-foreground">
-                              Rejected on {new Date(order.cancelledAt).toLocaleString()}
-                            </p>
-                          )}
-                          <div className="p-3 bg-white dark:bg-gray-900 rounded-lg border border-red-200 dark:border-red-800">
-                            <p className="text-sm font-semibold text-red-700 dark:text-red-300 mb-1">
-                              Rejection Reason:
-                            </p>
-                            <p className="text-sm text-red-600 dark:text-red-400">
-                              {order.cancellationReason}
-                            </p>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
-                  {order.status === 'in_progress' && (
-                    <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                          <CheckCircle2 className="h-5 w-5" />
-                          Order Approved by Seller
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-green-600 dark:text-green-400">
-                          The seller has approved your order and is now working on it. You will be notified when the order is delivered.
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-                  {['delivered', 'completed'].includes(order.status) && (
-                    <Card className="border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20">
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-green-700 dark:text-green-300">
-                          <CheckCircle2 className="h-5 w-5" />
-                          Order Approved by Seller
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <p className="text-sm text-green-600 dark:text-green-400">
-                          Your order was approved by the seller and is progressing through the delivery process.
-                        </p>
-                      </CardContent>
-                    </Card>
-                  )}
-                </>
+              {/* Cancellation Notice */}
+              {isBuyer && order.status === 'in_progress' && !order.isWithinCancellationWindow && (
+                <Card className="border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-yellow-700 dark:text-yellow-300">
+                      <AlertTriangle className="h-5 w-5" />
+                      Cancellation Period Expired
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                      The 24-hour cancellation period has expired since the seller approved this order.
+                      You can no longer cancel this order.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Auto-approval Notice */}
+              {order.status === 'delivered' && remainingAutoApprovalHours > 0 && (
+                <Card className="border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
+                      <Timer className="h-5 w-5" />
+                      Auto-Completion Timer
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      <p className="text-sm text-blue-600 dark:text-blue-400">
+                        This order will be automatically completed in {remainingAutoApprovalHours} hours
+                        if you don't accept or reject it.
+                      </p>
+                      <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                        <div
+                          className="bg-blue-600 h-2.5 rounded-full"
+                          style={{ width: `${Math.max(0, 100 - (remainingAutoApprovalHours / 48 * 100))}%` }}
+                        ></div>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Time remaining: {remainingAutoApprovalHours} hours
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Resubmission Notice */}
+              {order.needsResubmission && isSeller && (
+                <Card className="border-orange-200 dark:border-orange-800 bg-orange-50 dark:bg-orange-950/20">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-orange-700 dark:text-orange-300">
+                      <RotateCcw className="h-5 w-5" />
+                      Delivery Needs Resubmission
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-sm text-orange-600 dark:text-orange-400">
+                      The buyer cancelled this order after delivery. Please resubmit the deliverables.
+                    </p>
+                  </CardContent>
+                </Card>
               )}
 
               {/* Requirements */}
@@ -657,7 +783,6 @@ export default function OrderDetail() {
                   </div>
 
                   {isBuyer ? (
-                    // Buyer View: Only show service price
                     <>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Service Price</span>
@@ -672,7 +797,6 @@ export default function OrderDetail() {
                       </div>
                     </>
                   ) : (
-                    // Seller View: Show full breakdown
                     <>
                       <div className="flex justify-between">
                         <span className="text-muted-foreground">Service Price</span>
@@ -761,14 +885,13 @@ export default function OrderDetail() {
                       <p className="font-semibold">
                         {(isBuyer ? order.seller : order.buyer).name}
                       </p>
-                      <Link
-                        href={`/service-hub/seller/${isBuyer ? order.seller.id : order.buyer.id}`}
-                      >
-                        <Button variant="outline" size="sm" className="mt-1">
-                          <MessageCircle className="mr-2 h-4 w-4" />
-                          Contact
-                        </Button>
-                      </Link>
+                      <ContactSellerButton
+                        sellerId={isBuyer ? order.seller.id : order.buyer.id}
+                        sellerName={isBuyer ? order.seller.name : order.buyer.name}
+                        gigSlug={order.service.slug}
+                        gigTitle={order.service.title}
+                        sellerOrNot={isBuyer ? true : false}
+                      />
                     </div>
                   </div>
                 </CardContent>
@@ -809,14 +932,28 @@ export default function OrderDetail() {
                       Reject Order
                     </Button>
                   )}
-                  {order.canCancel && !order.canApprove && !order.canReject && (
+                  {order.canCancelByBuyer && isBuyer && (
                     <Button
                       className="w-full bg-red-600 hover:bg-red-700"
-                      onClick={handleCancel}
+                      onClick={() => setShowCancelModal(true)}
                       disabled={isSubmitting}
                     >
                       <XCircle className="mr-2 h-4 w-4" />
-                      {isSubmitting ? "Processing..." : "Cancel Order"}
+                      Cancel Order
+                      {remainingCancellationHours > 0 && (
+                        <span className="ml-2 text-xs">
+                          ({remainingCancellationHours}h left)
+                        </span>
+                      )}
+                    </Button>
+                  )}
+                  {order.canResubmit && isSeller && (
+                    <Button
+                      className="w-full bg-orange-600 hover:bg-orange-700"
+                      onClick={() => setShowResubmitModal(true)}
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Resubmit Delivery
                     </Button>
                   )}
                   {order.canDeliver && order.status !== 'pending' && (
@@ -866,6 +1003,147 @@ export default function OrderDetail() {
           </div>
         </div>
       </div>
+
+      {/* Cancel Order Modal */}
+      <Dialog open={showCancelModal} onOpenChange={setShowCancelModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Cancel Order</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to cancel this order? Please provide a reason.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label>Reason for Cancellation *</Label>
+              <Textarea
+                placeholder="Why are you cancelling this order?"
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                rows={4}
+                required
+              />
+            </div>
+
+            {remainingCancellationHours > 0 ? (
+              <div className="p-3 bg-blue-50 dark:bg-blue-950/20 rounded-lg border border-blue-200 dark:border-blue-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <Timer className="h-4 w-4 text-blue-600" />
+                  <span className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                    Cancellation Window
+                  </span>
+                </div>
+                <p className="text-sm text-blue-600 dark:text-blue-400">
+                  You have {remainingCancellationHours} hours left to cancel this order.
+                  After that, you won't be able to cancel if the seller has approved it.
+                </p>
+              </div>
+            ) : order.status === 'in_progress' ? (
+              <div className="p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg border border-yellow-200 dark:border-yellow-800">
+                <div className="flex items-center gap-2 mb-1">
+                  <AlertTriangle className="h-4 w-4 text-yellow-600" />
+                  <span className="text-sm font-semibold text-yellow-700 dark:text-yellow-300">
+                    Cancellation Period Expired
+                  </span>
+                </div>
+                <p className="text-sm text-yellow-600 dark:text-yellow-400">
+                  The 24-hour cancellation period has expired. You cannot cancel this order anymore.
+                </p>
+              </div>
+            ) : null}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowCancelModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleCancelOrder}
+              disabled={isSubmitting || !cancelReason.trim()}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {isSubmitting ? "Processing..." : "Confirm Cancellation"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Resubmit Delivery Modal */}
+      <Dialog open={showResubmitModal} onOpenChange={setShowResubmitModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Resubmit Delivery</DialogTitle>
+            <DialogDescription>
+              Please upload the deliverables again. The order was cancelled by the buyer and needs resubmission.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            {resubmitDeliverables.map((deliverable, index) => (
+              <div key={index} className="space-y-2 p-4 border rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <Label>Deliverable {index + 1} *</Label>
+                  {resubmitDeliverables.length > 1 && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleRemoveResubmitDeliverable(index)}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <div>
+                  <Label>Upload File *</Label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="file"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null
+                        handleResubmitFileChange(index, file)
+                      }}
+                      accept="*/*"
+                      className="cursor-pointer"
+                      required
+                    />
+                    {deliverable.file && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <FileText className="h-4 w-4" />
+                        <span className="truncate max-w-[200px]">{deliverable.file.name}</span>
+                        <span className="text-xs">({(deliverable.file.size / 1024 / 1024).toFixed(2)} MB)</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <Label>Description</Label>
+                  <Textarea
+                    placeholder="Describe this deliverable..."
+                    value={deliverable.description || ''}
+                    onChange={(e) => handleUpdateResubmitDeliverable(index, 'description', e.target.value)}
+                    rows={3}
+                  />
+                </div>
+              </div>
+            ))}
+            <Button variant="outline" onClick={handleAddResubmitDeliverable} className="w-full">
+              <Plus className="mr-2 h-4 w-4" />
+              Add Another Deliverable
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowResubmitModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleResubmitDelivery}
+              disabled={isSubmitting || resubmitDeliverables.some(d => !d.file && !d.url)}
+              className="bg-orange-600 hover:bg-orange-700"
+            >
+              {isSubmitting ? "Resubmitting..." : "Resubmit Delivery"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Deliver Order Modal */}
       <Dialog open={showDeliverModal} onOpenChange={setShowDeliverModal}>
@@ -1153,4 +1431,3 @@ export default function OrderDetail() {
     </FrontendLayout>
   )
 }
-
