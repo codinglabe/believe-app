@@ -21,7 +21,8 @@ interface Organization {
   city: string
   state: string
   zip: string
-  ntee_code?: string
+    ntee_code?: string
+    ntee_category_description?: string
   classification?: string
   created_at: string
   is_favorited?: boolean
@@ -59,7 +60,7 @@ export default function OrganizationCard({
   // Handle Learn More button click
   const handleLearnMore = (e: React.MouseEvent) => {
     e.preventDefault()
-    
+
     // If user is not authenticated, show sign-in popup
     if (!isAuthenticated) {
       setShowSignInPopup(true)
@@ -212,7 +213,15 @@ export default function OrganizationCard({
                     : organization.ntee_code
                   }
                 </p>
-              </div>
+                          </div>
+                {organization.ntee_category_description && (
+                <div className="ml-6">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Category Description</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    {organization.ntee_category_description}
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-3">
@@ -232,7 +241,7 @@ export default function OrganizationCard({
                   ) : (
          <div className="flex gap-3">
   {/* Learn More Button */}
-  <Button 
+  <Button
     onClick={handleLearnMore}
     className="flex-1 w-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 font-semibold py-3 text-base shadow-lg hover:shadow-xl transition-all duration-300 group/btn"
   >

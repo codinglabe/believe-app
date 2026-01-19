@@ -140,7 +140,7 @@ class OrganizationController extends BaseController
 
     if (!empty($nteeCodes)) {
         $nteeCategories = NteeCode::whereIn('ntee_codes', $nteeCodes)
-            ->select('ntee_codes', 'category')
+            ->select('ntee_codes', 'category', 'description')
             ->get()
             ->keyBy('ntee_codes');
     }
@@ -152,8 +152,10 @@ class OrganizationController extends BaseController
 
         // Get NTEE category
         $nteeCategory = '';
+        $nteeCategoryDesc = '';
         if ($nteeCode && isset($nteeCategories[$nteeCode])) {
             $nteeCategory = $nteeCategories[$nteeCode]->category;
+            $nteeCategoryDesc = $nteeCategories[$nteeCode]->description;
         }
 
         // Format NTEE code with category like in ExcelDataTransformer
@@ -184,6 +186,7 @@ class OrganizationController extends BaseController
             'ntee_code' => $formattedNteeCode,
             'ntee_code_raw' => $nteeCode, // Keep raw code for filtering/sorting if needed
             'ntee_category' => $nteeCategory, // Add category separately if needed
+            'ntee_category_description' => $nteeCategoryDesc,
             'created_at' => $item->created_at,
             'is_registered' => $isRegistered,
             'is_favorited' => $isFavorited,
@@ -1132,12 +1135,12 @@ class OrganizationController extends BaseController
         try {
             // Get organization data
             $organization = ExcelData::findOrFail($request->organization_id);
-            
+
             // Check if organization is already registered
             $registeredOrg = Organization::where('ein', $organization->ein)
                 ->where('registration_status', 'approved')
                 ->first();
-            
+
             if ($registeredOrg) {
                 return response()->json([
                     'success' => false,
@@ -1150,7 +1153,7 @@ class OrganizationController extends BaseController
                 ->where('inviter_id', $user->id)
                 ->where('email', $request->email)
                 ->first();
-            
+
             if ($existingInvite) {
                 return response()->json([
                     'success' => false,
