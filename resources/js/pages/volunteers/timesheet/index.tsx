@@ -8,7 +8,7 @@ import { Input } from '@/components/admin/ui/input';
 import { Combobox } from '@/components/admin/ui/combobox';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
-import { LayoutGrid, Search, X, Plus, Edit, Trash2, Clock, Eye, Calendar } from 'lucide-react';
+import { LayoutGrid, Search, X, Plus, Edit, Trash2, Clock, Eye, Calendar, CheckCircle2, XCircle, Loader2, AlertCircle } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 
@@ -21,9 +21,13 @@ const breadcrumbs: BreadcrumbItem[] = [
 interface Timesheet {
     id: number;
     work_date: string;
+    start_date?: string;
+    end_date?: string;
     hours: number;
     description: string;
     notes: string;
+    status: 'pending' | 'approved' | 'rejected' | 'in_progress';
+    is_completion_request?: boolean;
     created_at: string;
     job_application: {
         id: number;
@@ -213,6 +217,27 @@ export default function Index({ timesheets, volunteers, filters, allowedPerPage 
         }
     };
 
+    const getStatusColor = (status: string) => {
+        const colors = {
+            'pending': 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800',
+            'approved': 'bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800',
+            'rejected': 'bg-red-50 text-red-700 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800',
+            'in_progress': 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-900/20 dark:text-blue-400 dark:border-blue-800',
+        };
+        return colors[status] || 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-900/20 dark:text-gray-400 dark:border-gray-800';
+    };
+
+    const getStatusText = (status: string) => {
+        const texts = {
+            'pending': 'Pending Review',
+            'approved': 'Approved',
+            'rejected': 'Rejected',
+            'in_progress': 'In Progress',
+        };
+        return texts[status] || status;
+    };
+
+
     // Convert decimal hours to HH:MM:SS format
     const formatTime = (decimalHours: number): string => {
         // Ensure we're working with a number and handle any precision issues
@@ -323,143 +348,71 @@ export default function Index({ timesheets, volunteers, filters, allowedPerPage 
                 {/* Content Section */}
                 <div className="flex flex-col gap-4">
                     {timesheets.data.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                             {timesheets.data.map((timesheet) => (
-                                <Card key={timesheet.id} className="hover:shadow-lg transition-all duration-300 border-2 border-border/50 overflow-hidden bg-gradient-to-br from-background to-muted/20">
-                                    <div className="relative">
-                                        {/* Header Bar with Date */}
-                                        <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent border-b border-primary/20 px-4 py-3">
-                                            <div className="flex items-center justify-between">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="w-10 h-10 rounded-lg bg-primary/20 flex items-center justify-center">
-                                                        <Clock className="h-5 w-5 text-primary" />
-                                                    </div>
-                                                    <div>
-                                                        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                            Work Date
-                                                        </p>
-                                                        <p className="text-sm font-bold text-foreground">
-                                                            {formatDate(timesheet.work_date)}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end">
-                                                    <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                                                        Time Worked
-                                                    </p>
-                                                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-green-500/10 border border-green-500/20">
-                                                        <Clock className="h-4 w-4 text-green-600 dark:text-green-400" />
-                                                        <span className="font-bold text-green-700 dark:text-green-300 text-base">
-                                                            {formatTime(parseFloat(timesheet.hours.toString()))}
-                                                        </span>
-                                                    </div>
-                                                </div>
+                                <Card key={timesheet.id} className="hover:shadow-md transition-all duration-200 border border-border/50 overflow-hidden">
+                                    <div className="p-3 space-y-2">
+                                        {/* Header with Volunteer Name */}
+                                        <div className="flex items-start justify-between gap-2">
+                                            <div className="flex-1 min-w-0">
+                                                <h3 className="font-semibold text-sm text-foreground truncate">
+                                                    {timesheet.job_application.user.name}
+                                                </h3>
+                                                <p className="text-xs text-muted-foreground truncate mt-0.5">
+                                                    {timesheet.job_application.job_post.title}
+                                                </p>
                                             </div>
                                         </div>
 
-                                        {/* Main Content */}
-                                        <div className="p-4 space-y-4">
-                                            {/* Volunteer Info */}
-                                            <div className="space-y-2">
-                                                <div>
-                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                                                        Volunteer
-                                                    </p>
-                                                    <h3 className="font-bold text-lg text-foreground">
-                                                        {timesheet.job_application.user.name}
-                                                    </h3>
+                                        {/* Date and Hours */}
+                                        <div className="space-y-2 pt-1 border-t border-border/30">
+                                            <div className="flex items-center justify-between text-xs">
+                                                <div className="flex items-center gap-1.5 text-muted-foreground">
+                                                    <Calendar className="h-3 w-3" />
+                                                    <span>
+                                                        {timesheet.start_date && timesheet.end_date 
+                                                            ? `${formatDate(timesheet.start_date)} - ${formatDate(timesheet.end_date)}`
+                                                            : formatDate(timesheet.work_date)}
+                                                    </span>
                                                 </div>
-                                                <div>
-                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
-                                                        Position
-                                                    </p>
-                                                    <Badge variant="outline" className="text-xs font-semibold py-1 px-2 border-2">
-                                                        {timesheet.job_application.job_post.title}
+                                                <div className="flex items-center gap-1 text-green-600 dark:text-green-400 font-medium">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span>{formatTime(parseFloat(timesheet.hours.toString()))}</span>
+                                                </div>
+                                            </div>
+                                            {/* Status Badges Below Date Range */}
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                {timesheet.is_completion_request && (
+                                                    <Badge className="bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-900/20 dark:text-purple-400 dark:border-purple-800 text-xs px-1.5 py-0.5">
+                                                        Completion Request
                                                     </Badge>
-                                                </div>
-                                            </div>
-
-                                            {/* Description */}
-                                            {timesheet.description && (
-                                                <div className="pt-3 border-t border-border/50">
-                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                                                        Description
-                                                    </p>
-                                                    <p className="text-sm text-foreground line-clamp-3 leading-relaxed">
-                                                        {timesheet.description}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* Notes */}
-                                            {timesheet.notes && (
-                                                <div className="pt-3 border-t border-border/50">
-                                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                                                        Notes
-                                                    </p>
-                                                    <div className="p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-md">
-                                                        <p className="text-xs text-foreground italic leading-relaxed line-clamp-2">
-                                                            {timesheet.notes}
-                                                        </p>
-                                                    </div>
-                                                </div>
-                                            )}
-
-                                            {/* Footer - Creator and Actions */}
-                                            <div className="pt-4 border-t-2 border-border/50">
-                                                <div className="flex items-center justify-between">
-                                                    <div className="flex items-center gap-2.5">
-                                                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-primary/20 to-primary/10 border-2 border-primary/30 flex items-center justify-center">
-                                                            <span className="text-xs font-bold text-primary">
-                                                                {timesheet.created_by.name.charAt(0).toUpperCase()}
-                                                            </span>
-                                                        </div>
-                                                        <div>
-                                                            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                                                                Logged By
-                                                            </p>
-                                                            <p className="text-xs font-medium text-foreground">
-                                                                {timesheet.created_by.name}
-                                                            </p>
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex items-center gap-1.5">
-                                                        <Link href={`/volunteers/timesheet/${timesheet.id}`}>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                className="h-8 w-8 p-0 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-900/20 border border-transparent hover:border-blue-200 dark:hover:border-blue-800" 
-                                                                title="View"
-                                                            >
-                                                                <Eye className="h-4 w-4" />
-                                                            </Button>
-                                                        </Link>
-                                                        <Link href={`/volunteers/timesheet/${timesheet.id}/edit`}>
-                                                            <Button 
-                                                                variant="ghost" 
-                                                                size="sm" 
-                                                                className="h-8 w-8 p-0 hover:bg-primary/10 hover:text-primary border border-transparent hover:border-primary/20" 
-                                                                title="Edit"
-                                                            >
-                                                                <Edit className="h-4 w-4" />
-                                                            </Button>
-                                                        </Link>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            onClick={() => handleDelete(timesheet.id)}
-                                                            className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20 border border-transparent hover:border-red-200 dark:hover:border-red-800"
-                                                            title="Delete"
-                                                        >
-                                                            <Trash2 className="h-4 w-4" />
-                                                        </Button>
-                                                    </div>
-                                                </div>
+                                                )}
+                                                <Badge className={`${getStatusColor(timesheet.status)} border text-xs px-1.5 py-0.5`}>
+                                                    {getStatusText(timesheet.status)}
+                                                </Badge>
                                             </div>
                                         </div>
 
-                                        {/* Decorative Corner */}
-                                        <div className="absolute top-0 right-0 w-16 h-16 bg-gradient-to-br from-primary/5 to-transparent rounded-bl-full pointer-events-none" />
+                                        {/* Description Preview */}
+                                        {timesheet.description && (
+                                            <p className="text-xs text-muted-foreground line-clamp-2 pt-1">
+                                                {timesheet.description}
+                                            </p>
+                                        )}
+
+                                        {/* View Button */}
+                                        <div className="pt-2 border-t border-border/30">
+                                            <Link href={`/volunteers/timesheet/${timesheet.id}`} className="w-full">
+                                                <Button 
+                                                    variant="outline" 
+                                                    size="sm" 
+                                                    className="w-full h-7 text-xs"
+                                                >
+                                                    <Eye className="h-3 w-3 mr-1.5" />
+                                                    View Details
+                                                </Button>
+                                            </Link>
+                                        </div>
                                     </div>
                                 </Card>
                             ))}

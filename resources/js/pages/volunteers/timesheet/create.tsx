@@ -6,9 +6,10 @@ import { Label } from '@/components/ui/label';
 import { Input } from '@/components/admin/ui/input';
 import { Textarea } from '@/components/admin/ui/textarea';
 import { Combobox } from '@/components/admin/ui/combobox';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/frontend/ui/select';
 import AppLayout from '@/layouts/app-layout';
 import type { BreadcrumbItem } from '@/types';
-import { ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Save, Award } from 'lucide-react';
 import { showErrorToast } from '@/lib/toast';
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -22,6 +23,7 @@ interface Volunteer {
     id: number;
     name: string;
     position: string;
+    base_points?: number;
 }
 
 interface Props {
@@ -30,14 +32,36 @@ interface Props {
 
 export default function Create({ volunteers }: Props) {
     const [timeInput, setTimeInput] = useState({ hours: '0', minutes: '0', seconds: '0' });
+    const [grade, setGrade] = useState<string>('');
+    const [reviewNotes, setReviewNotes] = useState<string>('');
+    const [jobApplicationStatus, setJobApplicationStatus] = useState<string>('');
+
+    // Grade multipliers
+    const GRADE_MULTIPLIERS: Record<string, number> = {
+        'excellent': 1.00,
+        'good': 0.80,
+        'acceptable': 0.60,
+        'needs_improvement': 0.25,
+        'rejected': 0.00,
+    };
 
     const { data, setData, post, processing, errors } = useForm({
         job_application_id: '',
         work_date: new Date().toISOString().split('T')[0],
+        start_date: '',
+        end_date: '',
         hours: '',
         description: '',
         notes: '',
+        grade: '',
+        review_notes: '',
+        job_status: '',
     });
+
+    // Get selected volunteer to determine base points (after useForm)
+    const selectedVolunteer = volunteers.find(v => v.id.toString() === data.job_application_id);
+    const basePoints = selectedVolunteer?.base_points || 100;
+    const finalPoints = grade ? Math.round(basePoints * (GRADE_MULTIPLIERS[grade] || 0)) : 0;
 
     // Convert hours:minutes:seconds to decimal hours
     const convertTimeToDecimal = (h: string, m: string, s: string): number => {
@@ -54,11 +78,9 @@ export default function Create({ volunteers }: Props) {
         // Only allow numbers
         const numValue = value.replace(/[^0-9]/g, '');
         
-        // Validate ranges
+        // Validate ranges (allow unlimited hours, but limit minutes/seconds)
         let validatedValue = numValue;
-        if (field === 'hours' && parseFloat(numValue) > 23) {
-            validatedValue = '23';
-        } else if (field === 'minutes' && parseFloat(numValue) > 59) {
+        if (field === 'minutes' && parseFloat(numValue) > 59) {
             validatedValue = '59';
         } else if (field === 'seconds' && parseFloat(numValue) > 59) {
             validatedValue = '59';
@@ -81,6 +103,14 @@ export default function Create({ volunteers }: Props) {
             showErrorToast('Please enter at least some time (hours, minutes, or seconds)');
             return;
         }
+
+        // Update form data with assessment fields
+        setData({
+            ...data,
+            grade: grade || undefined,
+            review_notes: reviewNotes || undefined,
+            job_status: jobApplicationStatus || undefined,
+        });
 
         post('/volunteers/timesheet', {
             onError: () => {
@@ -154,7 +184,6 @@ export default function Create({ volunteers }: Props) {
                                             id="time_hours"
                                             type="number"
                                             min="0"
-                                            max="23"
                                             value={timeInput.hours}
                                             onChange={(e) => handleTimeChange('hours', e.target.value)}
                                             className={errors.hours ? 'border-destructive' : ''}
@@ -219,6 +248,144 @@ export default function Create({ volunteers }: Props) {
                                     <p className="text-sm text-destructive mt-1">{errors.notes}</p>
                                 )}
                             </div>
+
+                            {/* Assessment Section */}
+                            {data.job_application_id && (
+                                <div className="space-y-4 pt-4 border-t border-border/50">
+                                    <div>
+                                        <h3 className="text-base font-semibold mb-2">Volunteer Assessment (Optional)</h3>
+                                        <p className="text-sm text-muted-foreground mb-4">
+                                            Assess the volunteer's work and award recognition points. Leave empty to skip assessment.
+                                        </p>
+                                    </div>
+
+                                    {/* Base Points Display */}
+                                    <div className="p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                        <div className="flex items-center justify-between">
+                                            <div className="flex items-center gap-2">
+                                                <Award className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                                                <span className="text-sm font-medium text-blue-900 dark:text-blue-100">Base Points</span>
+                                            </div>
+                                            <span className="text-sm font-bold text-blue-700 dark:text-blue-300">{basePoints} points</span>
+                                        </div>
+                                    </div>
+
+                                    {/* Grade Selection */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="grade">Assessment Grade (Optional)</Label>
+                                        <Select value={grade || undefined} onValueChange={setGrade}>
+                                            <SelectTrigger id="grade">
+                                                <SelectValue placeholder="Select a grade (optional)" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="excellent">Excellent (100%)</SelectItem>
+                                                <SelectItem value="good">Good (80%)</SelectItem>
+                                                <SelectItem value="acceptable">Acceptable (60%)</SelectItem>
+                                                <SelectItem value="needs_improvement">Needs Improvement (25%)</SelectItem>
+                                                <SelectItem value="rejected">Rejected (0%)</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            The grade determines the multiplier applied to base points
+                                        </p>
+                                    </div>
+
+                                    {/* Final Points Preview */}
+                                    {grade && (() => {
+                                        const getPointsColor = (points: number) => {
+                                            if (points === 0) {
+                                                return {
+                                                    bg: 'bg-gray-50 dark:bg-gray-950/20',
+                                                    border: 'border-gray-200 dark:border-gray-800',
+                                                    icon: 'text-gray-600 dark:text-gray-400',
+                                                    text: 'text-gray-900 dark:text-gray-100',
+                                                    value: 'text-gray-700 dark:text-gray-300',
+                                                    calc: 'text-gray-700 dark:text-gray-300'
+                                                };
+                                            } else if (points >= basePoints * 0.8) {
+                                                return {
+                                                    bg: 'bg-green-50 dark:bg-green-950/20',
+                                                    border: 'border-green-200 dark:border-green-800',
+                                                    icon: 'text-green-600 dark:text-green-400',
+                                                    text: 'text-green-900 dark:text-green-100',
+                                                    value: 'text-green-700 dark:text-green-300',
+                                                    calc: 'text-green-700 dark:text-green-300'
+                                                };
+                                            } else if (points >= basePoints * 0.5) {
+                                                return {
+                                                    bg: 'bg-blue-50 dark:bg-blue-950/20',
+                                                    border: 'border-blue-200 dark:border-blue-800',
+                                                    icon: 'text-blue-600 dark:text-blue-400',
+                                                    text: 'text-blue-900 dark:text-blue-100',
+                                                    value: 'text-blue-700 dark:text-blue-300',
+                                                    calc: 'text-blue-700 dark:text-blue-300'
+                                                };
+                                            } else {
+                                                return {
+                                                    bg: 'bg-amber-50 dark:bg-amber-950/20',
+                                                    border: 'border-amber-200 dark:border-amber-800',
+                                                    icon: 'text-amber-600 dark:text-amber-400',
+                                                    text: 'text-amber-900 dark:text-amber-100',
+                                                    value: 'text-amber-700 dark:text-amber-300',
+                                                    calc: 'text-amber-700 dark:text-amber-300'
+                                                };
+                                            }
+                                        };
+                                        
+                                        const colors = getPointsColor(finalPoints);
+                                        
+                                        return (
+                                            <div className={`p-3 ${colors.bg} border ${colors.border} rounded-lg`}>
+                                                <div className="flex items-center justify-between">
+                                                    <div className="flex items-center gap-2">
+                                                        <Award className={`h-4 w-4 ${colors.icon}`} />
+                                                        <span className={`text-sm font-medium ${colors.text}`}>Final Points</span>
+                                                    </div>
+                                                    <span className={`text-lg font-bold ${colors.value}`}>
+                                                        {finalPoints} points
+                                                    </span>
+                                                </div>
+                                                <p className={`text-xs ${colors.calc} mt-1`}>
+                                                    {basePoints} × {Math.round((GRADE_MULTIPLIERS[grade] || 0) * 100)}% = {finalPoints}
+                                                </p>
+                                            </div>
+                                        );
+                                    })()}
+
+                                    {/* Review Notes */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="review_notes">Review Notes (Optional)</Label>
+                                        <Textarea
+                                            id="review_notes"
+                                            value={reviewNotes}
+                                            onChange={(e) => setReviewNotes(e.target.value)}
+                                            placeholder="Add any notes or comments about the volunteer's work..."
+                                            rows={4}
+                                            className="w-full"
+                                        />
+                                        <p className="text-xs text-muted-foreground">
+                                            Optional notes about the assessment
+                                        </p>
+                                    </div>
+
+                                    {/* Optional Job Status */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="job_status">Update Job Status (Optional)</Label>
+                                        <Select value={jobApplicationStatus || undefined} onValueChange={(value) => setJobApplicationStatus(value || '')}>
+                                            <SelectTrigger id="job_status">
+                                                <SelectValue placeholder="Keep current status" />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="completed">Completed</SelectItem>
+                                                <SelectItem value="in_progress">In Progress</SelectItem>
+                                            </SelectContent>
+                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Optionally update the job status. Leave empty to keep current status.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
 
                             <div className="flex justify-end gap-4 pt-4">
                                 <Link href="/volunteers/timesheet">

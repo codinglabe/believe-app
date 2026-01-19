@@ -10,7 +10,10 @@ use App\Models\UserFavoriteOrganization;
 use App\Models\RaffleTicket;
 use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
+use App\Models\JobApplication;
+use App\Models\RewardPointLedger;
 use App\Services\ImpactScoreService;
+use Carbon\Carbon;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -338,6 +341,240 @@ class UserProfileController extends Controller
         ]);
     }
     /**
+     * Show user's job applications
+     */
+    public function jobApplications(): Response
+    {
+        $user = auth()->user();
+
+        $applications = JobApplication::where('user_id', $user->id)
+            ->with(['jobPost.organization:id,name'])
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($application) {
+                $metadata = $application->metadata ?? [];
+                return [
+                    'id' => $application->id,
+                    'status' => $application->status,
+                    'job_post_id' => $application->job_post_id,
+                    'created_at' => $application->created_at->toISOString(),
+                    'updated_at' => $application->updated_at->toISOString(),
+                    'completion_requested' => $metadata['completion_requested'] ?? false,
+                    'completion_requested_at' => $metadata['completion_requested_at'] ?? null,
+                    'job_status' => $metadata['job_status'] ?? null,
+                    'job_post' => $application->jobPost ? [
+                        'id' => $application->jobPost->id,
+                        'title' => $application->jobPost->title,
+                        'type' => $application->jobPost->type,
+                        'location_type' => $application->jobPost->location_type,
+                        'city' => $application->jobPost->city,
+                        'state' => $application->jobPost->state,
+                        'organization' => $application->jobPost->organization ? [
+                            'id' => $application->jobPost->organization->id,
+                            'name' => $application->jobPost->organization->name,
+                        ] : null,
+                    ] : null,
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/job-applications', [
+            'applications' => $applications,
+        ]);
+    }
+
+    /**
+     * Show individual job application details
+     */
+    public function showJobApplication($id): Response
+    {
+        $user = auth()->user();
+
+        $application = JobApplication::where('user_id', $user->id)
+            ->with(['jobPost.organization:id,name,email,phone'])
+            ->findOrFail($id);
+
+        $metadata = $application->metadata ?? [];
+        
+        // Get the last completion request timesheet to check its status
+        $lastCompletionRequest = VolunteerTimesheet::where('job_application_id', $application->id)
+            ->where('is_completion_request', true)
+            ->orderBy('created_at', 'desc')
+            ->first();
+        
+        $applicationData = [
+            'id' => $application->id,
+            'status' => $application->status,
+            'job_post_id' => $application->job_post_id,
+            'created_at' => $application->created_at->toISOString(),
+            'updated_at' => $application->updated_at->toISOString(),
+            'completion_requested' => $metadata['completion_requested'] ?? false,
+            'completion_requested_at' => $metadata['completion_requested_at'] ?? null,
+            'job_status' => $metadata['job_status'] ?? null,
+            'last_completion_request_status' => $lastCompletionRequest ? $lastCompletionRequest->status : null,
+            'job_post' => $application->jobPost ? [
+                'id' => $application->jobPost->id,
+                'title' => $application->jobPost->title,
+                'description' => $application->jobPost->description,
+                'type' => $application->jobPost->type,
+                'location_type' => $application->jobPost->location_type,
+                'city' => $application->jobPost->city,
+                'state' => $application->jobPost->state,
+                'pay_rate' => $application->jobPost->pay_rate,
+                'currency' => $application->jobPost->currency,
+                'points' => $application->jobPost->points,
+                'organization' => $application->jobPost->organization ? [
+                    'id' => $application->jobPost->organization->id,
+                    'name' => $application->jobPost->organization->name,
+                    'email' => $application->jobPost->organization->email,
+                    'phone' => $application->jobPost->organization->phone,
+                ] : null,
+            ] : null,
+        ];
+
+        return Inertia::render('frontend/user-profile/job-application-show', [
+            'application' => $applicationData,
+        ]);
+    }
+
+    /**
+     * Request job completion - creates a timesheet entry
+     */
+    public function requestJobCompletion(Request $request, $id)
+    {
+        $user = auth()->user();
+
+        $application = JobApplication::where('user_id', $user->id)
+            ->where('status', 'accepted')
+            ->with('jobPost')
+            ->findOrFail($id);
+
+        $request->validate([
+            'start_date' => 'required|date',
+            'end_date' => 'required|date|after_or_equal:start_date',
+            'notes' => 'required|string|min:10|max:5000',
+        ]);
+
+        // Check if organization exists
+        if (!$application->jobPost || !$application->jobPost->organization_id) {
+            return redirect()->back()->withErrors(['error' => 'Job post or organization not found.']);
+        }
+
+        // Calculate hours from start_date to end_date
+        $startDate = Carbon::parse($request->start_date);
+        $endDate = Carbon::parse($request->end_date);
+        $daysDiff = $startDate->diffInDays($endDate) + 1; // Include both start and end days
+        $hours = $daysDiff * 8; // Assuming 8 hours per day (can be adjusted)
+
+        // Create timesheet entry as completion request
+        VolunteerTimesheet::create([
+            'job_application_id' => $application->id,
+            'organization_id' => $application->jobPost->organization_id,
+            'created_by' => $user->id,
+            'work_date' => $endDate->toDateString(), // Use end_date as work_date
+            'start_date' => $startDate->toDateString(),
+            'end_date' => $endDate->toDateString(),
+            'hours' => $hours,
+            'description' => $request->notes,
+            'notes' => 'Completion request submitted by volunteer',
+            'status' => 'pending',
+            'is_completion_request' => true,
+        ]);
+
+        // Update application metadata
+        $metadata = $application->metadata ?? [];
+        $metadata['completion_requested'] = true;
+        $metadata['completion_requested_at'] = now()->toISOString();
+        $metadata['completion_notes'] = $request->notes;
+
+        $application->metadata = $metadata;
+        $application->save();
+
+        // TODO: Send notification to organization about completion request
+
+        return redirect()->back()->with('success', 'Completion request submitted successfully! The organization will review your request.');
+    }
+
+    /**
+     * Fetch timesheets for a job application
+     */
+    public function getJobApplicationTimesheets($id)
+    {
+        $user = auth()->user();
+
+        $application = JobApplication::where('user_id', $user->id)
+            ->with(['jobPost.organization:id,name,email,phone'])
+            ->findOrFail($id);
+
+        $timesheets = VolunteerTimesheet::where('job_application_id', $application->id)
+            ->with('assessment')
+            ->orderBy('created_at', 'desc')
+            ->get()
+            ->map(function ($timesheet) {
+                $assessment = $timesheet->assessment;
+                return [
+                    'id' => $timesheet->id,
+                    'work_date' => $timesheet->work_date->toDateString(),
+                    'start_date' => $timesheet->start_date ? $timesheet->start_date->toDateString() : null,
+                    'end_date' => $timesheet->end_date ? $timesheet->end_date->toDateString() : null,
+                    'hours' => $timesheet->hours,
+                    'description' => $timesheet->description,
+                    'notes' => $timesheet->notes,
+                    'status' => $timesheet->status,
+                    'is_completion_request' => $timesheet->is_completion_request ?? false,
+                    'created_at' => $timesheet->created_at->toISOString(),
+                    'assessment' => $assessment ? [
+                        'final_points' => $assessment->final_points,
+                        'grade' => $assessment->grade,
+                        'review_notes' => $assessment->review_notes,
+                    ] : null,
+                ];
+            });
+
+        $metadata = $application->metadata ?? [];
+        
+        // Get the last completion request timesheet to check its status
+        $lastCompletionRequest = VolunteerTimesheet::where('job_application_id', $application->id)
+            ->where('is_completion_request', true)
+            ->orderBy('created_at', 'desc')
+            ->first();
+        
+        $applicationData = [
+            'id' => $application->id,
+            'status' => $application->status,
+            'job_post_id' => $application->job_post_id,
+            'created_at' => $application->created_at->toISOString(),
+            'updated_at' => $application->updated_at->toISOString(),
+            'completion_requested' => $metadata['completion_requested'] ?? false,
+            'completion_requested_at' => $metadata['completion_requested_at'] ?? null,
+            'job_status' => $metadata['job_status'] ?? null,
+            'last_completion_request_status' => $lastCompletionRequest ? $lastCompletionRequest->status : null,
+            'timesheets' => $timesheets,
+            'job_post' => $application->jobPost ? [
+                'id' => $application->jobPost->id,
+                'title' => $application->jobPost->title,
+                'description' => $application->jobPost->description,
+                'type' => $application->jobPost->type,
+                'location_type' => $application->jobPost->location_type,
+                'city' => $application->jobPost->city,
+                'state' => $application->jobPost->state,
+                'pay_rate' => $application->jobPost->pay_rate,
+                'currency' => $application->jobPost->currency,
+                'points' => $application->jobPost->points,
+                'organization' => $application->jobPost->organization ? [
+                    'id' => $application->jobPost->organization->id,
+                    'name' => $application->jobPost->organization->name,
+                    'email' => $application->jobPost->organization->email,
+                    'phone' => $application->jobPost->organization->phone,
+                ] : null,
+            ] : null,
+        ];
+
+        return Inertia::render('frontend/user-profile/job-application-show', [
+            'application' => $applicationData,
+        ]);
+    }
+
+    /**
      * Single order details
      */
     public function orderDetails($id): Response
@@ -557,6 +794,45 @@ class UserProfileController extends Controller
                 'page' => $page,
                 'search' => $search,
                 'work_date' => $workDate,
+            ],
+        ]);
+    }
+
+    /**
+     * Show reward points ledger (transaction history)
+     */
+    public function rewardPointsLedger(Request $request): Response
+    {
+        $user = auth()->user();
+
+        $perPage = $request->get('per_page', 20);
+        $page = $request->get('page', 1);
+
+        $ledgerEntries = RewardPointLedger::where('user_id', $user->id)
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString()
+            ->through(function ($entry) {
+                return [
+                    'id' => $entry->id,
+                    'source' => $entry->source,
+                    'type' => $entry->type,
+                    'points' => $entry->points,
+                    'description' => $entry->description,
+                    'metadata' => $entry->metadata,
+                    'created_at' => $entry->created_at->toISOString(),
+                ];
+            });
+
+        // Get current balance
+        $currentBalance = (float) ($user->reward_points ?? 0);
+
+        return Inertia::render('frontend/user-profile/reward-points-ledger', [
+            'ledgerEntries' => $ledgerEntries,
+            'currentBalance' => $currentBalance,
+            'filters' => [
+                'per_page' => $perPage,
+                'page' => $page,
             ],
         ]);
     }

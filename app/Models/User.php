@@ -740,6 +740,80 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Add reward points to the user's balance and create a ledger entry.
+     *
+     * @param int $points
+     * @param string $source (e.g., 'nonprofit_assessment')
+     * @param int|null $referenceId (e.g., assessment_id)
+     * @param string|null $description
+     * @param array|null $metadata
+     * @return void
+     */
+    public function addRewardPoints(
+        int $points,
+        string $source,
+        ?int $referenceId = null,
+        ?string $description = null,
+        ?array $metadata = null
+    ): void {
+        $this->increment('reward_points', $points);
+        
+        RewardPointLedger::createCredit(
+            $this->id,
+            $source,
+            $referenceId,
+            $points,
+            $description,
+            $metadata
+        );
+    }
+
+    /**
+     * Deduct reward points from the user's balance and create a ledger entry.
+     *
+     * @param int $points
+     * @param string $source (e.g., 'merchant_reward_redemption')
+     * @param int|null $referenceId (e.g., redemption_id)
+     * @param string|null $description
+     * @param array|null $metadata
+     * @return bool Returns true if deduction was successful, false if insufficient points
+     */
+    public function deductRewardPoints(
+        int $points,
+        string $source,
+        ?int $referenceId = null,
+        ?string $description = null,
+        ?array $metadata = null
+    ): bool {
+        if ($this->reward_points < $points) {
+            return false;
+        }
+        
+        $this->decrement('reward_points', $points);
+        
+        RewardPointLedger::createDebit(
+            $this->id,
+            $source,
+            $referenceId,
+            $points,
+            $description,
+            $metadata
+        );
+        
+        return true;
+    }
+
+    /**
+     * Get the current reward points balance of the user.
+     *
+     * @return int
+     */
+    public function currentRewardPoints(): int
+    {
+        return (int) ($this->reward_points ?? 0);
+    }
+
+    /**
      * Send the email verification notification.
      *
      * @param string|null $domain The domain from the request context (where user is accessing from)

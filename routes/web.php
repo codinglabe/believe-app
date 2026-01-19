@@ -395,6 +395,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
+    Route::get('/profile/job-applications', [UserProfileController::class, 'jobApplications'])->name('profile.job-applications');
+    Route::get('/profile/job-applications/{id}', [UserProfileController::class, 'showJobApplication'])->name('profile.job-applications.show');
+    Route::get('/profile/job-applications/{id}/timesheets', [UserProfileController::class, 'getJobApplicationTimesheets'])->name('profile.job-applications.timesheets');
+    Route::post('/profile/job-applications/{id}/request-completion', [UserProfileController::class, 'requestJobCompletion'])->name('profile.job-applications.request-completion');
+    Route::get('/profile/reward-points-ledger', [UserProfileController::class, 'rewardPointsLedger'])->name('profile.reward-points-ledger');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
@@ -935,11 +940,15 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
         ->middleware(['role:organization', 'permission:volunteer.read']);
 
     // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
+    // IMPORTANT: Specific routes (like fetch-volunteers) must come BEFORE parameterized routes ({timesheet})
     Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
         ->name('volunteers.timesheet.index')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
     Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
         ->name('volunteers.timesheet.create')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
+        ->name('volunteers.timesheet.fetch-volunteers')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
     Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
         ->name('volunteers.timesheet.store')
@@ -953,12 +962,12 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
     Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
         ->name('volunteers.timesheet.update')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
+    Route::put('volunteers/timesheet/{timesheet}/status', [VolunteerTimesheetController::class, 'updateStatus'])
+        ->name('volunteers.timesheet.update-status')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
     Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
         ->name('volunteers.timesheet.destroy')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.delete']);
-    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
-        ->name('volunteers.timesheet.fetch-volunteers')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
 
     Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
         ->name('volunteers.show')

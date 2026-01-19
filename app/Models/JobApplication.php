@@ -41,11 +41,13 @@ class JobApplication extends Model
         'status',
         'resume',
         'cover_letter',
+        'metadata',
     ];
 
     protected $casts = [
         'languages_spoken' => 'array',
         'certifications' => 'array',
+        'metadata' => 'array',
         'consent_background_check' => 'boolean',
         'willing_background_check' => 'boolean',
         'ever_convicted' => 'boolean',

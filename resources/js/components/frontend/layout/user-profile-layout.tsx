@@ -32,6 +32,7 @@ import {
   PieChart,
   Gift,
   Coins,
+  Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -152,6 +153,20 @@ const navigationItems = [
     icon: Coins,
     description: "Purchase and manage Believe Points",
     color: "from-blue-500 to-purple-600",
+  },
+  {
+    name: "My Applications",
+    href: "/profile/job-applications",
+    icon: Briefcase,
+    description: "Job & volunteer applications",
+    color: "from-emerald-500 to-teal-600",
+  },
+  {
+    name: "Reward Points",
+    href: "/profile/reward-points-ledger",
+    icon: Gift,
+    description: "Reward points transaction history",
+    color: "from-amber-500 to-yellow-600",
   },
   // {
   //   name: "Node Boss",

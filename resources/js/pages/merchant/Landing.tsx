@@ -125,9 +125,9 @@ export default function MerchantLanding() {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8 max-w-6xl mx-auto">
+          <div className="grid grid-cols-1 md:grid-cols-1 gap-6 sm:gap-8 max-w-md mx-auto">
             {/* Starter Plan */}
-            <motion.div
+            {/* <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.1 }}
@@ -175,7 +175,7 @@ export default function MerchantLanding() {
                   </div>
                 </MerchantCardContent>
               </MerchantCard>
-            </motion.div>
+            </motion.div> */}
 
             {/* Professional Plan - Most Popular */}
             <motion.div
@@ -243,7 +243,7 @@ export default function MerchantLanding() {
             </motion.div>
 
             {/* Enterprise Plan */}
-            <motion.div
+            {/* <motion.div
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.6, delay: 0.3 }}
@@ -294,7 +294,7 @@ export default function MerchantLanding() {
                   </div>
                 </MerchantCardContent>
               </MerchantCard>
-            </motion.div>
+            </motion.div> */}
           </div>
         </section>
 
