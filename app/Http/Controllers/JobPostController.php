@@ -122,6 +122,11 @@ class JobPostController extends BaseController
             $validated['organization_id'] = $request->user()->organization?->id;
         }
 
+        // Force points to 100 for volunteer jobs
+        if ($validated['type'] === 'volunteer') {
+            $validated['points'] = 100;
+        }
+
         $validated['date_posted'] = now()->toDateString();
 
         $jobPost = JobPost::create($validated);
@@ -201,6 +206,11 @@ class JobPostController extends BaseController
             'application_deadline' => 'nullable|date|after_or_equal:today',
             'status' => 'required|in:draft,open,closed,filled',
         ]);
+
+        // Force points to 100 for volunteer jobs
+        if ($validated['type'] === 'volunteer') {
+            $validated['points'] = 100;
+        }
 
         $jobPost->update($validated);
 

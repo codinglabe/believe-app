@@ -131,6 +131,18 @@ class MerchantOfferController extends Controller
         // Set merchant_hub_merchant_id
         $validated['merchant_hub_merchant_id'] = $merchantHubMerchant->id;
 
+        // If standard discount, enforce rules
+        if ($request->boolean('is_standard_discount')) {
+            // Must be exactly 100 points for standard 10% discount
+            if ($validated['points_required'] != 100) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['points_required' => 'Standard 10% discount offers must require exactly 100 points.']);
+            }
+            // Set discount percentage to 10%
+            $validated['discount_percentage'] = 10;
+        }
+
         // Handle image upload
         if ($request->hasFile('image')) {
             $validated['image_url'] = $request->file('image')->store('merchant-hub/offers', 'public');
@@ -235,6 +247,9 @@ class MerchantOfferController extends Controller
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date|after_or_equal:starts_at',
             'status' => 'required|in:draft,active,paused,expired',
+            'is_standard_discount' => 'nullable|boolean',
+            'discount_percentage' => 'nullable|numeric|min:0|max:100',
+            'discount_cap' => 'nullable|numeric|min:0',
         ], [
             'merchant_hub_category_id.required' => 'Please select a category.',
             'merchant_hub_category_id.exists' => 'The selected category does not exist.',
@@ -259,6 +274,18 @@ class MerchantOfferController extends Controller
             'status.required' => 'The status field is required.',
             'status.in' => 'The selected status is invalid.',
         ]);
+
+        // If standard discount, enforce rules
+        if ($request->boolean('is_standard_discount')) {
+            // Must be exactly 100 points for standard 10% discount
+            if ($validated['points_required'] != 100) {
+                return redirect()->back()
+                    ->withInput()
+                    ->withErrors(['points_required' => 'Standard 10% discount offers must require exactly 100 points.']);
+            }
+            // Set discount percentage to 10%
+            $validated['discount_percentage'] = 10;
+        }
 
         // Handle image upload - replace old image if new one is uploaded
         if ($request->hasFile('image')) {

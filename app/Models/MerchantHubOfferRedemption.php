@@ -16,11 +16,17 @@ class MerchantHubOfferRedemption extends Model
         'cash_spent',
         'status',
         'receipt_code',
+        'used_at',
+        'verified_by_merchant_id',
+        'eligible_item_id',
+        'discount_amount',
     ];
 
     protected $casts = [
         'points_spent' => 'integer',
         'cash_spent' => 'decimal:2',
+        'used_at' => 'datetime',
+        'discount_amount' => 'decimal:2',
     ];
 
     /**
@@ -37,5 +43,29 @@ class MerchantHubOfferRedemption extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    /**
+     * Get the merchant who verified this redemption.
+     */
+    public function verifiedByMerchant(): BelongsTo
+    {
+        return $this->belongsTo(Merchant::class, 'verified_by_merchant_id');
+    }
+
+    /**
+     * Get the eligible item that was redeemed.
+     */
+    public function eligibleItem(): BelongsTo
+    {
+        return $this->belongsTo(MerchantHubEligibleItem::class, 'eligible_item_id');
+    }
+
+    /**
+     * Check if redemption has been used.
+     */
+    public function isUsed(): bool
+    {
+        return $this->status === 'fulfilled' && $this->used_at !== null;
     }
 }

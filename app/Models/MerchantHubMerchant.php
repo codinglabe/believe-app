@@ -27,4 +27,12 @@ class MerchantHubMerchant extends Model
     {
         return $this->hasMany(MerchantHubOffer::class, 'merchant_hub_merchant_id');
     }
+
+    /**
+     * Get the eligible items for this merchant.
+     */
+    public function eligibleItems(): HasMany
+    {
+        return $this->hasMany(MerchantHubEligibleItem::class, 'merchant_hub_merchant_id');
+    }
 }

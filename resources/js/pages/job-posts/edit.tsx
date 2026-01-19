@@ -84,6 +84,7 @@ export default function Edit({
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
+        const points = jobPost.type === 'volunteer' ? '100' : (jobPost.points?.toString() || '');
         setFormData({
             position_id: jobPost.position_id.toString(),
             title: jobPost.title,
@@ -91,7 +92,7 @@ export default function Edit({
             requirements: jobPost.requirements || '',
             pay_rate: jobPost.pay_rate?.toString() || '',
             currency: jobPost.currency || '',
-            points: jobPost.points?.toString() || '',
+            points: points,
             type: jobPost.type,
             location_type: jobPost.location_type,
             city: jobPost.city || '',
@@ -109,7 +110,13 @@ export default function Edit({
         setIsSubmitting(true);
         setErrors({});
 
-        router.put(`/job-posts/${jobPost.id}`, formData, {
+        // Ensure points is 100 for volunteer jobs
+        const submitData = { ...formData };
+        if (submitData.type === 'volunteer') {
+            submitData.points = '100';
+        }
+
+        router.put(`/job-posts/${jobPost.id}`, submitData, {
             onError: (errors) => {
                 setErrors(errors);
                 showErrorToast('Failed to update job post');
@@ -122,11 +129,25 @@ export default function Edit({
     };
 
     const handleChange = (field: string, value: string) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        setFormData((prev) => {
+            const updated = { ...prev, [field]: value };
+            // Auto-set points to 100 when type changes to volunteer
+            if (field === 'type' && value === 'volunteer') {
+                updated.points = '100';
+            }
+            return updated;
+        });
         if (errors[field]) {
             setErrors((prev) => ({ ...prev, [field]: '' }));
         }
     };
+
+    // Auto-set points to 100 when type is volunteer
+    useEffect(() => {
+        if (formData.type === 'volunteer' && formData.points !== '100') {
+            setFormData((prev) => ({ ...prev, points: '100' }));
+        }
+    }, [formData.type]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -261,9 +282,13 @@ export default function Edit({
                                             min="0"
                                             value={formData.points}
                                             onChange={(e) => handleChange('points', e.target.value)}
-                                            placeholder="Enter reward points"
-                                            className={errors.points ? 'border-red-500' : ''}
+                                            placeholder="100 points (fixed for volunteer jobs)"
+                                            disabled={true}
+                                            className={`${errors.points ? 'border-red-500' : ''} bg-muted cursor-not-allowed`}
                                         />
+                                        <p className="text-xs text-muted-foreground">
+                                            Volunteer jobs have a fixed rate of 100 points
+                                        </p>
                                         {errors.points && (
                                             <p className="text-sm text-red-500">{errors.points}</p>
                                         )}

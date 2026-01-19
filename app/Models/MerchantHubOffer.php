@@ -27,6 +27,9 @@ class MerchantHubOffer extends Model
         'starts_at',
         'ends_at',
         'status',
+        'is_standard_discount',
+        'discount_percentage',
+        'discount_cap',
     ];
 
     protected $casts = [
@@ -35,6 +38,9 @@ class MerchantHubOffer extends Model
         'inventory_qty' => 'integer',
         'starts_at' => 'datetime',
         'ends_at' => 'datetime',
+        'is_standard_discount' => 'boolean',
+        'discount_percentage' => 'decimal:2',
+        'discount_cap' => 'decimal:2',
     ];
 
     /**
@@ -60,6 +66,7 @@ class MerchantHubOffer extends Model
     {
         return $this->hasMany(MerchantHubOfferRedemption::class, 'merchant_hub_offer_id');
     }
+
 
     /**
      * Boot the model.

@@ -827,9 +827,23 @@ class UserProfileController extends Controller
         // Get current balance
         $currentBalance = (float) ($user->reward_points ?? 0);
 
+        // Calculate summary statistics
+        $totalCredits = (float) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'credit')
+            ->sum('points');
+        
+        $totalDebits = (float) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'debit')
+            ->sum('points');
+
         return Inertia::render('frontend/user-profile/reward-points-ledger', [
             'ledgerEntries' => $ledgerEntries,
             'currentBalance' => $currentBalance,
+            'summary' => [
+                'total_credits' => $totalCredits,
+                'total_debits' => $totalDebits,
+                'net_points' => $totalCredits - $totalDebits,
+            ],
             'filters' => [
                 'per_page' => $perPage,
                 'page' => $page,

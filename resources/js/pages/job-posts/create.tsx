@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -53,12 +53,25 @@ export default function Create({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Auto-set points to 100 when type is volunteer
+    useEffect(() => {
+        if (formData.type === 'volunteer') {
+            setFormData((prev) => ({ ...prev, points: '100' }));
+        }
+    }, [formData.type]);
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         setErrors({});
 
-        router.post('/job-posts', formData, {
+        // Ensure points is 100 for volunteer jobs
+        const submitData = { ...formData };
+        if (submitData.type === 'volunteer') {
+            submitData.points = '100';
+        }
+
+        router.post('/job-posts', submitData, {
             onError: (errors) => {
                 setErrors(errors);
                 showErrorToast('Failed to create job post');
@@ -209,9 +222,13 @@ export default function Create({
                                             min="0"
                                             value={formData.points}
                                             onChange={(e) => handleChange('points', e.target.value)}
-                                            placeholder="Enter reward points"
-                                            className={errors.points ? 'border-red-500' : ''}
+                                            placeholder="100 points (fixed for volunteer jobs)"
+                                            disabled={true}
+                                            className={`${errors.points ? 'border-red-500' : ''} bg-muted cursor-not-allowed`}
                                         />
+                                        <p className="text-xs text-muted-foreground">
+                                            Volunteer jobs have a fixed rate of 100 points
+                                        </p>
                                         {errors.points && (
                                             <p className="text-sm text-red-500">{errors.points}</p>
                                         )}

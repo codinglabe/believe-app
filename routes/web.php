@@ -290,6 +290,11 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->na
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
 
+// Merchant verification route (requires merchant auth)
+Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::post('/redemption/{code}/mark-used', [App\Http\Controllers\MerchantRedemptionController::class, 'markAsUsed'])->name('redemption.mark-used');
+});
+
 // Public QR code route (no auth required - code in URL is sufficient security)
 Route::get('/merchant-hub/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
 

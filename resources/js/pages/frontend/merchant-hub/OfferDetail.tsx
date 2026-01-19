@@ -41,17 +41,34 @@ interface Offer {
   reviews?: number
 }
 
+interface RedemptionEligibility {
+  canRedeem: boolean
+  reason: string | null
+  userPoints: number
+  monthlyPointsRedeemed: number
+  hasExistingRedemption: boolean
+}
+
 interface Props {
   offerId: string
   offer?: Offer
   relatedOffers?: Offer[]
+  redemptionEligibility?: RedemptionEligibility
 }
 
-export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [] }: Props) {
-  const { auth } = usePage().props as any
+export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [], redemptionEligibility: initialRedemptionEligibility }: Props) {
+  const { auth, errors } = usePage().props as any
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isFavorite, setIsFavorite] = useState(false)
   const [isRedeeming, setIsRedeeming] = useState(false)
+  
+  const redemptionEligibility: RedemptionEligibility = initialRedemptionEligibility || {
+    canRedeem: true,
+    reason: null,
+    userPoints: 0,
+    monthlyPointsRedeemed: 0,
+    hasExistingRedemption: false,
+  }
 
   // Mock data - in production, this would come from props
   const offer: Offer = initialOffer || {
@@ -105,6 +122,9 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     }
   ]
 
+  // Calculate if user can redeem
+  const canRedeem = auth?.user && redemptionEligibility.canRedeem && (initialOffer?.isAvailable ?? true)
+
   const images = offer.images || [offer.image]
   const hasMultipleImages = images.length > 1
 
@@ -125,26 +145,27 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
       return
     }
 
-    setIsRedeeming(true)
-    try {
-      await router.post('/merchant-hub/redeem', {
-        offer_id: offer.id,
-        points_used: offer.pointsRequired,
-        cash_paid: offer.cashRequired || 0,
-      }, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setIsRedeeming(false)
-        },
-        onError: (errors) => {
-          console.error('Redemption failed:', errors)
-          setIsRedeeming(false)
-        }
-      })
-    } catch (error) {
-      console.error('Redemption failed:', error)
-      setIsRedeeming(false)
+    // Don't proceed if not eligible
+    if (!canRedeem) {
+      return
     }
+
+    setIsRedeeming(true)
+    router.post('/merchant-hub/redeem', {
+      offer_id: offer.id,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setIsRedeeming(false)
+      },
+      onError: (errors) => {
+        setIsRedeeming(false)
+        // Error will be displayed via Inertia error handling
+      },
+      onFinish: () => {
+        setIsRedeeming(false)
+      }
+    })
   }
 
   const handleShare = () => {
@@ -350,8 +371,8 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                   {/* Redeem Button */}
                   <Button
                     onClick={handleRedeem}
-                    disabled={isRedeeming}
-                    className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    disabled={isRedeeming || !canRedeem}
+                    className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     size="lg"
                   >
                     {isRedeeming ? (
@@ -364,12 +385,37 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     )}
                   </Button>
 
+                  {/* Error Messages from Server */}
+                  {errors?.error && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mt-3">
+                      <p className="text-sm text-red-800 dark:text-red-200 text-center">
+                        {errors.error}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Eligibility Messages */}
                   {!auth?.user && (
-                    <p className="text-sm text-center text-muted-foreground">
+                    <p className="text-sm text-center text-muted-foreground mt-3">
                       <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">
                         Sign in
                       </Link>
                       {' '}to redeem this offer
+                    </p>
+                  )}
+                  
+                  {/* Only show eligibility reason if no server error is present */}
+                  {auth?.user && !redemptionEligibility.canRedeem && redemptionEligibility.reason && !errors?.error && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg mt-3">
+                      <p className="text-sm text-amber-800 dark:text-amber-200 text-center">
+                        {redemptionEligibility.reason}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {auth?.user && redemptionEligibility.canRedeem && !offer.isAvailable && (
+                    <p className="text-sm text-center text-muted-foreground mt-3">
+                      This offer is currently unavailable.
                     </p>
                   )}
                 </CardContent>
