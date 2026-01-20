@@ -13,6 +13,7 @@ interface SearchSectionProps {
   filters: {
     search?: string
     category?: string
+    category_description?: string // Add this
     state?: string
     city?: string
     zip?: string
@@ -21,6 +22,7 @@ interface SearchSectionProps {
   }
   filterOptions: {
     categories: string[]
+    categoryDescriptions: string[] // Add this
     states: string[]
     cities: string[]
   }
@@ -45,6 +47,7 @@ export default function SearchSection({
   // State for search inputs
   const [searchQuery, setSearchQuery] = useState(filters.search || "")
   const [selectedCategory, setSelectedCategory] = useState(filters.category || "All Categories")
+  const [selectedCategoryDescription, setSelectedCategoryDescription] = useState(filters.category_description || "All Descriptions") // Add this
   const [selectedState, setSelectedState] = useState(filters.state || "All States")
   const [selectedCity, setSelectedCity] = useState(filters.city || "All Cities")
   const [zipCode, setZipCode] = useState(filters.zip || "")
@@ -78,6 +81,7 @@ export default function SearchSection({
     const params = {
       search: searchQuery,
       category: selectedCategory,
+      category_description: selectedCategoryDescription, // Add this
       state: selectedState,
       city: selectedCity,
       zip: zipCode,
@@ -95,6 +99,7 @@ export default function SearchSection({
     if (!hasActiveFilters) {
       setSearchQuery("")
       setSelectedCategory("All Categories")
+      setSelectedCategoryDescription("All Descriptions") // Add this
       setSelectedState("All States")
       setSelectedCity("All Cities")
       setZipCode("")
@@ -128,7 +133,7 @@ export default function SearchSection({
           </div>
 
           {/* Filters and Search Button */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
                 <SelectValue placeholder="All Categories" />
@@ -137,6 +142,20 @@ export default function SearchSection({
                 {filterOptions.categories.map((category) => (
                   <SelectItem key={category} value={category} className="text-gray-900 dark:text-white">
                     {category}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Add Category Description Filter */}
+            <Select value={selectedCategoryDescription} onValueChange={setSelectedCategoryDescription}>
+              <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
+                <SelectValue placeholder="All Descriptions" />
+              </SelectTrigger>
+              <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+                {filterOptions.categoryDescriptions?.map((description) => (
+                  <SelectItem key={description} value={description} className="text-gray-900 dark:text-white">
+                    {description}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -222,6 +241,11 @@ export default function SearchSection({
                 {filters.category && filters.category !== "All Categories" && (
                   <Badge variant="secondary" className="px-3 py-1">
                     Category: {filters.category}
+                  </Badge>
+                )}
+                {filters.category_description && filters.category_description !== "All Descriptions" && (
+                  <Badge variant="secondary" className="px-3 py-1">
+                    Description: {filters.category_description}
                   </Badge>
                 )}
                 {filters.state && filters.state !== "All States" && (

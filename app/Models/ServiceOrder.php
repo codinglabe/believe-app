@@ -194,16 +194,16 @@ class ServiceOrder extends Model
             return false;
         }
 
-        // Can only cancel pending or in_progress orders
-        if (!in_array($this->status, ['pending', 'in_progress'])) {
+        // Can only cancel pending orders
+        if (!in_array($this->status, ['pending'])) {
             return false;
         }
 
         // Check 24-hour rule
         $orderAge = now()->diffInHours($this->created_at);
 
-        // If order is more than 24 hours old AND seller has approved it, cannot cancel
-        if ($orderAge > 24 && $this->status === 'in_progress') {
+        // If order is more than 24 hours old, cannot cancel
+        if ($orderAge > 24) {
             return false;
         }
 

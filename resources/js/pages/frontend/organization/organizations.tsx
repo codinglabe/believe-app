@@ -38,16 +38,18 @@ interface PageProps {
   filters: {
     search?: string
     category?: string
+    category_description?: string // Add this
     state?: string
     city?: string
     zip?: string
     sort?: string
     per_page?: string
   }
-    filterOptions: { // Add this
+  filterOptions: {
     categories: string[]
     states: string[]
     cities: string[]
+    categoryDescriptions: string[] // Add this
   }
   hasActiveFilters: boolean
   auth?: {
@@ -81,7 +83,7 @@ export default function OrganizationsPage() {
   const handleSearch = (params: Record<string, string>) => {
     // Check if user is trying to search with actual search terms
     const hasSearchQuery = params.search && params.search.trim() !== ""
-    const hasFilters = 
+    const hasFilters =
       (params.category && params.category !== "All Categories") ||
       (params.state && params.state !== "All States") ||
       (params.city && params.city !== "All Cities") ||

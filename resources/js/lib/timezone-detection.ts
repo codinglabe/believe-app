@@ -27,7 +27,7 @@ export function getTimezoneOffset(): number {
 export function getTimezoneInfo() {
     const timezone = getBrowserTimezone();
     const offset = getTimezoneOffset();
-    
+
     return {
         timezone,
         offset,
@@ -42,19 +42,19 @@ export function getTimezoneInfo() {
  */
 export function setTimezoneHeader() {
     const timezone = getBrowserTimezone();
-    
+
     // Set default header for all requests
     if (typeof window !== 'undefined' && window.axios) {
         window.axios.defaults.headers.common['X-Timezone'] = timezone;
     }
-    
+
     // Also set for fetch requests
     if (typeof window !== 'undefined') {
         const originalFetch = window.fetch;
         window.fetch = function(input: RequestInfo | URL, init?: RequestInit) {
             const headers = new Headers(init?.headers);
             headers.set('X-Timezone', timezone);
-            
+
             return originalFetch(input, {
                 ...init,
                 headers,
@@ -70,7 +70,7 @@ export function formatDateInTimezone(date: string | Date, timezone?: string): st
     try {
         const timezoneToUse = timezone || getBrowserTimezone();
         const dateObj = typeof date === 'string' ? new Date(date) : date;
-        
+
         return new Intl.DateTimeFormat('en-US', {
             timeZone: timezoneToUse,
             year: 'numeric',
@@ -93,7 +93,7 @@ export function convertUTCToUserTimezone(utcDate: string | Date, timezone?: stri
     try {
         const timezoneToUse = timezone || getBrowserTimezone();
         const dateObj = typeof utcDate === 'string' ? new Date(utcDate) : utcDate;
-        
+
         // The date is already in UTC, just return it as the browser will display it in local timezone
         return dateObj;
     } catch (error) {
@@ -110,15 +110,15 @@ export function convertUserTimezoneToUTC(userDate: string | Date, timezone?: str
         // The input date is already in the user's local timezone
         // JavaScript Date objects are always in local timezone
         // We need to convert it to UTC by adjusting for the timezone offset
-        
+
         const dateObj = typeof userDate === 'string' ? new Date(userDate) : userDate;
-        
+
         // Get the timezone offset in minutes (positive means behind UTC, negative means ahead)
         const timezoneOffset = dateObj.getTimezoneOffset();
-        
+
         // Convert to UTC by adding the offset (since getTimezoneOffset returns the opposite)
         const utcTime = dateObj.getTime() + (timezoneOffset * 60000);
-        
+
         return new Date(utcTime);
     } catch (error) {
         console.warn('Failed to convert user timezone to UTC:', error);
@@ -132,11 +132,11 @@ export function convertUserTimezoneToUTC(userDate: string | Date, timezone?: str
 export function initializeTimezoneDetection() {
     // Set timezone header for all requests
     setTimezoneHeader();
-    
+
     // Log timezone info for debugging
     const timezoneInfo = getTimezoneInfo();
     console.log('Timezone detected:', timezoneInfo);
-    
+
     return timezoneInfo;
 }
 

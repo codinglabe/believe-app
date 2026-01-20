@@ -6,8 +6,8 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
-import { Label } from "@/components/frontend/ui/label" // <-- ADD THIS IMPORT
-import { Textarea } from "@/components/frontend/ui/textarea" // <-- ADD THIS IMPORT
+import { Label } from "@/components/frontend/ui/label"
+import { Textarea } from "@/components/frontend/ui/textarea"
 import {
   Dialog,
   DialogContent,
@@ -131,6 +131,82 @@ export default function MyOrders() {
   const [cancelReason, setCancelReason] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [statusInfoMap, setStatusInfoMap] = useState<Record<number, any>>({})
+  const [csrfToken, setCsrfToken] = useState<string>("")
+
+  // Fetch CSRF token on page load
+  useEffect(() => {
+    const fetchCsrfToken = async () => {
+      try {
+        // Method 1: Check if token exists in meta tag
+        const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
+        if (metaToken) {
+          setCsrfToken(metaToken)
+        } else {
+          // Method 2: Fetch fresh token from server
+          const response = await fetch('/sanctum/csrf-cookie', {
+            method: 'GET',
+            credentials: 'same-origin'
+          })
+
+          if (response.ok) {
+            // Get the token from cookies
+            const cookies = document.cookie.split(';')
+            const xsrfToken = cookies.find(cookie => cookie.trim().startsWith('XSRF-TOKEN='))
+
+            if (xsrfToken) {
+              const token = decodeURIComponent(xsrfToken.split('=')[1])
+              setCsrfToken(token)
+
+              // Update meta tag
+              let meta = document.querySelector('meta[name="csrf-token"]')
+              if (!meta) {
+                meta = document.createElement('meta')
+                meta.setAttribute('name', 'csrf-token')
+                document.head.appendChild(meta)
+              }
+              meta.setAttribute('content', token)
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch CSRF token:", error)
+      }
+    }
+
+    fetchCsrfToken()
+
+    // Also fetch on page focus/visibility change
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchCsrfToken()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  // Helper function to get CSRF token
+  const getCsrfToken = (): string => {
+    // Priority: 1. State token, 2. Meta tag, 3. Cookie
+    if (csrfToken) return csrfToken
+
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    if (metaToken) return metaToken
+
+    // Fallback to cookie
+    const cookies = document.cookie.split(';')
+    const xsrfToken = cookies.find(cookie => cookie.trim().startsWith('XSRF-TOKEN='))
+    if (xsrfToken) {
+      return decodeURIComponent(xsrfToken.split('=')[1])
+    }
+
+    return ''
+  }
 
   const applyFilters = () => {
     const params: any = {
@@ -200,13 +276,20 @@ export default function MyOrders() {
       return
     }
 
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${orderId}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: JSON.stringify({
@@ -239,13 +322,20 @@ export default function MyOrders() {
   }
 
   const handleAcceptDelivery = async (orderId: number) => {
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${orderId}/accept-delivery`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
       })

@@ -171,6 +171,82 @@ export default function OrderDetail() {
   const [sellerReview, setSellerReview] = useState({ rating: 5, comment: "" })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [statusInfo, setStatusInfo] = useState<{ can_cancel_by_buyer?: boolean; remaining_cancellation_hours?: number; remaining_auto_approval_hours?: number }>({})
+  const [csrfToken, setCsrfToken] = useState<string>("")
+
+  // Fetch CSRF token on page load
+  useEffect(() => {
+    const fetchCsrfToken = async () => {
+      try {
+        // Method 1: Check if token exists in meta tag
+        const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+
+        if (metaToken) {
+          setCsrfToken(metaToken)
+        } else {
+          // Method 2: Fetch fresh token from server
+          const response = await fetch('/sanctum/csrf-cookie', {
+            method: 'GET',
+            credentials: 'same-origin'
+          })
+
+          if (response.ok) {
+            // Get the token from cookies
+            const cookies = document.cookie.split(';')
+            const xsrfToken = cookies.find(cookie => cookie.trim().startsWith('XSRF-TOKEN='))
+
+            if (xsrfToken) {
+              const token = decodeURIComponent(xsrfToken.split('=')[1])
+              setCsrfToken(token)
+
+              // Update meta tag
+              let meta = document.querySelector('meta[name="csrf-token"]')
+              if (!meta) {
+                meta = document.createElement('meta')
+                meta.setAttribute('name', 'csrf-token')
+                document.head.appendChild(meta)
+              }
+              meta.setAttribute('content', token)
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch CSRF token:", error)
+      }
+    }
+
+    fetchCsrfToken()
+
+    // Also fetch on page focus/visibility change
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        fetchCsrfToken()
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
+  }, [])
+
+  // Helper function to get CSRF token
+  const getCsrfToken = (): string => {
+    // Priority: 1. State token, 2. Meta tag, 3. Cookie
+    if (csrfToken) return csrfToken
+
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    if (metaToken) return metaToken
+
+    // Fallback to cookie
+    const cookies = document.cookie.split(';')
+    const xsrfToken = cookies.find(cookie => cookie.trim().startsWith('XSRF-TOKEN='))
+    if (xsrfToken) {
+      return decodeURIComponent(xsrfToken.split('=')[1])
+    }
+
+    return ''
+  }
 
   useEffect(() => {
     // Fetch real-time status info
@@ -260,13 +336,20 @@ export default function OrderDetail() {
       return
     }
 
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${order.id}/cancel`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: JSON.stringify({
@@ -297,6 +380,12 @@ export default function OrderDetail() {
       return
     }
 
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const formData = new FormData()
@@ -319,7 +408,8 @@ export default function OrderDetail() {
       const response = await fetch(`/service-hub/orders/${order.id}/resubmit`, {
         method: 'POST',
         headers: {
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: formData,
@@ -348,6 +438,12 @@ export default function OrderDetail() {
       return
     }
 
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const formData = new FormData()
@@ -370,7 +466,8 @@ export default function OrderDetail() {
       const response = await fetch(`/service-hub/orders/${order.id}/deliver`, {
         method: 'POST',
         headers: {
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: formData,
@@ -392,13 +489,20 @@ export default function OrderDetail() {
   }
 
   const handleAcceptDelivery = async () => {
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${order.id}/accept-delivery`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
       })
@@ -418,13 +522,20 @@ export default function OrderDetail() {
   }
 
   const handleApprove = async () => {
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${order.id}/approve`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
       })
@@ -444,13 +555,20 @@ export default function OrderDetail() {
   }
 
   const handleReject = async () => {
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/orders/${order.id}/reject`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: JSON.stringify({
@@ -480,13 +598,20 @@ export default function OrderDetail() {
       return
     }
 
+    const token = getCsrfToken()
+    if (!token) {
+      showErrorToast("CSRF token not found. Please refresh the page.")
+      return
+    }
+
     setIsSubmitting(true)
     try {
       const response = await fetch(`/service-hub/${order.service.slug}/reviews`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'X-CSRF-TOKEN': token,
+          'X-Requested-With': 'XMLHttpRequest',
         },
         credentials: 'same-origin',
         body: JSON.stringify({
@@ -510,6 +635,7 @@ export default function OrderDetail() {
       setShowReviewModal(false)
     }
   }
+
 
   return (
     <FrontendLayout>

@@ -216,6 +216,50 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         permission: "newsletter.read"
                     },
                     {
+                        title: 'Content Management',
+                        icon: FileText,
+                        items: [
+                            {
+                                title: 'Content Items',
+                                href: '/content',
+                                icon: FileText,
+                                permission: "content.read"
+                            },
+                            {
+                                title: 'Create Content',
+                                href: '/content/create',
+                                icon: PlusCircle,
+                                permission: "content.create"
+                            },
+                        ],
+                        permission: "content.read"
+                    },
+                    {
+                        title: 'Facebook',
+                        icon: Facebook,
+                        role: "organization",
+                        items: [
+                            {
+                                title: 'Connect Pages',
+                                href: '/facebook/connect',
+                                icon: LinkIcon,
+                                role: "organization"
+                            },
+                            {
+                                title: 'Posts',
+                                href: '/facebook/posts',
+                                icon: FileText,
+                                role: "organization"
+                            },
+                            {
+                                title: 'Create Post',
+                                href: '/facebook/posts/create',
+                                icon: Plus,
+                                role: "organization"
+                            },
+                        ],
+                    },
+                    {
                         title: 'Email / SMS Campaigns',
                         icon: Send,
                         items: [
@@ -264,59 +308,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "communication.read"
-    },
-
-    // 6. Content & Publishing
-    {
-        title: 'Content & Publishing',
-        icon: FileText,
-        items: [
-            {
-                title: 'Content Management',
-                icon: FileText,
-                items: [
-                    {
-                        title: 'Content Items',
-                        href: '/content',
-                        icon: FileText,
-                        permission: "content.read"
-                    },
-                    {
-                        title: 'Create Content',
-                        href: '/content/create',
-                        icon: PlusCircle,
-                        permission: "content.create"
-                    },
-                ],
-                permission: "content.read"
-            },
-            {
-                title: 'Facebook',
-                icon: Facebook,
-                role: "organization",
-                items: [
-                    {
-                        title: 'Connect Pages',
-                        href: '/facebook/connect',
-                        icon: LinkIcon,
-                        role: "organization"
-                    },
-                    {
-                        title: 'Posts',
-                        href: '/facebook/posts',
-                        icon: FileText,
-                        role: "organization"
-                    },
-                    {
-                        title: 'Create Post',
-                        href: '/facebook/posts/create',
-                        icon: Plus,
-                        role: "organization"
-                    },
-                ],
-            },
-        ],
-        role: "organization"
     },
 
     // 7. Programs & Events
