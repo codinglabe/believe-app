@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Head, useForm, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
@@ -6,15 +6,26 @@ import { MerchantInput } from '@/components/merchant-ui'
 import { MerchantLabel } from '@/components/merchant-ui'
 import { MerchantTextarea } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Save, Building2, User, Bell, Shield, CreditCard, Globe } from 'lucide-react'
+import { Save, Building2, User, CreditCard, Globe } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { usePage } from '@inertiajs/react'
+import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
 export default function Settings() {
-  const { auth } = usePage().props as any
+  const { auth, flash } = usePage().props as any
   const merchant = auth?.user
 
-  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'notifications' | 'billing' | 'security'>('profile')
+  const [activeTab, setActiveTab] = useState<'profile' | 'business' | 'billing'>('profile')
+
+  // Handle flash messages
+  useEffect(() => {
+    if (flash?.success) {
+      showSuccessToast(flash.success)
+    }
+    if (flash?.error) {
+      showErrorToast(flash.error)
+    }
+  }, [flash])
 
   const profileForm = useForm({
     name: merchant?.name || '',
@@ -25,6 +36,7 @@ export default function Settings() {
   const businessForm = useForm({
     business_name: merchant?.business_name || '',
     business_description: merchant?.business_description || '',
+    website: merchant?.website || '',
     address: merchant?.address || '',
     city: merchant?.city || '',
     state: merchant?.state || '',
@@ -32,11 +44,40 @@ export default function Settings() {
     country: merchant?.country || '',
   })
 
+  // Sync form data when merchant data changes (after save/reload)
+  useEffect(() => {
+    if (merchant) {
+      businessForm.setData({
+        business_name: merchant.business_name || '',
+        business_description: merchant.business_description || '',
+        website: merchant.website || '',
+        address: merchant.address || '',
+        city: merchant.city || '',
+        state: merchant.state || '',
+        zip_code: merchant.zip_code || '',
+        country: merchant.country || '',
+      })
+      profileForm.setData({
+        name: merchant.name || '',
+        email: merchant.email || '',
+        phone: merchant.phone || '',
+      })
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [merchant?.id, merchant?.website, merchant?.business_name, merchant?.name, merchant?.email])
+
   const handleProfileSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     profileForm.patch('/settings/profile', {
       onSuccess: () => {
-        // Show success message
+        showSuccessToast('Profile updated successfully!')
+        // Reload merchant data
+        router.reload({ only: ['auth'] })
+      },
+      onError: (errors) => {
+        if (errors) {
+          showErrorToast('Failed to update profile. Please check the form for errors.')
+        }
       }
     })
   }
@@ -45,7 +86,14 @@ export default function Settings() {
     e.preventDefault()
     businessForm.patch('/settings/business', {
       onSuccess: () => {
-        // Show success message
+        showSuccessToast('Business information updated successfully!')
+        // Reload merchant data
+        router.reload({ only: ['auth'] })
+      },
+      onError: (errors) => {
+        if (errors) {
+          showErrorToast('Failed to update business information. Please check the form for errors.')
+        }
       }
     })
   }
@@ -53,9 +101,7 @@ export default function Settings() {
   const tabs = [
     { id: 'profile', label: 'Profile', icon: User },
     { id: 'business', label: 'Business', icon: Building2 },
-    { id: 'notifications', label: 'Notifications', icon: Bell },
     { id: 'billing', label: 'Billing', icon: CreditCard },
-    { id: 'security', label: 'Security', icon: Shield },
   ]
 
   return (
@@ -194,6 +240,27 @@ export default function Settings() {
                         )}
                       </div>
 
+                      <div>
+                        <MerchantLabel htmlFor="website">Website</MerchantLabel>
+                        <div className="relative mt-1">
+                          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Globe className="h-5 w-5 text-gray-400" />
+                          </div>
+                          <MerchantInput
+                            id="website"
+                            type="url"
+                            placeholder="https://example.com"
+                            value={businessForm.data.website}
+                            onChange={(e) => businessForm.setData('website', e.target.value)}
+                            className="pl-10"
+                          />
+                        </div>
+                        {businessForm.errors.website && (
+                          <p className="mt-1 text-sm text-red-400">{businessForm.errors.website}</p>
+                        )}
+                        <p className="mt-1 text-xs text-gray-400">Optional: Your business website URL</p>
+                      </div>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <MerchantLabel htmlFor="address">Address</MerchantLabel>
@@ -253,20 +320,6 @@ export default function Settings() {
                 </MerchantCard>
               )}
 
-              {/* Notifications Tab */}
-              {activeTab === 'notifications' && (
-                <MerchantCard>
-                  <MerchantCardHeader>
-                    <MerchantCardTitle className="text-white">Notification Preferences</MerchantCardTitle>
-                  </MerchantCardHeader>
-                  <MerchantCardContent>
-                    <div className="space-y-4">
-                      <p className="text-gray-400">Notification settings coming soon...</p>
-                    </div>
-                  </MerchantCardContent>
-                </MerchantCard>
-              )}
-
               {/* Billing Tab */}
               {activeTab === 'billing' && (
                 <MerchantCard>
@@ -276,20 +329,6 @@ export default function Settings() {
                   <MerchantCardContent>
                     <div className="space-y-4">
                       <p className="text-gray-400">Billing settings coming soon...</p>
-                    </div>
-                  </MerchantCardContent>
-                </MerchantCard>
-              )}
-
-              {/* Security Tab */}
-              {activeTab === 'security' && (
-                <MerchantCard>
-                  <MerchantCardHeader>
-                    <MerchantCardTitle className="text-white">Security Settings</MerchantCardTitle>
-                  </MerchantCardHeader>
-                  <MerchantCardContent>
-                    <div className="space-y-4">
-                      <p className="text-gray-400">Security settings coming soon...</p>
                     </div>
                   </MerchantCardContent>
                 </MerchantCard>

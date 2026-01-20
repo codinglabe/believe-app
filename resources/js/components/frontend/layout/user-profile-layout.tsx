@@ -33,6 +33,7 @@ import {
   Gift,
   Coins,
   Briefcase,
+  QrCode,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -167,6 +168,13 @@ const navigationItems = [
     icon: Gift,
     description: "Reward points transaction history",
     color: "from-amber-500 to-yellow-600",
+  },
+  {
+    name: "Redemptions",
+    href: "/profile/redemptions",
+    icon: QrCode,
+    description: "Merchant offer redemptions",
+    color: "from-purple-500 to-pink-600",
   },
   // {
   //   name: "Node Boss",

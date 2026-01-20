@@ -290,13 +290,22 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->na
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
 
-// Merchant verification route (requires merchant auth)
+// Merchant QR verification route (requires merchant auth)
+Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::post('/redemption/verify-from-qr', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyFromQr'])->name('redemption.verify-from-qr');
+});
+
+// Merchant verification route (requires merchant auth for approval)
 Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
     Route::post('/redemption/{code}/mark-used', [App\Http\Controllers\MerchantRedemptionController::class, 'markAsUsed'])->name('redemption.mark-used');
+    Route::post('/redemption/{code}/cancel', [App\Http\Controllers\MerchantRedemptionController::class, 'cancelRedemption'])->name('redemption.cancel');
 });
 
 // Public QR code route (no auth required - code in URL is sufficient security)
 Route::get('/merchant-hub/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
+
+// Public verification page route (for merchants scanning QR codes)
+Route::get('/merchant-hub/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyPage'])->name('merchant-hub.redemption.verify-page');
 
 // Merchant Program Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
@@ -421,6 +430,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/job-applications/{id}/timesheets', [UserProfileController::class, 'getJobApplicationTimesheets'])->name('profile.job-applications.timesheets');
     Route::post('/profile/job-applications/{id}/request-completion', [UserProfileController::class, 'requestJobCompletion'])->name('profile.job-applications.request-completion');
     Route::get('/profile/reward-points-ledger', [UserProfileController::class, 'rewardPointsLedger'])->name('profile.reward-points-ledger');
+    Route::get('/profile/redemptions', [UserProfileController::class, 'redemptions'])->name('profile.redemptions');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');

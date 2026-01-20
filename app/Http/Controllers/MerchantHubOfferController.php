@@ -135,6 +135,15 @@ class MerchantHubOfferController extends Controller
         $offer = MerchantHubOffer::with(['merchant', 'category'])
             ->findOrFail($id);
 
+        // Find the Merchant model by matching name to get website
+        $merchantWebsite = null;
+        $merchantModel = \App\Models\Merchant::where('business_name', $offer->merchant->name)
+            ->orWhere('name', $offer->merchant->name)
+            ->first();
+        if ($merchantModel && $merchantModel->website) {
+            $merchantWebsite = $merchantModel->website;
+        }
+
         // Get related offers (same category, exclude current)
         $relatedOffers = MerchantHubOffer::with(['merchant', 'category'])
             ->where('merchant_hub_category_id', $offer->merchant_hub_category_id)
@@ -188,7 +197,10 @@ class MerchantHubOfferController extends Controller
         ];
 
         if ($user = $request->user()) {
-            $userPoints = $user->currentBelievePoints();
+            // Use reward_points for merchant hub redemptions
+            // Refresh user to get latest points from database
+            $user->refresh();
+            $userPoints = (float) ($user->reward_points ?? 0);
             $merchantId = $offer->merchant_hub_merchant_id;
             $currentMonth = now()->startOfMonth();
 
@@ -231,6 +243,52 @@ class MerchantHubOfferController extends Controller
             }
         }
 
+        // Calculate pricing breakdown - ALWAYS show if cash_required exists
+        $pricingBreakdown = null;
+        
+        // Determine discount percentage (default 10% for merchant hub)
+        $discountPercentage = 10.0;
+        if ($offer->discount_percentage !== null && $offer->discount_percentage > 0) {
+            $discountPercentage = (float) $offer->discount_percentage;
+        }
+        
+        $discountCap = $offer->discount_cap;
+        $regularPrice = null;
+        
+        // ALWAYS use cash_required as regular price if it exists (this is what user wants)
+        if ($offer->cash_required && $offer->cash_required > 0) {
+            $regularPrice = (float) $offer->cash_required;
+        }
+        // Fallback: Use eligible items' prices if available
+        elseif ($eligibleItems->isNotEmpty()) {
+            $firstItem = $eligibleItems->first();
+            if (isset($firstItem['price']) && $firstItem['price'] !== null && $firstItem['price'] > 0) {
+                $regularPrice = (float) $firstItem['price'];
+            }
+        }
+        
+        // ALWAYS create pricing breakdown if we have cash_required or regular price
+        if ($regularPrice !== null && $regularPrice > 0) {
+            // Calculate discount amount (10% by default)
+            $discountAmount = ($regularPrice * $discountPercentage) / 100;
+            
+            // Apply discount cap if set
+            if ($discountCap !== null && $discountAmount > $discountCap) {
+                $discountAmount = (float) $discountCap;
+            }
+            
+            // Calculate discount price (price after discount)
+            $discountPrice = $regularPrice - $discountAmount;
+            
+            $pricingBreakdown = [
+                'regularPrice' => round($regularPrice, 2),
+                'discountPercentage' => round($discountPercentage, 2),
+                'discountAmount' => round($discountAmount, 2),
+                'discountPrice' => round($discountPrice, 2),
+                'discountCap' => $discountCap ? round((float) $discountCap, 2) : null,
+            ];
+        }
+
         $transformedOffer = [
             'id' => (string) $offer->id,
             'title' => $offer->title,
@@ -238,6 +296,7 @@ class MerchantHubOfferController extends Controller
             'pointsRequired' => $offer->points_required,
             'cashRequired' => $offer->cash_required ? (float) $offer->cash_required : null,
             'merchantName' => $offer->merchant->name,
+            'merchantWebsite' => $merchantWebsite,
             'category' => $offer->category->name,
             'description' => $offer->description,
             'shortDescription' => $offer->short_description,
@@ -246,13 +305,18 @@ class MerchantHubOfferController extends Controller
             'discountPercentage' => $offer->discount_percentage ? (float) $offer->discount_percentage : null,
             'discountCap' => $offer->discount_cap ? (float) $offer->discount_cap : null,
             'eligibleItems' => $eligibleItems,
+            'pricingBreakdown' => $pricingBreakdown,
         ];
+
+        // Get redemption success data from session if exists
+        $redemptionSuccess = $request->session()->get('redemption_success');
 
         return Inertia::render('frontend/merchant-hub/OfferDetail', [
             'offerId' => $id,
             'offer' => $transformedOffer,
             'relatedOffers' => $relatedOffers,
             'redemptionEligibility' => $redemptionEligibility,
+            'redemption_success' => $redemptionSuccess,
         ]);
     }
 }

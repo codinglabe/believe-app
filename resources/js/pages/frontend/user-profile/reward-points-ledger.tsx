@@ -102,6 +102,8 @@ export default function RewardPointsLedger({
     const labels: Record<string, string> = {
       'nonprofit_assessment': 'Volunteer Assessment',
       'merchant_reward_redemption': 'Merchant Redemption',
+      'merchant_hub_redemption': 'Merchant Hub Redemption',
+      'merchant_hub_redemption_refund': 'Redemption Refund',
     }
     return labels[source] || source.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
   }
@@ -351,6 +353,52 @@ export default function RewardPointsLedger({
                                       </span>
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                      {/* Merchant Hub Redemption Details */}
+                                      {(entry.source === 'merchant_hub_redemption' || entry.source === 'merchant_hub_redemption_refund') && (
+                                        <>
+                                          {entry.metadata.offer_title && (
+                                            <div>
+                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                Offer
+                                              </p>
+                                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                {entry.metadata.offer_title}
+                                              </p>
+                                            </div>
+                                          )}
+                                          {entry.metadata.merchant_name && (
+                                            <div>
+                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                Merchant
+                                              </p>
+                                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                {entry.metadata.merchant_name}
+                                              </p>
+                                            </div>
+                                          )}
+                                          {entry.metadata.receipt_code && (
+                                            <div>
+                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                Receipt Code
+                                              </p>
+                                              <p className="text-sm font-mono font-semibold text-gray-900 dark:text-gray-100">
+                                                {entry.metadata.receipt_code}
+                                              </p>
+                                            </div>
+                                          )}
+                                          {entry.source === 'merchant_hub_redemption_refund' && entry.metadata.original_points_spent && (
+                                            <div>
+                                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
+                                                Original Points
+                                              </p>
+                                              <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">
+                                                {entry.metadata.original_points_spent} pts
+                                              </p>
+                                            </div>
+                                          )}
+                                        </>
+                                      )}
+                                      {/* Volunteer Assessment Details */}
                                       {entry.metadata.grade && (
                                         <div>
                                           <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">
@@ -484,6 +532,44 @@ export default function RewardPointsLedger({
                               </span>
                             </div>
                             <div className="space-y-2">
+                              {/* Merchant Hub Redemption Details */}
+                                      {(entry.source === 'merchant_hub_redemption' || entry.source === 'merchant_hub_redemption_refund') && (
+                                <>
+                                  {entry.metadata.offer_title && (
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-500 dark:text-gray-400">Offer:</span>
+                                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                        {entry.metadata.offer_title}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {entry.metadata.merchant_name && (
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-500 dark:text-gray-400">Merchant:</span>
+                                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                        {entry.metadata.merchant_name}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {entry.metadata.receipt_code && (
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-500 dark:text-gray-400">Receipt Code:</span>
+                                      <span className="font-mono font-semibold text-gray-900 dark:text-gray-100">
+                                        {entry.metadata.receipt_code}
+                                      </span>
+                                    </div>
+                                  )}
+                                  {entry.source === 'merchant_hub_redemption_refund' && entry.metadata.original_points_spent && (
+                                    <div className="flex justify-between text-xs">
+                                      <span className="text-gray-500 dark:text-gray-400">Original Points:</span>
+                                      <span className="font-semibold text-gray-900 dark:text-gray-100">
+                                        {entry.metadata.original_points_spent} pts
+                                      </span>
+                                    </div>
+                                  )}
+                                </>
+                              )}
+                              {/* Volunteer Assessment Details */}
                               {entry.metadata.grade && (
                                 <div className="flex justify-between text-xs">
                                   <span className="text-gray-500 dark:text-gray-400">Grade:</span>

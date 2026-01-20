@@ -100,6 +100,7 @@
         "react-hot-toast": "^2.5.2",
         "react-plaid-link": "^4.1.1",
         "react-qr-code": "^2.0.18",
+        "react-qr-reader": "^3.0.0-beta-1",
         "react-quill": "^2.0.0",
         "react-resizable-panels": "^3.0.4",
         "recharts": "^3.4.1",

@@ -7,6 +7,8 @@ use App\Models\Merchant;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class MerchantSettingsController extends Controller
 {
@@ -36,7 +38,7 @@ class MerchantSettingsController extends Controller
             'phone' => $validated['phone'] ?? null,
         ]);
 
-        return redirect()->route('merchant.settings')->with('success', 'Profile updated successfully.');
+        return back()->with('flash', ['success' => 'Profile updated successfully.']);
     }
 
     /**
@@ -49,6 +51,7 @@ class MerchantSettingsController extends Controller
         $validated = $request->validate([
             'business_name' => ['required', 'string', 'max:255'],
             'business_description' => ['nullable', 'string'],
+            'website' => ['nullable', 'url', 'max:255'],
             'address' => ['nullable', 'string', 'max:255'],
             'city' => ['nullable', 'string', 'max:255'],
             'state' => ['nullable', 'string', 'max:255'],
@@ -58,7 +61,7 @@ class MerchantSettingsController extends Controller
 
         $merchant->update($validated);
 
-        return redirect()->route('merchant.settings')->with('success', 'Business information updated successfully.');
+        return back()->with('flash', ['success' => 'Business information updated successfully.']);
     }
 }
 

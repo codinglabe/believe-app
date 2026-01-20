@@ -12,6 +12,7 @@ use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
 use App\Models\RewardPointLedger;
+use App\Models\MerchantHubOfferRedemption;
 use App\Services\ImpactScoreService;
 use Carbon\Carbon;
 use App\Services\PrintifyService;
@@ -844,6 +845,87 @@ class UserProfileController extends Controller
                 'total_debits' => $totalDebits,
                 'net_points' => $totalCredits - $totalDebits,
             ],
+            'filters' => [
+                'per_page' => $perPage,
+                'page' => $page,
+            ],
+        ]);
+    }
+
+    /**
+     * Show user redemptions
+     */
+    public function redemptions(Request $request): Response
+    {
+        $user = auth()->user();
+
+        $perPage = $request->get('per_page', 20);
+        $page = $request->get('page', 1);
+
+        $redemptions = MerchantHubOfferRedemption::where('user_id', $user->id)
+            ->with(['offer.merchant', 'offer.category', 'eligibleItem'])
+            ->orderBy('created_at', 'desc')
+            ->paginate($perPage, ['*'], 'page', $page)
+            ->withQueryString()
+            ->through(function ($redemption) {
+                // Calculate pricing breakdown - ALWAYS use offer's cash_required as regular price
+                $pricingBreakdown = null;
+                if ($redemption->offer->cash_required && $redemption->offer->cash_required > 0) {
+                    // cash_required on the offer is the REGULAR PRICE (before discount)
+                    $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
+                    $regularPrice = (float) $redemption->offer->cash_required;
+                    $discountAmount = ($regularPrice * $discountPercentage) / 100;
+                    
+                    // Apply discount cap if set
+                    if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
+                        $discountAmount = (float) $redemption->offer->discount_cap;
+                    }
+                    
+                    $discountPrice = $regularPrice - $discountAmount;
+                    
+                    $pricingBreakdown = [
+                        'regularPrice' => round($regularPrice, 2),
+                        'discountPercentage' => round($discountPercentage, 2),
+                        'discountAmount' => round($discountAmount, 2),
+                        'discountPrice' => round($discountPrice, 2),
+                    ];
+                }
+                
+                return [
+                    'id' => $redemption->id,
+                    'receipt_code' => $redemption->receipt_code,
+                    'points_spent' => $redemption->points_spent,
+                    'cash_spent' => $redemption->cash_spent,
+                    'status' => $redemption->status,
+                    'used_at' => $redemption->used_at?->toISOString(),
+                    'created_at' => $redemption->created_at->toISOString(),
+                    'qr_code_url' => route('merchant-hub.redemption.qr-code', ['code' => $redemption->receipt_code]),
+                    'verification_url' => route('merchant-hub.redemption.verify-page', ['code' => $redemption->receipt_code]),
+                    'pricingBreakdown' => $pricingBreakdown,
+                    'offer' => [
+                        'id' => $redemption->offer->id,
+                        'title' => $redemption->offer->title,
+                        'image_url' => $redemption->offer->image_url,
+                        'cash_required' => $redemption->offer->cash_required ? (float) $redemption->offer->cash_required : null,
+                        'discount_percentage' => $redemption->offer->discount_percentage ? (float) $redemption->offer->discount_percentage : null,
+                        'merchant' => [
+                            'id' => $redemption->offer->merchant->id,
+                            'name' => $redemption->offer->merchant->name,
+                        ],
+                        'category' => $redemption->offer->category ? [
+                            'id' => $redemption->offer->category->id,
+                            'name' => $redemption->offer->category->name,
+                        ] : null,
+                    ],
+                    'eligible_item' => $redemption->eligibleItem ? [
+                        'id' => $redemption->eligibleItem->id,
+                        'item_name' => $redemption->eligibleItem->item_name,
+                    ] : null,
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/redemptions', [
+            'redemptions' => $redemptions,
             'filters' => [
                 'per_page' => $perPage,
                 'page' => $page,

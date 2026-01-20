@@ -98,6 +98,7 @@ class HandleInertiaRequests extends Middleware
                     'email' => $user->email,
                     'business_name' => $user->business_name,
                     'business_description' => $user->business_description,
+                    'website' => $user->website,
                     'phone' => $user->phone,
                     'address' => $user->address,
                     'city' => $user->city,

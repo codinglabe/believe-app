@@ -21,6 +21,7 @@ class Merchant extends Authenticatable
         'password',
         'business_name',
         'business_description',
+        'website',
         'phone',
         'address',
         'city',
