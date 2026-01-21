@@ -41,37 +41,47 @@ Route::middleware('guest:merchant')->group(function () {
 
 // Authenticated Merchant Routes
 Route::middleware(['auth:merchant'])->group(function () {
-    // Dashboard
+    // Dashboard (no subscription required)
     Route::get('/dashboard', [App\Http\Controllers\Merchant\MerchantDashboardController::class, 'index'])->name('merchant.dashboard');
-    // Offers Management
-    Route::prefix('offers')->name('offers.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'index'])->name('index');
-        Route::get('/create', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'create'])->name('create');
-        Route::post('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'store'])->name('store');
-        Route::get('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'show'])->name('show');
-        Route::get('/{offer}/edit', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'edit'])->name('edit');
-        Route::put('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'update'])->name('update');
-        Route::delete('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'destroy'])->name('destroy');
+    
+    // Subscription routes (no subscription required to view/subscribe)
+    Route::prefix('subscription')->name('merchant.subscription.')->group(function () {
+        Route::get('/', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'index'])->name('index');
+        Route::post('/{plan}/subscribe', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'subscribe'])->name('subscribe');
+        Route::get('/success', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'success'])->name('success');
+        Route::post('/cancel', [App\Http\Controllers\Merchant\MerchantSubscriptionController::class, 'cancel'])->name('cancel');
     });
 
-    // Redemptions
-    Route::prefix('redemptions')->name('redemptions.')->group(function () {
-        Route::get('/', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'index'])->name('index');
-        Route::get('/{id}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'show'])->name('show');
-        Route::get('/qr-code/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'generateQrCode'])->name('qr-code');
-        Route::get('/verify/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'verify'])->name('verify');
+    // Protected routes (require subscription)
+    Route::middleware([\App\Http\Middleware\RequireMerchantSubscription::class])->group(function () {
+        // Offers Management
+        Route::prefix('offers')->name('offers.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'index'])->name('index');
+            Route::get('/create', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'create'])->name('create');
+            Route::post('/', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'store'])->name('store');
+            Route::get('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'show'])->name('show');
+            Route::get('/{offer}/edit', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'edit'])->name('edit');
+            Route::put('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'update'])->name('update');
+            Route::delete('/{offer}', [App\Http\Controllers\Merchant\MerchantOfferController::class, 'destroy'])->name('destroy');
+        });
+
+        // Redemptions
+        Route::prefix('redemptions')->name('redemptions.')->group(function () {
+            Route::get('/', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'index'])->name('index');
+            Route::get('/{id}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'show'])->name('show');
+            Route::get('/qr-code/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'generateQrCode'])->name('qr-code');
+            Route::get('/verify/{code}', [App\Http\Controllers\Merchant\MerchantRedemptionsController::class, 'verify'])->name('verify');
+        });
+
+        // Analytics
+        Route::get('/analytics', [App\Http\Controllers\Merchant\MerchantAnalyticsController::class, 'index'])->name('merchant.analytics');
+
+        // Settings
+        Route::get('/settings', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'index'])->name('merchant.settings');
+
+        Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
+        Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
     });
-
-    // Analytics
-    Route::get('/analytics', [App\Http\Controllers\Merchant\MerchantAnalyticsController::class, 'index'])->name('merchant.analytics');
-
-    // Settings
-    Route::get('/settings', function () {
-        return Inertia::render('merchant/Settings');
-    })->name('merchant.settings');
-
-    Route::patch('/settings/profile', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateProfile'])->name('merchant.settings.profile');
-    Route::patch('/settings/business', [App\Http\Controllers\Merchant\MerchantSettingsController::class, 'updateBusiness'])->name('merchant.settings.business');
 
     // Logout
     Route::post('logout', [MerchantAuthController::class, 'destroy'])

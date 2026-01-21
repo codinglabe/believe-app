@@ -91,6 +91,52 @@ class HandleInertiaRequests extends Middleware
         $userData = null;
         if ($user) {
             if ($isMerchantDomain || ($user instanceof \App\Models\Merchant)) {
+                // Real-time check: Get subscription and refresh from Stripe
+                $subscription = $user->subscriptions()
+                    ->whereIn('stripe_status', ['active', 'trialing', 'canceled'])
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                $hasActiveSubscription = false;
+                
+                if ($subscription) {
+                    // Real-time check: Refresh subscription status from Stripe
+                    try {
+                        if ($subscription->stripe_id) {
+                            $stripe = \Laravel\Cashier\Cashier::stripe();
+                            $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
+                            
+                            // Update local subscription with latest data from Stripe
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            
+                            // If cancel_at is set, mark as canceled even if status is still 'active'
+                            if ($stripeSubscription->cancel_at) {
+                                $subscription->stripe_status = 'canceled';
+                            }
+                            
+                            $subscription->save();
+                            
+                            // Check if subscription is truly active (not canceled)
+                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing']) 
+                                && $stripeSubscription->cancel_at === null;
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning('Failed to refresh subscription status in HandleInertiaRequests', [
+                            'merchant_id' => $user->id,
+                            'subscription_id' => $subscription->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        
+                        // Fallback: check local status
+                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing']) 
+                            && $subscription->ends_at === null;
+                    }
+                }
+
                 // Merchant user data
                 $userData = [
                     'id' => $user->id,
@@ -109,6 +155,7 @@ class HandleInertiaRequests extends Middleware
                     'role' => $user->role,
                     'email_verified_at' => $user->email_verified_at,
                     'joined' => $user->created_at->format('F Y'),
+                    'has_active_subscription' => $hasActiveSubscription,
                 ];
             } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data

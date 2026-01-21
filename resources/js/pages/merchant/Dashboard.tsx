@@ -1,8 +1,9 @@
-import React from 'react'
-import { Head, Link } from '@inertiajs/react'
+import React, { useEffect, useState } from 'react'
+import { Head, Link, router } from '@inertiajs/react'
 import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitle } from '@/components/merchant-ui'
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
+import { SubscriptionRequiredModal } from '@/components/merchant/SubscriptionRequiredModal'
 import { Building2, Gift, BarChart3, CheckCircle2, TrendingUp, ArrowRight, Plus } from 'lucide-react'
 import { motion } from 'framer-motion'
 import { AnalyticsChart } from '@/components/merchant/AnalyticsChart'
@@ -32,17 +33,31 @@ interface Props {
   weeklyRedemptions: WeeklyData[]
   recentRedemptions: RecentRedemption[]
   rewardsData: WeeklyData[]
+  subscription_required?: boolean
 }
 
-export default function MerchantDashboard({ stats, weeklyRedemptions, recentRedemptions, rewardsData }: Props) {
+export default function MerchantDashboard({ stats, weeklyRedemptions, recentRedemptions, rewardsData, subscription_required }: Props) {
   // Use data from props, fallback to empty arrays if not provided
   const weeklyData = weeklyRedemptions || []
   const recentData = recentRedemptions || []
   const rewardsWeeklyData = rewardsData || []
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false)
+
+  useEffect(() => {
+    if (subscription_required) {
+      setShowSubscriptionModal(true)
+      // Clear the session flag
+      router.reload({ only: [], preserveScroll: true, preserveState: true })
+    }
+  }, [subscription_required])
 
   return (
     <>
       <Head title="Merchant Dashboard" />
+      <SubscriptionRequiredModal 
+        isOpen={showSubscriptionModal} 
+        onClose={() => setShowSubscriptionModal(false)} 
+      />
       <MerchantDashboardLayout>
         <motion.div
           initial={{ opacity: 0, y: 20 }}

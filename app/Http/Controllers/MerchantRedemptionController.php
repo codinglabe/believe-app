@@ -497,6 +497,13 @@ class MerchantRedemptionController extends Controller
         if ($redemption->offer->merchant_hub_merchant_id !== $merchantHubMerchant->id) {
             return response()->json([
                 'error' => 'This redemption is not for your merchant. You can only scan QR codes for your own offers.',
+                'redemption' => [
+                    'code' => $redemption->receipt_code,
+                    'offer' => [
+                        'title' => $redemption->offer->title,
+                        'merchant_name' => $redemption->offer->merchant->name ?? null,
+                    ],
+                ],
             ], 403);
         }
 
