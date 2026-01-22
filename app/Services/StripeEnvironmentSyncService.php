@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\LivestockUser;
+use App\Models\Merchant;
+use App\Models\MerchantSubscriptionPlan;
 use App\Models\Plan;
 use App\Models\User;
 use App\Services\StripeConfigService;
@@ -24,6 +26,8 @@ class StripeEnvironmentSyncService
             'users' => ['synced' => 0, 'failed' => 0],
             'livestock_users' => ['synced' => 0, 'failed' => 0],
             'plans' => ['synced' => 0, 'failed' => 0],
+            'merchants' => ['synced' => 0, 'failed' => 0],
+            'merchant_subscription_plans' => ['synced' => 0, 'failed' => 0],
         ];
 
         try {
@@ -46,6 +50,12 @@ class StripeEnvironmentSyncService
             
             // Sync Plans
             $results['plans'] = self::syncPlans($environment);
+            
+            // Sync Merchants
+            $results['merchants'] = self::syncMerchants($environment);
+            
+            // Sync Merchant Subscription Plans
+            $results['merchant_subscription_plans'] = self::syncMerchantSubscriptionPlans($environment);
             
             // Sync Donation Product
             $results['donation_product'] = self::syncDonationProduct($environment);
@@ -448,6 +458,208 @@ class StripeEnvironmentSyncService
             return $product->id;
         } catch (ApiErrorException $e) {
             Log::error("Failed to create/fetch donation product for {$environment}", [
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Sync Stripe customer IDs for all merchants
+     */
+    private static function syncMerchants(string $environment): array
+    {
+        $synced = 0;
+        $failed = 0;
+
+        $merchants = Merchant::whereNotNull('email')->get();
+
+        foreach ($merchants as $merchant) {
+            try {
+                $customerId = self::createOrFetchCustomer($merchant->email, $merchant->name ?? $merchant->business_name, $merchant->id, 'merchant');
+                
+                if ($customerId) {
+                    $merchant->update(['stripe_id' => $customerId]);
+                    $synced++;
+                } else {
+                    $failed++;
+                }
+            } catch (\Exception $e) {
+                Log::error("Failed to sync Stripe customer for merchant {$merchant->id}", [
+                    'email' => $merchant->email,
+                    'error' => $e->getMessage(),
+                ]);
+                $failed++;
+            }
+        }
+
+        return ['synced' => $synced, 'failed' => $failed];
+    }
+
+    /**
+     * Sync Stripe product and price IDs for all merchant subscription plans
+     */
+    private static function syncMerchantSubscriptionPlans(string $environment): array
+    {
+        $synced = 0;
+        $failed = 0;
+
+        $plans = MerchantSubscriptionPlan::all();
+
+        foreach ($plans as $plan) {
+            try {
+                // Create or fetch product
+                $productId = self::createOrFetchMerchantProduct($plan);
+                
+                // Create or fetch price
+                $priceId = self::createOrFetchMerchantPrice($plan, $productId);
+                
+                if ($productId && $priceId) {
+                    $plan->update([
+                        'stripe_product_id' => $productId,
+                        'stripe_price_id' => $priceId,
+                    ]);
+                    $synced++;
+                } else {
+                    $failed++;
+                }
+            } catch (\Exception $e) {
+                Log::error("Failed to sync Stripe product/price for merchant subscription plan {$plan->id}", [
+                    'plan_name' => $plan->name,
+                    'error' => $e->getMessage(),
+                ]);
+                $failed++;
+            }
+        }
+
+        return ['synced' => $synced, 'failed' => $failed];
+    }
+
+    /**
+     * Create or fetch Stripe product for merchant subscription plan
+     */
+    private static function createOrFetchMerchantProduct(MerchantSubscriptionPlan $plan): ?string
+    {
+        try {
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
+            $productName = "Merchant: {$plan->name}";
+            
+            // If plan already has a product ID, try to retrieve it
+            if ($plan->stripe_product_id) {
+                try {
+                    $product = $stripe->products->retrieve($plan->stripe_product_id);
+                    // If product exists and name matches, use it
+                    if ($product && $product->name === $productName) {
+                        return $product->id;
+                    }
+                } catch (\Exception $e) {
+                    // Product doesn't exist, create new one
+                }
+            }
+
+            // Search for existing product by name
+            $products = $stripe->products->all([
+                'limit' => 100,
+            ]);
+
+            foreach ($products->data as $product) {
+                if ($product->name === $productName) {
+                    return $product->id;
+                }
+            }
+
+            // Create new product
+            $product = $stripe->products->create([
+                'name' => $productName,
+                'description' => $plan->description ?? '',
+            ]);
+
+            Log::info("Created new Stripe product for merchant subscription plan", [
+                'product_id' => $product->id,
+                'plan_id' => $plan->id,
+                'plan_name' => $plan->name,
+            ]);
+
+            return $product->id;
+        } catch (ApiErrorException $e) {
+            Log::error("Failed to create/fetch Stripe product for merchant subscription plan", [
+                'plan_id' => $plan->id,
+                'plan_name' => $plan->name,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Create or fetch Stripe price for merchant subscription plan
+     */
+    private static function createOrFetchMerchantPrice(MerchantSubscriptionPlan $plan, string $productId): ?string
+    {
+        try {
+            // Use Cashier's Stripe client
+            $stripe = Cashier::stripe();
+            
+            // If plan already has a price ID, try to retrieve it
+            if ($plan->stripe_price_id) {
+                try {
+                    $price = $stripe->prices->retrieve($plan->stripe_price_id);
+                    // If price exists and matches the plan, use it
+                    if ($price && $price->product === $productId) {
+                        // Check if amount matches
+                        $planAmount = (int)($plan->price * 100);
+                        if ($price->unit_amount == $planAmount) {
+                            return $price->id;
+                        }
+                    }
+                } catch (\Exception $e) {
+                    // Price doesn't exist, create new one
+                }
+            }
+
+            // Search for existing price by product and amount
+            $planAmount = (int)($plan->price * 100);
+            $prices = $stripe->prices->all([
+                'product' => $productId,
+                'limit' => 100,
+            ]);
+
+            foreach ($prices->data as $price) {
+                if ($price->unit_amount == $planAmount && $price->active) {
+                    // Check if recurring interval matches
+                    $interval = self::getStripeInterval($plan->frequency);
+                    if ($price->recurring && $price->recurring->interval === $interval) {
+                        return $price->id;
+                    }
+                }
+            }
+
+            // Create new price
+            $interval = self::getStripeInterval($plan->frequency);
+            $priceData = [
+                'product' => $productId,
+                'unit_amount' => $planAmount,
+                'currency' => 'usd',
+                'recurring' => [
+                    'interval' => $interval,
+                ],
+            ];
+
+            $price = $stripe->prices->create($priceData);
+
+            Log::info("Created new Stripe price for merchant subscription plan", [
+                'price_id' => $price->id,
+                'plan_id' => $plan->id,
+                'plan_name' => $plan->name,
+            ]);
+
+            return $price->id;
+        } catch (ApiErrorException $e) {
+            Log::error("Failed to create/fetch Stripe price for merchant subscription plan", [
+                'plan_id' => $plan->id,
+                'plan_name' => $plan->name,
                 'error' => $e->getMessage(),
             ]);
             return null;

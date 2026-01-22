@@ -13,4 +13,5 @@ export { DigitalActionCard } from './DigitalActionCard'
 export { VolunteerHistory } from './VolunteerHistory'
 export { QRCheckIn } from './QRCheckIn'
 export { VolunteerSignInForm } from './VolunteerSignInForm'
+export { SubscriptionRequiredModal } from './SubscriptionRequiredModal'
 

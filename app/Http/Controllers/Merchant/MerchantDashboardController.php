@@ -170,6 +170,7 @@ class MerchantDashboardController extends Controller
             'weeklyRedemptions' => $weeklyRedemptions,
             'recentRedemptions' => $recentRedemptions,
             'rewardsData' => $rewardsData,
+            'subscription_required' => $request->session()->get('subscription_required', false),
         ]);
     }
 }

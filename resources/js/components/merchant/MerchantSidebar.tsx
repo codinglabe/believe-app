@@ -96,6 +96,8 @@ function SidebarContent({
   currentPath: string
   onNavigate?: () => void
 }) {
+  const { auth } = usePage().props as any
+  const hasActiveSubscription = auth?.user?.has_active_subscription ?? false
 
   const isActive = (href: string) => {
     // Exact match
@@ -167,7 +169,8 @@ function SidebarContent({
         })}
       </nav>
 
-      {/* Upgrade Card */}
+      {/* Upgrade Card - Only show if no active subscription */}
+      {!hasActiveSubscription && (
       <div className="px-4 py-4 border-t border-[#FF1493]/20">
         <div className="px-3 py-3 rounded-lg bg-gradient-to-br from-[#FF1493]/20 via-[#DC143C]/20 to-[#E97451]/20 border border-[#FF1493]/30">
           <div className="flex items-start gap-2">
@@ -179,7 +182,7 @@ function SidebarContent({
               <p className="text-xs text-gray-300 leading-tight mb-2">
                 Unlock advanced features
               </p>
-              <Link href="/settings">
+              <Link href="/subscription">
                 <MerchantButton size="sm" className="w-full text-xs py-1.5 h-auto">
                   Upgrade Now
                 </MerchantButton>
@@ -188,6 +191,7 @@ function SidebarContent({
           </div>
         </div>
       </div>
+      )}
     </div>
   )
 }

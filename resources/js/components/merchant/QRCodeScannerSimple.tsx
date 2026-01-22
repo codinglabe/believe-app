@@ -102,6 +102,8 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
   const [showVerificationModal, setShowVerificationModal] = useState(false)
   const [isAlreadyUsed, setIsAlreadyUsed] = useState(false)
   const [alreadyUsedData, setAlreadyUsedData] = useState<any>(null)
+  const [isNotForMerchant, setIsNotForMerchant] = useState(false)
+  const [notForMerchantData, setNotForMerchantData] = useState<any>(null)
 
   const handleScannedCode = async (code: string) => {
     if (isProcessing) return
@@ -192,9 +194,10 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
         
         // Check if it's not for this merchant
         if (data.error && data.error.includes('not for your merchant')) {
-          setError('This QR code is not for your merchant. You can only scan QR codes for your own offers.')
+          setIsNotForMerchant(true)
+          setNotForMerchantData(data.redemption || { code: qrData.code })
+          setScanning(false)
           setIsProcessing(false)
-          setScanning(true) // Resume scanning on error
           return
         }
         
@@ -363,7 +366,123 @@ export default function QRCodeScannerSimple({ isOpen, onClose, merchantId }: QRC
 
               {/* Content */}
               <div className="p-3 space-y-3">
-                {isAlreadyUsed ? (
+                {isNotForMerchant ? (
+                  /* Not For Your Merchant Animation Screen */
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.3 }}
+                    className="flex flex-col items-center justify-center py-8"
+                  >
+                    {/* Animated Icon */}
+                    <motion.div
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      transition={{ 
+                        type: "spring", 
+                        stiffness: 200, 
+                        damping: 15,
+                        delay: 0.1
+                      }}
+                      className="relative mb-6"
+                    >
+                      <div className="w-24 h-24 rounded-full bg-yellow-500/20 flex items-center justify-center">
+                        <motion.div
+                          animate={{ 
+                            rotate: [0, -10, 10, -10, 0],
+                            scale: [1, 1.1, 1]
+                          }}
+                          transition={{ 
+                            duration: 0.5,
+                            repeat: Infinity,
+                            repeatDelay: 2
+                          }}
+                        >
+                          <AlertCircle className="w-12 h-12 text-yellow-500" />
+                        </motion.div>
+                      </div>
+                      {/* Pulsing ring */}
+                      <motion.div
+                        className="absolute inset-0 rounded-full border-4 border-yellow-500/30"
+                        animate={{
+                          scale: [1, 1.3, 1],
+                          opacity: [0.5, 0, 0.5]
+                        }}
+                        transition={{
+                          duration: 2,
+                          repeat: Infinity,
+                          ease: "easeInOut"
+                        }}
+                      />
+                    </motion.div>
+
+                    {/* Title */}
+                    <motion.h3
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.2 }}
+                      className="text-xl font-bold text-white mb-2 text-center"
+                    >
+                      Invalid QR Code
+                    </motion.h3>
+
+                    {/* Message */}
+                    <motion.p
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.3 }}
+                      className="text-sm text-gray-400 text-center mb-6 max-w-xs"
+                    >
+                      This QR code is not for your merchant. You can only scan QR codes for your own offers.
+                    </motion.p>
+
+                    {/* Redemption Details */}
+                    {notForMerchantData && (
+                      <motion.div
+                        initial={{ y: 20, opacity: 0 }}
+                        animate={{ y: 0, opacity: 1 }}
+                        transition={{ delay: 0.4 }}
+                        className="w-full bg-gray-900/50 rounded-lg p-3 mb-4 space-y-2"
+                      >
+                        {notForMerchantData.code && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-gray-400">Code:</span>
+                            <span className="text-xs font-mono text-yellow-500">{notForMerchantData.code}</span>
+                          </div>
+                        )}
+                        {notForMerchantData.offer && (
+                          <div className="pt-2 border-t border-gray-700">
+                            <p className="text-xs text-gray-400 mb-1">Offer:</p>
+                            <p className="text-xs text-white font-medium">{notForMerchantData.offer.title}</p>
+                            {notForMerchantData.offer.merchant_name && (
+                              <p className="text-xs text-gray-500 mt-1">Merchant: {notForMerchantData.offer.merchant_name}</p>
+                            )}
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+
+                    {/* Action Button */}
+                    <motion.div
+                      initial={{ y: 20, opacity: 0 }}
+                      animate={{ y: 0, opacity: 1 }}
+                      transition={{ delay: 0.5 }}
+                      className="w-full"
+                    >
+                      <MerchantButton
+                        onClick={() => {
+                          setIsNotForMerchant(false)
+                          setNotForMerchantData(null)
+                          setScanning(true)
+                        }}
+                        className="w-full bg-gradient-to-r from-[#FF1493] to-[#DC143C]"
+                      >
+                        <Camera className="w-4 h-4 mr-2" />
+                        Scan Another Code
+                      </MerchantButton>
+                    </motion.div>
+                  </motion.div>
+                ) : isAlreadyUsed ? (
                   /* Already Used Animation Screen */
                   <motion.div
                     initial={{ opacity: 0, scale: 0.9 }}
