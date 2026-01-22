@@ -159,7 +159,8 @@ export default function ProductView({
   };
 
   useEffect(() => {
-    if (variants.length > 0 && !selectedVariant) {
+    // Only auto-select variant for Printify products with variants
+    if (variants.length > 0 && !selectedVariant && product.printify_product_id) {
       setSelectedVariant(variants[0]);
     }
 
@@ -215,7 +216,9 @@ export default function ProductView({
   };
 
   const handleAddToCart = async () => {
-    if (!selectedVariant && variants.length > 0) {
+    // For Printify products, require variant selection; for manual products, no variant needed
+    const isPrintifyProduct = !!product.printify_product_id;
+    if (isPrintifyProduct && !selectedVariant && variants.length > 0) {
       showErrorToast('Please select a variant');
       return;
     }
@@ -236,11 +239,11 @@ export default function ProductView({
       const cartPayload = {
         product_id: product.id,
         quantity: quantity,
-        printify_variant_id: selectedVariant?.id?.toString() || '',
+        printify_variant_id: isPrintifyProduct && selectedVariant ? selectedVariant.id.toString() : '',
         printify_blueprint_id: product.printify_blueprint_id || 0,
         printify_print_provider_id: product.printify_provider_id || 0,
         variant_options: selectedVariant?.attributes || {},
-          variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+        variant_price_modifier: selectedVariant ? selectedVariant.price - (product.unit_price || 0) : 0,
         variant_image: variantImage,
       };
 
@@ -272,7 +275,9 @@ export default function ProductView({
   };
 
   const handleBuyNow = async () => {
-    if (!selectedVariant && variants.length > 0) {
+    // For Printify products, require variant selection; for manual products, no variant needed
+    const isPrintifyProduct = !!product.printify_product_id;
+    if (isPrintifyProduct && !selectedVariant && variants.length > 0) {
       showErrorToast('Please select a variant');
       return;
     }
@@ -293,11 +298,11 @@ export default function ProductView({
       const cartPayload = {
         product_id: product.id,
         quantity: quantity,
-        printify_variant_id: selectedVariant?.id?.toString() || '',
+        printify_variant_id: isPrintifyProduct && selectedVariant ? selectedVariant.id.toString() : '',
         printify_blueprint_id: product.printify_blueprint_id || 0,
         printify_print_provider_id: product.printify_provider_id || 0,
         variant_options: selectedVariant?.attributes || {},
-          variant_price_modifier: selectedVariant ? selectedVariant.price - product.unit_price : 0,
+        variant_price_modifier: selectedVariant ? selectedVariant.price - (product.unit_price || 0) : 0,
         variant_image: variantImage,
       };
 

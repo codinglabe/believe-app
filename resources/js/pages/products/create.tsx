@@ -77,8 +77,8 @@ export default function Create({ categories, organizations = [], blueprints, pri
         name: '',
         description: '',
         quantity: '',
-        // unit_price: '',
-        // profit_margin_percentage: 40,
+        unit_price: '',
+        shipping_charge: '',
         owned_by: 'admin',
         organization_id: '',
         status: 'active',
@@ -89,7 +89,7 @@ export default function Create({ categories, organizations = [], blueprints, pri
         image: null as File | null,
 
         // Printify fields
-        is_printify_product: true,
+        is_printify_product: false, // Default to manual product
         printify_blueprint_id: '',
         printify_provider_id: '',
         printify_variants: [] as any[],
@@ -273,86 +273,142 @@ const handleCategoryChange = (categoryId: number) => {
         setErrors({});
         setProcessing(true);
 
-        // Validate printify_images before submission
-        const validImages = data.printify_images.filter(img => img && img.file);
-        if (validImages.length === 0) {
-            setErrors({ printify_images: 'Please upload at least one design image.' });
-            setProcessing(false);
-            showErrorToast('Please upload at least one design image.');
-            return;
-        }
-
-        // Validate file sizes before submission
-        const MAX_SIZE = 1 * 1024 * 1024; // 1MB (Printify API requirement)
-        const invalidFiles: string[] = [];
-        validImages.forEach((img, index) => {
-            if (img.file && img.file.size > MAX_SIZE) {
-                invalidFiles.push(`${img.name || `Image ${index + 1}`} (${(img.file.size / 1024 / 1024).toFixed(2)}MB)`);
+        // Validate based on product type
+        if (data.is_printify_product) {
+            // Validate Printify product fields
+            if (!data.printify_blueprint_id) {
+                setErrors({ printify_blueprint_id: 'Please select a product type.' });
+                setProcessing(false);
+                showErrorToast('Please select a product type.');
+                return;
             }
-        });
+            if (!data.printify_provider_id) {
+                setErrors({ printify_provider_id: 'Please select a print provider.' });
+                setProcessing(false);
+                showErrorToast('Please select a print provider.');
+                return;
+            }
+            if (data.printify_variants.length === 0) {
+                setErrors({ printify_variants: 'Please select at least one variant.' });
+                setProcessing(false);
+                showErrorToast('Please select at least one variant.');
+                return;
+            }
 
-        if (invalidFiles.length > 0) {
-            setErrors({
-                printify_images: `The following files are too large (max 1MB): ${invalidFiles.join(', ')}`
-            });
-            setProcessing(false);
-            showErrorToast(
-                `Some files are too large. Maximum size is 1MB per file (Printify requirement). Please compress or resize your images.\n\nLarge files: ${invalidFiles.join(', ')}`
-            );
-            return;
-        }
+            // Validate printify_images before submission
+            const validImages = data.printify_images.filter(img => img && img.file);
+            if (validImages.length === 0) {
+                setErrors({ printify_images: 'Please upload at least one design image.' });
+                setProcessing(false);
+                showErrorToast('Please upload at least one design image.');
+                return;
+            }
 
-        // Check total size (prevent nginx 413 errors)
-        const totalSize = validImages.reduce((sum, img) => sum + (img.file?.size || 0), 0);
-        const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total (reasonable limit for multiple 1MB files)
-        if (totalSize > MAX_TOTAL_SIZE) {
-            const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
-            setErrors({
-                printify_images: `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
+            // Validate file sizes before submission (Printify only)
+            const MAX_SIZE = 1 * 1024 * 1024; // 1MB (Printify API requirement)
+            const invalidFiles: string[] = [];
+            validImages.forEach((img, index) => {
+                if (img.file && img.file.size > MAX_SIZE) {
+                    invalidFiles.push(`${img.name || `Image ${index + 1}`} (${(img.file.size / 1024 / 1024).toFixed(2)}MB)`);
+                }
             });
-            setProcessing(false);
-            showErrorToast(
-                `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
-            );
-            return;
+
+            if (invalidFiles.length > 0) {
+                setErrors({
+                    printify_images: `The following files are too large (max 1MB): ${invalidFiles.join(', ')}`
+                });
+                setProcessing(false);
+                showErrorToast(
+                    `Some files are too large. Maximum size is 1MB per file (Printify requirement). Please compress or resize your images.\n\nLarge files: ${invalidFiles.join(', ')}`
+                );
+                return;
+            }
+
+            // Check total size (prevent nginx 413 errors)
+            const totalSize = validImages.reduce((sum, img) => sum + (img.file?.size || 0), 0);
+            const MAX_TOTAL_SIZE = 10 * 1024 * 1024; // 10MB total (reasonable limit for multiple 1MB files)
+            if (totalSize > MAX_TOTAL_SIZE) {
+                const totalSizeMB = (totalSize / 1024 / 1024).toFixed(2);
+                setErrors({
+                    printify_images: `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
+                });
+                setProcessing(false);
+                showErrorToast(
+                    `Total size of all images (${totalSizeMB}MB) exceeds the maximum (10MB). Please reduce the number or size of images.`
+                );
+                return;
+            }
+        } else {
+            // Validate manual product required fields
+            if (!data.unit_price || parseFloat(data.unit_price) <= 0) {
+                setErrors({ unit_price: 'Please enter a valid unit price.' });
+                setProcessing(false);
+                showErrorToast('Please enter a valid unit price.');
+                return;
+            }
+            if (!data.shipping_charge || parseFloat(data.shipping_charge) < 0) {
+                setErrors({ shipping_charge: 'Please enter a valid shipping charge.' });
+                setProcessing(false);
+                showErrorToast('Please enter a valid shipping charge.');
+                return;
+            }
+            if (!data.image) {
+                setErrors({ image: 'Please upload a product image.' });
+                setProcessing(false);
+                showErrorToast('Please upload a product image.');
+                return;
+            }
         }
 
         const formData = new FormData();
 
-        // সাধারণ ফিল্ড
+        // Common fields
         formData.append('name', data.name);
         formData.append('description', data.description);
         formData.append('quantity', data.quantity);
-        // formData.append('profit_margin_percentage', data.profit_margin_percentage.toString());
         formData.append('owned_by', data.owned_by);
         formData.append('status', data.status);
         formData.append('sku', data.sku);
         formData.append('type', data.type);
         if (data.tags) formData.append('tags', data.tags);
         if (data.organization_id) formData.append('organization_id', data.organization_id);
-        formData.append('is_printify_product', '1');
-
-        // Printify fields
-        if (data.printify_blueprint_id) formData.append('printify_blueprint_id', data.printify_blueprint_id);
-        if (data.printify_provider_id) formData.append('printify_provider_id', data.printify_provider_id);
+        formData.append('is_printify_product', data.is_printify_product ? '1' : '0');
 
         // Categories
         data.categories.forEach(id => formData.append('categories[]', id.toString()));
 
-        // Main image
-        if (data.image) formData.append('image', data.image);
+        // Image handling - different for manual vs Printify
+        if (!data.is_printify_product && data.image) {
+            // Manual product: main image is required
+            formData.append('image', data.image);
+        } else if (data.is_printify_product && data.image) {
+            // Printify product: main image is optional (uses design images)
+            formData.append('image', data.image);
+        }
 
-        // Printify variants (শুধু ID দিন)
-        data.printify_variants.forEach((v, i) => {
-            formData.append(`printify_variants[${i}][id]`, v.id.toString());
-        });
+        // Manual product: unit_price and shipping_charge are required
+        if (!data.is_printify_product) {
+            if (data.unit_price) formData.append('unit_price', data.unit_price);
+            if (data.shipping_charge) formData.append('shipping_charge', data.shipping_charge);
+        }
 
-        // Printify images - এটাই মূল!
-        data.printify_images.forEach((img, i) => {
-            if (img.file) {
-                formData.append('printify_images[]', img.file); // [] দিয়ে array হিসেবে পাঠান
-            }
-        });
+        // Printify-specific fields (only if Printify product)
+        if (data.is_printify_product) {
+            if (data.printify_blueprint_id) formData.append('printify_blueprint_id', data.printify_blueprint_id);
+            if (data.printify_provider_id) formData.append('printify_provider_id', data.printify_provider_id);
+
+            // Printify variants (only IDs)
+            data.printify_variants.forEach((v, i) => {
+                formData.append(`printify_variants[${i}][id]`, v.id.toString());
+            });
+
+            // Printify images
+            data.printify_images.forEach((img, i) => {
+                if (img.file) {
+                    formData.append('printify_images[]', img.file);
+                }
+            });
+        }
 
         // Debug (চাইলে রাখুন)
 //         for (let [k, v] of formData.entries()) {
@@ -580,22 +636,30 @@ const handleCategoryChange = (categoryId: number) => {
                                             <Switch
                                                 id="printify-toggle"
                                                 checked={data.is_printify_product}
-                                                disabled={true}
-                                                // onCheckedChange={(checked) => {
-                                                //     setData('is_printify_product', checked);
-                                                //     if (!checked) {
-                                                //         // Reset Printify fields when disabled
-                                                //         setData('printify_blueprint_id', '');
-                                                //         setData('printify_provider_id', '');
-                                                //         setData('printify_variants', []);
-                                                //         setData('printify_images', ['']);
-                                                //         setSelectedBlueprint(null);
-                                                //         setSelectedProvider(null);
-                                                //         setProviders([]);
-                                                //         setVariants([]);
-                                                //         setSelectedVariants([]);
-                                                //     }
-                                                // }}
+                                                disabled={false}
+                                                onCheckedChange={(checked) => {
+                                                    setData('is_printify_product', checked);
+                                                    if (!checked) {
+                                                        // Reset Printify fields when disabled
+                                                        setData('printify_blueprint_id', '');
+                                                        setData('printify_provider_id', '');
+                                                        setData('printify_variants', []);
+                                                        setData('printify_images', []);
+                                                        setSelectedBlueprint(null);
+                                                        setSelectedProvider(null);
+                                                        setProviders([]);
+                                                        setVariants([]);
+                                                        setSelectedVariants([]);
+                                                    } else {
+                                                        // Reset manual product fields when enabling Printify
+                                                        setData('unit_price', '');
+                                                        setData('shipping_charge', '');
+                                                        // Initialize printify_images array with one empty slot
+                                                        if (data.printify_images.length === 0) {
+                                                            setData('printify_images', [null as any]);
+                                                        }
+                                                    }
+                                                }}
                                             />
                                         </div>
 
@@ -919,47 +983,75 @@ const handleCategoryChange = (categoryId: number) => {
   </p>
 
   <div className="space-y-4">
-    {data.printify_images.map((img, index) => (
-        <div key={index} className="flex gap-3 items-start">
+    {data.printify_images.length === 0 ? (
+        <div className="flex gap-3 items-start">
             <div className="flex-1">
                 <Input
                     type="file"
                     accept="image/png,image/jpeg,image/jpg"
-                    onChange={(e) => handleDesignUpload(index, e.target.files?.[0] || null)}
+                    onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        if (file) {
+                            handleDesignUpload(0, file);
+                        }
+                    }}
                     className="hidden"
-                    id={`design-${index}`}
+                    id="design-0"
                 />
-                <label htmlFor={`design-${index}`} className="block cursor-pointer">
-                    {img?.preview ? (
-                        <div className="space-y-2">
-                            <img src={img.preview} alt="preview" className="w-full h-48 object-contain border rounded" />
-                            <div className="flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{img.name}</span>
-                                {img.file && (
-                                    <span className="text-muted-foreground">
-                                        {(img.file.size / 1024 / 1024).toFixed(2)} MB
-                                    </span>
-                                )}
-                            </div>
+                <label htmlFor="design-0" className="block cursor-pointer">
+                    <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                        <div className="text-center">
+                            <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                            <p className="text-sm text-muted-foreground">Click to upload</p>
+                            <p className="text-xs text-muted-foreground mt-1">Max 1MB</p>
                         </div>
-                    ) : (
-                        <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
-                            <div className="text-center">
-                                <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                                <p className="text-sm text-muted-foreground">Click to upload</p>
-                                <p className="text-xs text-muted-foreground mt-1">Max 1MB</p>
-                            </div>
-                        </div>
-                    )}
+                    </div>
                 </label>
             </div>
-            {data.printify_images.length > 1 && (
-                <Button onClick={() => removeDesignField(index)} variant="outline" size="icon">
-                    <Minus />
-                </Button>
-            )}
         </div>
-    ))}
+    ) : (
+        data.printify_images.map((img, index) => (
+            <div key={index} className="flex gap-3 items-start">
+                <div className="flex-1">
+                    <Input
+                        type="file"
+                        accept="image/png,image/jpeg,image/jpg"
+                        onChange={(e) => handleDesignUpload(index, e.target.files?.[0] || null)}
+                        className="hidden"
+                        id={`design-${index}`}
+                    />
+                    <label htmlFor={`design-${index}`} className="block cursor-pointer">
+                        {img?.preview ? (
+                            <div className="space-y-2">
+                                <img src={img.preview} alt="preview" className="w-full h-48 object-contain border rounded" />
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                    <span>{img.name}</span>
+                                    {img.file && (
+                                        <span className="text-muted-foreground">
+                                            {(img.file.size / 1024 / 1024).toFixed(2)} MB
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="h-48 border-2 border-dashed rounded-lg flex items-center justify-center bg-muted/30 hover:bg-muted/50 transition-colors">
+                                <div className="text-center">
+                                    <Upload className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                                    <p className="text-sm text-muted-foreground">Click to upload</p>
+                                    <p className="text-xs text-muted-foreground mt-1">Max 1MB</p>
+                                </div>
+                            </div>
+                        )}
+                    </label>
+                </div>
+                {data.printify_images.length > 1 && (
+                    <Button type="button" onClick={() => removeDesignField(index)} variant="outline" size="icon">
+                        <Minus />
+                    </Button>
+                )}
+            </div>
+        ))
+    )}
   </div>
 
   <Button type="button" onClick={addDesignField} variant="outline" size="sm">
@@ -1055,20 +1147,41 @@ const handleCategoryChange = (categoryId: number) => {
                                         {errors.quantity && <p className="text-sm text-red-500">{errors.quantity}</p>}
                                     </div>
 
-                                    {/* <div className="space-y-2">
-                                        <Label htmlFor="unit_price">Unit Price ($) *</Label>
-                                        <Input
-                                            id="unit_price"
-                                            type="number"
-                                            step="0.01"
-                                            min="0"
-                                            value={data.unit_price}
-                                            onChange={(e) => handleChange('unit_price', e.target.value)}
-                                            placeholder="Enter unit price"
-                                            className={errors.unit_price ? 'border-red-500' : ''}
-                                        />
-                                        {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
-                                    </div> */}
+                                    {!data.is_printify_product && (
+                                        <>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="unit_price">Unit Price ($) *</Label>
+                                                <Input
+                                                    id="unit_price"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={data.unit_price}
+                                                    onChange={(e) => handleChange('unit_price', e.target.value)}
+                                                    placeholder="Enter unit price"
+                                                    className={errors.unit_price ? 'border-red-500' : ''}
+                                                />
+                                                {errors.unit_price && <p className="text-sm text-red-500">{errors.unit_price}</p>}
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label htmlFor="shipping_charge">Shipping Charge ($) *</Label>
+                                                <Input
+                                                    id="shipping_charge"
+                                                    type="number"
+                                                    step="0.01"
+                                                    min="0"
+                                                    value={data.shipping_charge}
+                                                    onChange={(e) => handleChange('shipping_charge', e.target.value)}
+                                                    placeholder="Enter shipping charge"
+                                                    className={errors.shipping_charge ? 'border-red-500' : ''}
+                                                />
+                                                {errors.shipping_charge && <p className="text-sm text-red-500">{errors.shipping_charge}</p>}
+                                                <p className="text-xs text-muted-foreground">
+                                                    Shipping charge for this manual product
+                                                </p>
+                                            </div>
+                                        </>
+                                    )}
 
                                     {/* <div className="space-y-2">
                                         <Label htmlFor="profit_margin_percentage">Profit Margin (%) *</Label>

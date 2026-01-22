@@ -466,6 +466,12 @@ export default function Marketplace({
                                                             <Link
                                                                 href={`/products/${product.id}`}
                                                                 className="flex-1"
+                                                                onClick={(e) => {
+                                                                    // Prevent navigation if out of stock
+                                                                    if (product.quantity_available <= 0) {
+                                                                        e.preventDefault();
+                                                                    }
+                                                                }}
                                                             >
                                                                 <Button
                                                                     disabled={product.quantity_available <= 0}

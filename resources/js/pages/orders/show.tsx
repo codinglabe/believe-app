@@ -49,6 +49,7 @@ interface OrderItem {
     total_price: number;
     printify_variant_id: string;
     variant_data: any;
+    is_manual_product?: boolean;
 }
 
 interface ShippingInfo {

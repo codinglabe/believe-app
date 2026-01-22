@@ -260,7 +260,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         ],
                     },
                     {
-                        title: 'Email / SMS Campaigns',
+                        title: 'Campaigns',
                         icon: Send,
                         items: [
                             {

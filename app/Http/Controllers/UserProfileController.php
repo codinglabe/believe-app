@@ -395,13 +395,13 @@ class UserProfileController extends Controller
             ->findOrFail($id);
 
         $metadata = $application->metadata ?? [];
-        
+
         // Get the last completion request timesheet to check its status
         $lastCompletionRequest = VolunteerTimesheet::where('job_application_id', $application->id)
             ->where('is_completion_request', true)
             ->orderBy('created_at', 'desc')
             ->first();
-        
+
         $applicationData = [
             'id' => $application->id,
             'status' => $application->status,
@@ -532,13 +532,13 @@ class UserProfileController extends Controller
             });
 
         $metadata = $application->metadata ?? [];
-        
+
         // Get the last completion request timesheet to check its status
         $lastCompletionRequest = VolunteerTimesheet::where('job_application_id', $application->id)
             ->where('is_completion_request', true)
             ->orderBy('created_at', 'desc')
             ->first();
-        
+
         $applicationData = [
             'id' => $application->id,
             'status' => $application->status,
@@ -612,6 +612,17 @@ class UserProfileController extends Controller
                 'country' => $order->shippingInfo->country,
             ] : null,
             'items' => $order->items->map(function ($item) {
+                // Safely decode variant_data for manual and Printify products
+                $variantData = null;
+                if ($item->variant_data) {
+                    $decoded = json_decode($item->variant_data, true);
+                    if (is_array($decoded) && isset($decoded['size'])) {
+                        $variantData = $decoded['size'];
+                    } elseif (is_object($decoded) && isset($decoded->size)) {
+                        $variantData = $decoded->size;
+                    }
+                }
+
                 return [
                     'id' => $item->id,
                     'product_id' => $item->product_id,
@@ -622,7 +633,8 @@ class UserProfileController extends Controller
                     'unit_price' => $item->unit_price,
                     'subtotal' => $item->subtotal,
                     'printify_variant_id' => $item->printify_variant_id,
-                    'variant_data' => json_decode($item->variant_data)->size,
+                    'variant_data' => $variantData,
+                    'is_manual_product' => empty($item->product->printify_product_id),
                 ];
             }),
         ];
@@ -707,7 +719,7 @@ class UserProfileController extends Controller
         // Transform transactions to include proper data structure
         $transactions->getCollection()->transform(function ($transaction) {
             $meta = is_array($transaction->meta) ? $transaction->meta : (is_string($transaction->meta) ? json_decode($transaction->meta, true) : []);
-            
+
             return [
                 'id' => $transaction->id,
                 'type' => $transaction->type,
@@ -832,7 +844,7 @@ class UserProfileController extends Controller
         $totalCredits = (float) RewardPointLedger::where('user_id', $user->id)
             ->where('type', 'credit')
             ->sum('points');
-        
+
         $totalDebits = (float) RewardPointLedger::where('user_id', $user->id)
             ->where('type', 'debit')
             ->sum('points');
@@ -875,14 +887,14 @@ class UserProfileController extends Controller
                     $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
                     $regularPrice = (float) $redemption->offer->cash_required;
                     $discountAmount = ($regularPrice * $discountPercentage) / 100;
-                    
+
                     // Apply discount cap if set
                     if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
                         $discountAmount = (float) $redemption->offer->discount_cap;
                     }
-                    
+
                     $discountPrice = $regularPrice - $discountAmount;
-                    
+
                     $pricingBreakdown = [
                         'regularPrice' => round($regularPrice, 2),
                         'discountPercentage' => round($discountPercentage, 2),
@@ -890,7 +902,7 @@ class UserProfileController extends Controller
                         'discountPrice' => round($discountPrice, 2),
                     ];
                 }
-                
+
                 return [
                     'id' => $redemption->id,
                     'receipt_code' => $redemption->receipt_code,
