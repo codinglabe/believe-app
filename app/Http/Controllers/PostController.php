@@ -190,19 +190,44 @@ class PostController extends Controller
             'type' => 'required|in:like,love,care,angry,haha',
         ]);
 
-        $reaction = PostReaction::updateOrCreate(
-            [
-                'post_id' => $post->id,
-                'user_id' => Auth::id(),
-            ],
-            [
-                'type' => $validated['type'],
-            ]
-        );
+        $existingReaction = PostReaction::where('post_id', $post->id)
+            ->where('user_id', Auth::id())
+            ->first();
+
+        if ($existingReaction && $existingReaction->type === $validated['type']) {
+            // If same reaction, remove it (toggle off)
+            $existingReaction->delete();
+            $reaction = null;
+        } else {
+            // Update or create reaction
+            $reaction = PostReaction::updateOrCreate(
+                [
+                    'post_id' => $post->id,
+                    'user_id' => Auth::id(),
+                ],
+                [
+                    'type' => $validated['type'],
+                ]
+            );
+            // Load user relationship
+            $reaction->load('user');
+        }
+
+        $reactionsCount = $post->reactions()->count();
 
         return response()->json([
             'message' => 'Reaction updated successfully',
-            'reaction' => $reaction,
+            'reaction' => $reaction ? [
+                'id' => $reaction->id,
+                'type' => $reaction->type,
+                'user_id' => $reaction->user_id,
+                'user' => $reaction->user ? [
+                    'id' => $reaction->user->id,
+                    'name' => $reaction->user->name,
+                    'image' => $reaction->user->image,
+                ] : null,
+            ] : null,
+            'reactions_count' => $reactionsCount,
         ]);
     }
 

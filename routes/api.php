@@ -35,6 +35,10 @@ Route::middleware('auth:api')->group(function () {
             Route::put('/profile', [UserController::class, 'updateProfile']);
             Route::get('/balance', [UserController::class, 'getBalance']);
             Route::get('/points', [UserController::class, 'getPoints']);
+            Route::get('/profile/posts', [UserController::class, 'getProfilePosts']);
+            Route::get('/trending-organizations', [UserController::class, 'getTrendingOrganizations']);
+            Route::get('/suggested-people', [UserController::class, 'getSuggestedPeople']);
+            Route::get('/suggested-causes', [UserController::class, 'getSuggestedCauses']);
         });
 
         // Wallet

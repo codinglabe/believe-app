@@ -66,9 +66,9 @@ export default function MerchantLanding() {
                 <span className="text-white font-semibold">On Your Terms</span> — Partner with nonprofits and churches to reward verified volunteers with a simple 10% discount, while staying in full control of what's offered, how often it's redeemed, and how much it costs.
               </p>
               
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.6, delay: 0.4 }}
                 className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center items-center px-2"
               >
@@ -76,16 +76,16 @@ export default function MerchantLanding() {
                   <MerchantButton size="lg" className="w-full sm:w-auto text-base sm:text-lg px-6 sm:px-8 md:px-10 py-5 sm:py-6 md:py-7 shadow-2xl shadow-[#FF1493]/50 hover:shadow-[#FF1493]/70 transition-all duration-300">
                     Join the 10% Discount Merchant Hub
                     <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5" />
-                  </MerchantButton>
-                </Link>
+                </MerchantButton>
+              </Link>
                 <Link href="/hub" className="w-full sm:w-auto">
                   <MerchantButton size="lg" variant="outline" className="w-full sm:w-auto text-base sm:text-lg px-6 sm:px-8 md:px-10 py-5 sm:py-6 md:py-7">
-                    Browse Offers
-                  </MerchantButton>
-                </Link>
+                  Browse Offers
+                </MerchantButton>
+              </Link>
               </motion.div>
             </motion.div>
-          </div>
+            </div>
         </section>
 
         {/* The One Rule - Centerpiece */}
@@ -110,7 +110,7 @@ export default function MerchantLanding() {
               className="max-w-6xl mx-auto"
             >
               {/* Header Section */}
-              <div className="text-center mb-10 sm:mb-12 md:mb-16">
+          <div className="text-center mb-10 sm:mb-12 md:mb-16">
                 <motion.div
                   initial={{ scale: 0, rotate: -180 }}
                   whileInView={{ scale: 1, rotate: 0 }}
@@ -125,7 +125,7 @@ export default function MerchantLanding() {
                   <span className="block bg-gradient-to-r from-white via-gray-100 to-white bg-clip-text text-transparent">
                     The One Rule
                   </span>
-                </h2>
+            </h2>
                 <p className="text-lg sm:text-xl md:text-2xl lg:text-3xl text-gray-300 font-medium px-2">How the Discount Works</p>
               </div>
               
@@ -402,8 +402,8 @@ export default function MerchantLanding() {
                 </h2>
                 <p className="text-lg sm:text-xl md:text-2xl text-gray-300 font-medium px-2">
                   These aren't random deal-seekers.
-                </p>
-              </div>
+                    </p>
+                  </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6 mb-8 sm:mb-10">
                 {[
@@ -505,8 +505,8 @@ export default function MerchantLanding() {
                       </MerchantCardContent>
                     </MerchantCard>
                   </motion.div>
-                ))}
-              </div>
+                    ))}
+                  </div>
 
               <MerchantCard className="border-2 border-red-500/40 bg-gradient-to-br from-red-900/20 to-red-800/20 backdrop-blur-sm">
                 <MerchantCardContent className="p-6 sm:p-7 md:p-8">
@@ -642,24 +642,24 @@ export default function MerchantLanding() {
                     {plan.popular && (
                       <div className="absolute top-4 right-4 sm:top-6 sm:right-6 z-10">
                         <div className="flex items-center gap-1 sm:gap-1.5 bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] px-3 sm:px-4 py-1 sm:py-1.5 rounded-full shadow-lg">
-                          <Star className="w-3 h-3 sm:w-4 sm:h-4 text-white fill-white" />
+                    <Star className="w-3 h-3 sm:w-4 sm:h-4 text-white fill-white" />
                           <span className="text-xs font-bold text-white">Best Value</span>
-                        </div>
-                      </div>
+                  </div>
+                </div>
                     )}
                     <MerchantCardContent className="p-6 sm:p-8 md:p-10 flex flex-col flex-1">
                       <div className="text-center mb-6 sm:mb-8">
                         <h3 className="text-2xl sm:text-3xl font-bold text-white mb-3 sm:mb-4">
                           {plan.period}
-                        </h3>
+                    </h3>
                         <div className="flex items-baseline justify-center gap-2 mb-2 sm:mb-3">
                           <span className={plan.popular 
                             ? 'text-5xl sm:text-6xl md:text-7xl font-extrabold bg-gradient-to-r from-[#FF1493] via-[#DC143C] to-[#E97451] bg-clip-text text-transparent' 
                             : 'text-5xl sm:text-6xl md:text-7xl font-extrabold text-white'
                           }>
                             {plan.price}
-                          </span>
-                        </div>
+                      </span>
+                    </div>
                         <p className="text-gray-300 text-sm sm:text-base font-medium">
                           {plan.description}
                         </p>
@@ -676,7 +676,7 @@ export default function MerchantLanding() {
                   </MerchantCard>
                 </motion.div>
               ))}
-            </div>
+                  </div>
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -774,7 +774,7 @@ export default function MerchantLanding() {
                     </MerchantCard>
                   </motion.div>
                 ))}
-              </div>
+                    </div>
 
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
@@ -809,7 +809,7 @@ export default function MerchantLanding() {
                 <h2 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-4 sm:mb-6 px-2">
                   Trust & Accountability
                 </h2>
-              </div>
+                  </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5 md:gap-6 mb-8 sm:mb-10">
                 {[
@@ -836,8 +836,8 @@ export default function MerchantLanding() {
                       </MerchantCardContent>
                     </MerchantCard>
                   </motion.div>
-                ))}
-              </div>
+                    ))}
+                  </div>
 
               <MerchantCard className="border-2 border-[#FF1493]/40 bg-gradient-to-r from-[#FF1493]/10 via-[#DC143C]/10 to-[#E97451]/10 backdrop-blur-sm">
                 <MerchantCardContent className="p-6 sm:p-7 md:p-8">
@@ -913,7 +913,7 @@ export default function MerchantLanding() {
             <div className="absolute bottom-0 right-1/4 w-64 h-64 sm:w-80 sm:h-80 md:w-96 md:h-96 bg-[#DC143C]/30 rounded-full blur-3xl animate-pulse delay-1000"></div>
           </div>
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-            <motion.div
+          <motion.div
               initial={{ opacity: 0, y: 30 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
@@ -924,7 +924,7 @@ export default function MerchantLanding() {
               <div className="relative z-10">
                 <h2 className="text-xl sm:text-2xl md:text-3xl lg:text-4xl xl:text-5xl font-extrabold mb-4 sm:mb-6 leading-tight px-2">
                   Ready to Join the 10% Discount Merchant Hub?
-                </h2>
+            </h2>
                 <div className="space-y-1 sm:space-y-2 mb-6 sm:mb-8 md:mb-10 text-base sm:text-lg md:text-xl lg:text-2xl font-medium px-2">
                   <p>Support your community.</p>
                   <p>Attract new customers.</p>
@@ -938,10 +938,10 @@ export default function MerchantLanding() {
                   >
                     <span className="block sm:inline">Join for $9/month or $100/year</span>
                     <ArrowRight className="ml-2 w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 inline-block" />
-                  </MerchantButton>
-                </Link>
+              </MerchantButton>
+            </Link>
               </div>
-            </motion.div>
+          </motion.div>
           </div>
         </section>
 

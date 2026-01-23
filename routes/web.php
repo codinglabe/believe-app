@@ -399,6 +399,7 @@ Route::get('/organizations/{slug}/jobs', [OrganizationController::class, 'jobs']
 Route::get('/organizations/{slug}/events', [OrganizationController::class, 'events'])->name('organizations.events');
 Route::get('/organizations/{slug}/social-media', [OrganizationController::class, 'socialMedia'])->name('organizations.social-media');
 Route::get('/organizations/{slug}/about', [OrganizationController::class, 'about'])->name('organizations.about');
+Route::get('/organizations/{slug}/supporters', [OrganizationController::class, 'supporters'])->name('organizations.supporters');
 Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impact'])->name('organizations.impact');
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
@@ -439,6 +440,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
+    // Note: Route name is 'organizations.toggle-favorite' (explicit name overrides group prefix)
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
