@@ -130,6 +130,7 @@ export default function OrganizationPage({
   const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
   const [showComments, setShowComments] = useState<Record<number, boolean>>({})
   const [isPageLoading, setIsPageLoading] = useState(true)
+  const [isGeneratingAbout, setIsGeneratingAbout] = useState(false)
 
   // Update posts state when posts prop changes
   useEffect(() => {
@@ -1126,9 +1127,72 @@ export default function OrganizationPage({
                 {/* About Tab Content */}
                 {activeTab === "About" && (
                   <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <h2 className="text-2xl font-bold mb-4">About {organization.name}</h2>
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h2 className="text-2xl font-bold mb-2">About</h2>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{organization.name}</h3>
+                      </div>
+                      {(!organization.description || organization.description.trim() === '' || organization.description === 'This organization is listed in our database but has not yet registered for additional features.') && (
+                        <Button
+                          onClick={async () => {
+                            if (isGeneratingAbout) return;
+                            
+                            setIsGeneratingAbout(true);
+                            try {
+                              const response = await fetch(route('organizations.generate-mission', organization.id), {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                  'X-Requested-With': 'XMLHttpRequest',
+                                },
+                              });
+                              
+                              const data = await response.json();
+                              
+                              if (data.success) {
+                                // Reload the page to show the generated about content
+                                router.reload();
+                              } else {
+                                setIsGeneratingAbout(false);
+                                alert(data.error || 'Failed to generate about content');
+                              }
+                            } catch (error) {
+                              console.error('Error generating about:', error);
+                              setIsGeneratingAbout(false);
+                              alert('Failed to generate about content. Please try again.');
+                            }
+                          }}
+                          size="sm"
+                          disabled={isGeneratingAbout}
+                          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGeneratingAbout ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4 mr-2" />
+                              Bring About
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                     {organization.description && (
-                      <p className="text-gray-300 mb-4 leading-relaxed">{organization.description}</p>
+                      <div className="text-gray-300 mb-4 leading-relaxed">
+                        {organization.description.split('\n').map((paragraph, index) => {
+                          const trimmedParagraph = paragraph.trim();
+                          if (!trimmedParagraph) return null;
+                          return (
+                            <p key={index} className="mb-4 last:mb-0">
+                              {trimmedParagraph}
+                            </p>
+                          );
+                        })}
+                      </div>
                     )}
                     {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
                       <div className="mb-4">
