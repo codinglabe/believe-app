@@ -391,6 +391,14 @@ Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alle
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
 
 
+// User public routes
+Route::get('/users/{slug}', [UserProfileController::class, 'show'])->name('users.show');
+Route::get('/users/{slug}/posts', [UserProfileController::class, 'posts'])->name('users.posts');
+Route::get('/users/{slug}/about', [UserProfileController::class, 'about'])->name('users.about');
+Route::get('/users/{slug}/activity', [UserProfileController::class, 'activity'])->name('users.activity');
+Route::get('/users/{slug}/following', [UserProfileController::class, 'following'])->name('users.following');
+Route::get('/users/{slug}/groups', [UserProfileController::class, 'groups'])->name('users.groups');
+
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
 Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');

@@ -205,9 +205,18 @@ class OrganizationRegisterController extends Controller
                 $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
             }
 
+            // Generate unique slug from organization name with incremental numbers
+            $baseSlug = Str::slug($validated['name']);
+            $slug = $baseSlug;
+            $counter = 1;
+            while (User::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter;
+                $counter++;
+            }
+
             $user = User::create([
                 "name" => $validated['contact_name'],
-                "slug" => Str::slug($validated['contact_name']) . '-' . Str::random(5),
+                "slug" => $slug,
                 "email" => $validated['email'],
                 "contact_number" => $validated['phone'],
                 "password" => Hash::make($validated['password']),

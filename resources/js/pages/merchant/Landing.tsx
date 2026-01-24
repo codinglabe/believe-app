@@ -501,7 +501,7 @@ export default function MerchantLanding() {
                             {index + 1}
                           </div>
                           <p className="text-base sm:text-lg md:text-xl text-gray-200 leading-relaxed">{step}</p>
-                        </div>
+                      </div>
                       </MerchantCardContent>
                     </MerchantCard>
                   </motion.div>

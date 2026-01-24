@@ -34,6 +34,7 @@ import {
   Coins,
   Briefcase,
   QrCode,
+  Globe,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -42,6 +43,7 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link, router, usePage } from "@inertiajs/react"
+import { route } from "ziggy-js"
 import { LogOut } from "lucide-react"
 import { showSuccessToast } from "@/lib/toast"
 
@@ -61,6 +63,7 @@ interface PageProps {
   auth: {
     user: {
       id: number
+      slug?: string
       name: string
       email: string
       phone?: string
@@ -378,6 +381,14 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     Edit Profile
                   </Button>
                 </Link>
+                {user?.slug || user?.id ? (
+                  <Link href={route('users.show', user.slug || user.id)}>
+                    <Button className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                      <Globe className="w-4 h-4 mr-2" />
+                      Public View
+                    </Button>
+                  </Link>
+                ) : null}
                 {/* <Button
                   variant="outline"
                   className="bg-transparent border-white/30 text-white hover:bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105"
