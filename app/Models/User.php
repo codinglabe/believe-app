@@ -12,6 +12,7 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
 use Laravel\Passport\HasApiTokens;
@@ -125,6 +126,20 @@ class User extends Authenticatable implements MustVerifyEmail
                     $code = substr(bin2hex(random_bytes(8)), 0, 12);
                 } while (self::where('referral_code', $code)->exists());
                 $user->referral_code = $code;
+            }
+
+            // Auto-generate slug if not provided
+            if (empty($user->slug) && !empty($user->name)) {
+                $baseSlug = Str::slug($user->name);
+                $slug = $baseSlug;
+                $counter = 1;
+
+                while (self::where('slug', $slug)->exists()) {
+                    $slug = $baseSlug . '-' . $counter;
+                    $counter++;
+                }
+
+                $user->slug = $slug;
             }
 
             // Ensure guard_name is set

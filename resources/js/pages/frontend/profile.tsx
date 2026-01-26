@@ -3,6 +3,8 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState } from "react"
 import { motion } from "framer-motion"
+import { usePage, router, Link } from "@inertiajs/react"
+import { route } from "ziggy-js"
 import {
   User,
   Mail,
@@ -29,6 +31,7 @@ import {
   Eye,
   RotateCcw,
   ExternalLink,
+  Globe,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -230,6 +233,10 @@ const availableOrganizations = [
 ]
 
 export default function ProfilePage() {
+  const page = usePage()
+  const auth = (page.props as any)?.auth
+  const user = auth?.user
+  
   const [isEditing, setIsEditing] = useState(false)
   const [isAddingFavorite, setIsAddingFavorite] = useState(false)
   const [isDonationModalOpen, setIsDonationModalOpen] = useState(false)
@@ -245,6 +252,11 @@ export default function ProfilePage() {
     bio: "Passionate about making a difference in the world through charitable giving and community support.",
     joinDate: "January 2023",
   })
+  
+  // Get user slug for public view - always use id as fallback
+  // Try multiple ways to get user data
+  const currentUser = user || auth?.user || (page.props as any)?.user
+  const userSlug = currentUser?.slug || currentUser?.id
 
   const [favoriteOrganizations, setFavoriteOrganizations] = useState([
     {
@@ -412,10 +424,20 @@ export default function ProfilePage() {
                     </div>
                     <div className="flex gap-2 w-full sm:w-auto">
                     {!isEditing ? (
+                        <>
                         <Button onClick={() => setIsEditing(true)} variant="outline" className="flex-1 sm:flex-none">
                         <Edit3 className="h-4 w-4 mr-2" />
                         Edit Profile
                         </Button>
+                        {userSlug && (
+                          <Link href={route('users.show', userSlug)}>
+                            <Button variant="outline" className="flex-1 sm:flex-none bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0">
+                              <Globe className="h-4 w-4 mr-2" />
+                              Public View
+                            </Button>
+                          </Link>
+                        )}
+                        </>
                     ) : (
                         <div className="flex gap-2 w-full sm:w-auto">
                         <Button onClick={handleSave} size="sm" className="flex-1 sm:flex-none">

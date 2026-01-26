@@ -13,6 +13,10 @@ use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
 use App\Models\RewardPointLedger;
 use App\Models\MerchantHubOfferRedemption;
+use App\Models\User;
+use App\Models\Post;
+use App\Models\PostReaction;
+use App\Models\PostComment;
 use App\Services\ImpactScoreService;
 use Carbon\Carbon;
 use App\Services\PrintifyService;
@@ -20,6 +24,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
@@ -943,5 +948,784 @@ class UserProfileController extends Controller
                 'page' => $page,
             ],
         ]);
+    }
+
+    /**
+     * Show public user profile
+     */
+    public function show(Request $request, string $slug)
+    {
+        // Find user by slug or ID
+        $user = User::where('slug', $slug)
+            ->orWhere('id', $slug)
+            ->with(['supporterPositions'])
+            ->first();
+
+        if (!$user) {
+            abort(404, 'User not found');
+        }
+
+        $authUser = Auth::user();
+        $isOwnProfile = $authUser && $authUser->id === $user->id;
+
+        // Get user stats
+        $postsCount = Post::where('user_id', $user->id)->count();
+        $donationsCount = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->count();
+        $totalDonated = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->sum('amount');
+        
+        // Get follower/following counts (if you have a followers system)
+        $followersCount = 0; // TODO: Implement if you have a followers system
+        $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
+        
+        // Get user's chat groups count
+        $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+        ->where('is_active', true)
+        ->count();
+        
+        // Get recent donations for Activity tab
+        $recentDonations = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->with('organization:id,name')
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($donation) {
+                return [
+                    'id' => $donation->id,
+                    'organization_name' => $donation->organization->name ?? 'Unknown Organization',
+                    'amount' => $donation->amount,
+                    'date' => $donation->donation_date ?? $donation->created_at,
+                    'frequency' => $donation->frequency ?? 'one-time',
+                    'payment_method' => $donation->payment_method ?? 'stripe',
+                ];
+            });
+        
+        // Get job applications for Activity tab
+        $jobApplications = JobApplication::where('user_id', $user->id)
+            ->with('jobPost:id,title,organization_id')
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($application) {
+                return [
+                    'id' => $application->id,
+                    'job_title' => $application->jobPost->title ?? 'Unknown Job',
+                    'status' => $application->status,
+                    'date' => $application->created_at,
+                ];
+            });
+        
+        // Get enrollments for Activity tab
+        $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
+            ->with('course:id,name')
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($enrollment) {
+                return [
+                    'id' => $enrollment->id,
+                    'course_title' => $enrollment->course->name ?? 'Unknown Course',
+                    'status' => $enrollment->status,
+                    'date' => $enrollment->enrolled_at ?? $enrollment->created_at,
+                ];
+            });
+
+        // Get believe points
+        $believePointsBalance = (float) ($user->believe_points ?? 0);
+        $believePointsEarned = (float) ($totalDonated ?? 0);
+        $believePointsSpent = 0; // TODO: Calculate if needed
+
+        // Get reward points earned and spent from ledger
+        $rewardPointsEarned = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'credit')
+            ->sum('points');
+        $rewardPointsSpent = (int) RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'debit')
+            ->sum('points');
+        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+
+        // Get recent posts (limit to 5 for initial load)
+        $authUserId = $authUser ? $authUser->id : null;
+        $posts = Post::where('user_id', $user->id)
+            ->with('user:id,name,image')
+            ->withCount(['reactions', 'comments'])
+            ->latest()
+            ->limit(5)
+            ->get()
+            ->map(function ($post) use ($authUserId) {
+                $image = null;
+                if ($post->images && is_array($post->images) && count($post->images) > 0) {
+                    $image = $post->images[0];
+                }
+                
+                // Get user's reaction if authenticated
+                $userReaction = null;
+                if ($authUserId) {
+                    $reaction = PostReaction::where('post_id', $post->id)
+                        ->where('user_id', $authUserId)
+                        ->first();
+                    if ($reaction) {
+                        $userReaction = [
+                            'id' => $reaction->id,
+                            'type' => $reaction->type,
+                            'user_id' => $reaction->user_id,
+                        ];
+                    }
+                }
+                
+                // Load recent reactions with user data (limit to 10 for performance)
+                $reactions = PostReaction::where('post_id', $post->id)
+                    ->with('user:id,name,image')
+                    ->latest()
+                    ->limit(10)
+                    ->get()
+                    ->map(function ($reaction) {
+                        return [
+                            'id' => $reaction->id,
+                            'type' => $reaction->type,
+                            'user_id' => $reaction->user_id,
+                            'user' => $reaction->user ? [
+                                'id' => $reaction->user->id,
+                                'name' => $reaction->user->name,
+                                'image' => $reaction->user->image,
+                            ] : null,
+                        ];
+                    });
+                
+                // Load recent comments with user data (limit to 5 for initial load)
+                $comments = PostComment::where('post_id', $post->id)
+                    ->with('user:id,name,image')
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($comment) {
+                        return [
+                            'id' => $comment->id,
+                            'content' => $comment->content,
+                            'created_at' => $comment->created_at,
+                            'user' => $comment->user ? [
+                                'id' => $comment->user->id,
+                                'name' => $comment->user->name,
+                                'image' => $comment->user->image,
+                            ] : null,
+                        ];
+                    });
+                
+                return [
+                    'id' => $post->id,
+                    'title' => null, // Post model doesn't have title field
+                    'content' => $post->content,
+                    'image' => $image,
+                    'images' => $post->images ?? [],
+                    'created_at' => $post->created_at,
+                    'reactions_count' => $post->reactions_count,
+                    'comments_count' => $post->comments_count,
+                    'user_reaction' => $userReaction,
+                    'reactions' => $reactions->toArray(),
+                    'comments' => $comments->toArray(),
+                    'has_more_comments' => $post->comments_count > 5,
+                ];
+            });
+
+        // Get user's favorite organizations (for "Following" tab)
+        $favoriteOrganizations = UserFavoriteOrganization::where('user_id', $user->id)
+            ->with(['organization.user:id,slug,name,image'])
+            ->latest()
+            ->limit(10)
+            ->get()
+            ->map(function ($fav) {
+                return [
+                    'id' => $fav->organization_id,
+                    'name' => $fav->organization->name,
+                    'slug' => $fav->organization->user->slug ?? null,
+                    'image' => $fav->organization->user->image ?? null,
+                ];
+            });
+
+        // Get sidebar data (People You May Know, Trending Organizations)
+        $peopleYouMayKnow = [];
+        $trendingOrganizations = [];
+        
+        if ($authUser) {
+            // Get other users the current user might know
+            $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $authUser->id)
+                ->pluck('organization_id')
+                ->toArray();
+            
+            $suggestedOrgs = Organization::where('registration_status', 'approved')
+                ->whereNotIn('id', $userFavoriteOrgIds)
+                ->with('user:id,slug,name,image')
+                ->limit(4)
+                ->get();
+            
+            if ($suggestedOrgs->isNotEmpty()) {
+                $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'avatar' => $org->user?->image ? '/storage/' . $org->user->image : null,
+                    ];
+                })->toArray();
+            }
+
+            // Get trending organizations
+            $trendingOrgs = Organization::where('registration_status', 'approved')
+                ->withCount('followers')
+                ->with('user:id,slug,name')
+                ->orderBy('followers_count', 'desc')
+                ->limit(4)
+                ->get();
+            
+            if ($trendingOrgs->isNotEmpty()) {
+                $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
+                
+                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'desc' => $org->description ? \Illuminate\Support\Str::limit($org->description, 50) : 'Organization description',
+                        'color' => $colors[$index % count($colors)],
+                    ];
+                })->toArray();
+            }
+        }
+
+        // Format user data
+        $userData = [
+            'id' => $user->id,
+            'slug' => $user->slug,
+            'name' => $user->name,
+            'email' => $user->email,
+            'image' => $user->image ? Storage::url($user->image) : null,
+            'cover_img' => $user->cover_img ? Storage::url($user->cover_img) : null,
+            'bio' => $user->bio ?? null,
+            'location' => $user->location ?? null,
+            'phone' => $user->contact_number ?? null,
+            'created_at' => $user->created_at,
+            'positions' => $user->supporterPositions->pluck('name')->toArray(),
+            'is_own_profile' => $isOwnProfile,
+        ];
+
+        return Inertia::render('frontend/user/user-show', [
+            'user' => $userData,
+            'posts' => $posts,
+            'postsCount' => $postsCount,
+            'donationsCount' => $donationsCount,
+            'totalDonated' => $totalDonated,
+            'followersCount' => $followersCount,
+            'followingCount' => $followingCount,
+            'groupsCount' => $groupsCount,
+            'favoriteOrganizations' => $favoriteOrganizations,
+            'peopleYouMayKnow' => $peopleYouMayKnow,
+            'trendingOrganizations' => $trendingOrganizations,
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+            'recentDonations' => $recentDonations,
+            'jobApplications' => $jobApplications,
+            'enrollments' => $enrollments,
+            'currentPage' => 'posts', // Default to posts tab
+        ]);
+    }
+
+    /**
+     * Get user data for tab pages
+     */
+    private function getUserData(string $slug): array
+    {
+        $user = User::where('slug', $slug)
+            ->orWhere('id', $slug)
+            ->with(['supporterPositions'])
+            ->first();
+
+        if (!$user) {
+            abort(404, 'User not found');
+        }
+
+        $authUser = Auth::user();
+        $isOwnProfile = $authUser && $authUser->id === $user->id;
+
+        // Get user stats
+        $postsCount = Post::where('user_id', $user->id)->count();
+        $donationsCount = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->count();
+        $totalDonated = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->sum('amount');
+        
+        $followersCount = 0;
+        $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
+
+        // Get believe points
+        $believePointsBalance = (float) ($user->believe_points ?? 0);
+        $believePointsEarned = (float) ($totalDonated ?? 0);
+        $believePointsSpent = 0;
+
+        // Get reward points earned and spent from ledger
+        $rewardPointsEarned = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'credit')
+            ->sum('points');
+        $rewardPointsSpent = (int) \App\Models\RewardPointLedger::where('user_id', $user->id)
+            ->where('type', 'debit')
+            ->sum('points');
+        $rewardPointsBalance = (float) ($user->reward_points ?? 0);
+
+        // Get user's chat groups count
+        $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+        ->where('is_active', true)
+        ->count();
+
+        // Get sidebar data
+        $peopleYouMayKnow = [];
+        $trendingOrganizations = [];
+        
+        if ($authUser) {
+            $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $authUser->id)
+                ->pluck('organization_id')
+                ->toArray();
+            
+            $suggestedOrgs = Organization::where('registration_status', 'approved')
+                ->whereNotIn('id', $userFavoriteOrgIds)
+                ->with('user:id,slug,name,image')
+                ->limit(4)
+                ->get();
+            
+            if ($suggestedOrgs->isNotEmpty()) {
+                $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'avatar' => $org->user?->image ? '/storage/' . $org->user->image : null,
+                    ];
+                })->toArray();
+            }
+
+            $trendingOrgs = Organization::where('registration_status', 'approved')
+                ->withCount('followers')
+                ->with('user:id,slug,name')
+                ->orderBy('followers_count', 'desc')
+                ->limit(4)
+                ->get();
+            
+            if ($trendingOrgs->isNotEmpty()) {
+                $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
+                
+                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'color' => $colors[$index % count($colors)],
+                        'followers_count' => $org->followers_count,
+                    ];
+                })->toArray();
+            }
+        }
+
+        $userData = [
+            'id' => $user->id,
+            'slug' => $user->slug,
+            'name' => $user->name,
+            'email' => $user->email,
+            'image' => $user->image,
+            'cover_img' => $user->cover_img,
+            'bio' => $user->bio,
+            'location' => $user->location,
+            'phone' => $user->phone,
+            'created_at' => $user->created_at,
+            'positions' => $user->supporterPositions->pluck('name')->toArray(),
+            'is_own_profile' => $isOwnProfile,
+            'reward_points' => (float) ($user->reward_points ?? 0),
+        ];
+
+        return [
+            'user' => $userData,
+            'postsCount' => $postsCount,
+            'donationsCount' => $donationsCount,
+            'totalDonated' => $totalDonated,
+            'followersCount' => $followersCount,
+            'followingCount' => $followingCount,
+            'groupsCount' => $groupsCount,
+            'peopleYouMayKnow' => $peopleYouMayKnow,
+            'trendingOrganizations' => $trendingOrganizations,
+            'believePointsEarned' => $believePointsEarned,
+            'believePointsSpent' => $believePointsSpent,
+            'believePointsBalance' => $believePointsBalance,
+            'rewardPointsEarned' => $rewardPointsEarned,
+            'rewardPointsSpent' => $rewardPointsSpent,
+            'rewardPointsBalance' => $rewardPointsBalance,
+        ];
+    }
+
+    /**
+     * Show user posts tab
+     */
+    public function posts(Request $request, string $slug)
+    {
+        $data = $this->getUserData($slug);
+        $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
+        
+        $authUserId = Auth::id();
+        $posts = Post::where('user_id', $user->id)
+            ->with('user:id,name,image')
+            ->withCount(['reactions', 'comments'])
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(function ($post) use ($authUserId) {
+                $image = null;
+                if ($post->images && is_array($post->images) && count($post->images) > 0) {
+                    $image = $post->images[0];
+                }
+                
+                $userReaction = null;
+                if ($authUserId) {
+                    $reaction = PostReaction::where('post_id', $post->id)
+                        ->where('user_id', $authUserId)
+                        ->first();
+                    if ($reaction) {
+                        $userReaction = [
+                            'id' => $reaction->id,
+                            'type' => $reaction->type,
+                            'user_id' => $reaction->user_id,
+                        ];
+                    }
+                }
+                
+                $reactions = PostReaction::where('post_id', $post->id)
+                    ->with('user:id,name,image')
+                    ->latest()
+                    ->limit(10)
+                    ->get()
+                    ->map(function ($reaction) {
+                        return [
+                            'id' => $reaction->id,
+                            'type' => $reaction->type,
+                            'user_id' => $reaction->user_id,
+                            'user' => $reaction->user ? [
+                                'id' => $reaction->user->id,
+                                'name' => $reaction->user->name,
+                                'image' => $reaction->user->image,
+                            ] : null,
+                        ];
+                    });
+                
+                $comments = PostComment::where('post_id', $post->id)
+                    ->with('user:id,name,image')
+                    ->latest()
+                    ->limit(5)
+                    ->get()
+                    ->map(function ($comment) {
+                        return [
+                            'id' => $comment->id,
+                            'content' => $comment->content,
+                            'created_at' => $comment->created_at,
+                            'user' => $comment->user ? [
+                                'id' => $comment->user->id,
+                                'name' => $comment->user->name,
+                                'image' => $comment->user->image,
+                            ] : null,
+                        ];
+                    });
+                
+                return [
+                    'id' => $post->id,
+                    'title' => null,
+                    'content' => $post->content,
+                    'image' => $image,
+                    'images' => $post->images ?? [],
+                    'created_at' => $post->created_at,
+                    'reactions_count' => $post->reactions_count,
+                    'comments_count' => $post->comments_count,
+                    'user_reaction' => $userReaction,
+                    'reactions' => $reactions->toArray(),
+                    'comments' => $comments->toArray(),
+                    'has_more_comments' => $post->comments_count > 5,
+                ];
+            });
+
+        return Inertia::render('frontend/user/user-show', array_merge($data, [
+            'posts' => $posts,
+            'chatGroups' => [], // Groups loaded separately in groups tab
+            'currentPage' => 'posts',
+        ]));
+    }
+
+    /**
+     * Show user about tab
+     */
+    public function about(Request $request, string $slug)
+    {
+        $data = $this->getUserData($slug);
+        return Inertia::render('frontend/user/user-show', array_merge($data, [
+            'chatGroups' => [], // Groups loaded separately in groups tab
+            'currentPage' => 'about',
+        ]));
+    }
+
+    /**
+     * Show user activity tab
+     */
+    public function activity(Request $request, string $slug)
+    {
+        $data = $this->getUserData($slug);
+        $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
+        
+        $page = $request->get('page', 1);
+        $perPage = 5;
+        
+        // Get all activities and combine them
+        $donations = Donation::where('user_id', $user->id)
+            ->whereIn('status', ['completed', 'active'])
+            ->with('organization:id,name')
+            ->get()
+            ->map(function ($donation) {
+                return [
+                    'id' => 'donation_' . $donation->id,
+                    'type' => 'donation',
+                    'title' => 'Donated $' . number_format($donation->amount, 2) . ' to ' . ($donation->organization->name ?? 'Unknown Organization'),
+                    'description' => ($donation->frequency ?? 'one-time') !== 'one-time' ? ucfirst($donation->frequency) . ' donation' : null,
+                    'date' => $donation->donation_date ?? $donation->created_at,
+                    'data' => [
+                        'id' => $donation->id,
+                        'organization_name' => $donation->organization->name ?? 'Unknown Organization',
+                        'amount' => $donation->amount,
+                        'frequency' => $donation->frequency ?? 'one-time',
+                        'payment_method' => $donation->payment_method ?? 'stripe',
+                    ],
+                ];
+            });
+        
+        $jobApplications = JobApplication::where('user_id', $user->id)
+            ->with('jobPost:id,title,organization_id')
+            ->get()
+            ->map(function ($application) {
+                return [
+                    'id' => 'job_' . $application->id,
+                    'type' => 'job_application',
+                    'title' => 'Applied for ' . ($application->jobPost->title ?? 'Unknown Job'),
+                    'description' => 'Status: ' . ucfirst($application->status),
+                    'date' => $application->created_at,
+                    'data' => [
+                        'id' => $application->id,
+                        'job_title' => $application->jobPost->title ?? 'Unknown Job',
+                        'status' => $application->status,
+                    ],
+                ];
+            });
+        
+        $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
+            ->with('course:id,title')
+            ->get()
+            ->map(function ($enrollment) {
+                return [
+                    'id' => 'enrollment_' . $enrollment->id,
+                    'type' => 'enrollment',
+                    'title' => 'Enrolled in ' . ($enrollment->course->title ?? 'Unknown Course'),
+                    'description' => 'Status: ' . ucfirst($enrollment->status),
+                    'date' => $enrollment->enrolled_at ?? $enrollment->created_at,
+                    'data' => [
+                        'id' => $enrollment->id,
+                        'course_title' => $enrollment->course->title ?? 'Unknown Course',
+                        'status' => $enrollment->status,
+                    ],
+                ];
+            });
+
+        $posts = Post::where('user_id', $user->id)
+            ->get()
+            ->map(function ($post) {
+                return [
+                    'id' => 'post_' . $post->id,
+                    'type' => 'post',
+                    'title' => 'Posted in community feed',
+                    'description' => $post->content ? \Illuminate\Support\Str::limit($post->content, 100) : null,
+                    'date' => $post->created_at,
+                    'data' => [
+                        'id' => $post->id,
+                        'content' => $post->content,
+                    ],
+                ];
+            });
+
+        // Combine all activities and sort by date
+        $allActivities = collect()
+            ->merge($donations)
+            ->merge($jobApplications)
+            ->merge($enrollments)
+            ->merge($posts)
+            ->sortByDesc('date')
+            ->values();
+
+        // Paginate manually
+        $total = $allActivities->count();
+        $totalPages = ceil($total / $perPage);
+        $currentPage = min(max(1, $page), $totalPages);
+        $offset = ($currentPage - 1) * $perPage;
+        $paginatedActivities = $allActivities->slice($offset, $perPage)->values();
+
+        return Inertia::render('frontend/user/user-show', array_merge($data, [
+            'activities' => $paginatedActivities,
+            'activityPagination' => [
+                'current_page' => $currentPage,
+                'last_page' => $totalPages,
+                'per_page' => $perPage,
+                'total' => $total,
+                'from' => $offset + 1,
+                'to' => min($offset + $perPage, $total),
+            ],
+            'chatGroups' => [], // Groups loaded separately in groups tab
+            'currentPage' => 'activity',
+        ]));
+    }
+
+    /**
+     * Show user following tab
+     */
+    public function following(Request $request, string $slug)
+    {
+        $data = $this->getUserData($slug);
+        $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
+        
+        $favoriteOrganizations = UserFavoriteOrganization::where('user_id', $user->id)
+            ->with(['organization.user:id,slug,name,image'])
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(function ($fav) {
+                return [
+                    'id' => $fav->organization_id,
+                    'name' => $fav->organization->name,
+                    'slug' => $fav->organization->user->slug ?? null,
+                    'image' => $fav->organization->user->image ?? null,
+                ];
+            });
+
+        return Inertia::render('frontend/user/user-show', array_merge($data, [
+            'favoriteOrganizations' => $favoriteOrganizations,
+            'chatGroups' => [], // Groups loaded separately in groups tab
+            'currentPage' => 'following',
+        ]));
+    }
+
+    /**
+     * Show user groups tab
+     */
+    public function groups(Request $request, string $slug)
+    {
+        $data = $this->getUserData($slug);
+        $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
+        
+        // Get user's chat rooms (groups)
+        $chatGroups = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
+            $query->where('user_id', $user->id);
+        })
+        ->where('is_active', true)
+        ->with(['creator:id,name,image', 'members:id,name,image', 'topics:id,name'])
+        ->withCount('members')
+        ->latest()
+        ->limit(20)
+        ->get()
+        ->map(function ($room) {
+            $latestMessage = $room->latestMessage()->with('user:id,name,image')->first();
+            
+            return [
+                'id' => $room->id,
+                'name' => $room->name,
+                'description' => $room->description,
+                'type' => $room->type,
+                'image' => $room->image ? '/storage/' . $room->image : null,
+                'created_by' => $room->created_by,
+                'creator' => $room->creator ? [
+                    'id' => $room->creator->id,
+                    'name' => $room->creator->name,
+                    'image' => $room->creator->image ? '/storage/' . $room->creator->image : null,
+                ] : null,
+                'members_count' => $room->members_count,
+                'topics' => $room->topics->map(function ($topic) {
+                    return [
+                        'id' => $topic->id,
+                        'name' => $topic->name,
+                    ];
+                }),
+                'latest_message' => $latestMessage ? [
+                    'id' => $latestMessage->id,
+                    'content' => $latestMessage->message ?? '',
+                    'created_at' => $latestMessage->created_at,
+                    'user' => $latestMessage->user ? [
+                        'id' => $latestMessage->user->id,
+                        'name' => $latestMessage->user->name,
+                        'image' => $latestMessage->user->image ? '/storage/' . $latestMessage->user->image : null,
+                    ] : null,
+                ] : null,
+                'created_at' => $room->created_at,
+            ];
+        });
+
+        return Inertia::render('frontend/user/user-show', array_merge($data, [
+            'chatGroups' => $chatGroups,
+            'currentPage' => 'groups',
+        ]));
     }
 }

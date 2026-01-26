@@ -52,6 +52,7 @@ interface OrganizationPageProps {
   posts?: any[]
   postsCount?: number
   supportersCount?: number
+  jobsCount?: number
   supporters?: any[]
   peopleYouMayKnow?: any[]
   trendingOrganizations?: any[]
@@ -71,6 +72,7 @@ export default function OrganizationPage({
   posts = [],
   postsCount = 0,
   supportersCount = 0,
+  jobsCount = 0,
   supporters = [],
   peopleYouMayKnow = [],
   trendingOrganizations = [],
@@ -130,6 +132,7 @@ export default function OrganizationPage({
   const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
   const [showComments, setShowComments] = useState<Record<number, boolean>>({})
   const [isPageLoading, setIsPageLoading] = useState(true)
+  const [isGeneratingAbout, setIsGeneratingAbout] = useState(false)
 
   // Update posts state when posts prop changes
   useEffect(() => {
@@ -211,6 +214,15 @@ export default function OrganizationPage({
     }
   }
 
+  const handleMessageClick = () => {
+    if (!auth?.user) {
+      router.visit(route("login", { redirect: "/chat" }), { replace: true })
+      return
+    }
+
+    router.visit("/chat")
+  }
+
   // Reaction configuration
   const reactionConfig = {
     like: { emoji: '👍', icon: ThumbsUp, color: 'text-blue-600' },
@@ -227,9 +239,14 @@ export default function OrganizationPage({
   }
 
   // Handle reaction (like, love, etc.)
-  const handleReaction = async (postId: number, type: 'like' | 'love' | 'care' | 'angry' | 'haha') => {
+  const handleReaction = async (postId: number | string, type: 'like' | 'love' | 'care' | 'angry' | 'haha') => {
     if (!auth?.user) {
       router.visit(route("login"))
+      return
+    }
+
+    // Skip Facebook posts (they have string IDs starting with 'fb_')
+    if (typeof postId === 'string' && postId.startsWith('fb_')) {
       return
     }
 
@@ -335,9 +352,14 @@ export default function OrganizationPage({
   }
 
   // Handle comment
-  const handleComment = async (postId: number) => {
+  const handleComment = async (postId: number | string) => {
     if (!auth?.user) {
       router.visit(route("login"))
+      return
+    }
+
+    // Skip Facebook posts (they have string IDs starting with 'fb_')
+    if (typeof postId === 'string' && postId.startsWith('fb_')) {
       return
     }
 
@@ -436,7 +458,7 @@ export default function OrganizationPage({
     { name: "Community Feed", count: postsCount || 0 },
     { name: "About", count: null },
     { name: "Events", count: null },
-    { name: "Opportunities", count: jobs?.length || 0 },
+    { name: "Opportunities", count: jobsCount || 0 },
     { name: "Supporters", count: supportersCount || 0 },
     { name: "Products", count: products?.length || 0 },
     { name: "Contact", count: null },
@@ -511,7 +533,7 @@ export default function OrganizationPage({
 
   return (
     <FrontendLayout>
-        <div className="min-h-screen bg-[#0a0f1a] text-white">
+        <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 
           {/* Profile Banner */}
           <div className="relative">
@@ -532,7 +554,7 @@ export default function OrganizationPage({
                 {/* Top Row: Avatar and Name */}
                 <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3 sm:gap-4">
                   <div className="relative">
-                    <Avatar className="w-28 h-28 sm:w-32 sm:h-32 border-4 border-[#0a0f1a] ring-2 ring-green-500/50">
+                    <Avatar className="w-28 h-28 sm:w-32 sm:h-32 border-4 border-white dark:border-[#0a0f1a] ring-2 ring-green-500/50">
                       <AvatarImage src={orgImage} alt={organization.name} />
                       <AvatarFallback className="bg-gradient-to-br from-gray-600 to-gray-700 text-3xl">
                         {organization.name.charAt(0).toUpperCase()}
@@ -547,17 +569,12 @@ export default function OrganizationPage({
 
                   <div className="text-center sm:text-left flex-1 w-full sm:w-auto">
                     <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-                      <h1 className="text-2xl sm:text-3xl font-bold break-words">{organization.name}</h1>
+                      <h1 className="text-2xl sm:text-3xl font-bold break-words text-gray-900 dark:text-white">{organization.name}</h1>
                       <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
                         <Building2 className="w-4 h-4" />
                       </div>
                     </div>
-                    <p className="text-gray-400 text-sm mb-1">{organizationHandle}</p>
-                    {organization.is_registered && (
-                      <p className="text-gray-300 text-sm mb-2 sm:mb-3 line-clamp-2 sm:line-clamp-none">
-                        {organization.description || organization.mission || 'A community of faith-based initiatives. That believes in unity.'}
-                      </p>
-                    )}
+                    <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">{organizationHandle}</p>
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                       {organization.is_registered && (
                         <>
@@ -603,7 +620,7 @@ export default function OrganizationPage({
                       </Button>
                       <Button
                         className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                        onClick={handleDonateNow}
+                        onClick={handleMessageClick}
                       >
                         <MessageCircle className="w-4 h-4 mr-2" />
                         Message
@@ -613,7 +630,7 @@ export default function OrganizationPage({
                   {!organization.is_registered && auth?.user && (
                     <Button
                       variant="outline"
-                      className="bg-white/10 hover:bg-white/20 border-white/20"
+                      className="bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 border-gray-300 dark:border-white/20"
                       onClick={() => setShowInvitePopup(true)}
                     >
                       <Mail className="w-4 h-4 mr-2" />
@@ -624,31 +641,31 @@ export default function OrganizationPage({
               </div>
 
               {/* Profile Stats */}
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 md:gap-6 py-3 px-3 sm:px-0 text-sm text-gray-400 border-t border-white/10">
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 md:gap-6 py-3 px-3 sm:px-0 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-white/10">
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
-                  <span className="whitespace-nowrap">Member since {memberSince}</span>
+                  <span className="whitespace-nowrap text-gray-900 dark:text-white">Member since {memberSince}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <MapPin className="w-4 h-4" />
-                  <span className="truncate max-w-[150px] sm:max-w-none">{location}</span>
+                  <span className="truncate max-w-[150px] sm:max-w-none text-gray-900 dark:text-white">{location}</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Zap className="w-4 h-4 text-yellow-500" />
-                  <span className="text-white font-medium">
+                  <span className="text-gray-900 dark:text-white font-medium">
                     {believePointsBalance >= 1000 
                       ? `${(believePointsBalance / 1000).toFixed(1)}K` 
                       : believePointsBalance.toLocaleString()}
                   </span>
-                  <span>Believer Points</span>
+                  <span className="text-gray-900 dark:text-white">Believer Points</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Users className="w-4 h-4" />
-                  <span>{supportersCount || 0} supporters</span>
+                  <span className="text-gray-900 dark:text-white">{supportersCount || 0} supporters</span>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Calendar className="w-4 h-4" />
-                  <span>Organized</span>
+                  <span className="text-gray-900 dark:text-white">Organized</span>
                 </div>
               </div>
             </div>
@@ -659,7 +676,7 @@ export default function OrganizationPage({
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Sidebar - Public Profile Info */}
               <aside className="lg:col-span-3 space-y-4">
-                <div className="bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500">
+                <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500">
                   <nav className="space-y-1">
                     {profileTabs.map((tab) => (
                       <button
@@ -668,7 +685,7 @@ export default function OrganizationPage({
                         className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
                           activeTab === tab.name
                             ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white"
-                            : "text-gray-300 hover:bg-white/5 hover:text-white"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
                         }`}
                       >
                         {tab.name === "Community Feed" && <FileText className="w-5 h-5" />}
@@ -680,7 +697,7 @@ export default function OrganizationPage({
                         {tab.name === "Contact" && <Phone className="w-5 h-5" />}
                         <span className="text-sm">{tab.name}</span>
                         {tab.count !== null && (
-                          <span className="ml-auto text-xs text-gray-500">({tab.count})</span>
+                          <span className="ml-auto text-xs text-gray-500 dark:text-gray-500">({tab.count})</span>
                         )}
                       </button>
                     ))}
@@ -688,8 +705,8 @@ export default function OrganizationPage({
                 </div>
 
                 {organization.is_registered && (
-                  <div className="bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
-                    <p className="text-xs text-gray-500 mb-3">Organization Info</p>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Organization Info</p>
                     <div className="flex items-center gap-3 mb-4">
                       <Avatar className="w-10 h-10">
                         <AvatarImage src={orgImage} />
@@ -698,10 +715,10 @@ export default function OrganizationPage({
                         </AvatarFallback>
                       </Avatar>
                       <div>
-                        <p className="text-sm font-medium">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
                           {organization.name}
                           {organization.classification && (
-                            <span className="text-gray-400 font-normal"> - {organization.classification}</span>
+                            <span className="text-gray-600 dark:text-gray-400 font-normal"> - {organization.classification}</span>
                           )}
                         </p>
                         {organization.ntee_code && (
@@ -712,14 +729,14 @@ export default function OrganizationPage({
                       </div>
                     </div>
 
-                    <div className="flex items-center justify-between py-3 border-t border-white/10">
+                    <div className="flex items-center justify-between py-3 border-t border-gray-200 dark:border-white/10">
                       <div className="text-center">
-                        <p className="text-lg font-bold">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">
                           {believePointsBalance >= 1000 
                             ? `${(believePointsBalance / 1000).toFixed(1)}k` 
                             : believePointsBalance.toLocaleString()}
                         </p>
-                        <p className="text-[10px] text-gray-500">Believer Points</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
                         <div className="mt-1 space-y-0.5">
                           <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
                           {believePointsSpent > 0 && (
@@ -728,21 +745,21 @@ export default function OrganizationPage({
                         </div>
                       </div>
                       <div className="text-center">
-                        <p className="text-lg font-bold">{supportersCount || 0}</p>
-                        <p className="text-[10px] text-gray-500">Supporters</p>
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">{supportersCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Supporters</p>
                       </div>
                       <div className="text-center">
-                        <p className="text-lg font-bold">{postsCount || 0}</p>
-                        <p className="text-[10px] text-gray-500">Community Feed</p>
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">{postsCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Community Feed</p>
                       </div>
                     </div>
                   </div>
                 )}
 
                 {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
-                  <div className="bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-200">
-                    <h3 className="font-semibold mb-3">Mission</h3>
-                    <p className="text-sm text-gray-300 leading-relaxed">{organization.mission}</p>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-200">
+                    <h3 className="font-semibold mb-3 text-gray-900 dark:text-white">Mission</h3>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
                   </div>
                 )}
               </aside>
@@ -750,10 +767,10 @@ export default function OrganizationPage({
               {/* Main Feed */}
               <section className="lg:col-span-6 space-y-4">
                 {isPageLoading ? (
-                  <div className="bg-[#111827] rounded-xl p-8 flex items-center justify-center min-h-[400px]">
-                    <div className="text-center">
-                      <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                      <p className="text-gray-400">Loading content...</p>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-8 flex items-center justify-center min-h-[400px]">
+                      <div className="text-center">
+                        <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-600 dark:text-gray-400">Loading content...</p>
                     </div>
                   </div>
                 ) : (
@@ -772,7 +789,7 @@ export default function OrganizationPage({
                         return (
                           <article
                             key={postId}
-                            className="bg-[#111827] rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
+                            className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
                           >
                             <div className="p-5">
                               {/* Header */}
@@ -786,27 +803,27 @@ export default function OrganizationPage({
                                   </Avatar>
                                   <div>
                                     <div className="flex items-center gap-2">
-                                      <h4 className="font-semibold text-base">{organization.name}</h4>
+                                      <h4 className="font-semibold text-base text-gray-900 dark:text-white">{organization.name}</h4>
                                       {organization.is_registered && (
                                         <CheckCircle className="w-4 h-4 text-blue-400" />
                                       )}
                                     </div>
-                                    <p className="text-sm text-gray-400">
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
                                       {organizationHandle}
                                     </p>
                                   </div>
                                 </div>
-                                <MoreHorizontal className="w-5 h-5 text-gray-500 cursor-pointer hover:text-gray-300" />
+                                <MoreHorizontal className="w-5 h-5 text-gray-500 dark:text-gray-500 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300" />
                               </div>
 
                               {/* Title */}
                               {postItem.title && (
-                                <h3 className="text-xl font-bold mb-4">{postItem.title}</h3>
+                                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{postItem.title}</h3>
                               )}
 
                               {/* Content Text - Now on top */}
                               {postItem.content && (
-                                <p className="text-gray-300 text-base mb-5 leading-relaxed whitespace-pre-wrap">
+                                <p className="text-gray-700 dark:text-gray-300 text-base mb-5 leading-relaxed whitespace-pre-wrap">
                                   {postItem.content}
                                 </p>
                               )}
@@ -864,20 +881,20 @@ export default function OrganizationPage({
 
                               {/* Event Card Style for Posts with Event Info */}
                               {postItem.event_date && (
-                                <div className="bg-gradient-to-br from-[#1a2744] to-[#0f1a2e] rounded-lg overflow-hidden border border-white/10 mb-5 p-4">
+                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-[#1a2744] dark:to-[#0f1a2e] rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 mb-5 p-4">
                                   <div className="flex flex-wrap gap-4 text-sm">
                                     <div className="flex items-center gap-2">
                                       <CheckCircle className="w-4 h-4 text-green-500" />
-                                      <span>{postItem.event_date}</span>
+                                      <span className="text-gray-900 dark:text-white">{postItem.event_date}</span>
                                     </div>
                                     <div className="flex items-center gap-2">
                                       <Clock className="w-4 h-4 text-cyan-400" />
-                                      <span>{postItem.event_time || '2:00 PM'}</span>
+                                      <span className="text-gray-900 dark:text-white">{postItem.event_time || '2:00 PM'}</span>
                                     </div>
                                     {postItem.event_location && (
-                                      <div className="flex items-center gap-2 text-green-400">
+                                      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                                         <MapPin className="w-4 h-4" />
-                                        <span>{postItem.event_location}</span>
+                                        <span className="text-gray-900 dark:text-white">{postItem.event_location}</span>
                                       </div>
                                     )}
                                   </div>
@@ -887,8 +904,8 @@ export default function OrganizationPage({
 
                             {/* Engagement */}
                             {reactionsCount > 0 || commentsCount > 0 ? (
-                              <div className="px-5 py-3 border-t border-white/10">
-                                <div className="flex items-center justify-between text-sm text-gray-400">
+                              <div className="px-5 py-3 border-t border-gray-200 dark:border-white/10">
+                                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
                                   {reactionsCount > 0 && (
                                     <div className="flex items-center gap-2">
                                       {/* Show user avatars with their reaction emojis */}
@@ -917,13 +934,13 @@ export default function OrganizationPage({
                                                       </AvatarFallback>
                                                     </Avatar>
                                                     {/* Show reaction emoji on hover or as overlay */}
-                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-[#111827] rounded-full border border-white/20 flex items-center justify-center text-xs">
+                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white dark:bg-[#111827] rounded-full border border-gray-200 dark:border-white/20 flex items-center justify-center text-xs">
                                                       {reactionConfig[reaction.type as keyof typeof reactionConfig]?.emoji || '👍'}
                                                     </div>
                                                   </div>
                                                 ))}
                                                 {reactions.length > 6 && (
-                                                  <div className="w-6 h-6 rounded-full border-2 border-[#111827] bg-white/10 flex items-center justify-center text-xs font-semibold">
+                                                  <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[#111827] bg-gray-100 dark:bg-white/10 flex items-center justify-center text-xs font-semibold">
                                                     +{reactions.length - 6}
                                                   </div>
                                                 )}
@@ -968,7 +985,7 @@ export default function OrganizationPage({
                                   {commentsCount > 0 && (
                                     <button
                                       onClick={() => setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }))}
-                                      className="flex items-center gap-1 hover:text-white transition-colors"
+                                      className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors"
                                     >
                                       <MessageCircle className="w-4 h-4" /> {commentsCount} {commentsCount === 1 ? 'Comment' : 'Comments'}
                                     </button>
@@ -978,7 +995,7 @@ export default function OrganizationPage({
                             ) : null}
 
                             {/* Action Buttons */}
-                            <div className="grid grid-cols-3 border-t border-white/10">
+                            <div className="grid grid-cols-3 border-t border-gray-200 dark:border-white/10">
                               <div
                                 className="relative flex-1"
                                 onMouseEnter={() => setShowReactionPicker(postId)}
@@ -986,25 +1003,29 @@ export default function OrganizationPage({
                               >
                                 <button
                                   onClick={() => {
+                                    if (typeof postId === 'string' && postId.startsWith('fb_')) {
+                                      return
+                                    }
                                     if (currentReaction) {
                                       handleReaction(postId, currentReaction.type)
                                     } else {
                                       handleReaction(postId, 'like')
                                     }
                                   }}
-                                  className={`w-full flex items-center justify-center gap-2 py-3 transition-all hover:bg-white/5 ${
-                                    currentReaction ? reactionConfig[currentReaction.type as keyof typeof reactionConfig]?.color || 'text-blue-500' : 'text-gray-400'
+                                  disabled={typeof postId === 'string' && postId.startsWith('fb_')}
+                                  className={`w-full flex items-center justify-center gap-2 py-3 transition-all hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    currentReaction ? reactionConfig[currentReaction.type as keyof typeof reactionConfig]?.color || 'text-blue-500' : 'text-gray-600 dark:text-gray-400'
                                   }`}
                                 >
                                   {currentReaction ? (
                                     <>
                                       <span className="text-lg">{reactionConfig[currentReaction.type as keyof typeof reactionConfig]?.emoji}</span>
-                                      <span className="text-sm font-medium capitalize">{currentReaction.type}</span>
+                                      <span className="text-sm font-medium capitalize text-gray-900 dark:text-white">{currentReaction.type}</span>
                                     </>
                                   ) : (
                                     <>
                                       <ThumbsUp className="w-5 h-5" />
-                                      <span className="text-sm font-medium">Like</span>
+                                      <span className="text-sm font-medium text-gray-900 dark:text-white">Like</span>
                                     </>
                                   )}
                                 </button>
@@ -1014,15 +1035,21 @@ export default function OrganizationPage({
                                       initial={{ opacity: 0, y: 10 }}
                                       animate={{ opacity: 1, y: 0 }}
                                       exit={{ opacity: 0, y: 10 }}
-                                      className="absolute bottom-full left-0 mb-2 bg-[#1a1a2e] rounded-full p-1 flex items-center gap-1 shadow-lg border border-white/10 z-10"
+                                      className="absolute bottom-full left-0 mb-2 bg-white dark:bg-[#1a1a2e] rounded-full p-1 flex items-center gap-1 shadow-lg border border-gray-200 dark:border-white/10 z-10"
                                     >
                                       {Object.entries(reactionConfig).map(([type, config]) => (
                                         <motion.button
                                           key={type}
                                           whileHover={{ scale: 1.2 }}
                                           whileTap={{ scale: 0.9 }}
-                                          onClick={() => handleReaction(postId, type as any)}
-                                          className="text-2xl transition-all p-2 rounded-full hover:bg-white/10 cursor-pointer"
+                                          onClick={() => {
+                                            if (typeof postId === 'string' && postId.startsWith('fb_')) {
+                                              return
+                                            }
+                                            handleReaction(postId, type as any)
+                                          }}
+                                          disabled={typeof postId === 'string' && postId.startsWith('fb_')}
+                                          className="text-2xl transition-all p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                                           title={type.charAt(0).toUpperCase() + type.slice(1)}
                                         >
                                           {config.emoji}
@@ -1034,23 +1061,23 @@ export default function OrganizationPage({
                               </div>
                               <button
                                 onClick={() => setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }))}
-                                className="flex items-center justify-center gap-2 py-3 text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+                                className="flex items-center justify-center gap-2 py-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white transition-all"
                               >
                                 <MessageCircle className="w-5 h-5" />
-                                <span className="text-sm font-medium">Comment</span>
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">Comment</span>
                               </button>
                               <button
                                 onClick={() => handleShare(postId)}
-                                className="flex items-center justify-center gap-2 py-3 text-gray-400 hover:bg-white/5 hover:text-white transition-all"
+                                className="flex items-center justify-center gap-2 py-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white transition-all"
                               >
                                 <Share2 className="w-5 h-5" />
-                                <span className="text-sm font-medium">Share</span>
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">Share</span>
                               </button>
                             </div>
 
                             {/* Comments Section */}
                             {showComments[postId] && (
-                              <div className="border-t border-white/10 p-4 space-y-4">
+                              <div className="border-t border-gray-200 dark:border-white/10 p-4 space-y-4">
                                 {/* Comments List */}
                                 {postComments.length > 0 && (
                                   <div className="space-y-3">
@@ -1063,11 +1090,11 @@ export default function OrganizationPage({
                                           </AvatarFallback>
                                         </Avatar>
                                         <div className="flex-1">
-                                          <div className="bg-white/5 rounded-lg p-3">
-                                            <p className="text-sm font-semibold mb-1">{comment.user?.name || 'Anonymous'}</p>
-                                            <p className="text-sm text-gray-300">{comment.content}</p>
+                                          <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-3">
+                                            <p className="text-sm font-semibold mb-1 text-gray-900 dark:text-white">{comment.user?.name || 'Anonymous'}</p>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300">{comment.content}</p>
                                           </div>
-                                          <p className="text-xs text-gray-500 mt-1">
+                                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
                                             {new Date(comment.created_at).toLocaleDateString()}
                                           </p>
                                         </div>
@@ -1089,7 +1116,7 @@ export default function OrganizationPage({
                                           handleComment(postId)
                                         }
                                       }}
-                                      className="pr-12 rounded-lg bg-white/5 border-white/10 focus-visible:ring-2 focus-visible:ring-purple-500 resize-none"
+                                      className="pr-12 rounded-lg bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-purple-500 resize-none text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-500"
                                       rows={2}
                                     />
                                     {commentInputs[postId]?.trim() && (
@@ -1104,7 +1131,7 @@ export default function OrganizationPage({
                                   </div>
                                 )}
                                 {!auth?.user && (
-                                  <p className="text-sm text-gray-400 text-center py-2">
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-2">
                                     <Link href={route("login")} className="text-purple-400 hover:text-purple-300">
                                       Log in
                                     </Link> to comment
@@ -1116,8 +1143,8 @@ export default function OrganizationPage({
                         )
                       })
                     ) : (
-                      <article className="bg-[#111827] rounded-xl p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
-                        <p className="text-gray-400">No posts available yet.</p>
+                      <article className="bg-white dark:bg-[#111827] rounded-xl p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <p className="text-gray-600 dark:text-gray-400">No posts available yet.</p>
                       </article>
                     )}
                   </div>
@@ -1125,20 +1152,83 @@ export default function OrganizationPage({
 
                 {/* About Tab Content */}
                 {activeTab === "About" && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <h2 className="text-2xl font-bold mb-4">About {organization.name}</h2>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">About</h2>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{organization.name}</h3>
+                      </div>
+                      {(!organization.description || organization.description.trim() === '' || organization.description === 'This organization is listed in our database but has not yet registered for additional features.') && (
+                        <Button
+                          onClick={async () => {
+                            if (isGeneratingAbout) return;
+                            
+                            setIsGeneratingAbout(true);
+                            try {
+                              const response = await fetch(route('organizations.generate-mission', organization.id), {
+                                method: 'POST',
+                                headers: {
+                                  'Content-Type': 'application/json',
+                                  'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                  'X-Requested-With': 'XMLHttpRequest',
+                                },
+                              });
+                              
+                              const data = await response.json();
+                              
+                              if (data.success) {
+                                // Reload the page to show the generated about content
+                                router.reload();
+                              } else {
+                                setIsGeneratingAbout(false);
+                                alert(data.error || 'Failed to generate about content');
+                              }
+                            } catch (error) {
+                              console.error('Error generating about:', error);
+                              setIsGeneratingAbout(false);
+                              alert('Failed to generate about content. Please try again.');
+                            }
+                          }}
+                          size="sm"
+                          disabled={isGeneratingAbout}
+                          className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {isGeneratingAbout ? (
+                            <>
+                              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                              Generating...
+                            </>
+                          ) : (
+                            <>
+                              <Zap className="w-4 h-4 mr-2" />
+                              Bring About
+                            </>
+                          )}
+                        </Button>
+                      )}
+                    </div>
                     {organization.description && (
-                      <p className="text-gray-300 mb-4 leading-relaxed">{organization.description}</p>
+                      <div className="text-gray-700 dark:text-gray-300 mb-4 leading-relaxed">
+                        {organization.description.split('\n').map((paragraph, index) => {
+                          const trimmedParagraph = paragraph.trim();
+                          if (!trimmedParagraph) return null;
+                          return (
+                            <p key={index} className="mb-4 last:mb-0">
+                              {trimmedParagraph}
+                            </p>
+                          );
+                        })}
+                      </div>
                     )}
                     {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
                       <div className="mb-4">
-                        <h3 className="text-lg font-semibold mb-2">Mission</h3>
-                        <p className="text-gray-300 leading-relaxed">{organization.mission}</p>
+                        <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Mission</h3>
+                        <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
                       </div>
                     )}
                     {organization.website && (
                       <div className="flex items-center gap-2">
-                        <Globe className="w-5 h-5 text-gray-400" />
+                        <Globe className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                           <a
                             href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
                             target="_blank"
@@ -1154,9 +1244,9 @@ export default function OrganizationPage({
 
                 {/* Products Tab Content - Only for registered organizations */}
                 {activeTab === "Products" && organization.is_registered && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                         <ShoppingBag className="w-6 h-6" />
                         Products
                       </h2>
@@ -1169,7 +1259,7 @@ export default function OrganizationPage({
                         {products.map((product: any) => (
                           <div
                             key={product.id}
-                            className="bg-[#0a0f1a] rounded-lg p-4 border border-white/10 hover:border-purple-500/50 transition-all"
+                            className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all"
                           >
                             {product.image && (
                               <div className="mb-3 rounded-lg overflow-hidden">
@@ -1180,16 +1270,18 @@ export default function OrganizationPage({
                                 />
                               </div>
                             )}
-                            <h3 className="text-lg font-semibold mb-2">{product.name}</h3>
+                            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{product.name}</h3>
                             {product.description && (
-                              <p className="text-gray-400 text-sm mb-3 line-clamp-2">{product.description}</p>
+                              <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">{product.description}</p>
                             )}
                             {product.price && (
                               <div className="flex items-center justify-between">
-                                <span className="text-xl font-bold text-purple-400">${product.price}</span>
-                                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm">
-                                  View Details
-                                </Button>
+                                <span className="text-xl font-bold text-purple-600 dark:text-purple-400">${product.price}</span>
+                                <Link href={route("product.show", product.id)}>
+                                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm">
+                                    View Details
+                                  </Button>
+                                </Link>
                               </div>
                             )}
                           </div>
@@ -1198,7 +1290,7 @@ export default function OrganizationPage({
                     ) : (
                       <div className="text-center py-12">
                         <ShoppingBag className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">No products available yet.</p>
+                        <p className="text-gray-600 dark:text-gray-400">No products available yet.</p>
                       </div>
                     )}
                   </div>
@@ -1206,9 +1298,9 @@ export default function OrganizationPage({
 
                 {/* Opportunities Tab Content */}
                 {activeTab === "Opportunities" && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                         <Briefcase className="w-6 h-6" />
                         Opportunities
                       </h2>
@@ -1221,16 +1313,16 @@ export default function OrganizationPage({
                         {jobs.map((job: any) => (
                           <div
                             key={job.id}
-                            className="bg-[#0a0f1a] rounded-lg p-5 border border-white/10 hover:border-purple-500/50 transition-all"
+                            className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-5 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all"
                           >
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
-                                <h3 className="text-xl font-semibold mb-2">{job.title}</h3>
-                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-3">
+                                <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{job.title}</h3>
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-3">
                                   {job.location && (
                                     <div className="flex items-center gap-1">
                                       <MapPin className="w-4 h-4" />
-                                      <span>{job.location}</span>
+                                      <span className="text-gray-900 dark:text-white">{job.location}</span>
                                     </div>
                                   )}
                                   {job.type && (
@@ -1239,21 +1331,34 @@ export default function OrganizationPage({
                                     </Badge>
                                   )}
                                   {job.salary && (
-                                    <span className="text-green-400 font-medium">${job.salary}</span>
+                                    <span className="text-green-600 dark:text-green-400 font-medium">${job.salary}</span>
                                   )}
                                 </div>
                                 {job.description && (
-                                  <p className="text-gray-300 text-sm mb-4 line-clamp-3">{job.description}</p>
+                                  <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{job.description}</p>
                                 )}
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
-                                Apply Now
-                              </Button>
-                              <Button variant="outline" className="bg-transparent border-white/20 hover:bg-white/10">
-                                View Details
-                              </Button>
+                              {auth?.user?.role === 'user' && (job.status === 'open' || !job.status) && !job.has_applied ? (
+                                <Link href={route("jobs.apply.show", job.id)}>
+                                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+                                    Apply Now
+                                  </Button>
+                                </Link>
+                              ) : (
+                                <Button 
+                                  disabled 
+                                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white opacity-50 cursor-not-allowed"
+                                >
+                                  {job.has_applied ? 'Already Applied' : (job.status === 'open' || !job.status) ? (auth?.user ? 'Not Available' : 'Sign in to Apply') : 'Not Available'}
+                                </Button>
+                              )}
+                              <Link href={route("jobs.show", job.id)}>
+                                <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
+                                  View Details
+                                </Button>
+                              </Link>
                             </div>
                           </div>
                         ))}
@@ -1261,7 +1366,7 @@ export default function OrganizationPage({
                     ) : (
                       <div className="text-center py-12">
                         <Briefcase className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">No job openings available at the moment.</p>
+                        <p className="text-gray-600 dark:text-gray-400">No job openings available at the moment.</p>
                       </div>
                     )}
                   </div>
@@ -1269,9 +1374,9 @@ export default function OrganizationPage({
 
                 {/* Events Tab Content - Only for registered organizations */}
                 {activeTab === "Events" && organization.is_registered && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                         <Calendar className="w-6 h-6" />
                         Events
                       </h2>
@@ -1288,24 +1393,24 @@ export default function OrganizationPage({
                           >
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
-                                <h3 className="text-xl font-semibold mb-2">{event.title || event.name}</h3>
-                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400 mb-3">
+                                <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{event.title || event.name}</h3>
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-3">
                                   {event.start_date && (
                                     <div className="flex items-center gap-1">
                                       <Calendar className="w-4 h-4" />
-                                      <span>{new Date(event.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                                      <span className="text-gray-900 dark:text-white">{new Date(event.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
                                     </div>
                                   )}
                                   {event.start_time && (
                                     <div className="flex items-center gap-1">
                                       <Clock className="w-4 h-4" />
-                                      <span>{event.start_time}</span>
+                                      <span className="text-gray-900 dark:text-white">{event.start_time}</span>
                                     </div>
                                   )}
                                   {event.location && (
-                                    <div className="flex items-center gap-1 text-green-400">
+                                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
                                       <MapPin className="w-4 h-4" />
-                                      <span>{event.location}</span>
+                                      <span className="text-gray-900 dark:text-white">{event.location}</span>
                                     </div>
                                   )}
                                   {event.event_type && (
@@ -1315,15 +1420,17 @@ export default function OrganizationPage({
                                   )}
                                 </div>
                                 {event.description && (
-                                  <p className="text-gray-300 text-sm mb-4 line-clamp-3">{event.description}</p>
+                                  <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{event.description}</p>
                                 )}
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
-                                View Details
-                              </Button>
-                              <Button variant="outline" className="bg-transparent border-white/20 hover:bg-white/10">
+                              <Link href={route("viewEvent", event.id)}>
+                                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+                                  View Details
+                                </Button>
+                              </Link>
+                              <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
                                 Register
                               </Button>
                             </div>
@@ -1333,7 +1440,7 @@ export default function OrganizationPage({
                     ) : (
                       <div className="text-center py-12">
                         <Calendar className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">No events scheduled at the moment.</p>
+                        <p className="text-gray-600 dark:text-gray-400">No events scheduled at the moment.</p>
                       </div>
                     )}
                   </div>
@@ -1341,50 +1448,50 @@ export default function OrganizationPage({
 
                 {/* Contact Tab Content */}
                 {activeTab === "Contact" && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
                       <Phone className="w-6 h-6" />
                       Contact Information
                     </h2>
                     <div className="space-y-4">
                       {organization.phone && (
-                        <div className="flex items-center gap-3 p-4 bg-[#0a0f1a] rounded-lg border border-white/10">
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
                             <Phone className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <p className="text-sm text-gray-400">Phone</p>
-                            <a href={`tel:${organization.phone}`} className="text-white hover:text-purple-400 transition-colors">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Phone</p>
+                            <a href={`tel:${organization.phone}`} className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
                               {organization.phone}
                             </a>
                           </div>
                         </div>
                       )}
                       {organization.email && (
-                        <div className="flex items-center gap-3 p-4 bg-[#0a0f1a] rounded-lg border border-white/10">
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
                             <Mail className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <p className="text-sm text-gray-400">Email</p>
-                            <a href={`mailto:${organization.email}`} className="text-white hover:text-purple-400 transition-colors">
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
+                            <a href={`mailto:${organization.email}`} className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
                               {organization.email}
                             </a>
                           </div>
                         </div>
                       )}
                       {organization.website && (
-                        <div className="flex items-center gap-3 p-4 bg-[#0a0f1a] rounded-lg border border-white/10">
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
                             <Globe className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <p className="text-sm text-gray-400">Website</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Website</p>
                             <a
                               href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-white hover:text-purple-400 transition-colors"
+                              className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                             >
                               {organization.website.replace(/^https?:\/\//, '')}
                             </a>
@@ -1392,15 +1499,15 @@ export default function OrganizationPage({
                         </div>
                       )}
                       {location && location !== 'Location not specified' && (
-                        <div className="flex items-center gap-3 p-4 bg-[#0a0f1a] rounded-lg border border-white/10">
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
                             <MapPin className="w-5 h-5 text-white" />
                           </div>
                           <div>
-                            <p className="text-sm text-gray-400">Address</p>
-                            <p className="text-white">{location}</p>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Address</p>
+                            <p className="text-gray-900 dark:text-white">{location}</p>
                             {organization.address && (
-                              <p className="text-gray-300 text-sm mt-1">{organization.address}</p>
+                              <p className="text-gray-700 dark:text-gray-300 text-sm mt-1">{organization.address}</p>
                             )}
                           </div>
                         </div>
@@ -1408,7 +1515,7 @@ export default function OrganizationPage({
                       {(!organization.phone && !organization.email && !organization.website && (!location || location === 'Location not specified')) && (
                         <div className="text-center py-12">
                           <Phone className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                          <p className="text-gray-400">Contact information not available.</p>
+                          <p className="text-gray-600 dark:text-gray-400">Contact information not available.</p>
                         </div>
                       )}
                     </div>
@@ -1417,9 +1524,9 @@ export default function OrganizationPage({
 
                 {/* Supporters Tab Content - Only for registered organizations */}
                 {activeTab === "Supporters" && organization.is_registered && (
-                  <div className="bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="flex items-center justify-between mb-6">
-                      <h2 className="text-2xl font-bold flex items-center gap-2">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
                         <Users className="w-6 h-6" />
                         Supporters
                       </h2>
@@ -1429,54 +1536,65 @@ export default function OrganizationPage({
                     </div>
                     {Array.isArray(supporters) && supporters.length > 0 ? (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {supporters.map((supporter: any, index: number) => (
-                          <div
-                            key={supporter.id || supporter.user_id || `supporter-${index}`}
-                            className="bg-[#0a0f1a] rounded-lg p-4 border border-white/10 hover:border-purple-500/50 transition-all"
-                          >
-                            <div className="flex items-center gap-3 mb-3">
-                              <Avatar className="w-12 h-12 flex-shrink-0">
-                                <AvatarImage 
-                                  src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"} 
-                                />
-                                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-sm">
-                                  {supporter.user?.name 
-                                    ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                    : supporter.name 
-                                    ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
-                                    : 'U'}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div className="flex-1 min-w-0">
-                                <h3 className="font-semibold truncate text-white">
-                                  {supporter.user?.name || supporter.name || 'Anonymous'}
-                                </h3>
-                                {supporter.user?.email && (
-                                  <p className="text-xs text-gray-400 truncate">{supporter.user.email}</p>
+                        {supporters.map((supporter: any, index: number) => {
+                          const userSlug = supporter.user?.slug || supporter.user?.id
+                          const userRoute = userSlug ? route('users.show', userSlug) : null
+                          
+                          return (
+                            <Link
+                              key={supporter.id || supporter.user_id || `supporter-${index}`}
+                              href={userRoute || '#'}
+                              onClick={(e) => {
+                                if (!userRoute) {
+                                  e.preventDefault()
+                                }
+                              }}
+                              className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all cursor-pointer block"
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avatar className="w-12 h-12 flex-shrink-0">
+                                  <AvatarImage 
+                                    src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"} 
+                                  />
+                                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-sm">
+                                    {supporter.user?.name 
+                                      ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : supporter.name 
+                                      ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : 'U'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-semibold truncate text-gray-900 dark:text-white">
+                                    {supporter.user?.name || supporter.name || 'Anonymous'}
+                                  </h3>
+                                  {supporter.user?.email && (
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="space-y-2">
+                                {supporter.joined_at && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                                    Joined {new Date(supporter.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </p>
+                                )}
+                                {supporter.notifications && (
+                                  <Badge className="bg-green-600/20 text-green-400 text-xs inline-flex items-center gap-1">
+                                    <Bell className="w-3 h-3" />
+                                    Notifications On
+                                  </Badge>
                                 )}
                               </div>
-                            </div>
-                            <div className="space-y-2">
-                              {supporter.joined_at && (
-                                <p className="text-xs text-gray-500">
-                                  Joined {new Date(supporter.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                                </p>
-                              )}
-                              {supporter.notifications && (
-                                <Badge className="bg-green-600/20 text-green-400 text-xs inline-flex items-center gap-1">
-                                  <Bell className="w-3 h-3" />
-                                  Notifications On
-                                </Badge>
-                              )}
-                            </div>
-                          </div>
-                        ))}
+                            </Link>
+                          )
+                        })}
                       </div>
                     ) : (
                       <div className="text-center py-12">
                         <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
-                        <p className="text-gray-400">No supporters yet.</p>
-                        <p className="text-gray-500 text-sm mt-2">Be the first to support this organization!</p>
+                        <p className="text-gray-600 dark:text-gray-400">No supporters yet.</p>
+                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Be the first to support this organization!</p>
                       </div>
                     )}
                   </div>
@@ -1489,8 +1607,8 @@ export default function OrganizationPage({
               <aside className="lg:col-span-3 space-y-4">
                 {/* People You May Know */}
                 {peopleToShow.length > 0 && (
-                  <div className="bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <h3 className="font-semibold mb-4">People You May Know</h3>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
+                    <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">People You May Know</h3>
                     <div className="space-y-3">
                       {peopleToShow.map((person, index) => (
                       <div
@@ -1531,7 +1649,7 @@ export default function OrganizationPage({
                               : person.slug 
                                 ? route('organizations.show', person.slug)
                                 : '#'}
-                            className="text-sm font-medium truncate hover:text-purple-400 transition-colors cursor-pointer block"
+                            className="text-sm font-medium truncate text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors cursor-pointer block"
                             onClick={(e) => {
                               if (!person.excel_data_id && !person.slug) {
                                 e.preventDefault()
@@ -1540,17 +1658,17 @@ export default function OrganizationPage({
                           >
                             {person.name}
                           </Link>
-                          <p className="text-xs text-gray-500 truncate">{person.org || person.description}</p>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{person.org || person.description}</p>
                         </div>
                         <Button 
                           size="sm" 
                           onClick={() => handleFollowPerson(person)}
                           disabled={loadingFollow[person.id as number] || !person.id}
-                          className={`text-xs px-3 py-1.5 h-auto flex-shrink-0 whitespace-nowrap ${
-                            followingStates[person.id as number]
-                              ? "bg-white/10 border border-white/20 hover:bg-white/20 text-white"
-                              : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                          }`}
+                            className={`text-xs px-3 py-1.5 h-auto flex-shrink-0 whitespace-nowrap ${
+                              followingStates[person.id as number]
+                                ? "bg-gray-200 dark:bg-white/10 border border-gray-300 dark:border-white/20 hover:bg-gray-300 dark:hover:bg-white/20 text-gray-900 dark:text-white"
+                                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                            }`}
                         >
                           {loadingFollow[person.id as number] 
                             ? "Loading..." 
@@ -1566,10 +1684,10 @@ export default function OrganizationPage({
 
                 {/* Trending Organizations */}
                 {trendingOrgsToShow.length > 0 && (
-                  <div className="bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
                     <div className="flex items-center justify-between mb-4">
-                      <h3 className="font-semibold">Trending Organizations</h3>
-                      <button className="text-xs text-gray-400 hover:text-white transition-colors flex items-center gap-1">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">Trending Organizations</h3>
+                      <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                         View All <ChevronDown className="w-3 h-3 -rotate-90" />
                       </button>
                     </div>
@@ -1582,17 +1700,17 @@ export default function OrganizationPage({
                         <Link
                           key={org.id || index}
                           href={route('organizations.show', orgRouteParam)}
-                          className="flex items-start gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors animate-in fade-in slide-in-from-right-2 duration-300"
+                          className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors animate-in fade-in slide-in-from-right-2 duration-300"
                           style={{ animationDelay: `${index * 100 + 200}ms` }}
                         >
                           <div className={`w-10 h-10 ${org.color || 'bg-emerald-500'} rounded-lg flex items-center justify-center flex-shrink-0`}>
                             <Heart className="w-5 h-5 text-white" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium hover:text-purple-400 transition-colors">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
                               {org.name}
                             </p>
-                            <p className="text-xs text-gray-500 truncate">{org.desc || org.description}</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{org.desc || org.description}</p>
                           </div>
                         </Link>
                       )

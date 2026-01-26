@@ -59,9 +59,13 @@ class RegisteredUserController extends Controller
             }
         }
 
-        $slug = Str::slug($request->name);
-        if (User::where('slug', $slug)->exists()) {
-            $slug .= '-' . Str::random(5);
+        // Generate unique slug with incremental numbers
+        $baseSlug = Str::slug($request->name);
+        $slug = $baseSlug;
+        $counter = 1;
+        while (User::where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
         }
 
         $user = User::create([

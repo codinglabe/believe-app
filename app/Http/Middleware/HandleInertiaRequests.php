@@ -186,6 +186,7 @@ class HandleInertiaRequests extends Middleware
                 if (!($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
                     $userData = [
                         'id' => $user->id,
+                        'slug' => $user->slug ?? null,
                         'name' => $user->name,
                         'email' => $user->email,
                         'phone' => $user->contact_number,
@@ -208,6 +209,7 @@ class HandleInertiaRequests extends Middleware
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
                         "organization" => $user->organization ? [
+                            'id' => $user->organization->id,
                             'name' => $user->organization->name,
                             "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,
@@ -218,6 +220,7 @@ class HandleInertiaRequests extends Middleware
                             'joined' => $user->created_at->format('F Y'),
                             'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
                             'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
+                            'public_view_slug' => $user->slug ?? $user->id, // Use user slug for public view
                         ] : null,
                         'service_seller_profile' => $user->serviceSellerProfile ? [
                             'id' => $user->serviceSellerProfile->id,
