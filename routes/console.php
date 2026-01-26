@@ -32,6 +32,12 @@ Schedule::command('facebook:process-scheduled')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Process scheduled newsletters
+Schedule::command('newsletter:process-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean up old send jobs (optional)
 Schedule::command('sendJobs:cleanup')
     ->daily()

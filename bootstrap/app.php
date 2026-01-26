@@ -34,6 +34,11 @@ return Application::configure(basePath: dirname(__DIR__))
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
             IncreaseUploadLimits::class,
+            DetectTimezone::class, // Sets timezone for entire application
+        ]);
+        
+        // Also apply timezone detection to API routes
+        $middleware->api(append: [
             DetectTimezone::class,
         ]);
 

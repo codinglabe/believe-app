@@ -193,8 +193,11 @@ class TimezoneService
     /**
      * Validate timezone
      */
-    private static function isValidTimezone($timezone)
+    public static function isValidTimezone($timezone)
     {
+        if (empty($timezone)) {
+            return false;
+        }
         return in_array($timezone, timezone_identifiers_list());
     }
 

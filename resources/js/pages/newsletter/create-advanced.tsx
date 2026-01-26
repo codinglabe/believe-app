@@ -25,7 +25,8 @@ import {
     Send,
     ArrowLeft,
     Plus,
-    X
+    X,
+    AlertCircle
 } from "lucide-react"
 
 interface Template {
@@ -173,13 +174,34 @@ export default function CreateAdvancedNewsletter({
     const getTargetCount = () => {
         switch (data.target_type) {
             case 'all':
-                return users.length + organizations.length
+                // Count all active users and organizations
+                return users.filter(u => u.email_verified_at).length + organizations.filter(o => o.status === 'active').length
             case 'users':
                 return selectedUsers.length
             case 'organizations':
                 return selectedOrganizations.length
             case 'specific':
-                return selectedUsers.length + selectedOrganizations.length + selectedRoles.length
+                // For specific, count unique users from selected users, organizations, and roles
+                let count = selectedUsers.length
+                
+                // Add organization users
+                selectedOrganizations.forEach(orgId => {
+                    const org = organizations.find(o => o.id === orgId)
+                    if (org) {
+                        count += 1 // Each organization has at least one user
+                    }
+                })
+                
+                // Add users with selected roles
+                if (selectedRoles.length > 0) {
+                    const roleUsers = users.filter(u => 
+                        u.roles && u.roles.some((r: string) => selectedRoles.includes(r)) &&
+                        !selectedUsers.includes(u.id)
+                    )
+                    count += roleUsers.length
+                }
+                
+                return count
             default:
                 return 0
         }
@@ -258,15 +280,20 @@ export default function CreateAdvancedNewsletter({
                                 )}
 
                                 {Object.keys(errors).length > 0 && (
-                                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                                        <p className="text-sm text-red-600 dark:text-red-400 font-medium mb-2">
-                                            Please fix the following errors:
-                                        </p>
-                                        <ul className="text-sm text-red-600 dark:text-red-400 space-y-1">
-                                            {Object.entries(errors).map(([field, message]) => (
-                                                <li key={field}>• {message}</li>
-                                            ))}
-                                        </ul>
+                                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border-2 border-red-300 dark:border-red-700 rounded-lg">
+                                        <div className="flex items-start gap-2">
+                                            <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                                            <div className="flex-1">
+                                                <p className="text-sm text-red-800 dark:text-red-300 font-semibold mb-2">
+                                                    Please fix the following errors:
+                                                </p>
+                                                <ul className="text-sm text-red-700 dark:text-red-400 space-y-1 list-disc list-inside">
+                                                    {Object.entries(errors).map(([field, message]) => (
+                                                        <li key={field}>{message}</li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        </div>
                                     </div>
                                 )}
                             </CardContent>
@@ -330,28 +357,43 @@ export default function CreateAdvancedNewsletter({
                                 )}
 
                                 {data.schedule_type === 'recurring' && (
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-4">
                                         <div className="space-y-2">
-                                            <Label>Recurring Type</Label>
-                                            <Select value={recurringType} onValueChange={setRecurringType}>
-                                                <SelectTrigger>
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    <SelectItem value="daily">Daily</SelectItem>
-                                                    <SelectItem value="weekly">Weekly</SelectItem>
-                                                    <SelectItem value="monthly">Monthly</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                        </div>
-                                        <div className="space-y-2">
-                                            <Label>Every (interval)</Label>
+                                            <Label htmlFor="recurringSendDate">Start Date & Time</Label>
                                             <Input
-                                                type="number"
-                                                min="1"
-                                                value={recurringInterval}
-                                                onChange={(e) => setRecurringInterval(parseInt(e.target.value) || 1)}
+                                                id="recurringSendDate"
+                                                type="datetime-local"
+                                                value={data.send_date}
+                                                onChange={(e) => setData('send_date', e.target.value)}
+                                                required={data.schedule_type === 'recurring'}
                                             />
+                                            <p className="text-xs text-gray-500">
+                                                The newsletter will start sending from this date and time, then repeat based on the settings below.
+                                            </p>
+                                        </div>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="space-y-2">
+                                                <Label>Recurring Type</Label>
+                                                <Select value={recurringType} onValueChange={setRecurringType}>
+                                                    <SelectTrigger>
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        <SelectItem value="daily">Daily</SelectItem>
+                                                        <SelectItem value="weekly">Weekly</SelectItem>
+                                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                                    </SelectContent>
+                                                </Select>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <Label>Every (interval)</Label>
+                                                <Input
+                                                    type="number"
+                                                    min="1"
+                                                    value={recurringInterval}
+                                                    onChange={(e) => setRecurringInterval(parseInt(e.target.value) || 1)}
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -405,10 +447,13 @@ export default function CreateAdvancedNewsletter({
                                     </Button>
                                 </div>
 
-                                <div className="flex items-center justify-between">
-                                    <span className="text-sm text-gray-600 dark:text-gray-400">
-                                        Target Count: {getTargetCount()}
-                                    </span>
+                                <div className="flex items-center justify-between p-3 bg-primary/5 rounded-lg border border-primary/20">
+                                    <div className="flex items-center gap-2">
+                                        <Users className="h-4 w-4 text-primary" />
+                                        <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                            Target Recipients: <span className="text-primary">{getTargetCount()}</span>
+                                        </span>
+                                    </div>
                                     <div className="flex items-center space-x-2">
                                         <Checkbox
                                             id="isPublic"
@@ -484,6 +529,53 @@ export default function CreateAdvancedNewsletter({
                             </CardContent>
                         </Card>
 
+                        {/* Newsletter Summary */}
+                        {(data.subject || data.content) && (
+                            <Card>
+                                <CardHeader>
+                                    <CardTitle>Newsletter Summary</CardTitle>
+                                </CardHeader>
+                                <CardContent className="space-y-3">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <Label className="text-xs text-gray-500">Subject</Label>
+                                            <p className="text-sm font-medium">{data.subject || 'Not set'}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-gray-500">Schedule</Label>
+                                            <p className="text-sm font-medium capitalize">{data.schedule_type}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-gray-500">Target Type</Label>
+                                            <p className="text-sm font-medium capitalize">{data.target_type}</p>
+                                        </div>
+                                        <div>
+                                            <Label className="text-xs text-gray-500">Recipients</Label>
+                                            <p className="text-sm font-medium text-primary">{getTargetCount()}</p>
+                                        </div>
+                                    </div>
+                                    {(data.schedule_type === 'scheduled' || data.schedule_type === 'recurring') && data.send_date && (
+                                        <div>
+                                            <Label className="text-xs text-gray-500">
+                                                {data.schedule_type === 'recurring' ? 'Start Date' : 'Send Date'}
+                                            </Label>
+                                            <p className="text-sm font-medium">
+                                                {new Date(data.send_date).toLocaleString()}
+                                            </p>
+                                        </div>
+                                    )}
+                                    {data.schedule_type === 'recurring' && (
+                                        <div>
+                                            <Label className="text-xs text-gray-500">Recurring Pattern</Label>
+                                            <p className="text-sm font-medium">
+                                                Every {recurringInterval} {recurringType}
+                                            </p>
+                                        </div>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        )}
+
                         {/* Actions */}
                         <div className="flex items-center justify-end gap-4">
                             <Button
@@ -495,7 +587,7 @@ export default function CreateAdvancedNewsletter({
                             </Button>
                             <Button
                                 type="submit"
-                                disabled={!selectedTemplate || processing}
+                                disabled={!selectedTemplate || processing || getTargetCount() === 0}
                                 className="flex items-center gap-2"
                             >
                                 <Send className="h-4 w-4" />

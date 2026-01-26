@@ -86,7 +86,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
     // 2. AI Chat Assistant
     {
-        title: 'AI Chat Assistant',
+        title: 'AI Believe Assistant',
         href: '/ai-chat',
         icon: Bot,
         permission: "ai.chat.use",

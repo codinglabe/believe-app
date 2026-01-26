@@ -101,7 +101,7 @@ class UserProfileController extends Controller
                 'name' => $user->name,
                 'email' => $user->email,
                 'phone' => $user->contact_number,
-                'dob' => $user->dob?->format('Y-m-d'),
+                'dob' => $user->dob ? (is_string($user->dob) ? $user->dob : \Carbon\Carbon::parse($user->dob)->format('Y-m-d')) : null,
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'positions' => $userPositions, // current selected
             ],
@@ -122,6 +122,7 @@ class UserProfileController extends Controller
             'image' => ['nullable', 'image', 'mimes:jpeg,png,jpg,gif', 'max:2048'],
             'positions' => ['sometimes', 'array'],
             'positions.*' => ['exists:supporter_positions,id'],
+            'timezone' => ['nullable', 'string', 'max:255'],
         ]);
 
         // Email changed? Send verification
@@ -142,13 +143,22 @@ class UserProfileController extends Controller
         }
 
         // Update basic info
-        $user->update([
+        $updateData = [
             'name' => $validated['name'],
             'email' => $validated['email'],
             'contact_number' => $validated['phone'] ?? null,
             'dob' => $validated['dob'] ?? null,
             'image' => $validated['image'] ?? $user->image,
-        ]);
+        ];
+        
+        // Update timezone if provided and valid
+        if (isset($validated['timezone']) && !empty($validated['timezone'])) {
+            if (in_array($validated['timezone'], timezone_identifiers_list())) {
+                $updateData['timezone'] = $validated['timezone'];
+            }
+        }
+        
+        $user->update($updateData);
 
         // Sync supporter positions
         if (array_key_exists('positions', $validated)) {
@@ -159,6 +169,30 @@ class UserProfileController extends Controller
         }
 
         return back()->with('success', 'Profile updated successfully!');
+    }
+
+    /**
+     * Update user timezone
+     */
+    public function updateTimezone(Request $request)
+    {
+        $user = $request->user();
+
+        $validated = $request->validate([
+            'timezone' => ['required', 'string', 'max:255'],
+        ]);
+
+        // Validate timezone
+        if (!in_array($validated['timezone'], timezone_identifiers_list())) {
+            return back()->with('error', 'Invalid timezone provided.');
+        }
+
+        $user->update(['timezone' => $validated['timezone']]);
+        
+        // Update session
+        session(['user_timezone' => $validated['timezone']]);
+
+        return back()->with('success', 'Timezone updated successfully!');
     }
 
 
@@ -1052,10 +1086,19 @@ class UserProfileController extends Controller
 
         // Get recent posts (limit to 5 for initial load)
         $authUserId = $authUser ? $authUser->id : null;
-        $posts = Post::where('user_id', $user->id)
-            ->with('user:id,name,image')
-            ->withCount(['reactions', 'comments'])
-            ->latest()
+        $postFilter = $request->get('filter', 'user'); // 'all' or 'user'
+        
+        // Build query based on filter
+        $postsQuery = Post::with('user:id,name,image')
+            ->withCount(['reactions', 'comments']);
+        
+        if ($postFilter === 'user') {
+            // Only this user's posts
+            $postsQuery->where('user_id', $user->id);
+        }
+        // If 'all', no filter - get all posts
+        
+        $posts = $postsQuery->latest()
             ->limit(5)
             ->get()
             ->map(function ($post) use ($authUserId) {
@@ -1243,6 +1286,7 @@ class UserProfileController extends Controller
             'postsCount' => $postsCount,
             'donationsCount' => $donationsCount,
             'totalDonated' => $totalDonated,
+            'postFilter' => $postFilter, // Pass filter to frontend
             'followersCount' => $followersCount,
             'followingCount' => $followingCount,
             'groupsCount' => $groupsCount,
@@ -1427,10 +1471,21 @@ class UserProfileController extends Controller
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
         
         $authUserId = Auth::id();
-        $posts = Post::where('user_id', $user->id)
-            ->with('user:id,name,image')
-            ->withCount(['reactions', 'comments'])
-            ->latest()
+        $filter = $request->get('filter', 'user'); // 'all' or 'user'
+        
+        // Build query based on filter
+        $postsQuery = Post::with('user:id,name,image')
+            ->withCount(['reactions', 'comments']);
+        
+        if ($filter === 'user') {
+            // Only this user's posts
+            $postsQuery->where('user_id', $user->id);
+        } else {
+            // All posts from all users
+            // No filter needed - get all posts
+        }
+        
+        $posts = $postsQuery->latest()
             ->limit(20)
             ->get()
             ->map(function ($post) use ($authUserId) {
@@ -1509,6 +1564,7 @@ class UserProfileController extends Controller
             'posts' => $posts,
             'chatGroups' => [], // Groups loaded separately in groups tab
             'currentPage' => 'posts',
+            'postFilter' => $filter, // Pass filter to frontend
         ]));
     }
 

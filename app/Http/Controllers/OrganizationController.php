@@ -525,12 +525,21 @@ public function index(Request $request)
             // Load posts with minimal data initially - defer detailed loading
             $userId = Auth::id();
             
+            // Get filter from request (default to 'organization' for organization posts only)
+            $postFilter = $request->get('filter', 'organization'); // 'all' or 'organization'
+            
             // Load posts with reactions and comments data
-            $recentPosts = \App\Models\Post::where('user_id', $registeredOrg->user_id)
-                ->select('id', 'content', 'images', 'created_at', 'user_id')
+            $postsQuery = \App\Models\Post::select('id', 'content', 'images', 'created_at', 'user_id')
                 ->with('user:id,name,image')
-                ->withCount(['reactions', 'comments'])
-                ->latest()
+                ->withCount(['reactions', 'comments']);
+            
+            if ($postFilter === 'organization') {
+                // Only this organization's posts
+                $postsQuery->where('user_id', $registeredOrg->user_id);
+            }
+            // If 'all', no filter - get all posts
+            
+            $recentPosts = $postsQuery->latest()
                 ->limit(5) // Reduced initial load
                 ->get()
                 ->map(function ($post) use ($userId) {
@@ -608,24 +617,27 @@ public function index(Request $request)
                     ];
                 });
             
-            // Load Facebook posts (simplified)
-            $facebookPosts = \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
-                ->where('status', 'published')
-                ->select('id', 'message', 'image', 'published_at', 'created_at')
-                ->latest()
-                ->limit(5) // Reduced initial load
-                ->get()
-                ->map(function ($post) {
-                    return [
-                        'id' => 'fb_' . $post->id,
-                        'title' => null,
-                        'content' => $post->message,
-                        'image' => $post->image,
-                        'created_at' => $post->published_at ?? $post->created_at,
-                        'likes_count' => 0,
-                        'comments_count' => 0,
-                    ];
-                });
+            // Load Facebook posts (only if showing organization posts)
+            $facebookPosts = collect([]);
+            if ($postFilter === 'organization') {
+                $facebookPosts = \App\Models\FacebookPost::where('organization_id', $registeredOrg->id)
+                    ->where('status', 'published')
+                    ->select('id', 'message', 'image', 'published_at', 'created_at')
+                    ->latest()
+                    ->limit(5) // Reduced initial load
+                    ->get()
+                    ->map(function ($post) {
+                        return [
+                            'id' => 'fb_' . $post->id,
+                            'title' => null,
+                            'content' => $post->message,
+                            'image' => $post->image,
+                            'created_at' => $post->published_at ?? $post->created_at,
+                            'likes_count' => 0,
+                            'comments_count' => 0,
+                        ];
+                    });
+            }
             
             $posts = $recentPosts->merge($facebookPosts)->sortByDesc('created_at')->take(5)->values();
         }
@@ -648,6 +660,7 @@ public function index(Request $request)
             'believePointsEarned' => $believePointsEarned,
             'believePointsSpent' => $believePointsSpent,
             'believePointsBalance' => $believePointsBalance,
+            'postFilter' => $postFilter ?? 'organization', // Pass filter to frontend
         ]);
     }
 

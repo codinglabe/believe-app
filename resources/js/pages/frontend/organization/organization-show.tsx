@@ -63,6 +63,7 @@ interface OrganizationPageProps {
   believePointsEarned?: number
   believePointsSpent?: number
   believePointsBalance?: number
+  postFilter?: string
 }
 
 export default function OrganizationPage({
@@ -83,8 +84,11 @@ export default function OrganizationPage({
   believePointsEarned = 0,
   believePointsSpent = 0,
   believePointsBalance = 0,
+  postFilter = 'organization',
 }: OrganizationPageProps) {
   const { url } = usePage()
+  const page = usePage()
+  const currentPostFilter = postFilter || (page.props as any).postFilter || 'organization'
   const [isFavorite, setIsFavorite] = useState(organization.is_favorited || isFav)
   const [showDonationModal, setShowDonationModal] = useState(false)
   const [showInvitePopup, setShowInvitePopup] = useState(false)
@@ -149,8 +153,8 @@ export default function OrganizationPage({
   const handleTabChange = (tabName: string) => {
     // For unregistered organizations, only allow About and Contact tabs
     if (!organization.is_registered && tabName !== "About" && tabName !== "Contact") {
-      return
-    }
+        return
+      }
     
     setActiveTab(tabName)
     setIsPageLoading(true) // Set loading immediately when navigation starts
@@ -325,7 +329,7 @@ export default function OrganizationPage({
                 
                 if (existingReactionIndex >= 0) {
                   updatedReactions[existingReactionIndex] = reactionWithUser
-                } else {
+      } else {
                   updatedReactions.push(reactionWithUser)
                 }
               }
@@ -419,7 +423,7 @@ export default function OrganizationPage({
         // User cancelled or error occurred
         console.log('Share cancelled or failed')
       }
-    } else {
+      } else {
       // Fallback: copy to clipboard
       try {
         await navigator.clipboard.writeText(shareUrl)
@@ -536,7 +540,7 @@ export default function OrganizationPage({
         <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 
           {/* Profile Banner */}
-          <div className="relative">
+                  <div className="relative">
             <div
               className="h-32 sm:h-40 bg-gradient-to-r from-purple-900 via-blue-800 to-purple-900"
               style={
@@ -565,15 +569,15 @@ export default function OrganizationPage({
                         <CheckCircle className="w-5 h-5 text-white" />
                       </div>
                     )}
-                  </div>
+                </div>
 
                   <div className="text-center sm:text-left flex-1 w-full sm:w-auto">
                     <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
                       <h1 className="text-2xl sm:text-3xl font-bold break-words text-gray-900 dark:text-white">{organization.name}</h1>
                       <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
                         <Building2 className="w-4 h-4" />
-                      </div>
                     </div>
+                      </div>
                     <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">{organizationHandle}</p>
                     <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
                       {organization.is_registered && (
@@ -601,7 +605,7 @@ export default function OrganizationPage({
 
                 {/* Action Buttons Row */}
                 <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
-                  {organization.is_registered && (
+                {organization.is_registered && (
                     <OrgFollowButton
                       organization={organization}
                       auth={auth}
@@ -611,34 +615,34 @@ export default function OrganizationPage({
                   )}
                   {organization.is_registered && (
                     <>
-                      <Button
+                    <Button
                         className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                        onClick={handleDonateNow}
-                      >
+                      onClick={handleDonateNow}
+                    >
                         <Heart className="w-4 h-4 mr-2" />
                         Donate
-                      </Button>
-                      <Button
+                                      </Button>
+                        <Button
                         className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                         onClick={handleMessageClick}
-                      >
+                        >
                         <MessageCircle className="w-4 h-4 mr-2" />
                         Message
-                      </Button>
+                        </Button>
                     </>
                   )}
                   {!organization.is_registered && auth?.user && (
-                    <Button
-                      variant="outline"
+                      <Button
+                        variant="outline"
                       className="bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 border-gray-300 dark:border-white/20"
                       onClick={() => setShowInvitePopup(true)}
-                    >
+                      >
                       <Mail className="w-4 h-4 mr-2" />
                       Invite
-                    </Button>
-                  )}
-                </div>
-              </div>
+                      </Button>
+                    )}
+                  </div>
+            </div>
 
               {/* Profile Stats */}
               <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 md:gap-6 py-3 px-3 sm:px-0 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-white/10">
@@ -668,10 +672,10 @@ export default function OrganizationPage({
                   <span className="text-gray-900 dark:text-white">Organized</span>
                 </div>
               </div>
-            </div>
           </div>
+        </div>
 
-          {/* Main Content */}
+            {/* Main Content */}
           <main className="max-w-[95rem] mx-auto px-3 sm:px-4 py-4 sm:py-6">
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
               {/* Left Sidebar - Public Profile Info */}
@@ -704,7 +708,7 @@ export default function OrganizationPage({
                   </nav>
                 </div>
 
-                {organization.is_registered && (
+                  {organization.is_registered && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
                     <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Organization Info</p>
                     <div className="flex items-center gap-3 mb-4">
@@ -778,6 +782,43 @@ export default function OrganizationPage({
                     {/* Community Feed - Only for registered organizations */}
                     {activeTab === "Community Feed" && organization.is_registered && (
                   <div className="space-y-4">
+                    {/* Post Filter Tabs */}
+                    <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-2 mb-4">
+                      <button
+                        onClick={() => {
+                          const slug = organization.registered_organization?.user?.slug || organization.id;
+                          router.get(route('organizations.show', slug), { filter: 'organization' }, {
+                            preserveState: true,
+                            preserveScroll: true,
+                            only: ['posts', 'postFilter'],
+                          });
+                        }}
+                        className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                          currentPostFilter === 'organization'
+                            ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Organization Posts
+                      </button>
+                      <button
+                        onClick={() => {
+                          const slug = organization.registered_organization?.user?.slug || organization.id;
+                          router.get(route('organizations.show', slug), { filter: 'all' }, {
+                            preserveState: true,
+                            preserveScroll: true,
+                            only: ['posts', 'postFilter'],
+                          });
+                        }}
+                        className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                          currentPostFilter === 'all'
+                            ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        All Posts
+                      </button>
+                    </div>
                     {postsState.length > 0 ? (
                       postsState.map((postItem) => {
                         const postId = postItem.id
@@ -1026,8 +1067,8 @@ export default function OrganizationPage({
                                     <>
                                       <ThumbsUp className="w-5 h-5" />
                                       <span className="text-sm font-medium text-gray-900 dark:text-white">Like</span>
-                                    </>
-                                  )}
+                    </>
+                  )}
                                 </button>
                                 <AnimatePresence>
                                   {showReactionPicker === postId && (
@@ -1058,7 +1099,7 @@ export default function OrganizationPage({
                                     </motion.div>
                                   )}
                                 </AnimatePresence>
-                              </div>
+                </div>
                               <button
                                 onClick={() => setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }))}
                                 className="flex items-center justify-center gap-2 py-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white transition-all"
@@ -1073,7 +1114,7 @@ export default function OrganizationPage({
                                 <Share2 className="w-5 h-5" />
                                 <span className="text-sm font-medium text-gray-900 dark:text-white">Share</span>
                               </button>
-                            </div>
+              </div>
 
                             {/* Comments Section */}
                             {showComments[postId] && (
@@ -1120,9 +1161,9 @@ export default function OrganizationPage({
                                       rows={2}
                                     />
                                     {commentInputs[postId]?.trim() && (
-                                      <Button
+                          <Button
                                         onClick={() => handleComment(postId)}
-                                        size="sm"
+                            size="sm"
                                         className="absolute right-2 bottom-2 h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
                                       >
                                         <Send className="w-4 h-4" />
@@ -1196,17 +1237,17 @@ export default function OrganizationPage({
                           {isGeneratingAbout ? (
                             <>
                               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
-                              Generating...
-                            </>
-                          ) : (
-                            <>
+                                Generating...
+                              </>
+                            ) : (
+                              <>
                               <Zap className="w-4 h-4 mr-2" />
-                              Bring About
-                            </>
-                          )}
-                        </Button>
-                      )}
-                    </div>
+                                Bring About
+                              </>
+                            )}
+                          </Button>
+                        )}
+                      </div>
                     {organization.description && (
                       <div className="text-gray-700 dark:text-gray-300 mb-4 leading-relaxed">
                         {organization.description.split('\n').map((paragraph, index) => {
@@ -1220,26 +1261,26 @@ export default function OrganizationPage({
                         })}
                       </div>
                     )}
-                    {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
+                      {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
                       <div className="mb-4">
                         <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Mission</h3>
                         <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
-                      </div>
-                    )}
+                        </div>
+                      )}
                     {organization.website && (
-                      <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2">
                         <Globe className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                          <a
-                            href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                              <a
+                                href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
                             className="text-emerald-400 hover:underline"
-                          >
-                            {organization.website.replace(/^https?:\/\//, '')}
-                          </a>
-                      </div>
-                    )}
-                  </div>
+                              >
+                                {organization.website.replace(/^https?:\/\//, '')}
+                              </a>
+                        </div>
+                      )}
+                </div>
                 )}
 
                 {/* Products Tab Content - Only for registered organizations */}
@@ -1281,19 +1322,19 @@ export default function OrganizationPage({
                                   <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm">
                                     View Details
                                   </Button>
-                                </Link>
+                    </Link>
                               </div>
-                            )}
-                          </div>
+                    )}
+                  </div>
                         ))}
-                      </div>
+                </div>
                     ) : (
                       <div className="text-center py-12">
                         <ShoppingBag className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-600 dark:text-gray-400">No products available yet.</p>
-                      </div>
+              </div>
                     )}
-                  </div>
+            </div>
                 )}
 
                 {/* Opportunities Tab Content */}
@@ -1347,12 +1388,12 @@ export default function OrganizationPage({
                                   </Button>
                                 </Link>
                               ) : (
-                                <Button 
+                        <Button
                                   disabled 
                                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white opacity-50 cursor-not-allowed"
                                 >
                                   {job.has_applied ? 'Already Applied' : (job.status === 'open' || !job.status) ? (auth?.user ? 'Not Available' : 'Sign in to Apply') : 'Not Available'}
-                                </Button>
+                        </Button>
                               )}
                               <Link href={route("jobs.show", job.id)}>
                                 <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
@@ -1361,8 +1402,8 @@ export default function OrganizationPage({
                               </Link>
                             </div>
                           </div>
-                        ))}
-                      </div>
+                      ))}
+                    </div>
                     ) : (
                       <div className="text-center py-12">
                         <Briefcase className="w-16 h-16 text-gray-600 mx-auto mb-4" />
@@ -1428,15 +1469,15 @@ export default function OrganizationPage({
                               <Link href={route("viewEvent", event.id)}>
                                 <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
                                   View Details
-                                </Button>
+                  </Button>
                               </Link>
                               <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
                                 Register
                               </Button>
-                            </div>
-                          </div>
+            </div>
+          </div>
                         ))}
-                      </div>
+        </div>
                     ) : (
                       <div className="text-center py-12">
                         <Calendar className="w-16 h-16 text-gray-600 mx-auto mb-4" />
@@ -1471,7 +1512,7 @@ export default function OrganizationPage({
                           <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
                             <Mail className="w-5 h-5 text-white" />
-                          </div>
+      </div>
                           <div>
                             <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
                             <a href={`mailto:${organization.email}`} className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
@@ -1571,7 +1612,7 @@ export default function OrganizationPage({
                                   {supporter.user?.email && (
                                     <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
                                   )}
-                                </div>
+              </div>
                               </div>
                               <div className="space-y-2">
                                 {supporter.joined_at && (
@@ -1589,13 +1630,13 @@ export default function OrganizationPage({
                             </Link>
                           )
                         })}
-                      </div>
-                    ) : (
+                  </div>
+                ) : (
                       <div className="text-center py-12">
                         <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                         <p className="text-gray-600 dark:text-gray-400">No supporters yet.</p>
                         <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Be the first to support this organization!</p>
-                      </div>
+                        </div>
                     )}
                   </div>
                 )}
@@ -1660,8 +1701,8 @@ export default function OrganizationPage({
                           </Link>
                           <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{person.org || person.description}</p>
                         </div>
-                        <Button 
-                          size="sm" 
+                          <Button
+                            size="sm"
                           onClick={() => handleFollowPerson(person)}
                           disabled={loadingFollow[person.id as number] || !person.id}
                             className={`text-xs px-3 py-1.5 h-auto flex-shrink-0 whitespace-nowrap ${
@@ -1690,7 +1731,7 @@ export default function OrganizationPage({
                       <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                         View All <ChevronDown className="w-3 h-3 -rotate-90" />
                       </button>
-                    </div>
+              </div>
                     <div className="space-y-3">
                       {trendingOrgsToShow.map((org, index) => {
                       // Determine the route parameter (slug or excel_data_id)
@@ -1705,7 +1746,7 @@ export default function OrganizationPage({
                         >
                           <div className={`w-10 h-10 ${org.color || 'bg-emerald-500'} rounded-lg flex items-center justify-center flex-shrink-0`}>
                             <Heart className="w-5 h-5 text-white" />
-                          </div>
+            </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
                               {org.name}
@@ -1715,9 +1756,9 @@ export default function OrganizationPage({
                         </Link>
                       )
                       })}
-                    </div>
-                  </div>
-                )}
+          </div>
+        </div>
+      )}
               </aside>
             </div>
           </main>
@@ -1744,6 +1785,6 @@ export default function OrganizationPage({
             />
           )}
         </div>
-      </FrontendLayout>
+    </FrontendLayout>
   )
 }

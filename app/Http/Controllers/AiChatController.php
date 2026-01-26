@@ -29,8 +29,16 @@ class AiChatController extends Controller
         $user = auth()->user();
         $conversationId = $request->get('conversation_id');
         
+        // For organization users, scope conversations to the organization's primary user
+        // This ensures each organization has its own memory
+        $userIdForConversations = $user->id;
+        if ($user->role === 'organization' && $user->organization) {
+            // Use the organization's primary user_id for conversations
+            $userIdForConversations = $user->organization->user_id ?? $user->id;
+        }
+        
         // Get conversations list with pagination
-        $conversations = AiChatConversation::where('user_id', $user->id)
+        $conversations = AiChatConversation::where('user_id', $userIdForConversations)
             ->orderBy('last_message_at', 'desc')
             ->paginate(20, ['*'], 'page', $request->get('page', 1));
 
@@ -39,7 +47,7 @@ class AiChatController extends Controller
         $messages = [];
 
         if ($conversationId) {
-            $currentConversation = AiChatConversation::where('user_id', $user->id)
+            $currentConversation = AiChatConversation::where('user_id', $userIdForConversations)
                 ->where('id', $conversationId)
                 ->with(['messages' => function ($query) {
                     $query->orderBy('created_at');
@@ -75,7 +83,13 @@ class AiChatController extends Controller
         $user = auth()->user();
         $page = $request->get('page', 1);
         
-        $conversations = AiChatConversation::where('user_id', $user->id)
+        // For organization users, scope conversations to the organization's primary user
+        $userIdForConversations = $user->id;
+        if ($user->role === 'organization' && $user->organization) {
+            $userIdForConversations = $user->organization->user_id ?? $user->id;
+        }
+        
+        $conversations = AiChatConversation::where('user_id', $userIdForConversations)
             ->orderBy('last_message_at', 'desc')
             ->paginate(20, ['*'], 'page', $page);
 
@@ -140,15 +154,22 @@ class AiChatController extends Controller
         }
 
         try {
+            // For organization users, use the organization's primary user_id for conversations
+            // This ensures each organization has its own memory
+            $userIdForConversations = $user->id;
+            if ($user->role === 'organization' && $user->organization) {
+                $userIdForConversations = $user->organization->user_id ?? $user->id;
+            }
+            
             // Get or create conversation
             if ($validated['conversation_id']) {
-                $conversation = AiChatConversation::where('user_id', $user->id)
+                $conversation = AiChatConversation::where('user_id', $userIdForConversations)
                     ->where('id', $validated['conversation_id'])
                     ->firstOrFail();
             } else {
                 // Create new conversation
                 $conversation = AiChatConversation::create([
-                    'user_id' => $user->id,
+                    'user_id' => $userIdForConversations,
                     'title' => Str::limit($validated['message'], 50),
                     'last_message_at' => now(),
                 ]);
@@ -165,6 +186,42 @@ class AiChatController extends Controller
             $historyMessages = AiChatMessage::where('conversation_id', $conversation->id)
                 ->orderBy('created_at')
                 ->get();
+
+            // Check if this is the first message (only 1 user message exists) and it's a simple greeting
+            $isFirstMessage = $historyMessages->where('role', 'user')->count() === 1;
+            $isSimpleGreeting = $this->isSimpleGreeting($validated['message']);
+            
+            if ($isFirstMessage && $isSimpleGreeting) {
+                // Return branded welcome message for first greetings
+                $welcomeMessage = "Hello! I'm your AI Believe Assistant, here to help you with your organization's needs. I can assist you with:\n\n" .
+                    "• Creating and managing campaigns\n" .
+                    "• Generating content (prayers, devotionals, scriptures)\n" .
+                    "• Answering questions about your campaigns and content\n" .
+                    "• Providing insights and suggestions\n\n" .
+                    "Feel free to ask me anything! How can I help you today?";
+                
+                // Save assistant message
+                $assistantMessage = AiChatMessage::create([
+                    'conversation_id' => $conversation->id,
+                    'role' => 'assistant',
+                    'content' => $welcomeMessage,
+                ]);
+
+                // Update conversation timestamp
+                $conversation->update(['last_message_at' => now()]);
+
+                // Deduct credits
+                $user->decrement('credits', $creditsNeeded);
+                $user->refresh();
+
+                return response()->json([
+                    'success' => true,
+                    'response' => $welcomeMessage,
+                    'conversation_id' => $conversation->id,
+                    'credits_remaining' => $user->credits,
+                    'credits_deducted' => $creditsNeeded,
+                ]);
+            }
 
             // Check for title generation requests first (before operations)
             $isTitleGenerationRequest = $this->isTitleGenerationRequest($validated['message']);
@@ -519,13 +576,43 @@ class AiChatController extends Controller
     {
         $user = auth()->user();
         
-        $conversation = AiChatConversation::where('user_id', $user->id)
+        // For organization users, scope conversations to the organization's primary user
+        $userIdForConversations = $user->id;
+        if ($user->role === 'organization' && $user->organization) {
+            $userIdForConversations = $user->organization->user_id ?? $user->id;
+        }
+        
+        $conversation = AiChatConversation::where('user_id', $userIdForConversations)
             ->where('id', $id)
             ->firstOrFail();
 
         $conversation->delete();
 
         return response()->json(['success' => true]);
+    }
+
+    /**
+     * Check if the message is a simple greeting
+     */
+    protected function isSimpleGreeting(string $message): bool
+    {
+        $message = trim(strtolower($message));
+        
+        // Common greetings
+        $greetings = [
+            'hi', 'hello', 'hey', 'hey there', 'hi there', 'hello there',
+            'greetings', 'good morning', 'good afternoon', 'good evening',
+            'gm', 'gn', 'morning', 'afternoon', 'evening',
+            'sup', 'what\'s up', 'whats up', 'wassup',
+            'yo', 'howdy', 'hiya', 'hola', 'bonjour'
+        ];
+        
+        // Check if message is exactly a greeting (allowing for punctuation)
+        $messageClean = preg_replace('/[^\w\s]/', '', $message);
+        
+        return in_array($messageClean, $greetings) || 
+               in_array($message, $greetings) ||
+               preg_match('/^(hi|hello|hey|greetings|good\s+(morning|afternoon|evening))[\s!.,]*$/i', $message);
     }
 
     /**

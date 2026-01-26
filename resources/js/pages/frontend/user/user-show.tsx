@@ -77,6 +77,7 @@ interface UserPageProps {
     from: number
     to: number
   }
+  postFilter?: string
 }
 
 export default function UserPage({
@@ -105,6 +106,7 @@ export default function UserPage({
   chatGroups = [],
   activities = [],
   activityPagination,
+  postFilter = 'user',
 }: UserPageProps) {
   const page = usePage()
   const currentPath = (page.url as string) || ''
@@ -142,6 +144,9 @@ export default function UserPage({
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
+  
+  // Get postFilter from page props
+  const currentPostFilter = postFilter || (page.props as any).postFilter || 'user'
 
   // Get cover image
   const coverImage = user.cover_img
@@ -635,6 +640,43 @@ export default function UserPage({
                   {/* Posts Tab */}
                   {activeTab === "Posts" && (
                     <div className="space-y-4">
+                      {/* Post Filter Tabs */}
+                      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-2 mb-4">
+                        <button
+                          onClick={() => {
+                            const slug = user.slug || user.id;
+                            router.get(route('users.posts', slug), { filter: 'user' }, {
+                              preserveState: true,
+                              preserveScroll: true,
+                              only: ['posts', 'postFilter'],
+                            });
+                          }}
+                          className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                            currentPostFilter === 'user'
+                              ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                        >
+                          User Posts
+                        </button>
+                        <button
+                          onClick={() => {
+                            const slug = user.slug || user.id;
+                            router.get(route('users.posts', slug), { filter: 'all' }, {
+                              preserveState: true,
+                              preserveScroll: true,
+                              only: ['posts', 'postFilter'],
+                            });
+                          }}
+                          className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                            currentPostFilter === 'all'
+                              ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                              : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                          }`}
+                        >
+                          All Posts
+                        </button>
+                      </div>
                       {postsState.length > 0 ? (
                         postsState.map((postItem) => {
                           const postId = postItem.id

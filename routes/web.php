@@ -425,6 +425,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
     Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/timezone', [UserProfileController::class, 'updateTimezone'])->name('profile.timezone');
 
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
@@ -1165,6 +1166,7 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
                 Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
                 Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
                 Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+        Route::get('/export', [NewsletterController::class, 'export'])->name('export');
         Route::get('/create', [NewsletterController::class, 'create'])->name('create');
         Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
         Route::post('/', [NewsletterController::class, 'store'])->name('store');
