@@ -84,6 +84,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: Coins,
     },
 
+    // Believe FundMe (organization campaigns)
+    {
+        title: 'Believe FundMe',
+        href: '/fundme',
+        icon: HandCoins,
+        role: "organization",
+    },
+
     // 2. AI Chat Assistant
     {
         title: 'AI Believe Assistant',

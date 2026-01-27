@@ -40,6 +40,9 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatTopicController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\FundMeCampaignController;
+use App\Http\Controllers\FundMeController;
+use App\Http\Controllers\FundMeDonationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\StatusCodeController;
@@ -179,6 +182,11 @@ Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nod
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+
+// Believe FundMe – public listing and campaign pages
+Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
+Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('fundme.show')->where('slug', '[a-z0-9\-]+');
+Route::post('/believe-fundme/donate', [FundMeDonationController::class, 'store'])->name('fundme.donate.store');
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
@@ -690,6 +698,15 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
     Route::get('/campaigns/ai/create', [AiCampaignController::class, 'create'])->name('campaigns.ai-create');
     Route::post('/campaigns/ai', [AiCampaignController::class, 'store'])->name('campaigns.ai-store');
+
+    // Believe FundMe – organization campaigns
+    Route::get('/fundme', [FundMeCampaignController::class, 'index'])->name('fundme.campaigns.index');
+    Route::get('/fundme/create', [FundMeCampaignController::class, 'create'])->name('fundme.campaigns.create');
+    Route::post('/fundme', [FundMeCampaignController::class, 'store'])->name('fundme.campaigns.store');
+    Route::get('/fundme/{fundme_campaign}/edit', [FundMeCampaignController::class, 'edit'])->name('fundme.campaigns.edit');
+    Route::put('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'update'])->name('fundme.campaigns.update');
+    Route::post('/fundme/{fundme_campaign}/submit', [FundMeCampaignController::class, 'submit'])->name('fundme.campaigns.submit');
+    Route::delete('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'destroy'])->name('fundme.campaigns.destroy');
 
     // AI Chat
     Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
