@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from "react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import useAxios from "@/hooks/useAxios"
 import {
   ChevronDown,
   MapPin,
@@ -136,6 +137,9 @@ export default function UserPage({
   const [postsState, setPostsState] = useState(posts)
   const [followingStates, setFollowingStates] = useState<Record<number, boolean>>({})
   const [loadingFollow, setLoadingFollow] = useState<Record<number, boolean>>({})
+  const [isFollowingUser, setIsFollowingUser] = useState<boolean>(user?.is_following || false)
+  const [loadingFollowUser, setLoadingFollowUser] = useState<boolean>(false)
+  const axios = useAxios()
   const [showComments, setShowComments] = useState<Record<number, boolean>>({})
   const [showReactionPicker, setShowReactionPicker] = useState<number | null>(null)
   const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
@@ -144,6 +148,11 @@ export default function UserPage({
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
+  
+  // Sync postsState when posts prop changes (e.g., when switching tabs)
+  useEffect(() => {
+    setPostsState(posts || [])
+  }, [posts])
   
   // Get postFilter from page props
   const currentPostFilter = postFilter || (page.props as any).postFilter || 'user'
@@ -154,6 +163,7 @@ export default function UserPage({
     : null
 
   const userImage = user.image
+  const orgImage = user.image // Fallback, will be replaced by creator_image if available
     ? `/storage/${user.image}`
     : null
 
@@ -162,7 +172,11 @@ export default function UserPage({
     ? new Date(user.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : 'Recently'
 
-  const location = user.location || 'Location not set'
+  // Build location from city, state, zipcode or use location field
+  const locationParts = [user.city, user.state].filter(Boolean)
+  const location = locationParts.length > 0
+    ? locationParts.join(', ') + (user.zipcode ? ` ${user.zipcode}` : '')
+    : (user.location || 'Location not set')
 
   // Tabs configuration
   const profileTabs = [
@@ -409,26 +423,51 @@ export default function UserPage({
     setLoadingFollow(prev => ({ ...prev, [person.id]: true }))
 
     try {
-      const response = await fetch(route('organizations.toggle-favorite', person.id), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
-        },
-      })
-
-      if (response.ok) {
-        setFollowingStates(prev => ({
-          ...prev,
-          [person.id]: !prev[person.id]
-        }))
-      }
+      await axios.post(route('organizations.toggle-favorite', person.id))
+      setFollowingStates(prev => ({
+        ...prev,
+        [person.id]: !prev[person.id]
+      }))
     } catch (error) {
       console.error('Error toggling follow:', error)
     } finally {
       setLoadingFollow(prev => ({ ...prev, [person.id]: false }))
     }
   }
+
+  const handleFollowUser = async () => {
+    if (!auth?.user) {
+      router.visit(route("login"))
+      return
+    }
+
+    if (!user?.id || user?.is_own_profile) return
+
+    setLoadingFollowUser(true)
+
+    try {
+      await axios.post(route('users.toggle-follow', user.id))
+      setIsFollowingUser(prev => !prev)
+      // Update followers count optimistically
+      if (isFollowingUser) {
+        // Unfollowed - decrease count
+        // Note: We'd need to pass followersCount as a prop and update it, but for now just toggle the state
+      } else {
+        // Followed - increase count
+      }
+    } catch (error) {
+      console.error('Error following user:', error)
+    } finally {
+      setLoadingFollowUser(false)
+    }
+  }
+
+  // Update isFollowingUser when user prop changes
+  useEffect(() => {
+    if (user?.is_following !== undefined) {
+      setIsFollowingUser(user.is_following)
+    }
+  }, [user?.is_following])
 
   return (
     <FrontendLayout>
@@ -489,6 +528,20 @@ export default function UserPage({
 
               {/* Action Buttons Row */}
               <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+                {!user?.is_own_profile && auth?.user && (
+                  <Button
+                    onClick={handleFollowUser}
+                    disabled={loadingFollowUser}
+                    className={`${
+                      isFollowingUser
+                        ? "bg-gray-200 dark:bg-white/10 border border-gray-300 dark:border-white/20 hover:bg-gray-300 dark:hover:bg-white/20 text-gray-900 dark:text-white"
+                        : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                    }`}
+                  >
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    {loadingFollowUser ? "Loading..." : isFollowingUser ? "Following" : "Follow"}
+                  </Button>
+                )}
                 <Button
                   className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                   onClick={handleMessageClick}
@@ -678,16 +731,21 @@ export default function UserPage({
                         </button>
                       </div>
                       {postsState.length > 0 ? (
-                        postsState.map((postItem) => {
+                        postsState.map((postItem, index) => {
                           const postId = postItem.id
                           const currentReaction = postItem.user_reaction
                           const reactionsCount = postItem.reactions_count || 0
                           const commentsCount = postItem.comments_count || 0
                           const postComments = postItem.comments || []
+                          // Use a unique key that combines post ID with creator info to ensure uniqueness
+                          const creatorId = postItem.creator?.id || postItem.user?.id || 'unknown'
+                          const uniqueKey = postId?.toString().startsWith('fb_') 
+                            ? postId 
+                            : `post_${postId}_${creatorId}_${index}`
 
                           return (
                             <article
-                              key={postId}
+                              key={uniqueKey}
                               className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
                             >
                               <div className="p-5">
@@ -695,18 +753,35 @@ export default function UserPage({
                                 <div className="flex items-start justify-between mb-4">
                                   <div className="flex items-center gap-3">
                                     <Avatar className="w-12 h-12">
-                                      <AvatarImage src={userImage} />
+                                      <AvatarImage src={postItem.creator_image || (postItem.creator_type === 'organization' ? orgImage : userImage)} />
                                       <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-lg">
-                                        {user.name.charAt(0).toUpperCase()}
+                                        {(postItem.creator_name || user.name).charAt(0).toUpperCase()}
                                       </AvatarFallback>
                                     </Avatar>
                                     <div>
                                       <div className="flex items-center gap-2">
-                                        <h4 className="font-semibold text-base">{user.name}</h4>
-                                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                                        {postItem.creator_slug ? (
+                                          <Link
+                                            href={postItem.creator_type === 'organization' 
+                                              ? route('organizations.show', postItem.creator_slug)
+                                              : route('users.show', postItem.creator_slug)}
+                                            className="font-semibold text-base text-gray-900 dark:text-white hover:underline"
+                                          >
+                                            {postItem.creator_name || user.name}
+                                          </Link>
+                                        ) : (
+                                          <h4 className="font-semibold text-base text-gray-900 dark:text-white">
+                                            {postItem.creator_name || user.name}
+                                          </h4>
+                                        )}
+                                        {postItem.creator_type === 'user' && (
+                                          <CheckCircle className="w-4 h-4 text-blue-400" />
+                                        )}
                                       </div>
                                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        @{user.slug || user.id}
+                                        {postItem.creator_type === 'organization' 
+                                          ? `@${postItem.creator_slug || ''}`
+                                          : `@${postItem.creator_slug || user.slug || user.id}`}
                                       </p>
                                     </div>
                                   </div>
@@ -1318,7 +1393,9 @@ export default function UserPage({
                                   </div>
                                 )}
                                 <div className="flex-1 min-w-0">
-                                  <h3 className="font-semibold text-gray-900 dark:text-white truncate mb-1">{group.name}</h3>
+                                  <h3 className="font-semibold text-gray-900 dark:text-white truncate mb-1">
+                                    {group.name?.replace(/^Direct\s+/i, '').trim() || group.name}
+                                  </h3>
                                   {group.description && (
                                     <p className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">{group.description}</p>
                                   )}

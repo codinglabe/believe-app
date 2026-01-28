@@ -5,6 +5,13 @@ namespace App\Http\Controllers;
 use App\Models\Post;
 use App\Models\PostReaction;
 use App\Models\PostComment;
+use App\Models\Organization;
+use App\Models\UserFavoriteOrganization;
+use App\Models\UserFollow;
+use App\Models\ExcelData;
+use App\Models\RewardPointLedger;
+use App\Models\User;
+use App\Services\ExcelDataTransformer;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -27,7 +34,7 @@ class PostController extends Controller
             ->toArray();
 
         // Get posts with unseen first, then seen posts
-        $posts = Post::with(['user', 'reactions.user'])
+        $posts = Post::with(['user.organization', 'reactions.user'])
             ->withCount(['reactions', 'comments'])
             ->when(count($seenPostIds) > 0, function($query) use ($seenPostIds) {
                 return $query->orderByRaw('CASE WHEN id IN (' . implode(',', $seenPostIds) . ') THEN 1 ELSE 0 END');
@@ -45,6 +52,29 @@ class PostController extends Controller
             $post->comments = $comments;
             $post->has_more_comments = $post->comments_count > 5;
 
+            // Add creator info (organization if user has org, otherwise user)
+            if ($post->user) {
+                $post->creator = null;
+                $post->creator_type = 'user';
+                $post->creator_name = $post->user->name;
+                $post->creator_slug = $post->user->slug;
+                $post->creator_image = $post->user->image;
+                
+                // Check if user has an organization
+                if ($post->user->role === 'organization' && $post->user->organization) {
+                    $org = $post->user->organization;
+                    $post->creator = [
+                        'id' => $org->id,
+                        'name' => $org->name,
+                        'slug' => $post->user->slug,
+                        'image' => $post->user->image,
+                    ];
+                    $post->creator_type = 'organization';
+                    $post->creator_name = $org->name;
+                    $post->creator_slug = $post->user->slug;
+                }
+            }
+
             return $post;
         });
 
@@ -56,10 +86,109 @@ class PostController extends Controller
             ]);
         }
 
+        // Get sidebar data
+        $user = Auth::user();
+        $peopleYouMayKnow = [];
+        $trendingOrganizations = [];
+        $userStats = [
+            'postsCount' => 0,
+            'believePointsBalance' => 0,
+            'believePointsEarned' => 0,
+            'rewardPointsBalance' => 0,
+            'rewardPointsEarned' => 0,
+            'followersCount' => 0,
+        ];
+
+        if ($user) {
+            // Get user stats
+            $userStats['postsCount'] = Post::where('user_id', $user->id)->count();
+            $userStats['followersCount'] = UserFavoriteOrganization::where('user_id', $user->id)->count();
+            
+            // Get reward points
+            $rewardPointsEarned = RewardPointLedger::where('user_id', $user->id)
+                ->where('type', 'credit')
+                ->sum('points');
+            $rewardPointsSpent = RewardPointLedger::where('user_id', $user->id)
+                ->where('type', 'debit')
+                ->sum('points');
+            $userStats['rewardPointsBalance'] = $rewardPointsEarned - $rewardPointsSpent;
+            $userStats['rewardPointsEarned'] = $rewardPointsEarned;
+
+            // Get people you may know (suggested organizations)
+            $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $user->id)
+                ->pluck('organization_id')
+                ->toArray();
+            
+            $suggestedOrgs = Organization::where('registration_status', 'approved')
+                ->whereNotIn('id', $userFavoriteOrgIds)
+                ->with('user:id,slug,name,image')
+                ->limit(4)
+                ->get();
+            
+            if ($suggestedOrgs->isNotEmpty()) {
+                $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'avatar' => $org->user?->image ? Storage::url($org->user->image) : null,
+                    ];
+                })->toArray();
+            }
+
+            // Get trending organizations
+            $trendingOrgs = Organization::where('registration_status', 'approved')
+                ->withCount('followers')
+                ->with('user:id,slug,name')
+                ->orderBy('followers_count', 'desc')
+                ->limit(4)
+                ->get();
+            
+            if ($trendingOrgs->isNotEmpty()) {
+                $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
+                
+                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'desc' => $org->description ? \Illuminate\Support\Str::limit($org->description, 50) : 'Organization description',
+                        'color' => $colors[$index % count($colors)],
+                    ];
+                })->toArray();
+            }
+        }
+
         return Inertia::render('frontend/social-feed', [
             'posts' => $posts->items(),
             'next_page_url' => $posts->nextPageUrl(),
             'has_more' => $posts->hasMorePages(),
+            'userStats' => $userStats,
+            'peopleYouMayKnow' => $peopleYouMayKnow,
+            'trendingOrganizations' => $trendingOrganizations,
         ]);
     }
 
@@ -325,5 +454,254 @@ class PostController extends Controller
         return response()->json([
             'message' => 'Post marked as seen',
         ]);
+    }
+
+    /**
+     * Search for registered organizations and users (supporters)
+     * Returns Inertia response with search results (called from searchPage)
+     */
+    public function search(Request $request)
+    {
+        // This method is now handled by searchPage directly
+        // Redirect to search page with query params
+        $searchTerm = trim($request->get('q', ''));
+        $type = $request->get('type', 'all');
+        
+        return redirect()->route('search.index', [
+            'q' => $searchTerm,
+            'type' => $type
+        ]);
+    }
+
+    /**
+     * Show the search page
+     */
+    public function searchPage(Request $request)
+    {
+        $user = Auth::user();
+        
+        // Get search query from request
+        $searchQuery = trim($request->get('q', ''));
+        $searchType = $request->get('type', 'all');
+        
+        // Perform search if query is provided (minimum 1 character)
+        $searchResults = ['users' => [], 'organizations' => []];
+        if (!empty($searchQuery) && strlen($searchQuery) >= 1) {
+            $searchResults = $this->performSearch($searchQuery, $searchType, $user);
+        }
+        
+        // Get sidebar data (same as index)
+        $peopleYouMayKnow = [];
+        $trendingOrganizations = [];
+        $userStats = [
+            'postsCount' => 0,
+            'believePointsBalance' => 0,
+            'believePointsEarned' => 0,
+            'rewardPointsBalance' => 0,
+            'rewardPointsEarned' => 0,
+            'followersCount' => 0,
+        ];
+
+        if ($user) {
+            // Get user stats
+            $userStats['postsCount'] = Post::where('user_id', $user->id)->count();
+            $userStats['followersCount'] = UserFavoriteOrganization::where('user_id', $user->id)->count();
+            
+            // Get reward points
+            $rewardPointsEarned = RewardPointLedger::where('user_id', $user->id)
+                ->where('type', 'credit')
+                ->sum('points');
+            $rewardPointsSpent = RewardPointLedger::where('user_id', $user->id)
+                ->where('type', 'debit')
+                ->sum('points');
+            $userStats['rewardPointsBalance'] = $rewardPointsEarned - $rewardPointsSpent;
+            $userStats['rewardPointsEarned'] = $rewardPointsEarned;
+
+            // Get people you may know (suggested organizations)
+            $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $user->id)
+                ->pluck('organization_id')
+                ->toArray();
+            
+            $suggestedOrgs = Organization::where('registration_status', 'approved')
+                ->whereNotIn('id', $userFavoriteOrgIds)
+                ->with('user:id,slug,name,image')
+                ->limit(4)
+                ->get();
+            
+            if ($suggestedOrgs->isNotEmpty()) {
+                $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'org' => $org->description ? \Illuminate\Support\Str::limit($org->description, 30) : 'Organization',
+                        'avatar' => $org->user?->image ? Storage::url($org->user->image) : null,
+                    ];
+                })->toArray();
+            }
+
+            // Get trending organizations
+            $trendingOrgs = Organization::where('registration_status', 'approved')
+                ->withCount('followers')
+                ->with('user:id,slug,name')
+                ->orderBy('followers_count', 'desc')
+                ->limit(4)
+                ->get();
+            
+            if ($trendingOrgs->isNotEmpty()) {
+                $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
+                $excelDataMap = ExcelData::whereIn('ein', $eins)
+                    ->where('status', 'complete')
+                    ->orderBy('id', 'desc')
+                    ->get()
+                    ->groupBy('ein')
+                    ->map(function($group) {
+                        return $group->first()->id;
+                    });
+                
+                $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
+                
+                $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataMap->get($org->ein) ?? null,
+                        'slug' => $org->user?->slug ?? null,
+                        'name' => $org->name,
+                        'desc' => $org->description ? \Illuminate\Support\Str::limit($org->description, 50) : 'Organization description',
+                        'color' => $colors[$index % count($colors)],
+                    ];
+                })->toArray();
+            }
+        }
+
+        return Inertia::render('frontend/search', [
+            'userStats' => $userStats,
+            'peopleYouMayKnow' => $peopleYouMayKnow,
+            'trendingOrganizations' => $trendingOrganizations,
+            'searchResults' => $searchResults,
+            'searchQuery' => $searchQuery,
+            'searchType' => $searchType,
+        ]);
+    }
+    
+    /**
+     * Perform search and return results (extracted for reuse)
+     */
+    private function performSearch($searchTerm, $type, $user)
+    {
+        $results = [
+            'users' => [],
+            'organizations' => [],
+        ];
+
+        // Search users (supporters) - only registered users with 'user' role
+        if ($type === 'all' || $type === 'users') {
+            $usersQuery = User::whereHas('roles', function ($query) {
+                    $query->where('name', 'user');
+                })
+                ->whereDoesntHave('roles', function ($query) {
+                    $query->whereIn('name', ['admin', 'organization', 'organization_pending']);
+                })
+                ->where(function ($query) use ($searchTerm) {
+                    $query->where('name', 'LIKE', '%' . $searchTerm . '%')
+                        ->orWhere('email', 'LIKE', '%' . $searchTerm . '%')
+                        ->orWhere('slug', 'LIKE', '%' . $searchTerm . '%');
+                });
+
+            // Exclude current user if authenticated
+            if ($user) {
+                $usersQuery->where('id', '!=', $user->id);
+            }
+
+            $users = $usersQuery->select('id', 'name', 'email', 'slug', 'image')
+                ->limit(20)
+                ->get()
+                ->map(function ($userResult) use ($user) {
+                    // Check if current user is following this user
+                    $isFollowing = false;
+                    if ($user) {
+                        $isFollowing = UserFollow::where('follower_id', $user->id)
+                            ->where('following_id', $userResult->id)
+                            ->exists();
+                    }
+                    
+                    return [
+                        'id' => $userResult->id,
+                        'name' => $userResult->name,
+                        'email' => $userResult->email,
+                        'slug' => $userResult->slug,
+                        'image' => $userResult->image ? Storage::url($userResult->image) : null,
+                        'is_following' => $isFollowing,
+                        'type' => 'user',
+                    ];
+                });
+
+            $results['users'] = $users;
+        }
+
+        // Search registered organizations
+        if ($type === 'all' || $type === 'organizations') {
+            $organizations = Organization::where('registration_status', 'approved')
+                ->where(function ($query) use ($searchTerm) {
+                    $query->where('name', 'LIKE', '%' . $searchTerm . '%')
+                        ->orWhere('email', 'LIKE', '%' . $searchTerm . '%')
+                        ->orWhereHas('user', function ($q) use ($searchTerm) {
+                            $q->where('slug', 'LIKE', '%' . $searchTerm . '%')
+                              ->orWhere('name', 'LIKE', '%' . $searchTerm . '%');
+                        });
+                })
+                ->with('user:id,slug,name,image')
+                ->limit(20)
+                ->get()
+                ->map(function ($org) use ($user) {
+                    // Get excel_data_id for this organization (needed for toggleFavorite)
+                    $excelData = ExcelData::where('ein', $org->ein)
+                        ->where('status', 'complete')
+                        ->orderBy('id', 'desc')
+                        ->first();
+                    
+                    $excelDataId = $excelData ? $excelData->id : null;
+                    
+                    $isFollowing = false;
+                    if ($user) {
+                        // Check both organization_id and excel_data_id for following status
+                        $isFollowing = UserFavoriteOrganization::where('user_id', $user->id)
+                            ->where(function ($query) use ($org, $excelDataId) {
+                                $query->where('organization_id', $org->id);
+                                if ($excelDataId) {
+                                    $query->orWhere('excel_data_id', $excelDataId);
+                                }
+                            })
+                            ->exists();
+                    }
+
+                    return [
+                        'id' => $org->id,
+                        'excel_data_id' => $excelDataId, // Add excel_data_id for toggleFavorite
+                        'name' => $org->name,
+                        'email' => $org->email,
+                        'slug' => $org->user?->slug,
+                        'image' => $org->user?->image ? Storage::url($org->user->image) : null,
+                        'description' => $org->description ? \Illuminate\Support\Str::limit($org->description, 100) : null,
+                        'is_following' => $isFollowing,
+                        'type' => 'organization',
+                    ];
+                });
+
+            $results['organizations'] = $organizations;
+        }
+
+        return $results;
     }
 }

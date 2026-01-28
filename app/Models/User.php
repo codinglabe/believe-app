@@ -80,6 +80,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'ai_tokens_used',
         'current_plan_details',
         'current_plan_id',
+        'city',
+        'state',
+        'zipcode',
     ];
 
     /**
@@ -408,14 +411,36 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function organization()
     {
+        // Use hasOneThrough relationship but fix ambiguous column issue
+        // The problem is Laravel automatically selects 'id' without table prefix
+        // We use selectRaw to explicitly qualify all columns, keeping id as primary key
         return $this->hasOneThrough(
             Organization::class,
             BoardMember::class,
             'user_id', // Foreign key on board_members table
-            'id',
+            'id', // Foreign key on organizations table
             'id', // Local key on users table
             'organization_id' // Local key on board_members table
-        );
+        )->selectRaw('
+            organizations.id,
+            organizations.name,
+            organizations.user_id,
+            organizations.ein,
+            organizations.description,
+            organizations.mission,
+            organizations.website,
+            organizations.email,
+            organizations.phone,
+            organizations.contact_name,
+            organizations.contact_title,
+            organizations.city,
+            organizations.state,
+            organizations.zip,
+            organizations.registration_status,
+            organizations.created_at,
+            organizations.updated_at,
+            board_members.user_id as laravel_through_key
+        ');
     }
 
     public function isOrganizationAdmin()

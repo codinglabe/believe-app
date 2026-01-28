@@ -13,6 +13,7 @@ use App\Services\OpenAiService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use App\Jobs\SendOrganizationInviteJob;
 use Inertia\Inertia;
 use Illuminate\Support\Facades\DB;
@@ -436,10 +437,22 @@ public function index(Request $request)
 
         $isFav = false;
         $notificationsEnabled = false;
-        if ($registeredOrg && Auth::check()) {
-            $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
-                ->where('organization_id', $registeredOrg->id)
-                ->first();
+        
+        if (Auth::check()) {
+            if ($registeredOrg) {
+                // Check favorite by organization_id for registered organizations
+                $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
+                    ->where('organization_id', $registeredOrg->id)
+                    ->first();
+            } else {
+                // Check favorite by excel_data_id for unregistered organizations
+                $excelDataId = (int) $organization->id;
+                
+                // Query with explicit integer binding to ensure type matching
+                $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
+                    ->where('excel_data_id', $excelDataId)
+                    ->first();
+            }
 
             if ($favorite) {
                 $isFav = true;
@@ -484,7 +497,7 @@ public function index(Request $request)
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A', // Ruling year from excel data
         ];
 
-        // Get posts count and supporters count for registered organizations
+        // Get posts count and supporters count for both registered and unregistered organizations
         $postsCount = 0;
         $supportersCount = 0;
         $jobsCount = 0;
@@ -521,23 +534,63 @@ public function index(Request $request)
             
             // Get jobs count
             $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
-            
-            // Load posts with minimal data initially - defer detailed loading
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $organization->id)->count();
+            $supporters = []; // Load on demand when supporters tab is accessed
+        }
+        
+        // Load posts with minimal data initially - defer detailed loading (only for registered orgs)
+        if ($registeredOrg) {
             $userId = Auth::id();
             
             // Get filter from request (default to 'organization' for organization posts only)
             $postFilter = $request->get('filter', 'organization'); // 'all' or 'organization'
             
             // Load posts with reactions and comments data
+            // Don't eager load user.organization to avoid ambiguous column error
+            // We'll load organization data manually in the map function
             $postsQuery = \App\Models\Post::select('id', 'content', 'images', 'created_at', 'user_id')
-                ->with('user:id,name,image')
+                ->with(['user:id,name,image,slug,role'])
                 ->withCount(['reactions', 'comments']);
             
             if ($postFilter === 'organization') {
                 // Only this organization's posts
                 $postsQuery->where('user_id', $registeredOrg->user_id);
+            } else if ($postFilter === 'all') {
+                // "All Posts" means: organization's posts + posts from supporters who follow this organization
+                
+                // Get all user IDs who follow this organization (supporters)
+                // Check both organization_id (for registered orgs) and excel_data_id (for unregistered orgs)
+                $supporterQuery = UserFavoriteOrganization::query();
+                
+                if ($registeredOrg) {
+                    // Registered organizations: match by organization_id
+                    $supporterQuery->where('organization_id', $registeredOrg->id);
+                }
+                
+                if ($organization) {
+                    // Also check excel_data_id (for unregistered orgs or if someone followed by excel_data_id)
+                    if ($registeredOrg) {
+                        $supporterQuery->orWhere('excel_data_id', $organization->id);
+                    } else {
+                        $supporterQuery->where('excel_data_id', $organization->id);
+                    }
+                }
+                
+                $supporterUserIds = $supporterQuery
+                    ->pluck('user_id')
+                    ->unique()
+                    ->toArray();
+                
+                // Combine: organization's user_id + all supporter user IDs
+                $allowedUserIds = array_merge(
+                    [$registeredOrg->user_id], // Organization's own posts
+                    $supporterUserIds // Posts from supporters who follow this organization
+                );
+                
+                $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
             }
-            // If 'all', no filter - get all posts
             
             $recentPosts = $postsQuery->latest()
                 ->limit(5) // Reduced initial load
@@ -601,6 +654,45 @@ public function index(Request $request)
                             ];
                         });
                     
+                    // Determine creator info
+                    $creator = null;
+                    $creatorType = 'user';
+                    $creatorName = $post->user->name ?? 'Unknown';
+                    $creatorSlug = $post->user->slug ?? null;
+                    $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                    
+                    // Check if user has an organization - load it manually to avoid relationship issues
+                    if ($post->user && $post->user->role === 'organization') {
+                        $org = Organization::where('user_id', $post->user->id)->first();
+                        if ($org) {
+                            $creator = [
+                                'id' => $org->id,
+                                'name' => $org->name,
+                                'slug' => $post->user->slug,
+                                'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                            ];
+                            $creatorType = 'organization';
+                            $creatorName = $org->name;
+                            $creatorSlug = $post->user->slug;
+                            $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                        } else {
+                            // User with organization role but no organization record
+                            $creator = [
+                                'id' => $post->user->id,
+                                'name' => $post->user->name,
+                                'slug' => $post->user->slug,
+                                'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                            ];
+                        }
+                    } else if ($post->user) {
+                        $creator = [
+                            'id' => $post->user->id,
+                            'name' => $post->user->name,
+                            'slug' => $post->user->slug,
+                            'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                        ];
+                    }
+                    
                     return [
                         'id' => $post->id,
                         'title' => null, // Post model doesn't have title field
@@ -614,6 +706,17 @@ public function index(Request $request)
                         'reactions' => $reactions->toArray(),
                         'comments' => $comments->toArray(),
                         'has_more_comments' => $post->comments_count > 5,
+                        'creator' => $creator,
+                        'creator_type' => $creatorType,
+                        'creator_name' => $creatorName,
+                        'creator_slug' => $creatorSlug,
+                        'creator_image' => $creatorImage,
+                        'user' => $post->user ? [
+                            'id' => $post->user->id,
+                            'name' => $post->user->name,
+                            'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                            'slug' => $post->user->slug,
+                        ] : null,
                     ];
                 });
             
@@ -723,41 +826,79 @@ public function index(Request $request)
             ->where('registration_status', 'approved')
             ->first();
 
-        if (!$org) {
-            // For Inertia requests, redirect back; otherwise redirect to organization page
-            if ($request->header('X-Inertia')) {
-                return redirect()->back()->with('error', 'You can only follow registered organizations.');
-            }
-            return redirect()->route('organizations.show', $id)
-                ->with('error', 'You can only follow registered organizations.');
-        }
+        $isFollowing = false;
+        $message = '';
 
-        $fav = UserFavoriteOrganization::where('user_id', $user->id)
-            ->where('organization_id', $org->id)
-            ->first();
+        if ($org) {
+            // Registered organization - use organization_id
+            $fav = UserFavoriteOrganization::where('user_id', $user->id)
+                ->where('organization_id', $org->id)
+                ->first();
 
-        if ($fav) {
-            $fav->delete();
-            // For Inertia requests, redirect back; otherwise redirect to organization page
-            if ($request->header('X-Inertia')) {
-                return redirect()->back()->with('success', 'Unfollowed organization');
+            if ($fav) {
+                $fav->delete();
+                $isFollowing = false;
+                $message = 'Unfollowed organization';
+            } else {
+                UserFavoriteOrganization::create([
+                    'user_id' => $user->id,
+                    'organization_id' => $org->id,
+                    'excel_data_id' => $id, // Also store excel_data_id for consistency
+                    'notifications' => true
+                ]);
+                $isFollowing = true;
+                $message = 'Following organization with notifications';
             }
-            return redirect()->route('organizations.show', $id)
-                ->with('success', 'Unfollowed organization');
         } else {
-            UserFavoriteOrganization::create([
-                'user_id' => $user->id,
-                'organization_id' => $org->id,
-                'notifications' => true
-            ]);
+            // Unregistered organization - use excel_data_id
+            // Cast to int to ensure type matching
+            $excelDataId = (int) $id;
+            $fav = UserFavoriteOrganization::where('user_id', $user->id)
+                ->where('excel_data_id', $excelDataId)
+                ->first();
 
-            // For Inertia requests, redirect back; otherwise redirect to organization page
-            if ($request->header('X-Inertia')) {
-                return redirect()->back()->with('success', 'Following organization with notifications');
+            if ($fav) {
+                $fav->delete();
+                $isFollowing = false;
+                $message = 'Unfollowed organization';
+            } else {
+                $createdFavorite = UserFavoriteOrganization::create([
+                    'user_id' => $user->id,
+                    'organization_id' => null, // null for unregistered organizations
+                    'excel_data_id' => $excelDataId,
+                    'notifications' => true
+                ]);
+                
+                // Refresh the model to ensure it has the latest data from database
+                $createdFavorite->refresh();
+
+                $isFollowing = true;
+                $message = 'Following organization with notifications';
             }
-            return redirect()->route('organizations.show', $id)
-                ->with('success', 'Following organization with notifications');
         }
+
+        // For API requests (axios/fetch), return JSON response
+        // Axios sends X-Requested-With: XMLHttpRequest header
+        // Check if it's an AJAX request (not Inertia)
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest' 
+            && !$request->header('X-Inertia');
+        
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_following' => $isFollowing,
+                'message' => $message,
+            ]);
+        }
+        
+        // For Inertia requests, redirect back to reload the page with updated favorite status
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer);
+        }
+        // Fallback to organization show page
+        return redirect()->route('organizations.show', $id)
+            ->with('success', $message);
     }
 
     // public function toggleFavorite(Request $request, int $id)
@@ -1165,16 +1306,31 @@ public function index(Request $request)
         // Check favorite status only if user is authenticated (optimized)
         $isFav = false;
         $notificationsEnabled = false;
-        if ($registeredOrg && Auth::check()) {
-            // Use select to only get needed columns - very fast with indexes
-            $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
-                ->where('organization_id', $registeredOrg->id)
-                ->select('id', 'notifications')
-                ->first();
+        
+        if (Auth::check()) {
+            if ($registeredOrg) {
+                // Check favorite by organization_id for registered organizations
+                $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
+                    ->where('organization_id', $registeredOrg->id)
+                    ->select('id', 'notifications')
+                    ->first();
 
-            if ($favorite) {
-                $isFav = true;
-                $notificationsEnabled = $favorite->notifications;
+                if ($favorite) {
+                    $isFav = true;
+                    $notificationsEnabled = $favorite->notifications;
+                }
+            } else {
+                // Check favorite by excel_data_id for unregistered organizations
+                $excelDataId = (int) $organization->id;
+                $favorite = UserFavoriteOrganization::where('user_id', Auth::id())
+                    ->where('excel_data_id', $excelDataId)
+                    ->select('id', 'notifications')
+                    ->first();
+
+                if ($favorite) {
+                    $isFav = true;
+                    $notificationsEnabled = $favorite->notifications;
+                }
             }
         }
         
@@ -1237,6 +1393,7 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
             $products = \App\Models\Product::where('organization_id', $registeredOrg->id)
@@ -1254,6 +1411,9 @@ public function index(Request $request)
             $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -1291,6 +1451,7 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
             $jobsQuery = \App\Models\JobPost::where('organization_id', $registeredOrg->id)
@@ -1333,6 +1494,9 @@ public function index(Request $request)
                     ];
                 })
                 ->toArray();
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [
@@ -1371,6 +1535,7 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
             $events = \App\Models\Event::where('organization_id', $registeredOrg->id)
@@ -1387,6 +1552,9 @@ public function index(Request $request)
             $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -1452,6 +1620,8 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $excelDataId = (int) $organizationData['id'];
+        
         if ($registeredOrg) {
             // Get counts only - defer loading full data
             $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count() 
@@ -1461,6 +1631,9 @@ public function index(Request $request)
             $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [
@@ -1534,6 +1707,8 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        $excelDataId = (int) $organizationData['id'];
+        
         if ($registeredOrg) {
             // Get counts only - defer loading full data
             $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count() 
@@ -1543,6 +1718,9 @@ public function index(Request $request)
             $supportersCount = \App\Models\UserFavoriteOrganization::where('organization_id', $registeredOrg->id)->count();
             $jobsCount = \App\Models\JobPost::where('organization_id', $registeredOrg->id)->count();
             $supporters = []; // Defer loading - only needed for supporters tab
+        } else {
+            // For unregistered organizations, count supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
         }
 
         $sidebarData = $this->getSidebarData($registeredOrg);
@@ -1579,6 +1757,11 @@ public function index(Request $request)
         $supportersCount = 0;
         $jobsCount = 0;
         $supporters = [];
+        
+        // Get organization ID (excel_data_id for unregistered, organization id for registered)
+        $orgId = $registeredOrg ? $registeredOrg->id : null;
+        $excelDataId = $registeredOrg ? null : (int) $organizationData['id'];
+        
         if ($registeredOrg) {
             // Get counts only - defer loading full data for faster tab switching
             $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count() 
@@ -1610,6 +1793,36 @@ public function index(Request $request)
                     ];
                 })
                 ->toArray();
+        } else {
+            // For unregistered organizations, get supporters by excel_data_id
+            $supportersCount = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)->count();
+            $jobsCount = 0; // Unregistered orgs don't have jobs
+            
+            // Load supporters data for unregistered organizations
+            $favoriteRecords = \App\Models\UserFavoriteOrganization::where('excel_data_id', $excelDataId)
+                ->with('user:id,name,email,image,slug')
+                ->latest()
+                ->limit(50)
+                ->get();
+            
+            $supporters = $favoriteRecords->map(function ($favorite) {
+                if ($favorite->user) {
+                    return [
+                        'id' => $favorite->id,
+                        'user_id' => $favorite->user_id,
+                        'user' => [
+                            'id' => $favorite->user->id,
+                            'slug' => $favorite->user->slug,
+                            'name' => $favorite->user->name,
+                            'email' => $favorite->user->email,
+                            'image' => $favorite->user->image,
+                        ],
+                        'notifications' => $favorite->notifications ?? false,
+                        'joined_at' => $favorite->created_at?->toIso8601String(),
+                    ];
+                }
+                return null;
+            })->filter()->values()->toArray();
         }
 
         $believePoints = $registeredOrg ? $this->calculateBelievePoints($registeredOrg->id) : [

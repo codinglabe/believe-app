@@ -69,8 +69,18 @@ class HandleInertiaRequests extends Middleware
         }
 
         // Only load organization relationship if user is not a LivestockUser or Merchant
+        // Load organization manually to avoid ambiguous column error with hasOneThrough
         if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
-            $user->load("organization", "serviceSellerProfile");
+            // Load organization manually through board_members to avoid relationship query issues
+            // This prevents the ambiguous column error when eager loading
+            $boardMember = $user->boardMemberships()->first();
+            if ($boardMember) {
+                $organization = \App\Models\Organization::find($boardMember->organization_id);
+                if ($organization) {
+                    $user->setRelation('organization', $organization);
+                }
+            }
+            $user->load("serviceSellerProfile");
         }
         // Only access roles if user is not a LivestockUser or Merchant (User model has roles via Spatie Permission)
         $role = null;

@@ -7,6 +7,7 @@ use App\Models\ExcelData;
 use App\Models\Order;
 use App\Models\Organization;
 use App\Models\UserFavoriteOrganization;
+use App\Models\UserFollow;
 use App\Models\RaffleTicket;
 use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
@@ -18,6 +19,7 @@ use App\Models\Post;
 use App\Models\PostReaction;
 use App\Models\PostComment;
 use App\Services\ImpactScoreService;
+use App\Services\ExcelDataTransformer;
 use Carbon\Carbon;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
@@ -104,6 +106,9 @@ class UserProfileController extends Controller
                 'dob' => $user->dob ? (is_string($user->dob) ? $user->dob : \Carbon\Carbon::parse($user->dob)->format('Y-m-d')) : null,
                 'image' => $user->image ? Storage::url($user->image) : null,
                 'positions' => $userPositions, // current selected
+                'city' => $user->city,
+                'state' => $user->state,
+                'zipcode' => $user->zipcode,
             ],
             'availablePositions' => $positions,
         ]);
@@ -123,6 +128,9 @@ class UserProfileController extends Controller
             'positions' => ['sometimes', 'array'],
             'positions.*' => ['exists:supporter_positions,id'],
             'timezone' => ['nullable', 'string', 'max:255'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'state' => ['nullable', 'string', 'max:2'],
+            'zipcode' => ['nullable', 'string', 'max:10'],
         ]);
 
         // Email changed? Send verification
@@ -149,6 +157,9 @@ class UserProfileController extends Controller
             'contact_number' => $validated['phone'] ?? null,
             'dob' => $validated['dob'] ?? null,
             'image' => $validated['image'] ?? $user->image,
+            'city' => $validated['city'] ?? null,
+            'state' => $validated['state'] ?? null,
+            'zipcode' => $validated['zipcode'] ?? null,
         ];
         
         // Update timezone if provided and valid
@@ -1002,6 +1013,14 @@ class UserProfileController extends Controller
         $authUser = Auth::user();
         $isOwnProfile = $authUser && $authUser->id === $user->id;
 
+        // Check if authenticated user is following this user
+        $isFollowing = false;
+        if ($authUser && !$isOwnProfile) {
+            $isFollowing = UserFollow::where('follower_id', $authUser->id)
+                ->where('following_id', $user->id)
+                ->exists();
+        }
+
         // Get user stats
         $postsCount = Post::where('user_id', $user->id)->count();
         $donationsCount = Donation::where('user_id', $user->id)
@@ -1011,8 +1030,8 @@ class UserProfileController extends Controller
             ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
         
-        // Get follower/following counts (if you have a followers system)
-        $followersCount = 0; // TODO: Implement if you have a followers system
+        // Get follower/following counts
+        $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
         
         // Get user's chat groups count
@@ -1089,14 +1108,63 @@ class UserProfileController extends Controller
         $postFilter = $request->get('filter', 'user'); // 'all' or 'user'
         
         // Build query based on filter
-        $postsQuery = Post::with('user:id,name,image')
+        // Don't eager load user.organization to avoid ambiguous column error
+        // The organization will be loaded via accessor when accessed
+        $postsQuery = Post::with(['user:id,name,image,slug,role'])
             ->withCount(['reactions', 'comments']);
         
         if ($postFilter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
+        } else if ($postFilter === 'all' && $authUserId) {
+            // Get followed organization user IDs (registered organizations)
+            $followedOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
+                ->whereNotNull('organization_id')
+                ->pluck('organization_id')
+                ->map(function ($orgId) {
+                    $org = \App\Models\Organization::find($orgId);
+                    return $org ? $org->user_id : null;
+                })
+                ->filter()
+                ->unique()
+                ->toArray();
+            
+            // Get followed organization user IDs from excel_data_id (unregistered orgs that later registered)
+            $followedUnregisteredOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
+                ->whereNotNull('excel_data_id')
+                ->pluck('excel_data_id')
+                ->map(function ($excelDataId) {
+                    $excelData = \App\Models\ExcelData::find($excelDataId);
+                    if ($excelData) {
+                        $org = \App\Models\Organization::where('ein', $excelData->ein)
+                            ->where('registration_status', 'approved')
+                            ->first();
+                        return $org ? $org->user_id : null;
+                    }
+                    return null;
+                })
+                ->filter()
+                ->unique()
+                ->toArray();
+            
+            // Get followed user IDs
+            $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
+                ->pluck('following_id')
+                ->toArray();
+            
+            // Combine all IDs: profile owner + followed organizations + followed users
+            $allowedUserIds = array_merge(
+                [$user->id], // Profile owner
+                $followedOrgUserIds,
+                $followedUnregisteredOrgUserIds,
+                $followedUserIds
+            );
+            
+            $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
+        } else if ($postFilter === 'all' && !$authUserId) {
+            // If not authenticated, show only profile owner's posts
+            $postsQuery->where('user_id', $user->id);
         }
-        // If 'all', no filter - get all posts
         
         $posts = $postsQuery->latest()
             ->limit(5)
@@ -1160,6 +1228,35 @@ class UserProfileController extends Controller
                         ];
                     });
                 
+                // Determine creator info
+                $creator = null;
+                $creatorType = 'user';
+                $creatorName = $post->user->name ?? 'Unknown';
+                $creatorSlug = $post->user->slug ?? null;
+                $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                
+                // Check if user has an organization
+                if ($post->user && $post->user->role === 'organization' && $post->user->organization) {
+                    $org = $post->user->organization;
+                    $creator = [
+                        'id' => $org->id,
+                        'name' => $org->name,
+                        'slug' => $post->user->slug,
+                        'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                    ];
+                    $creatorType = 'organization';
+                    $creatorName = $org->name;
+                    $creatorSlug = $post->user->slug;
+                    $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                } else if ($post->user) {
+                    $creator = [
+                        'id' => $post->user->id,
+                        'name' => $post->user->name,
+                        'slug' => $post->user->slug,
+                        'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                    ];
+                }
+                
                 return [
                     'id' => $post->id,
                     'title' => null, // Post model doesn't have title field
@@ -1173,6 +1270,17 @@ class UserProfileController extends Controller
                     'reactions' => $reactions->toArray(),
                     'comments' => $comments->toArray(),
                     'has_more_comments' => $post->comments_count > 5,
+                    'creator' => $creator,
+                    'creator_type' => $creatorType,
+                    'creator_name' => $creatorName,
+                    'creator_slug' => $creatorSlug,
+                    'creator_image' => $creatorImage,
+                    'user' => $post->user ? [
+                        'id' => $post->user->id,
+                        'name' => $post->user->name,
+                        'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                        'slug' => $post->user->slug,
+                    ] : null,
                 ];
             });
 
@@ -1183,13 +1291,39 @@ class UserProfileController extends Controller
             ->limit(10)
             ->get()
             ->map(function ($fav) {
-                return [
-                    'id' => $fav->organization_id,
-                    'name' => $fav->organization->name,
-                    'slug' => $fav->organization->user->slug ?? null,
-                    'image' => $fav->organization->user->image ?? null,
-                ];
-            });
+                // Handle both registered and unregistered organizations
+                if ($fav->organization) {
+                    // Registered organization
+                    return [
+                        'id' => $fav->organization_id,
+                        'excel_data_id' => $fav->excel_data_id,
+                        'name' => $fav->organization->name,
+                        'slug' => $fav->organization->user->slug ?? null,
+                        'image' => $fav->organization->user->image ?? null,
+                    ];
+                } elseif ($fav->excel_data_id) {
+                    // Unregistered organization - get from ExcelData
+                    $excelData = ExcelData::find($fav->excel_data_id);
+                    if ($excelData) {
+                        $rowData = $excelData->row_data;
+                        $transformedData = ExcelDataTransformer::transform($rowData);
+                        $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
+                        
+                        return [
+                            'id' => $fav->excel_data_id,
+                            'excel_data_id' => $fav->excel_data_id,
+                            'name' => $orgName,
+                            'slug' => null,
+                            'image' => null,
+                        ];
+                    }
+                }
+                
+                // Fallback if neither organization nor excel_data exists
+                return null;
+            })
+            ->filter() // Remove null entries
+            ->values(); // Re-index array
 
         // Get sidebar data (People You May Know, Trending Organizations)
         $peopleYouMayKnow = [];
@@ -1278,6 +1412,7 @@ class UserProfileController extends Controller
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
             'is_own_profile' => $isOwnProfile,
+            'is_following' => $isFollowing,
         ];
 
         return Inertia::render('frontend/user/user-show', [
@@ -1323,6 +1458,14 @@ class UserProfileController extends Controller
         $authUser = Auth::user();
         $isOwnProfile = $authUser && $authUser->id === $user->id;
 
+        // Check if authenticated user is following this user
+        $isFollowing = false;
+        if ($authUser && !$isOwnProfile) {
+            $isFollowing = UserFollow::where('follower_id', $authUser->id)
+                ->where('following_id', $user->id)
+                ->exists();
+        }
+
         // Get user stats
         $postsCount = Post::where('user_id', $user->id)->count();
         $donationsCount = Donation::where('user_id', $user->id)
@@ -1332,7 +1475,7 @@ class UserProfileController extends Controller
             ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
         
-        $followersCount = 0;
+        $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
 
         // Get believe points
@@ -1427,6 +1570,12 @@ class UserProfileController extends Controller
             }
         }
 
+        // Build location string from city, state, zipcode
+        $locationParts = array_filter([$user->city, $user->state]);
+        $location = !empty($locationParts) 
+            ? implode(', ', $locationParts) . ($user->zipcode ? ' ' . $user->zipcode : '')
+            : ($user->location ?? null);
+
         $userData = [
             'id' => $user->id,
             'slug' => $user->slug,
@@ -1435,7 +1584,12 @@ class UserProfileController extends Controller
             'image' => $user->image,
             'cover_img' => $user->cover_img,
             'bio' => $user->bio,
-            'location' => $user->location,
+            'location' => $location,
+            'is_own_profile' => $isOwnProfile,
+            'is_following' => $isFollowing,
+            'city' => $user->city,
+            'state' => $user->state,
+            'zipcode' => $user->zipcode,
             'phone' => $user->phone,
             'created_at' => $user->created_at,
             'positions' => $user->supporterPositions->pluck('name')->toArray(),
@@ -1474,15 +1628,62 @@ class UserProfileController extends Controller
         $filter = $request->get('filter', 'user'); // 'all' or 'user'
         
         // Build query based on filter
-        $postsQuery = Post::with('user:id,name,image')
+        // Don't eager load user.organization to avoid ambiguous column error
+        // We'll load organization data manually in the map function
+        $postsQuery = Post::with(['user:id,name,image,slug,role'])
             ->withCount(['reactions', 'comments']);
         
         if ($filter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
-        } else {
-            // All posts from all users
-            // No filter needed - get all posts
+        } else if ($filter === 'all' && $authUserId) {
+            // Get followed organization user IDs (registered organizations)
+            $followedOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
+                ->whereNotNull('organization_id')
+                ->pluck('organization_id')
+                ->map(function ($orgId) {
+                    $org = \App\Models\Organization::find($orgId);
+                    return $org ? $org->user_id : null;
+                })
+                ->filter()
+                ->unique()
+                ->toArray();
+            
+            // Get followed organization user IDs from excel_data_id (unregistered orgs that later registered)
+            $followedUnregisteredOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
+                ->whereNotNull('excel_data_id')
+                ->pluck('excel_data_id')
+                ->map(function ($excelDataId) {
+                    $excelData = \App\Models\ExcelData::find($excelDataId);
+                    if ($excelData) {
+                        $org = \App\Models\Organization::where('ein', $excelData->ein)
+                            ->where('registration_status', 'approved')
+                            ->first();
+                        return $org ? $org->user_id : null;
+                    }
+                    return null;
+                })
+                ->filter()
+                ->unique()
+                ->toArray();
+            
+            // Get followed user IDs
+            $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
+                ->pluck('following_id')
+                ->toArray();
+            
+            // Combine all IDs: profile owner + followed organizations + followed users
+            $allowedUserIds = array_merge(
+                [$user->id], // Profile owner
+                $followedOrgUserIds,
+                $followedUnregisteredOrgUserIds,
+                $followedUserIds
+            );
+            
+            $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
+        } else if ($filter === 'all' && !$authUserId) {
+            // If not authenticated, show only profile owner's posts
+            $postsQuery->where('user_id', $user->id);
         }
         
         $posts = $postsQuery->latest()
@@ -1544,6 +1745,45 @@ class UserProfileController extends Controller
                         ];
                     });
                 
+                // Determine creator info
+                $creator = null;
+                $creatorType = 'user';
+                $creatorName = $post->user->name ?? 'Unknown';
+                $creatorSlug = $post->user->slug ?? null;
+                $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                
+                // Check if user has an organization - load it manually to avoid relationship issues
+                if ($post->user && $post->user->role === 'organization') {
+                    $org = \App\Models\Organization::where('user_id', $post->user->id)->first();
+                    if ($org) {
+                        $creator = [
+                            'id' => $org->id,
+                            'name' => $org->name,
+                            'slug' => $post->user->slug,
+                            'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                        ];
+                        $creatorType = 'organization';
+                        $creatorName = $org->name;
+                        $creatorSlug = $post->user->slug;
+                        $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
+                    } else {
+                        // User with organization role but no organization record
+                        $creator = [
+                            'id' => $post->user->id,
+                            'name' => $post->user->name,
+                            'slug' => $post->user->slug,
+                            'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                        ];
+                    }
+                } else if ($post->user) {
+                    $creator = [
+                        'id' => $post->user->id,
+                        'name' => $post->user->name,
+                        'slug' => $post->user->slug,
+                        'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                    ];
+                }
+                
                 return [
                     'id' => $post->id,
                     'title' => null,
@@ -1557,6 +1797,17 @@ class UserProfileController extends Controller
                     'reactions' => $reactions->toArray(),
                     'comments' => $comments->toArray(),
                     'has_more_comments' => $post->comments_count > 5,
+                    'creator' => $creator,
+                    'creator_type' => $creatorType,
+                    'creator_name' => $creatorName,
+                    'creator_slug' => $creatorSlug,
+                    'creator_image' => $creatorImage,
+                    'user' => $post->user ? [
+                        'id' => $post->user->id,
+                        'name' => $post->user->name,
+                        'image' => $post->user->image ? Storage::url($post->user->image) : null,
+                        'slug' => $post->user->slug,
+                    ] : null,
                 ];
             });
 
@@ -1710,13 +1961,38 @@ class UserProfileController extends Controller
             ->limit(20)
             ->get()
             ->map(function ($fav) {
-                return [
-                    'id' => $fav->organization_id,
-                    'name' => $fav->organization->name,
-                    'slug' => $fav->organization->user->slug ?? null,
-                    'image' => $fav->organization->user->image ?? null,
-                ];
-            });
+                // Handle both registered and unregistered organizations
+                if ($fav->organization) {
+                    // Registered organization
+                    return [
+                        'id' => $fav->organization_id,
+                        'excel_data_id' => $fav->excel_data_id,
+                        'name' => $fav->organization->name,
+                        'slug' => $fav->organization->user->slug ?? null,
+                        'image' => $fav->organization->user->image ?? null,
+                    ];
+                } elseif ($fav->excel_data_id) {
+                    // Unregistered organization - get from ExcelData
+                    $excelData = ExcelData::find($fav->excel_data_id);
+                    if ($excelData) {
+                        $rowData = $excelData->row_data;
+                        $transformedData = ExcelDataTransformer::transform($rowData);
+                        $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
+                        
+                        return [
+                            'id' => $fav->excel_data_id,
+                            'excel_data_id' => $fav->excel_data_id,
+                            'name' => $orgName,
+                            'slug' => null,
+                            'image' => null,
+                        ];
+                    }
+                }
+                
+                // Fallback for invalid data
+                return null;
+            })
+            ->filter(); // Remove null entries
 
         return Inertia::render('frontend/user/user-show', array_merge($data, [
             'favoriteOrganizations' => $favoriteOrganizations,
@@ -1783,5 +2059,56 @@ class UserProfileController extends Controller
             'chatGroups' => $chatGroups,
             'currentPage' => 'groups',
         ]));
+    }
+
+    /**
+     * Toggle follow status for a user
+     */
+    public function toggleFollow(Request $request, int $id)
+    {
+        $user = Auth::user();
+        $targetUser = User::findOrFail($id);
+
+        // Prevent users from following themselves
+        if ($user->id === $targetUser->id) {
+            return response()->json(['error' => 'You cannot follow yourself'], 400);
+        }
+
+        $follow = UserFollow::where('follower_id', $user->id)
+            ->where('following_id', $targetUser->id)
+            ->first();
+
+        if ($follow) {
+            $follow->delete();
+            $isFollowing = false;
+            $message = 'Unfollowed user';
+        } else {
+            UserFollow::create([
+                'follower_id' => $user->id,
+                'following_id' => $targetUser->id,
+            ]);
+            $isFollowing = true;
+            $message = 'Following user';
+        }
+
+        // For API requests (axios/fetch), return JSON response
+        // Check if it's NOT an Inertia request (axios doesn't send X-Inertia header)
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest' 
+            && !$request->header('X-Inertia');
+        
+        if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
+            return response()->json([
+                'success' => true,
+                'is_following' => $isFollowing,
+                'message' => $message,
+            ]);
+        }
+        
+        // For Inertia requests, redirect back
+        $referer = $request->header('Referer');
+        if ($referer) {
+            return redirect($referer);
+        }
+        return redirect()->route('users.show', $targetUser->slug);
     }
 }

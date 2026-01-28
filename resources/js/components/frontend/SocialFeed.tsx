@@ -24,6 +24,8 @@ import {
   ChevronLeft,
   ChevronRight,
 } from 'lucide-react'
+import { Link } from '@inertiajs/react'
+import { route } from 'ziggy-js'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -87,6 +89,16 @@ interface Post {
   user_reaction?: Reaction
   comments_loaded?: number
   has_more_comments?: boolean
+  creator?: {
+    id: number
+    name: string
+    slug: string
+    image?: string
+  }
+  creator_type?: 'user' | 'organization'
+  creator_name?: string
+  creator_slug?: string
+  creator_image?: string
 }
 
 interface SocialFeedProps {
@@ -734,14 +746,14 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-4">
-      {/* Start a post - Modern Design */}
-      <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-2xl overflow-hidden hover:shadow-xl transition-shadow duration-200">
-        <CardContent className="p-5">
-          <div className="flex items-start gap-4 mb-4">
-            <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
+    <div className="space-y-4 w-full">
+      {/* Create Post Card - Facebook Style */}
+      <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg overflow-hidden">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+            <Avatar className="w-10 h-10 flex-shrink-0">
               <AvatarImage src={currentUser?.image} />
-              <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
+              <AvatarFallback className="bg-blue-500 text-white font-semibold text-sm">
                 {currentUser?.name?.charAt(0)?.toUpperCase()}
               </AvatarFallback>
             </Avatar>
@@ -751,24 +763,24 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                 value={postContent}
                 onChange={(e) => setPostContent(e.target.value)}
                 onClick={() => setShowPostForm(true)}
-                className="rounded-xl bg-gray-50 dark:bg-gray-700/50 border-2 border-gray-200 dark:border-gray-600 hover:border-primary/30 hover:bg-white dark:hover:bg-gray-700 cursor-pointer transition-all duration-200 py-6 text-base font-medium placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                className="rounded-full bg-gray-100 dark:bg-gray-700 border-0 hover:bg-gray-200 dark:hover:bg-gray-600 cursor-pointer transition-colors py-6 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400"
                 readOnly
               />
             </div>
           </div>
-          <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+          <div className="flex items-center justify-around pt-3">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="text-gray-600 dark:text-gray-400 hover:text-primary hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl flex-1 px-4 py-2.5 transition-all duration-200 font-medium"
+              className="flex-1 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg px-3 py-2 transition-colors font-medium text-sm"
               onClick={() => {
                 setShowPostForm(true)
                 fileInputRef.current?.click()
               }}
             >
-              <ImageIcon className="w-5 h-5 mr-2" />
-              Photo
+              <ImageIcon className="w-5 h-5 mr-2 text-blue-500 flex-shrink-0" />
+              <span>Photo/Video</span>
             </Button>
           </div>
         </CardContent>
@@ -783,13 +795,13 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
             exit={{ opacity: 0, y: -20, scale: 0.95 }}
             transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-xl rounded-2xl overflow-hidden backdrop-blur-sm">
-              <CardContent className="p-6">
-                <form onSubmit={handlePostSubmit} className="space-y-5">
-                  <div className="flex items-start gap-4">
-                    <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
+            <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-lg overflow-hidden">
+              <CardContent className="p-4">
+                <form onSubmit={handlePostSubmit} className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="w-10 h-10 flex-shrink-0">
                       <AvatarImage src={currentUser?.image} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
+                      <AvatarFallback className="bg-blue-500 text-white font-semibold text-sm">
                         {currentUser?.name?.charAt(0)?.toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
@@ -799,7 +811,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         placeholder="What's on your mind?"
                         value={postContent}
                         onChange={(e) => setPostContent(e.target.value)}
-                        className="min-h-[140px] resize-none border-2 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-primary focus-visible:border-primary text-base rounded-xl bg-gray-50 dark:bg-gray-700/30 transition-all duration-200 placeholder:text-gray-400 dark:placeholder:text-gray-500"
+                        className="min-h-[120px] resize-none border-0 bg-transparent text-base rounded-lg focus-visible:ring-0 placeholder:text-gray-500 dark:placeholder:text-gray-400 text-gray-900 dark:text-gray-100"
                         autoFocus
                       />
                       {postImages.length > 0 && (
@@ -940,7 +952,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
 
       {/* Posts Feed */}
       {posts.length === 0 && !loading && (
-        <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+        <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg">
           <CardContent className="p-12 text-center">
             <p className="text-gray-500 dark:text-gray-400">No posts yet. Be the first to share something!</p>
           </CardContent>
@@ -955,27 +967,38 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
         >
-          <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 shadow-lg rounded-2xl overflow-hidden hover:shadow-xl transition-all duration-200">
-            <CardContent className="p-6">
+          <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg overflow-hidden">
+            <CardContent className="p-4">
               {/* Post Header */}
-              <div className="flex items-start justify-between mb-4">
-                <div className="flex items-start gap-4 flex-1 min-w-0">
-                  <Avatar className="w-12 h-12 flex-shrink-0 ring-2 ring-primary/20 shadow-md">
-                    <AvatarImage src={post.user.image} />
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 via-purple-500 to-pink-500 text-white font-semibold">
-                      {post.user.name?.charAt(0)?.toUpperCase()}
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex items-start gap-3 flex-1 min-w-0">
+                  <Avatar className="w-10 h-10 flex-shrink-0">
+                    <AvatarImage src={post.creator_image || post.user?.image} />
+                    <AvatarFallback className="bg-blue-500 text-white font-semibold text-sm">
+                      {(post.creator_name || post.user?.name)?.charAt(0)?.toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
-                    <h3 className="font-bold text-base hover:underline cursor-pointer text-gray-900 dark:text-gray-100 mb-1 transition-colors">
-                      {post.user.name}
-                    </h3>
-                    <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                    {post.creator_slug ? (
+                      <Link
+                        href={post.creator_type === 'organization' 
+                          ? route('organizations.show', post.creator_slug)
+                          : route('users.show', post.creator_slug)}
+                        className="font-semibold text-sm hover:underline text-gray-900 dark:text-white mb-0.5 block"
+                      >
+                        {post.creator_name || post.user?.name}
+                      </Link>
+                    ) : (
+                      <h3 className="font-semibold text-sm text-gray-900 dark:text-white mb-0.5">
+                        {post.creator_name || post.user?.name}
+                      </h3>
+                    )}
+                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                       <span>{formatTime(post.created_at)}</span>
                       {post.is_edited && (
                         <>
                           <span>·</span>
-                          <span className="text-primary font-medium">Edited</span>
+                          <span className="text-gray-400">Edited</span>
                         </>
                       )}
                       <span>·</span>
@@ -986,27 +1009,30 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                 {post.user_id === currentUser?.id && (
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0 hover:bg-gray-100 dark:hover:bg-gray-700">
-                        <MoreVertical className="w-4 h-4" />
+                      <Button variant="ghost" size="sm" className="h-8 w-8 p-0 flex-shrink-0 hover:bg-gray-100 dark:hover:bg-[#3a3b3c] rounded-full">
+                        <MoreVertical className="w-4 h-4 text-gray-500 dark:text-gray-400" />
                       </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => {
-                        setEditingPost({ ...post, content: post.content })
-                        setEditingPostImages(prev => ({
-                          ...prev,
-                          [post.id]: {
-                            existing: post.images || [],
-                            new: []
-                          }
-                        }))
-                      }}>
+                    <DropdownMenuContent align="end" className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+                      <DropdownMenuItem 
+                        onClick={() => {
+                          setEditingPost({ ...post, content: post.content })
+                          setEditingPostImages(prev => ({
+                            ...prev,
+                            [post.id]: {
+                              existing: post.images || [],
+                              new: []
+                            }
+                          }))
+                        }}
+                        className="hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
                         <Edit className="w-4 h-4 mr-2" />
                         Edit
                       </DropdownMenuItem>
                       <DropdownMenuItem
                         onClick={() => handleDelete(post.id)}
-                        className="text-destructive focus:text-destructive"
+                        className="text-red-500 focus:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20"
                       >
                         <Trash2 className="w-4 h-4 mr-2" />
                         Delete
@@ -1140,12 +1166,12 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
               ) : (
                 <>
                   {post.content && (
-                    <p className="text-base mb-4 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
+                    <p className="text-sm mb-3 whitespace-pre-wrap break-words text-gray-900 dark:text-gray-100 leading-relaxed">
                       {post.content}
                     </p>
                   )}
                   {post.images && post.images.length > 0 && (
-                    <div className={`grid gap-3 mb-4 rounded-xl overflow-hidden ${
+                    <div className={`grid gap-2 mb-3 rounded-lg overflow-hidden ${
                       post.images.length === 1 ? 'grid-cols-1' :
                       post.images.length === 2 ? 'grid-cols-2' :
                       'grid-cols-2'
@@ -1153,24 +1179,18 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                       {post.images.map((image, idx) => (
                         <div
                           key={idx}
-                          className="relative group rounded-xl overflow-hidden border-2 border-gray-200 dark:border-gray-700 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer"
+                          className="relative group rounded-lg overflow-hidden cursor-pointer bg-gray-100 dark:bg-gray-700"
                           onClick={() => setImageViewer({ images: post.images || [], currentIndex: idx })}
                         >
                           <img
                             src={image}
                             alt={`Post image ${idx + 1}`}
-                            className="w-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            className="w-full h-full object-cover"
                             style={{
                               maxHeight: (post.images?.length || 0) === 1 ? '500px' : '300px',
                               minHeight: (post.images?.length || 0) === 1 ? '300px' : '200px'
                             }}
                           />
-                          <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors" />
-                          <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <div className="bg-black/50 text-white px-2 py-1 rounded-lg text-xs font-medium">
-                              Click to view
-                            </div>
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -1180,9 +1200,9 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
 
               {/* Reactions Summary */}
               {(post.reactions_count > 0 || post.comments_count > 0) && (
-                <div className="flex items-center justify-between mb-3 text-sm text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
+                <div className="flex items-center justify-between mb-2 text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-200 dark:border-gray-700">
                   {post.reactions_count > 0 && (
-                    <div className="flex items-center gap-2 cursor-pointer hover:underline">
+                    <div className="flex items-center gap-1.5 cursor-pointer hover:underline">
                       <div className="flex items-center -space-x-1">
                         {Object.entries(
                           post.reactions.reduce((acc, r) => {
@@ -1192,7 +1212,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         )
                           .slice(0, 3)
                           .map(([type]) => (
-                            <span key={type} className="text-base bg-white dark:bg-gray-800 rounded-full border border-gray-200 dark:border-gray-700 p-0.5">
+                            <span key={type} className="text-sm bg-white dark:bg-[#242526] rounded-full border border-gray-200 dark:border-gray-700 p-0.5">
                               {reactionConfig[type as keyof typeof reactionConfig].emoji}
                             </span>
                           ))}
@@ -1212,7 +1232,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
               )}
 
               {/* Actions */}
-              <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-gray-700">
+              <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-700">
                 <div
                   className="relative flex-1"
                   onMouseEnter={() => setShowReactionPicker(post.id)}
@@ -1221,7 +1241,7 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={`w-full justify-center text-gray-600 dark:text-gray-400 hover:bg-primary/10 dark:hover:bg-primary/20 rounded-xl transition-all duration-200 font-medium ${
+                    className={`w-full justify-center text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-[#3a3b3c] rounded-lg transition-colors font-medium text-sm ${
                       post.user_reaction ? reactionConfig[post.user_reaction.type].color : ''
                     }`}
                     onClick={() => {
@@ -1234,12 +1254,12 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                   >
                     {post.user_reaction ? (
                       <>
-                        <span className="text-lg mr-2">{reactionConfig[post.user_reaction.type].emoji}</span>
+                        <span className="text-base mr-1.5">{reactionConfig[post.user_reaction.type].emoji}</span>
                         <span className="capitalize font-semibold">{post.user_reaction.type}</span>
                       </>
                     ) : (
                       <>
-                        <ThumbsUp className="w-5 h-5 mr-2" />
+                        <ThumbsUp className="w-5 h-5 mr-1.5" />
                         <span>Like</span>
                       </>
                     )}
@@ -1293,27 +1313,27 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: 'auto' }}
                     exit={{ opacity: 0, height: 0 }}
-                    className="mt-4 space-y-3 pt-3 border-t border-gray-200 dark:border-gray-700"
+                    className="mt-3 space-y-2 pt-3 border-t border-gray-200 dark:border-gray-700"
                   >
                     {post.comments && post.comments.length > 0 && (
-                      <div className="space-y-3">
-                        <div className="space-y-3 max-h-96 overflow-y-auto">
+                      <div className="space-y-2">
+                        <div className="space-y-2 max-h-96 overflow-y-auto">
                           {post.comments.map((comment) => (
-                            <div key={comment.id} className="flex items-start gap-3">
+                            <div key={comment.id} className="flex items-start gap-2">
                               <Avatar className="w-8 h-8 flex-shrink-0">
                                 <AvatarImage src={comment.user.image} />
-                                <AvatarFallback className="text-xs">
+                                <AvatarFallback className="text-xs bg-blue-500 text-white">
                                   {comment.user.name?.charAt(0)?.toUpperCase()}
                                 </AvatarFallback>
                               </Avatar>
                               <div className="flex-1 min-w-0">
-                                <div className="bg-gray-50 dark:bg-gray-700/50 rounded-2xl rounded-tl-sm p-3">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <span className="font-semibold text-sm hover:underline cursor-pointer text-gray-900 dark:text-gray-100">
+                                <div className="bg-gray-100 dark:bg-[#3a3b3c] rounded-2xl rounded-tl-sm px-3 py-2">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-semibold text-sm hover:underline cursor-pointer text-gray-900 dark:text-white">
                                       {comment.user.name}
                                     </span>
                                   </div>
-                                  <p className="text-sm whitespace-pre-wrap break-words text-gray-700 dark:text-gray-300">{comment.content}</p>
+                                  <p className="text-sm whitespace-pre-wrap break-words text-gray-800 dark:text-gray-200">{comment.content}</p>
                                   <span className="text-xs text-gray-500 dark:text-gray-400 mt-1 block">
                                     {formatTime(comment.created_at)}
                                   </span>
@@ -1342,16 +1362,16 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                         )}
                       </div>
                     )}
-                    <div className="flex items-start gap-3 pt-2 relative">
+                    <div className="flex items-start gap-2 pt-2 relative">
                       <Avatar className="w-8 h-8 flex-shrink-0">
                         <AvatarImage src={currentUser?.image} />
-                        <AvatarFallback className="text-xs">
+                        <AvatarFallback className="text-xs bg-blue-500 text-white">
                           {currentUser?.name?.charAt(0)?.toUpperCase()}
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 flex gap-2 relative">
                         <Input
-                          placeholder="Add a comment..."
+                          placeholder="Write a comment..."
                           value={commentInputs[post.id] || ''}
                           onChange={(e) => setCommentInputs(prev => ({ ...prev, [post.id]: e.target.value }))}
                           onKeyPress={(e) => {
@@ -1360,14 +1380,14 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                               handleComment(post.id)
                             }
                           }}
-                          className="pr-20 rounded-full bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 focus-visible:ring-2 focus-visible:ring-blue-500"
+                          className="pr-20 rounded-full bg-gray-100 dark:bg-gray-700 border-0 focus-visible:ring-0 text-sm placeholder:text-gray-500 dark:placeholder:text-gray-400"
                         />
                         <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                           <Button
                             type="button"
                             variant="ghost"
                             size="sm"
-                            className="h-7 w-7 p-0 rounded-full"
+                            className="h-7 w-7 p-0 rounded-full hover:bg-gray-200 dark:hover:bg-gray-600"
                             onClick={() => setShowEmojiPicker(prev => prev === post.id ? null : post.id)}
                           >
                             <Smile className="w-4 h-4 text-gray-500 dark:text-gray-400" />
@@ -1376,9 +1396,9 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
                             <Button
                               onClick={() => handleComment(post.id)}
                               size="sm"
-                              className="h-7 w-7 p-0 rounded-full bg-blue-600 hover:bg-blue-700"
+                              className="h-7 w-7 p-0 rounded-full bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
                             >
-                              <Send className="w-3.5 h-3.5" />
+                              <Send className="w-3.5 h-3.5 text-white" />
                             </Button>
                           )}
                         </div>
@@ -1402,14 +1422,14 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
 
       {/* Loading */}
       {loading && (
-        <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-start gap-4">
-              <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
-              <div className="flex-1 space-y-3">
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/4 animate-pulse" />
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full animate-pulse" />
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 animate-pulse" />
+        <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg">
+          <CardContent className="p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 animate-pulse" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-1/4 animate-pulse" />
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-full animate-pulse" />
+                <div className="h-3 bg-gray-200 dark:bg-gray-700 rounded w-3/4 animate-pulse" />
               </div>
             </div>
           </CardContent>
@@ -1419,9 +1439,9 @@ export default function SocialFeed({ posts: initialPosts = [], next_page_url, ha
       <div ref={observerTarget} className="h-10" />
 
       {!hasMore && posts.length > 0 && (
-        <Card className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700">
+        <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg">
           <CardContent className="p-6 text-center">
-            <p className="text-gray-500 dark:text-gray-400">No more posts to show</p>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">No more posts to show</p>
           </CardContent>
         </Card>
       )}
