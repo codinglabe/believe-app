@@ -132,6 +132,10 @@ Route::get('/', [HomeController::class, "index"])->name('home');
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
+    Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
+    Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
+    // Toggle favorite organization from search page - use explicit name to override any group prefix
+    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/posts', [\App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
     Route::put('/posts/{post}', [\App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post}', [\App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
@@ -406,6 +410,11 @@ Route::get('/users/{slug}/about', [UserProfileController::class, 'about'])->name
 Route::get('/users/{slug}/activity', [UserProfileController::class, 'activity'])->name('users.activity');
 Route::get('/users/{slug}/following', [UserProfileController::class, 'following'])->name('users.following');
 Route::get('/users/{slug}/groups', [UserProfileController::class, 'groups'])->name('users.groups');
+
+// User follow routes (requires auth)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::post('/users/{id}/toggle-follow', [UserProfileController::class, 'toggleFollow'])->name('users.toggle-follow');
+});
 
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');

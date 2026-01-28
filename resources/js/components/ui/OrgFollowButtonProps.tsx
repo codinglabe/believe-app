@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useRef, useCallback } from "react"
-import { useForm } from "@inertiajs/react"
+import { useState, useRef, useCallback, useMemo, useEffect } from "react"
+import { router } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import { UserPlus, UserCheck, Bell, BellOff, ChevronDown } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -31,17 +31,27 @@ export default function OrgFollowButton({
   const [localNotifications, setLocalNotifications] = useState<boolean | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
-  const { post } = useForm()
-
+  // Track if we're in the middle of an update to prevent loops
+  const updateInProgressRef = useRef(false)
+  
+  // Memoize organization ID to prevent unnecessary re-renders (define first!)
+  const organizationId = useMemo(() => organization?.id, [organization?.id])
+  
   // Derive current state: use local if set, otherwise use props
   const isFollowing = localIsFollowing !== null ? localIsFollowing : initialIsFollowing
   const notifications = localNotifications !== null ? localNotifications : initialNotifications
-
-  // Track if we're in the middle of an update to prevent loops
-  const updateInProgressRef = useRef(false)
+  
+  // Reset local state when props change (after page reload)
+  // When the page reloads after follow/unfollow, the prop will have the correct value from backend
+  useEffect(() => {
+    // Reset local state to use the authoritative backend value
+    // This happens after a page reload when new props arrive
+    setLocalIsFollowing(null)
+    setLocalNotifications(null)
+  }, [initialIsFollowing, initialNotifications])
 
   const handleToggleFollow = useCallback(() => {
-    if (!auth?.user || isLoading || updateInProgressRef.current) {
+    if (!auth?.user || isLoading || updateInProgressRef.current || !organizationId) {
       if (!auth?.user) {
         window.location.href = route('login')
       }
@@ -51,16 +61,18 @@ export default function OrgFollowButton({
     updateInProgressRef.current = true
     setIsLoading(true)
     
-    // Optimistically update state
-    const newFollowingState = !isFollowing
+    // Optimistically update state - show following immediately when clicking follow
+    const newFollowingState = true // When clicking follow, we're always following
     setLocalIsFollowing(newFollowingState)
 
-    post(route("user.organizations.toggle-favorite", organization.id), {
-      preserveScroll: true,
+    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+      preserveScroll: false,
+      preserveState: false,
       onSuccess: () => {
         setIsLoading(false)
         updateInProgressRef.current = false
-        // Keep local state - page will reload or props will update
+        // Keep the optimistic update until the page reloads with new data
+        // The redirect will cause Inertia to reload the page with updated props
       },
       onError: (errors) => {
         console.error("Error toggling follow:", errors)
@@ -70,10 +82,10 @@ export default function OrgFollowButton({
         updateInProgressRef.current = false
       },
     })
-  }, [auth?.user, isLoading, isFollowing, organization.id, post])
+  }, [auth?.user, organizationId, isLoading, isFollowing])
 
   const handleToggleNotifications = useCallback(() => {
-    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current) return
+    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
 
     updateInProgressRef.current = true
     setIsLoading(true)
@@ -81,13 +93,15 @@ export default function OrgFollowButton({
     // Don't update optimistically - wait for API response to prevent ref conflicts
     const newNotificationsState = !notifications
 
-    post(route("user.organizations.toggle-notifications", organization.id), {
+    router.post(route("user.organizations.toggle-notifications", organizationId), {}, {
       preserveScroll: true,
       onSuccess: () => {
         // Update state after successful API call
         setLocalNotifications(newNotificationsState)
         setIsLoading(false)
         updateInProgressRef.current = false
+        // Reload to sync with backend
+        router.reload({ only: ['organization'] })
       },
       onError: (errors) => {
         console.error("Error toggling notifications:", errors)
@@ -95,31 +109,35 @@ export default function OrgFollowButton({
         updateInProgressRef.current = false
       },
     })
-  }, [auth?.user, isFollowing, isLoading, notifications, organization.id, post])
+  }, [auth?.user, organizationId, isFollowing, isLoading, notifications])
 
   const handleUnfollow = useCallback(() => {
-    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current) return
+    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
 
     updateInProgressRef.current = true
     setIsLoading(true)
     
-    // Don't update optimistically - wait for API response to prevent ref conflicts
+    // Optimistically update state - show not following immediately
+    setLocalIsFollowing(false)
 
-    post(route("user.organizations.toggle-favorite", organization.id), {
-      preserveScroll: true,
+    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+      preserveScroll: false,
+      preserveState: false,
       onSuccess: () => {
-        // Update state after successful API call
-        setLocalIsFollowing(false)
         setIsLoading(false)
         updateInProgressRef.current = false
+        // Keep the optimistic update until the page reloads with new data
+        // The redirect will cause Inertia to reload the page with updated props
       },
       onError: (errors) => {
         console.error("Error unfollowing:", errors)
+        // Revert on error
+        setLocalIsFollowing(null) // Reset to use props
         setIsLoading(false)
         updateInProgressRef.current = false
       },
     })
-  }, [auth?.user, isFollowing, isLoading, organization.id, post])
+  }, [auth?.user, organizationId, isFollowing, isLoading])
 
   if (!isFollowing) {
     // Subscribe Button (Not Following)
@@ -139,7 +157,7 @@ export default function OrgFollowButton({
 
   // Following State with Dropdown
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           disabled={isLoading}
@@ -152,7 +170,7 @@ export default function OrgFollowButton({
           <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 flex-shrink-0 sm:ml-1.5 md:ml-2" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuItem
           onSelect={(e) => {
             e.preventDefault()
