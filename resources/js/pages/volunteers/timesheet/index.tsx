@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
-import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';

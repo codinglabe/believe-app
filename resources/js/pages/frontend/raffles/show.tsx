@@ -1,4 +1,5 @@
-import { Head, Link, useForm } from '@inertiajs/react';
+import { Link, useForm } from '@inertiajs/react';
+import { PageHead } from '@/components/frontend/PageHead';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -141,9 +142,11 @@ export default function RaffleShow({ raffle, auth }: RaffleShowProps) {
         }
     };
 
+    const metaDescription = raffle.description ? String(raffle.description).slice(0, 160) : undefined;
+
     return (
         <FrontendLayout>
-            <Head title={raffle.title} />
+            <PageHead title={raffle.title} description={metaDescription} />
             
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
                 {/* Header */}

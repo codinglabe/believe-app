@@ -232,6 +232,7 @@ public function index(Request $request)
     $organizations->setCollection($transformedOrganizations);
 
     return Inertia::render('frontend/organization/organizations', [
+        'seo' => \App\Services\SeoService::forPage('organizations'),
         'organizations' => $organizations,
         'filters' => [
             'search' => $search,

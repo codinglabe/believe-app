@@ -2,6 +2,7 @@
 
 import SocialFeed from "@/components/frontend/SocialFeed"
 import SocialFeedLayout from "@/components/frontend/SocialFeedLayout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { usePage } from "@inertiajs/react"
 
 interface SocialFeedPageProps {
@@ -37,6 +38,7 @@ export default function SocialFeedPage() {
       peopleYouMayKnow={peopleYouMayKnow}
       trendingOrganizations={trendingOrganizations}
     >
+      <PageHead title="Social Feed" description="Stay connected with nonprofits and supporters. See updates, share posts, and engage with your community." />
       <SocialFeed posts={posts} next_page_url={next_page_url} has_more={has_more} />
     </SocialFeedLayout>
   )

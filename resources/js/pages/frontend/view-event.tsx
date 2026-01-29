@@ -44,7 +44,8 @@ import {
     Zap,
     Sparkles
 } from "lucide-react"
-import { Link, Head } from "@inertiajs/react"
+import { Link } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 import { useState, useEffect } from "react"
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
 
@@ -205,9 +206,11 @@ export default function ViewEvent({ event, auth }: ViewEventProps) {
 
     const daysUntilEvent = getDaysUntilEvent()
 
+    const metaDescription = event.description ? String(event.description).slice(0, 160) : undefined;
+
     return (
         <FrontendLayout>
-            <Head title={event.name} />
+            <PageHead title={event.name} description={metaDescription} />
             
             {/* Hero Section */}
             <div className="relative min-h-[50vh] bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 overflow-hidden">

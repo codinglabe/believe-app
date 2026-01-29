@@ -9,6 +9,7 @@ use App\Models\PostReaction;
 use App\Models\User;
 use App\Models\UserFavoriteOrganization;
 use App\Models\UserFollow;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -148,6 +149,7 @@ class FindSupportersController extends Controller
         $interestOptions = ChatTopic::active()->orderBy('name')->get(['id', 'name'])->map(fn ($t) => ['id' => $t->id, 'name' => $t->name]);
 
         return Inertia::render('frontend/find-supporters', [
+            'seo' => \App\Services\SeoService::forPage('find_supporters'),
             'supporters' => $supporters,
             'searchQuery' => $search,
             'filters' => [

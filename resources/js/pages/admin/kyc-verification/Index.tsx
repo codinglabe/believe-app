@@ -33,8 +33,6 @@ import {
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { motion } from "framer-motion"
 import type { BreadcrumbItem } from "@/types"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
   { title: "KYC Verification", href: "#" },

@@ -1,12 +1,12 @@
 // resources/js/Pages/TermsOfService.tsx
 import React from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { Head } from '@inertiajs/react';
+import { PageHead } from "@/components/frontend/PageHead";
 
 const TermsOfService = () => {
     return (
         <FrontendLayout>
-            <Head title="Terms of Service - 501c3ers" />
+            <PageHead title="Terms of Service" description="Read the terms of service for using our platform. Understand your rights and responsibilities when donating and engaging with nonprofits." />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl mx-auto">
                     {/* Header */}

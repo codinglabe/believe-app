@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Link, router, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import useAxios from "@/hooks/useAxios"
 import {
@@ -43,9 +42,11 @@ import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Textarea } from "@/components/frontend/ui/textarea"
+import { PageHead } from "@/components/frontend/PageHead"
 import { motion, AnimatePresence } from "framer-motion"
 
 interface UserPageProps {
+  seo?: { title: string; description?: string }
   auth?: any
   user: any
   posts?: any[]
@@ -82,6 +83,7 @@ interface UserPageProps {
 }
 
 export default function UserPage({
+  seo,
   auth,
   user,
   posts = [],
@@ -469,8 +471,11 @@ export default function UserPage({
     }
   }, [user?.is_following])
 
+  const displayName = user?.name ?? "Profile"
+
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? displayName} description={seo?.description} />
       <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
         {/* Profile Banner */}
         <div className="relative">

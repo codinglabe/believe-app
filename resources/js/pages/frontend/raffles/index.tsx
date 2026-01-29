@@ -1,4 +1,5 @@
-import { Head, Link, router } from '@inertiajs/react';
+import { Link, router } from '@inertiajs/react';
+import { PageHead } from '@/components/frontend/PageHead';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -87,7 +88,7 @@ export default function RafflesIndex({ raffles, filters }: RafflesIndexProps) {
 
     return (
         <FrontendLayout>
-            <Head title="Raffle Draws" />
+            <PageHead title="Raffle Draws" description="Enter raffles to win prizes while supporting nonprofits. Buy tickets and support great causes." />
             
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
                 {/* Hero Section */}

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Services\ImpactScoreService;
+use App\Services\SeoService;
 use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -60,6 +61,7 @@ class DonationController extends Controller
         });
 
         return Inertia::render('frontend/donate', [
+            'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
             'message' => 'Please log in to view your donations.',
             'user' => $user ? [

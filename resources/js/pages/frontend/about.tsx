@@ -3,6 +3,7 @@ import type { ComponentType, SVGProps } from "react"
 import { Link, usePage } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import {
@@ -159,7 +160,10 @@ const resolveImageUrl = (image?: string | null) => {
 
 export default function AboutPage() {
   const page = usePage()
-  const { content } = page.props as { content?: AboutPageContentProps | null }
+  const { seo, content } = page.props as {
+    seo?: { title: string; description?: string }
+    content?: AboutPageContentProps | null
+  }
 
   const aboutContent = useMemo<AboutPageContentProps | null>(() => {
     if (!content) {
@@ -279,6 +283,7 @@ export default function AboutPage() {
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "About Us"} description={seo?.description} />
       <div className="min-h-screen">
         {hasHeroContent && (
           <section className="relative overflow-hidden py-20">

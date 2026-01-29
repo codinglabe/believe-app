@@ -59,10 +59,10 @@ import {
     Store,
     CreditCard,
     FolderOpen,
-    ShoppingBag
+    ShoppingBag,
+    Search
 } from 'lucide-react';
 import SiteTitle from './site-title';
-import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/react';
 import { motion } from 'framer-motion';
@@ -686,6 +686,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/settings/profile',
                 icon: Settings,
                 permission: "profile.read"
+            },
+            {
+                title: 'SEO Settings',
+                href: '/admin/seo',
+                icon: Search,
+                role: "admin"
             },
             {
                 title: 'Compliance / Logs',

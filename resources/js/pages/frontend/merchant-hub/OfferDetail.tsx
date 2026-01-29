@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Link, router } from '@inertiajs/react'
+import { PageHead } from '@/components/frontend/PageHead'
 import { motion, AnimatePresence } from 'framer-motion'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/frontend/ui/card'
@@ -212,9 +213,11 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     }
   }
 
+  const metaDescription = offer.description ? String(offer.description).slice(0, 160) : undefined;
+
   return (
     <FrontendLayout>
-      <Head title={`${offer.title} - Merchant Hub`} />
+      <PageHead title={offer.title} description={metaDescription} />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">

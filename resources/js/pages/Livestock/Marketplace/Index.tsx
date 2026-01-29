@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge"
 import { Link, router, Head, usePage } from "@inertiajs/react"
 import { useState, useCallback } from "react"
 import debounce from "lodash.debounce"
-import { route } from "ziggy-js"
 import { 
     Search, 
     Filter, 

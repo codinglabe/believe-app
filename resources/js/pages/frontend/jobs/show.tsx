@@ -1,5 +1,6 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
-import { Head, Link } from "@inertiajs/react";
+import { Link } from "@inertiajs/react";
+import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Badge } from "@/components/frontend/ui/badge";
 import {
@@ -102,9 +103,11 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
     return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700';
   };
 
+  const metaDescription = job.description ? String(job.description).slice(0, 160) : undefined;
+
   return (
     <FrontendLayout>
-      <Head title={`${job.title} - Job Details`} />
+      <PageHead title={job.title} description={metaDescription} />
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-6">

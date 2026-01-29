@@ -4,7 +4,6 @@ import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState } from "react"
 import { motion } from "framer-motion"
 import { usePage, router, Link } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import {
   User,
   Mail,

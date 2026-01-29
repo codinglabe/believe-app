@@ -20,7 +20,6 @@ import {
     User,
     Settings
 } from "lucide-react"
-import { route } from "ziggy-js"
 import { format } from "date-fns"
 
 interface BuyerProfile {

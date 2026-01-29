@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { Link, router, usePage, useForm } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import {
   ChevronDown,
@@ -44,6 +43,7 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import DonationModal from "@/components/frontend/donation-modal"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
 import InviteOrganizationPopup from "@/components/frontend/InviteOrganizationPopup"
+import { PageHead } from "@/components/frontend/PageHead"
 import { motion, AnimatePresence } from "framer-motion"
 import useAxios from "@/hooks/useAxios"
 
@@ -564,7 +564,7 @@ export default function OrganizationPage({
     try {
       routePath = route("organizations.toggle-favorite", excelDataId)
     } catch (error) {
-      // Fallback to direct URL if route not found in Ziggy
+      // Fallback to direct URL if route() fails
       routePath = `/organizations/${excelDataId}/toggle-favorite`
     }
     
@@ -585,8 +585,15 @@ export default function OrganizationPage({
     })
   }
 
+  const orgName = organization?.name ?? "Organization"
+  const orgDescription = organization?.description ?? organization?.mission ?? undefined
+
   return (
     <FrontendLayout>
+      <PageHead
+        title={orgName}
+        description={orgDescription ? String(orgDescription).slice(0, 160) : undefined}
+      />
         <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 
           {/* Profile Banner */}

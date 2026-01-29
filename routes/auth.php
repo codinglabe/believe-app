@@ -11,6 +11,7 @@ use App\Http\Controllers\Auth\VerifyEmailController;
 use App\Http\Controllers\OrganizationRegisterController;
 use App\Http\Controllers\ProfilePhotoController;
 use App\Http\Controllers\PurchaseOrderController;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -18,7 +19,9 @@ use App\Models\User;
 
 Route::middleware('guest')->group(function () {
     Route::get('/register', function () {
-        return Inertia::render('frontend/register');
+        return Inertia::render('frontend/register', [
+            'seo' => SeoService::forPage('register'),
+        ]);
     })->name('register');
 
     Route::get('/register/user', function (Request $request) {
@@ -26,19 +29,23 @@ Route::middleware('guest')->group(function () {
             ->orderBy('sort_order')
             ->get(['id', 'name']);
 
+        $seo = SeoService::forPage('register_user');
+
         if ($request->has('ref')) {
             $user = User::where('referral_code', $request->ref)->first();
             if (!$user) {
                 return redirect()->route('register')->with('error', 'Invalid referral code');
             }
             return Inertia::render('frontend/register/user', [
+                'seo' => $seo,
                 'referralCode' => $user->referral_code,
                 'positions' => $positions,
             ]);
         }
 
         return Inertia::render('frontend/register/user', [
-            'positions' => $positions
+            'seo' => $seo,
+            'positions' => $positions,
         ]);
     })->name('register.user');
 
@@ -58,7 +65,9 @@ Route::middleware('guest')->group(function () {
     //     ->name('login-old');
 
     Route::get('/login', function () {
-        return Inertia::render('frontend/login');
+        return Inertia::render('frontend/login', [
+            'seo' => SeoService::forPage('login'),
+        ]);
     })->name('login');
 
     Route::post('login', [AuthenticatedSessionController::class, 'store']);

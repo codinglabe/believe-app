@@ -2,8 +2,8 @@
 
 import React, { useState, useCallback } from "react"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import SocialFeedLayout from "@/components/frontend/SocialFeedLayout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { usePage } from "@inertiajs/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Button } from "@/components/frontend/ui/button"
@@ -13,6 +13,7 @@ import { Search, X, Building2, Loader2 } from "lucide-react"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
 
 interface SearchPageProps {
+  seo?: { title: string; description?: string }
   userStats?: {
     postsCount?: number
     believePointsBalance?: number
@@ -29,6 +30,7 @@ interface SearchPageProps {
 export default function SearchPage() {
   const page = usePage<SearchPageProps>()
   const { 
+    seo,
     userStats = {},
     peopleYouMayKnow = [],
     trendingOrganizations = [],
@@ -299,6 +301,7 @@ export default function SearchPage() {
       peopleYouMayKnow={peopleYouMayKnow}
       trendingOrganizations={trendingOrganizations}
     >
+      <PageHead title={seo?.title ?? "Search"} description={seo?.description} />
       <div className="space-y-4">
                 {/* Search Header */}
                 <Card className="bg-white dark:bg-[#111827] border-0 shadow-sm rounded-lg">

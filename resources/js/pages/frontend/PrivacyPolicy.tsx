@@ -1,12 +1,12 @@
 // resources/js/Pages/PrivacyPolicy.tsx
 import React from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { Head } from '@inertiajs/react';
+import { PageHead } from "@/components/frontend/PageHead";
 
 const PrivacyPolicy = () => {
     return (
         <FrontendLayout>
-            <Head title="Privacy Policy - 501c3ers" />
+            <PageHead title="Privacy Policy" description="Learn how we collect, use, and protect your personal information. Your privacy matters to us." />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl mx-auto">
                     {/* Header */}

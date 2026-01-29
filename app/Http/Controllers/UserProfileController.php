@@ -1415,7 +1415,15 @@ class UserProfileController extends Controller
             'is_following' => $isFollowing,
         ];
 
+        $seoDescription = $user->bio
+            ? \Illuminate\Support\Str::limit($user->bio, 160)
+            : 'View ' . $user->name . "'s profile on " . config('app.name');
+
         return Inertia::render('frontend/user/user-show', [
+            'seo' => [
+                'title' => $user->name,
+                'description' => $seoDescription,
+            ],
             'user' => $userData,
             'posts' => $posts,
             'postsCount' => $postsCount,
@@ -1597,7 +1605,15 @@ class UserProfileController extends Controller
             'reward_points' => (float) ($user->reward_points ?? 0),
         ];
 
+        $seoDescription = $user->bio
+            ? \Illuminate\Support\Str::limit($user->bio, 160)
+            : 'View ' . $user->name . "'s profile on " . config('app.name');
+
         return [
+            'seo' => [
+                'title' => $user->name,
+                'description' => $seoDescription,
+            ],
             'user' => $userData,
             'postsCount' => $postsCount,
             'donationsCount' => $donationsCount,

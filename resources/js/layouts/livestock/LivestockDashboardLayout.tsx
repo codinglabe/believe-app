@@ -42,7 +42,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import toast, { Toaster } from "react-hot-toast"
-import { route } from "ziggy-js"
 import { cn } from "@/lib/utils"
 
 interface LivestockDashboardLayoutProps {

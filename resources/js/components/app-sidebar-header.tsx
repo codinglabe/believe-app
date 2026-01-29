@@ -10,7 +10,6 @@ import { router } from '@inertiajs/react';
 import { LogOut, Wallet } from 'lucide-react';
 import { showSuccessToast } from '@/lib/toast';
 import { useEffect, useState, useCallback } from 'react';
-import { route } from 'ziggy-js';
 import { WalletPopup } from './WalletPopup';
 import { SubscriptionRequiredModal } from './SubscriptionRequiredModal';
 

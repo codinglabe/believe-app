@@ -1,5 +1,6 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
-import { Head, Link, router } from "@inertiajs/react";
+import { Link, router } from "@inertiajs/react";
+import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card";
 import { Input } from "@/components/frontend/ui/input";
@@ -157,7 +158,7 @@ export default function VolunteerOpportunities({ jobs, organizations, positionCa
 
   return (
     <FrontendLayout>
-      <Head title="Volunteer Opportunities" />
+      <PageHead title="Volunteer Opportunities" description="Find volunteer opportunities at nonprofits. Give your time and skills to causes you care about." />
 
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}

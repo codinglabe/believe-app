@@ -6,8 +6,6 @@ import AppLayout from "@/layouts/app-layout"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { User, Lock, Shield, CreditCard, Globe, Webhook, Settings, ShoppingBag, FileText, MapPin } from "lucide-react"
 import type { PropsWithChildren } from "react"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
   {
     title: 'Settings',

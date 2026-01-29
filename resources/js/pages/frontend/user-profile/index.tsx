@@ -1,6 +1,7 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { Mail, Phone, MapPin, Gift, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { usePage } from "@inertiajs/react"
@@ -78,6 +79,7 @@ export default function ProfileIndex() {
 
   return (
     <ProfileLayout title="Profile Overview" description="Your account information and recent activity">
+      <PageHead title="My Profile" description="View your profile, impact score, and recent activity. Manage your account and donations." />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Personal Information */}
         <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">

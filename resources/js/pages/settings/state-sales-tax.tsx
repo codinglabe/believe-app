@@ -9,8 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Input } from "@/components/ui/input"
 import { Search, Filter, Eye, ExternalLink, FileCheck, DollarSign, MapPin } from "lucide-react"
-import { route } from "ziggy-js"
-
 interface StateSalesTax {
   id: number
   state: string

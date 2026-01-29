@@ -25,7 +25,6 @@ import {
   ChevronRight,
 } from 'lucide-react'
 import { Link } from '@inertiajs/react'
-import { route } from 'ziggy-js'
 import {
   DropdownMenu,
   DropdownMenuContent,

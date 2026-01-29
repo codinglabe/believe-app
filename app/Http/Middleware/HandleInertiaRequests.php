@@ -249,9 +249,17 @@ class HandleInertiaRequests extends Middleware
             $footerSettings = null;
         }
 
+        // SEO (from admin SEO settings) for main app only — used for social share previews (Facebook, WhatsApp, etc.)
+        $seoSiteName = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getSiteName() : null;
+        $seoCanonical = (!$isLivestockDomain && !$isMerchantDomain) ? $request->url() : null;
+        $seoDefaultImage = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'seoSiteName' => $seoSiteName,
+            'seoCanonical' => $seoCanonical,
+            'seoDefaultImage' => $seoDefaultImage,
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $userData,

@@ -14,7 +14,6 @@ import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import { route } from "ziggy-js"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 

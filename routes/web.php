@@ -4,6 +4,7 @@ use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\AboutPageController;
 use App\Http\Controllers\AdminAboutPageController;
+use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
@@ -32,6 +33,7 @@ use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -129,6 +131,15 @@ Broadcast::routes(['middleware' => ['auth']]);
 // Routes without Route::domain() only work on the main domain.
 Route::get('/', [HomeController::class, "index"])->name('home');
 
+// SEO: sitemap and robots
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
+Route::get('/robots.txt', function () {
+    $url = rtrim(config('app.url'), '/');
+    return response("User-agent: *\nDisallow:\n\nSitemap: {$url}/sitemap.xml\n", 200, [
+        'Content-Type' => 'text/plain',
+    ]);
+})->name('robots');
+
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
@@ -169,6 +180,8 @@ Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store']
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(function () {
     Route::get('/admin/about', [AdminAboutPageController::class, 'edit'])->name('admin.about.edit');
     Route::put('/admin/about', [AdminAboutPageController::class, 'update'])->name('admin.about.update');
+    Route::get('/admin/seo', [AdminSeoController::class, 'index'])->name('admin.seo.index');
+    Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
 });
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])

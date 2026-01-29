@@ -12,6 +12,7 @@ use App\Models\ExcelData;
 use App\Models\RewardPointLedger;
 use App\Models\User;
 use App\Services\ExcelDataTransformer;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -586,6 +587,7 @@ class PostController extends Controller
         }
 
         return Inertia::render('frontend/search', [
+            'seo' => SeoService::forPage('search'),
             'userStats' => $userStats,
             'peopleYouMayKnow' => $peopleYouMayKnow,
             'trendingOrganizations' => $trendingOrganizations,

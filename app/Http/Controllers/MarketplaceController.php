@@ -91,6 +91,7 @@ class MarketplaceController extends Controller
             ->get(['id', 'name']);
 
         return Inertia::render('frontend/marketplace', [
+            'seo' => \App\Services\SeoService::forPage('marketplace'),
             'products' => $processedProducts,
             'categories' => $categories,
             'organizations' => $organizations,

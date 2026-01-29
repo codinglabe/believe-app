@@ -13,8 +13,6 @@ import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
   { title: "Reward Point Management", href: "#" },

@@ -4,7 +4,6 @@ import type React from "react"
 import { motion } from "framer-motion"
 import { Send, CheckCircle, Mail } from "lucide-react"
 import { Link, useForm, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 
 interface PageProps {

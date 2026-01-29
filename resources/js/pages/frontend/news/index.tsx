@@ -1,6 +1,7 @@
 "use client"
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
+import { PageHead } from "@/components/frontend/PageHead"
 import { router, useForm } from "@inertiajs/react"
 import type { PageProps } from "@/types"
 import { useState, useEffect } from "react"
@@ -149,6 +150,7 @@ export default function NonprofitNews({
 
   return (
     <FrontendLayout>
+      <PageHead title="Nonprofit News" description="Stay updated with the latest news and stories from the nonprofit sector. Curated articles from trusted sources." />
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 py-8">
         <div className="container mx-auto px-4 max-w-6xl">
           {/* Header */}

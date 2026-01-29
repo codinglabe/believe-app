@@ -20,7 +20,6 @@ import {
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import DonationModal from "@/components/frontend/donation-modal"
 import { useState } from "react"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"

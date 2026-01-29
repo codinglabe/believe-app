@@ -43,7 +43,6 @@ import { Badge } from "@/components/frontend/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Link, router, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { LogOut } from "lucide-react"
 import { showSuccessToast } from "@/lib/toast"
 

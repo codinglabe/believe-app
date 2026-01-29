@@ -23,6 +23,7 @@ use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
+use App\Services\SeoService;
 
 class OrganizationRegisterController extends Controller
 {
@@ -42,6 +43,8 @@ class OrganizationRegisterController extends Controller
 
     public function create(Request $request)
     {
+        $seo = SeoService::forPage('register_organization');
+
         // Handle invite token
         if ($request->has('invite')) {
             $invite = OrganizationInvite::where('token', $request->invite)
@@ -54,6 +57,7 @@ class OrganizationRegisterController extends Controller
             }
 
             return Inertia::render('frontend/register/organization', [
+                'seo' => $seo,
                 'ein' => $invite->ein,
                 'inviteToken' => $invite->token,
                 'organizationName' => $invite->organization_name,
@@ -69,12 +73,15 @@ class OrganizationRegisterController extends Controller
             }
 
             return Inertia::render('frontend/register/organization', [
+                'seo' => $seo,
                 'ein' => $request->query('ein'),
                 'referralCode' => $user->referral_code,
             ]);
         }
 
-        return Inertia::render('frontend/register/organization', []);
+        return Inertia::render('frontend/register/organization', [
+            'seo' => $seo,
+        ]);
     }
 
     public function lookupEIN(Request $request)

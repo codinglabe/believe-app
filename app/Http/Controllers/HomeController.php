@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\ExcelData;
 use App\Models\NteeCode;
 use App\Services\ExcelDataTransformer;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
@@ -54,6 +55,7 @@ class HomeController extends Controller
         });
 
         return Inertia::render('frontend/home', [
+            'seo' => SeoService::forPage('home'),
             'filters' => [
                 'search' => $request->get('search', ''),
                 'category' => $request->get('category', 'All Categories'),

@@ -41,8 +41,6 @@ import {
 import { motion, AnimatePresence } from "framer-motion"
 import type { BreadcrumbItem } from "@/types"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
   { title: "KYC Verification", href: "/admin/kyc-verification" },

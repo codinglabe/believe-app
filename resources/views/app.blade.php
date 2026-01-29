@@ -1,9 +1,19 @@
 <!DOCTYPE html>
 <html lang="{{ str_replace('_', '-', app()->getLocale()) }}" @class(['dark' => ($appearance ?? 'system') == 'dark'])>
     <head>
+        @php
+            $isLivestock = function_exists('is_livestock_domain') ? is_livestock_domain() : false;
+            $isMerchant = request()->getHost() === config('merchant.domain') || str_contains(request()->getHost(), 'merchant.');
+        @endphp
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
+        @unless($isLivestock || $isMerchant)
+        <meta name="description" content="{{ config('app.name') }} - Connect with nonprofits and supporters. Donate, volunteer, and make an impact.">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="{{ config('app.name') }}">
+        <meta name="twitter:card" content="summary_large_image">
+        @endunless
 
         <!-- PWA Meta Tags -->
         <link rel="manifest" href="/manifest.json">
@@ -45,11 +55,6 @@
                 background-color: oklch(0.145 0 0);
             }
         </style>
-
-        @php
-            $isLivestock = function_exists('is_livestock_domain') ? is_livestock_domain() : false;
-            $isMerchant = request()->getHost() === config('merchant.domain') || str_contains(request()->getHost(), 'merchant.');
-        @endphp
 
         <title inertia>@if($isLivestock) Bida Livestock - Premium Livestock Marketplace @elseif($isMerchant) {{ config('app.name', 'Believe') }} Merchant Program @else {{ config('app.name', 'Laravel') }} @endif</title>
 

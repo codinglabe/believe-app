@@ -28,6 +28,7 @@ import {
   DollarSign,
 } from "lucide-react"
 import { Link, router } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 
 interface EventType {
   id: number
@@ -75,6 +76,7 @@ interface Organization {
 }
 
 interface EventsPageProps {
+    seo?: { title: string; description?: string }
     events: Event[];
     eventTypes: EventType[];
     organizations: Organization[];
@@ -93,7 +95,7 @@ interface EventsPageProps {
     dateFilter?: string;
 }
 
-export default function EventsPage({ events, eventTypes, organizations, cities, states, zips, search, status, eventTypeId, organizationId, cityFilter, stateFilter, zipFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
+export default function EventsPage({ seo, events, eventTypes, organizations, cities, states, zips, search, status, eventTypeId, organizationId, cityFilter, stateFilter, zipFilter, monthFilter, dayFilter, dateFilter }: EventsPageProps) {
     const [currentPage, setCurrentPage] = useState(1)
     const eventsPerPage = 6
 
@@ -287,6 +289,7 @@ export default function EventsPage({ events, eventTypes, organizations, cities, 
 
     return (
         <FrontendLayout>
+            <PageHead title={seo?.title ?? "All Events"} description={seo?.description} />
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
                 {/* Hero Section */}
                 <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-purple-600 to-indigo-700 dark:from-gray-900 dark:via-blue-900 dark:to-indigo-900 py-16">

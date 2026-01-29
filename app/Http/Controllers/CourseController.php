@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Log;
+use App\Services\SeoService;
 
 class CourseController extends BaseController
 {
@@ -97,7 +98,36 @@ class CourseController extends BaseController
                 ];
             });
 
+        // Dynamic SEO: base from settings, override title when filters applied
+        $baseSeo = SeoService::forPage('courses');
+        $seoTitle = $baseSeo['title'];
+        $seoParts = [];
+        if (!empty($filters['type']) && $filters['type'] !== 'all') {
+            $seoParts[] = $filters['type'] === 'event' ? 'Events' : 'Courses';
+        }
+        if (!empty($filters['pricing_type']) && $filters['pricing_type'] !== 'all') {
+            $seoParts[] = $filters['pricing_type'] === 'free' ? 'Free' : 'Paid';
+        }
+        if (!empty($filters['format']) && $filters['format'] !== 'all') {
+            $formatLabels = ['online' => 'Online', 'in_person' => 'In Person', 'hybrid' => 'Hybrid'];
+            $seoParts[] = $formatLabels[$filters['format']] ?? $filters['format'];
+        }
+        if (!empty($filters['search'])) {
+            $seoParts[] = '“' . Str::limit($filters['search'], 30) . '”';
+        }
+        if (!empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts) . ' - ' . $baseSeo['title'];
+        }
+        $seoDescription = $baseSeo['description'];
+        if (!empty($filters['search'])) {
+            $seoDescription = 'Find courses and events matching your search. ' . $seoDescription;
+        }
+
         return Inertia::render('frontend/course/Index', [
+            'seo' => [
+                'title' => $seoTitle,
+                'description' => $seoDescription,
+            ],
             'courses' => $courses,
             'topics' => $topics,
             'eventTypes' => $eventTypes,

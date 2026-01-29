@@ -12,6 +12,7 @@ import { motion } from "framer-motion"
 import { Link, router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import { WalletDemoPopup } from "@/components/WalletDemoPopup"
+import { PageHead } from "@/components/frontend/PageHead"
 
 const stats = [
   { label: "Verified Organizations", value: "2,500+", icon: Shield, color: "text-blue-600" },
@@ -39,6 +40,7 @@ const features = [
 ]
 
 interface PageProps {
+    seo?: { title: string; description?: string }
     filters: {
       search?: string
       category?: string
@@ -54,7 +56,7 @@ interface PageProps {
   }
 
 export default function HomePage() {
-    const { filterOptions, filters, featuredOrganizations = [] } = usePage<PageProps>().props
+    const { seo, filterOptions, filters, featuredOrganizations = [] } = usePage<PageProps>().props
     const [isLoading, setIsLoading] = useState(false)
     const [hasStartedDemo, setHasStartedDemo] = useState(false)
     const [walletPopupOpen, setWalletPopupOpen] = useState(false)
@@ -280,6 +282,7 @@ export default function HomePage() {
 
     return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Home"} description={seo?.description} />
     <div className="min-h-screen">
       {/* Professional Hero Section - Inspired by Global Network Theme */}
       <section className="relative overflow-hidden min-h-[90vh] flex items-center">

@@ -10,9 +10,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
-import { Link, useForm } from "@inertiajs/react"
+import { Link, useForm, usePage } from "@inertiajs/react"
 import InputError from "@/components/input-error";
-import { MultiSelect } from "@/components/ui/multi-select";
+import { MultiSelect } from "@/components/ui/multi-select"
+import { PageHead } from "@/components/frontend/PageHead"
 
 type RegisterForm = {
     name: string;
@@ -24,7 +25,13 @@ type RegisterForm = {
     positions: number[];
 };
 
-export default function UserRegisterPage({ referralCode, positions }: { referralCode: string; positions: { id: number; name: string }[] }) {
+interface UserRegisterPageProps {
+  seo?: { title: string; description?: string }
+  referralCode?: string
+  positions: { id: number; name: string }[]
+}
+
+export default function UserRegisterPage({ seo, referralCode = '', positions }: UserRegisterPageProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   //   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -113,6 +120,7 @@ export default function UserRegisterPage({ referralCode, positions }: { referral
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Register as Supporter"} description={seo?.description} />
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
       {/* Background Image Overlay */}
       <div 

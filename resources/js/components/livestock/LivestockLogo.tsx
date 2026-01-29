@@ -1,5 +1,4 @@
 import { Link } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { motion } from "framer-motion"
 
 interface LivestockLogoProps {

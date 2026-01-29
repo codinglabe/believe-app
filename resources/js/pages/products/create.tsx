@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from 'react';
 import type { SharedData } from "@/types"
 import { Head, Link, router, useForm, usePage } from '@inertiajs/react';
-import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';

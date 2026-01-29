@@ -27,8 +27,6 @@ import {
     Star
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Plans Management', href: '/admin/plans' },

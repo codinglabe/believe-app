@@ -7,7 +7,6 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { Head } from "@inertiajs/react"
 import OrganizationProfileLayout from "@/components/frontend/organization/OrganizationProfileLayout"
 

@@ -2,10 +2,9 @@
 
 import React, { useState, useCallback, useMemo } from "react"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { usePage } from "@inertiajs/react"
-import { Head } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
@@ -68,6 +67,7 @@ interface Filters {
 }
 
 interface PageProps {
+  seo?: { title: string; description?: string }
   supporters: PaginatedSupporters
   searchQuery: string
   filters: Filters
@@ -91,6 +91,7 @@ function buildParams(
 
 export default function FindSupportersPage() {
   const {
+    seo,
     supporters: initialSupporters,
     searchQuery: initialQuery,
     filters: initialFilters,
@@ -318,7 +319,7 @@ export default function FindSupportersPage() {
 
   return (
     <FrontendLayout>
-      <Head title="Find Supporters" />
+      <PageHead title={seo?.title ?? "Find Supporters"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         <div className="max-w-[95rem] mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="mb-8">

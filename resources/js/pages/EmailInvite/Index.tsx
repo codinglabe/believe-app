@@ -25,7 +25,6 @@ import {
     Send as SendIcon,
     TrendingUp
 } from "lucide-react"
-import { route } from "ziggy-js"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useDebounce } from "@/hooks/useDebounce"

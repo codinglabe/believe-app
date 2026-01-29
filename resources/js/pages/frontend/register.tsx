@@ -5,9 +5,15 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Users, Building2, ArrowRight } from "lucide-react"
 import { motion } from "framer-motion"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
+
+interface RegisterPageProps {
+  seo?: { title: string; description?: string }
+}
 
 export default function RegisterPage() {
+  const { seo } = usePage<RegisterPageProps>().props
 
 
   const [referralCode, setReferralCode] = useState<string | null>(null);
@@ -23,6 +29,7 @@ export default function RegisterPage() {
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Create Account"} description={seo?.description} />
       <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
         {/* Background Image Overlay */}
         <div 

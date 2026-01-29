@@ -11,6 +11,7 @@ import { router, usePage } from "@inertiajs/react"
 import SearchSection from "@/components/frontend/SearchSection"
 import OrganizationCard from "@/components/frontend/OrganizationCard"
 import SignInPopup from "@/components/frontend/SignInPopup"
+import { PageHead } from "@/components/frontend/PageHead"
 
 interface Organization {
   id: number
@@ -192,6 +193,7 @@ export default function OrganizationsPage() {
 
   return (
     <FrontendLayout>
+      <PageHead title="Organizations" description="Browse verified nonprofits by cause, location, and name. Find organizations to support and donate to." />
       {/* Sign In Popup */}
       <SignInPopup
         isOpen={showSignInPopup}

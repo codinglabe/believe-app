@@ -10,7 +10,6 @@ import { useState, useCallback } from "react"
 import debounce from "lodash.debounce"
 import { Eye, DollarSign, Calendar, Search, CheckCircle, Clock, XCircle, TrendingUp } from "lucide-react"
 import { format } from "date-fns"
-import { route } from "ziggy-js"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 interface Payout {
     id: number

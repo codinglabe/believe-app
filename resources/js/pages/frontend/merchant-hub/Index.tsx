@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
+import { Link, router } from '@inertiajs/react'
+import { PageHead } from '@/components/frontend/PageHead'
 import { Search, Store, Gift, Sparkles } from 'lucide-react'
 import { motion } from 'framer-motion'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
@@ -171,7 +172,7 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
 
   return (
     <FrontendLayout>
-      <Head title="Merchant Hub - Browse Offers" />
+      <PageHead title="Merchant Hub" description="Browse offers from partner merchants. Redeem reward points and support businesses that give back." />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">

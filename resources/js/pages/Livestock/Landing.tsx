@@ -38,8 +38,6 @@ import {
 import { motion, useScroll, useTransform } from "framer-motion"
 import LivestockLogo from "@/components/livestock/LivestockLogo"
 import { useState, useRef } from "react"
-import { route } from "ziggy-js"
-
 const features = [
     {
         icon: Shield,

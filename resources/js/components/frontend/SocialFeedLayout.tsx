@@ -2,7 +2,6 @@
 
 import React, { useState } from "react"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { usePage } from "@inertiajs/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"

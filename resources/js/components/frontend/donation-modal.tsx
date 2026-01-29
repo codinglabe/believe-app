@@ -13,7 +13,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Badge } from "@/components/frontend/ui/badge"
 import { Separator } from "@/components/frontend/ui/separator"
 import { router, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { useNotification } from "./notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
 
