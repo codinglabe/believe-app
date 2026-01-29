@@ -62,6 +62,7 @@ class RssAggregator
 
             $date = $item->get_date('U');
             $summary = $item->get_description() ?: $item->get_content();
+            $imageUrl = $this->extractImageFromSimplePieItem($item);
 
             $out[] = [
                 'title' => trim($item->get_title() ?: '(no title)'),
@@ -69,6 +70,7 @@ class RssAggregator
                 'source' => $sourceName,
                 'published_at' => $date ? (new \DateTimeImmutable("@{$date}")) : null,
                 'summary' => $summary ? strip_tags($summary) : null,
+                'image_url' => $imageUrl,
             ];
         }
 
@@ -115,15 +117,47 @@ class RssAggregator
 
             $date = $dateStr ? new \DateTimeImmutable($dateStr) : null;
 
+            $imageUrl = $this->extractImageFromRssItem($it);
             $out[] = [
                 'title' => trim($title) ?: '(no title)',
                 'link' => $link,
                 'source' => $sourceName,
                 'published_at' => $date,
                 'summary' => $desc ? strip_tags($desc) : null,
+                'image_url' => $imageUrl,
             ];
         }
         return $out;
+    }
+
+    protected function extractImageFromSimplePieItem($item): ?string
+    {
+        $enclosure = $item->get_enclosure();
+        if ($enclosure && $enclosure->get_type() && stripos($enclosure->get_type(), 'image/') === 0) {
+            $link = $enclosure->get_link();
+            if ($link) {
+                return $link;
+            }
+        }
+        if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', (string) $item->get_content(), $m)) {
+            return $m[1];
+        }
+        return null;
+    }
+
+    protected function extractImageFromRssItem($it): ?string
+    {
+        if (isset($it->enclosure) && isset($it->enclosure['url'])) {
+            $type = (string) ($it->enclosure['type'] ?? '');
+            if (stripos($type, 'image/') === 0) {
+                return (string) $it->enclosure['url'];
+            }
+        }
+        $desc = (string) ($it->description ?? '');
+        if (preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', $desc, $m)) {
+            return $m[1];
+        }
+        return null;
     }
 
     protected function normalizeAtomEntries($entries, array $ns, string $sourceName): array
@@ -151,6 +185,7 @@ class RssAggregator
             $summary = $summaryNode ? (string)$summaryNode : null;
 
             $date = $dateStr ? new \DateTimeImmutable($dateStr) : null;
+            $imageUrl = isset($entry->link) ? $this->extractImageFromAtomEntry($entry) : null;
 
             $out[] = [
                 'title' => trim($title) ?: '(no title)',
@@ -158,8 +193,29 @@ class RssAggregator
                 'source' => $sourceName,
                 'published_at' => $date,
                 'summary' => $summary ? strip_tags($summary) : null,
+                'image_url' => $imageUrl,
             ];
         }
         return $out;
+    }
+
+    protected function extractImageFromAtomEntry($entry): ?string
+    {
+        if (!isset($entry->link)) {
+            return null;
+        }
+        foreach ($entry->link as $l) {
+            $attrs = $l->attributes();
+            $rel = (string) ($attrs['rel'] ?? 'alternate');
+            $type = (string) ($attrs['type'] ?? '');
+            if ($rel === 'enclosure' && stripos($type, 'image/') === 0 && !empty($attrs['href'])) {
+                return (string) $attrs['href'];
+            }
+        }
+        $content = $entry->content ?? $entry->summary ?? null;
+        if ($content && preg_match('/<img[^>]+src=["\']([^"\']+)["\']/i', (string) $content, $m)) {
+            return $m[1];
+        }
+        return null;
     }
 }

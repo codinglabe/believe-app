@@ -77,6 +77,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
+use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
@@ -186,6 +187,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(functi
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
     ->name('nonprofit.news');
+Route::get('/nonprofit-news/saved', [SavedNewsController::class, 'index'])
+    ->name('nonprofit.news.saved')
+    ->middleware('auth');
+Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'toggle'])
+    ->name('nonprofit.news.save.toggle')
+    ->middleware('auth');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');

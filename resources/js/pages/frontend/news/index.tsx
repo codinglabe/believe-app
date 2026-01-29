@@ -1,438 +1,559 @@
-"use client"
-
+import { Head, Link, router, useForm, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { PageHead } from "@/components/frontend/PageHead"
-import { router, useForm } from "@inertiajs/react"
-import type { PageProps } from "@/types"
 import { useState, useEffect } from "react"
+import { route } from "ziggy-js"
+import { Button } from "@/components/frontend/ui/button"
+import { Card, CardContent } from "@/components/frontend/ui/card"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/frontend/ui/select"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/frontend/ui/dialog"
+import { Search, Filter, Heart, Share2, ExternalLink, ChevronRight, Mail, Bookmark, Send } from "lucide-react"
 
-interface NewsItem {
+interface ArticleItem {
+  id: number
   source: string
   title: string
   link: string
-  summary?: string
-  published_at?: string
+  summary?: string | null
+  published_at?: string | null
+  image_url?: string | null
+  category?: string | null
 }
 
-interface Props extends PageProps {
-  items?: NewsItem[]
-  allSources: string[]
-  sources: string[]
-  query: string
-  updated_at: string
+interface PaginatedArticles {
+  data: ArticleItem[]
   current_page: number
   last_page: number
-  from: number
-  to: number
+  per_page: number
   total: number
+  from?: number
+  to?: number
+  prev_page_url: string | null
+  next_page_url: string | null
+}
+
+interface Props {
+  featured: ArticleItem | null
+  trending: ArticleItem[]
+  articles: PaginatedArticles
+  savedArticleIds: number[]
+  filters: { q: string; sources: string[]; sort: string }
+  allSources: string[]
+  categoryOptions: Record<string, string>
+  sortOptions: Record<string, string>
+}
+
+function formatDate(s: string | null | undefined): string {
+  if (!s) return ""
+  const d = new Date(s)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+  if (diffMins < 60) return `${diffMins}m ago`
+  if (diffHours < 24) return `${diffHours}h ago`
+  if (diffDays < 7) return `${diffDays}d ago`
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: d.getFullYear() !== now.getFullYear() ? "numeric" : undefined })
+}
+
+function readTime(summary: string | null | undefined): string {
+  if (!summary) return "1 min read"
+  const words = summary.split(/\s+/).length
+  const mins = Math.max(1, Math.ceil(words / 200))
+  return `${mins} min read`
+}
+
+function handleShare(title: string, link: string) {
+  if (typeof navigator !== "undefined" && navigator.share) {
+    navigator.share({ title, url: link, text: title }).catch(() => copyLinkToClipboard(link))
+  } else {
+    copyLinkToClipboard(link)
+  }
+}
+
+function copyLinkToClipboard(link: string) {
+  navigator.clipboard.writeText(link).then(() => {
+    if (typeof window !== "undefined" && (window as any).toast) {
+      ;(window as any).toast.success("Link copied to clipboard")
+    }
+  })
 }
 
 export default function NonprofitNews({
-  items = [],
-  allSources = [],
-  sources = [],
-  query = "",
-  updated_at,
-  current_page = 1,
-  last_page = 1,
-  from = 0,
-  to = 0,
-  total = 0,
+  featured,
+  trending,
+  articles,
+  savedArticleIds = [],
+  filters,
+  allSources,
+  categoryOptions,
+  sortOptions,
 }: Props) {
-  const { data, setData, processing } = useForm({
-    q: query || "",
-    sources: sources || [],
-    page: current_page,
-  })
-
-  const [isFilterOpen, setIsFilterOpen] = useState(false)
-  const [isLoading, setIsLoading] = useState(false)
-  const [darkMode, setDarkMode] = useState(false)
+  const { auth } = usePage().props as { auth?: { user?: { id: number } } }
+  const isLoggedIn = !!auth?.user
+  const [savedIds, setSavedIds] = useState<number[]>(savedArticleIds)
+  const [savingId, setSavingId] = useState<number | null>(null)
 
   useEffect(() => {
-    // Check if dark mode is preferred
-    const isDark = localStorage.getItem('darkMode') === 'true' ||
-      window.matchMedia('(prefers-color-scheme: dark)').matches;
-    setDarkMode(isDark);
+    setSavedIds(savedArticleIds)
+  }, [savedArticleIds])
 
-    // Update document class for Tailwind dark mode
-    if (isDark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  const isSaved = (id: number) => savedIds.includes(id)
+
+  const toggleSave = async (articleId: number) => {
+    if (!isLoggedIn) return
+    setSavingId(articleId)
+    try {
+      const csrf = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? ""
+      const res = await fetch(route("nonprofit.news.save.toggle", { article: articleId }), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRF-TOKEN": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        credentials: "same-origin",
+      })
+      const data = await res.json().catch(() => ({}))
+      if (res.ok && typeof data.saved === "boolean") {
+        setSavedIds((prev) =>
+          data.saved ? [...prev, articleId] : prev.filter((id) => id !== articleId)
+        )
+      }
+    } finally {
+      setSavingId(null)
     }
-  }, []);
+  }
 
-  const toggleDarkMode = () => {
-    const newDarkMode = !darkMode;
-    setDarkMode(newDarkMode);
-    localStorage.setItem('darkMode', newDarkMode.toString());
+  const { data, setData } = useForm({
+    q: filters.q || "",
+    sources: filters.sources || [],
+    sort: filters.sort || "newest",
+    page: 1,
+  })
+  const [filterOpen, setFilterOpen] = useState(false)
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
 
-    if (newDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  };
+  const applyFilters = (overrides: Partial<{ q: string; sources: string[]; sort: string; page: number }> = {}) => {
+    router.get(route("nonprofit.news"), { ...data, ...overrides, page: overrides.page ?? 1 }, {
+      preserveState: true,
+      preserveScroll: true,
+    })
+  }
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault()
+    applyFilters({ page: 1 })
+  }
+
+  const handleSort = (value: string) => {
+    setData("sort", value)
+    applyFilters({ sort: value, page: 1 })
+  }
 
   const toggleSource = (src: string) => {
-    const updatedSources = data.sources.includes(src)
+    const next = data.sources.includes(src)
       ? data.sources.filter((s) => s !== src)
-      : [...data.sources, src];
-
-    setData("sources", updatedSources);
-  }
-
-  const SelectAllSources = () => {
-      setData("sources", [...allSources]);
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    setIsLoading(true)
-
-    router.get(route("nonprofit.news"), { ...data, page: 1 }, {
-      preserveScroll: true,
-      preserveState: true,
-      onFinish: () => setIsLoading(false),
-    })
+      : [...data.sources, src]
+    setData("sources", next)
   }
 
   const clearFilters = () => {
-    const resetData = { q: "", sources: [], page: 1 }
-    setData(resetData)
-    setIsLoading(true)
-
-    router.get(route("nonprofit.news"), resetData, {
-      preserveScroll: true,
-      preserveState: true,
-      onFinish: () => setIsLoading(false),
-    })
+    setData({ q: "", sources: [], sort: "newest", page: 1 })
+    router.get(route("nonprofit.news"), {}, { preserveState: true })
+    setFilterOpen(false)
   }
 
-  const handlePageChange = (page: number) => {
-    setIsLoading(true)
-
-    router.get(route("nonprofit.news"), { ...data, page }, {
-      preserveScroll: true,
-      preserveState: true,
-      onFinish: () => setIsLoading(false),
-    })
-  }
-
-//   // Check if all sources are selected
-//   const allSourcesSelected = data.sources.length === allSources.length;
-//   // Check if some (but not all) sources are selected
-//   const someSourcesSelected = data.sources.length > 0 && data.sources.length < allSources.length;
-
-  // Show loading state
-  if (isLoading || processing) {
-    return (
-      <FrontendLayout>
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 py-8">
-          <div className="container mx-auto px-4 max-w-6xl">
-            <div className="text-center">
-              <div className="animate-pulse bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 max-w-2xl mx-auto">
-                <div className="h-8 bg-gray-200 dark:bg-gray-700 rounded w-3/4 mx-auto mb-4"></div>
-                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-1/2 mx-auto mb-8"></div>
-                <div className="space-y-4">
-                  {[1, 2, 3].map(i => (
-                    <div key={i} className="h-32 bg-gray-200 dark:bg-gray-700 rounded-xl"></div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </FrontendLayout>
-    )
-  }
+  const categoryList = Object.entries(categoryOptions)
 
   return (
     <FrontendLayout>
-      <PageHead title="Nonprofit News" description="Stay updated with the latest news and stories from the nonprofit sector. Curated articles from trusted sources." />
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-900 dark:to-gray-800 py-8">
-        <div className="container mx-auto px-4 max-w-6xl">
+      <Head title="Nonprofit News – Daily signals for nonprofit leaders" />
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-7xl">
           {/* Header */}
-          <div className="text-center mb-8 relative">
-            {/* <button
-              onClick={toggleDarkMode}
-              className="absolute right-0 top-0 p-2 rounded-full bg-white dark:bg-gray-800 shadow-md"
-              aria-label="Toggle dark mode"
-            >
-              {darkMode ? (
-                <svg className="w-6 h-6 text-yellow-500" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M10 2a1 1 0 011 1v1a1 1 0 01-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" clipRule="evenodd" />
-                </svg>
-              ) : (
-                <svg className="w-6 h-6 text-gray-700" fill="currentColor" viewBox="0 0 20 20">
-                  <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
-                </svg>
-              )}
-            </button> */}
-
-            <h1 className="text-4xl font-bold text-gray-900 dark:text-white mb-3">Nonprofit News Aggregator</h1>
-            <p className="text-lg text-gray-600 dark:text-gray-300 max-w-2xl mx-auto">
-              Stay updated with the latest news and insights from leading nonprofit organizations
+          <header className="text-center mb-8">
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground tracking-tight">
+              Nonprofit News
+            </h1>
+            <p className="mt-2 text-muted-foreground text-lg">
+              Daily signals for nonprofit leaders + community impact
             </p>
+          </header>
+
+          {/* Search + Filters bar */}
+          <div className="flex flex-col sm:flex-row gap-3 mb-6">
+            <form onSubmit={handleSearch} className="flex-1 flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input
+                  type="search"
+                  placeholder="Search headlines, topics, organizations"
+                  value={data.q}
+                  onChange={(e) => setData("q", e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-input bg-background text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+                />
+              </div>
+              <Button type="submit" variant="default" size="default">
+                Search
+              </Button>
+            </form>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="default"
+                onClick={() => setFilterOpen(true)}
+                className="gap-2"
+              >
+                <Filter className="h-4 w-4" />
+                Filters
+              </Button>
+              <Select value={data.sort} onValueChange={handleSort}>
+                <SelectTrigger className="w-[140px] bg-background">
+                  <SelectValue placeholder="Sort" />
+                </SelectTrigger>
+                <SelectContent>
+                  {Object.entries(sortOptions).map(([value, label]) => (
+                    <SelectItem key={value} value={value}>{label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
-          {/* Stats Bar */}
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 mb-6 flex flex-wrap justify-between items-center">
-            <div className="flex items-center space-x-6">
-              <div className="text-center">
-                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{total}</span>
-                <span className="block text-sm text-gray-500 dark:text-gray-400">Total Articles</span>
-              </div>
-              <div className="text-center">
-                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{sources.length === 0 ? allSources.length : sources.length}</span>
-                <span className="block text-sm text-gray-500 dark:text-gray-400">Sources</span>
-              </div>
-              <div className="text-center">
-                <span className="block text-2xl font-bold text-blue-600 dark:text-blue-400">{from}-{to}</span>
-                <span className="block text-sm text-gray-500 dark:text-gray-400">Showing</span>
-              </div>
-            </div>
-            <div className="text-sm text-gray-500 dark:text-gray-400">
-              Last updated: {updated_at ? new Date(updated_at).toLocaleString() : 'Loading...'}
-            </div>
-          </div>
-
-          <div className="flex flex-col lg:flex-row gap-6">
-            {/* Filters Sidebar */}
-            <div className="lg:w-1/4">
-              <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-5 sticky top-6">
-                <div className="flex justify-between items-center mb-5">
-                  <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Filters</h2>
-                  <button
-                    onClick={() => setIsFilterOpen(!isFilterOpen)}
-                    className="lg:hidden text-blue-600 dark:text-blue-400"
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Main content */}
+            <div className="lg:col-span-2 space-y-6">
+              {/* Featured (hero) */}
+              {featured && (
+                <Card className="overflow-hidden border-0 shadow-lg">
+                  <a
+                    href={featured.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
                   >
-                    {isFilterOpen ? 'Hide' : 'Show'}
-                  </button>
-                </div>
-
-                <div className={`${isFilterOpen ? 'block' : 'hidden'} lg:block`}>
-                  <div className="mb-5">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Search</label>
-                    <input
-                      type="text"
-                      name="q"
-                      value={data.q}
-                      onChange={(e) => setData("q", e.target.value)}
-                      placeholder="Search articles..."
-                      className="w-full border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:text-white"
-                    />
-                  </div>
-
-                  <div className="mb-5">
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Sources</label>
-                      <button
-                        type="button"
-                        onClick={SelectAllSources}
-                        className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-                      >
-                        {'Select All'}
-                      </button>
-                    </div>
-                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                      {allSources.length > 0 ? allSources.map((src) => {
-                        // When no sources are selected, consider all as selected (for display purposes only)
-                        const isEffectivelyChecked = data.sources.length === 0 || data.sources.includes(src);
-
-                        return (
-                          <label
-                            key={src}
-                            className="flex items-center space-x-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 p-2 rounded cursor-pointer"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isEffectivelyChecked}
-                              onChange={() => toggleSource(src)}
-                              className="rounded text-blue-600 focus:ring-blue-500 dark:bg-gray-700"
-                            />
-                            <span className={data.sources.length === 0 ? "text-gray-400" : ""}>
-                              {src}
-                            </span>
-                          </label>
-                        )
-                      }) : (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">No sources available</p>
-                      )}
-                    </div>
-                    {data.sources.length === 0 && (
-                      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">
-                        Showing all sources by default
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex space-x-3">
-                    <button
-                      onClick={handleSubmit}
-                      disabled={processing}
-                      className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
-                    >
-                      Apply Filters
-                    </button>
-                    <button
-                      onClick={clearFilters}
-                      disabled={processing}
-                      className="px-4 py-2 text-gray-600 dark:text-gray-300 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors disabled:opacity-50"
-                    >
-                      Clear
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Articles List */}
-            <div className="lg:w-3/4">
-              {items.length > 0 ? (
-                <>
-                  <div className="grid gap-5 mb-6">
-                    {items.map((item, i) => (
-                      <article
-                        key={i}
-                        className="bg-white dark:bg-gray-800 rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 border-l-4 border-blue-500"
-                      >
-                        <div className="p-6">
-                          <div className="flex justify-between items-start mb-3">
-                            <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200">
-                                {item.source}
-                            </span>
-                            {item.published_at && (
-                                <span className="text-xs text-gray-500 dark:text-gray-400">
-                                {new Date(item.published_at).toLocaleDateString()}
-                                </span>
-                            )}
-                            </div>
-
-                          <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-3 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
-                            <a
-                              href={item.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="hover:underline"
-                            >
-                              {item.title}
-                            </a>
-                          </h2>
-
-                          {item.summary && (
-                            <p className="text-gray-700 dark:text-gray-300 mb-4 line-clamp-3">
-                              {item.summary.length > 220
-                                ? item.summary.slice(0, 220) + "..."
-                                : item.summary}
-                            </p>
-                          )}
-
-                          <div className="flex justify-between items-center">
-                            <a
-                              href={item.link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="inline-flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 font-medium text-sm"
-                            >
-                              Read full article
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                              </svg>
-                            </a>
-                          </div>
+                    <div className="aspect-[16/9] bg-muted relative overflow-hidden">
+                      {featured.image_url ? (
+                        <img
+                          src={featured.image_url}
+                          alt=""
+                          className="object-cover w-full h-full group-hover:scale-[1.02] transition-transform duration-300"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary/60">
+                          <span className="text-sm font-medium">Featured</span>
                         </div>
-                      </article>
-                    ))}
-                  </div>
-
-                  {/* Pagination */}
-                  {last_page > 1 && (
-                    <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-4 flex justify-between items-center">
-                      <div className="text-sm text-gray-700 dark:text-gray-300">
-                        Showing <span className="font-medium">{from}</span> to <span className="font-medium">{to}</span> of{' '}
-                        <span className="font-medium">{total}</span> results
-                      </div>
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={() => handlePageChange(current_page - 1)}
-                          disabled={current_page === 1}
-                          className="px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                        >
-                          Previous
-                        </button>
-
-                        {Array.from({ length: Math.min(5, last_page) }, (_, i) => {
-                          // Show pages around current page
-                          let pageNum;
-                          if (last_page <= 5) {
-                            pageNum = i + 1;
-                          } else if (current_page <= 3) {
-                            pageNum = i + 1;
-                          } else if (current_page >= last_page - 2) {
-                            pageNum = last_page - 4 + i;
-                          } else {
-                            pageNum = current_page - 2 + i;
-                          }
-
-                          return (
-                            <button
-                              key={pageNum}
-                              onClick={() => handlePageChange(pageNum)}
-                              className={`px-3 py-1 rounded-md ${
-                                current_page === pageNum
-                                  ? 'bg-blue-600 text-white'
-                                  : 'border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
-                              }`}
-                            >
-                              {pageNum}
-                            </button>
-                          );
-                        })}
-
-                        <button
-                          onClick={() => handlePageChange(current_page + 1)}
-                          disabled={current_page === last_page}
-                          className="px-3 py-1 rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50"
-                        >
-                          Next
-                        </button>
+                      )}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
+                      <div className="absolute bottom-0 left-0 right-0 p-6">
+                        <h2 className="text-2xl md:text-3xl font-bold text-white drop-shadow-lg line-clamp-2">
+                          {featured.title}
+                        </h2>
                       </div>
                     </div>
-                  )}
-                </>
+                  </a>
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex flex-wrap gap-2">
+                      <span className="text-sm font-semibold text-primary">BIU Take</span>
+                      <span className="text-sm text-muted-foreground">
+                        Why it matters: {featured.summary ? featured.summary.slice(0, 80) + (featured.summary.length > 80 ? "…" : "") : "Latest from " + featured.source}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/50 dark:text-emerald-200">
+                        What to do
+                      </span>
+                      <span className="text-xs text-muted-foreground">Read and share with your network</span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                      <span>{featured.source}</span>
+                      <span>{featured.published_at ? formatDate(featured.published_at) : ""}</span>
+                      <span>{readTime(featured.summary)}</span>
+                    </div>
+                    <div className="flex flex-wrap gap-2 pt-2">
+                      <a href={featured.link} target="_blank" rel="noopener noreferrer">
+                        <Button size="sm" className="gap-1">
+                          Read More
+                          <ExternalLink className="h-3.5 w-3.5" />
+                        </Button>
+                      </a>
+                      {isLoggedIn ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className={`gap-1 ${isSaved(featured.id) ? "text-primary" : ""}`}
+                          onClick={() => toggleSave(featured.id)}
+                          disabled={savingId === featured.id}
+                        >
+                          <Heart className={`h-3.5 w-3.5 ${isSaved(featured.id) ? "fill-current" : ""}`} />
+                          {isSaved(featured.id) ? "Saved" : "Save"}
+                        </Button>
+                      ) : null}
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="gap-1"
+                        onClick={() => handleShare(featured.title, featured.link)}
+                      >
+                        <Share2 className="h-3.5 w-3.5" />
+                        Share
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Category pills */}
+              <div className="flex flex-wrap gap-2">
+                {categoryList.map(([key, label]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSelectedCategory(selectedCategory === key ? null : key)}
+                    className={`px-4 py-2 rounded-full text-sm font-medium border transition-colors ${
+                      selectedCategory === key
+                        ? "bg-primary text-primary-foreground border-primary"
+                        : "bg-background border-input text-muted-foreground hover:border-primary/50"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Articles grid */}
+              {articles.data.length === 0 ? (
+                <Card className="p-12 text-center">
+                  <CardContent className="p-0">
+                    <p className="text-muted-foreground font-medium">No articles found</p>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {articles.total > 0
+                        ? "Try adjusting your search or filters."
+                        : "News is loading from our sources. Check back soon."}
+                    </p>
+                  </CardContent>
+                </Card>
               ) : (
-                <div className="bg-white dark:bg-gray-800 rounded-xl shadow-md p-8 text-center">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 mx-auto text-gray-400 dark:text-gray-500 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.172 16.172a4 4 0 015.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <h3 className="text-xl font-semibold text-gray-800 dark:text-white mb-2">No articles found</h3>
-                  <p className="text-gray-600 dark:text-gray-400">
-                    {total > 0
-                      ? "Try adjusting your filters or search terms."
-                      : "No news articles available at the moment. Please check back later."}
+              <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
+                {articles.data.map((item) => (
+                  <Card key={item.id} className="overflow-hidden flex flex-col">
+                    <a
+                      href={item.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block flex-1"
+                    >
+                      <div className="aspect-video bg-muted relative overflow-hidden">
+                        {item.image_url ? (
+                          <img
+                            src={item.image_url}
+                            alt=""
+                            className="object-cover w-full h-full hover:scale-[1.02] transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-primary/5 text-muted-foreground">
+                            <span className="text-xs">Article</span>
+                          </div>
+                        )}
+                      </div>
+                    </a>
+                    <CardContent className="p-4 flex flex-col flex-1">
+                      <h3 className="font-semibold text-foreground line-clamp-2 mt-0">
+                        <a href={item.link} target="_blank" rel="noopener noreferrer" className="hover:text-primary">
+                          {item.title}
+                        </a>
+                      </h3>
+                      {item.summary && (
+                        <p className="text-sm text-muted-foreground line-clamp-2 mt-1 flex-1">
+                          {item.summary.slice(0, 120)}{item.summary.length > 120 ? "…" : ""}
+                        </p>
+                      )}
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground mt-2">
+                        <span>{item.source}</span>
+                        <span>{formatDate(item.published_at)}</span>
+                      </div>
+                      <div className="flex gap-2 mt-3">
+                        {isLoggedIn ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className={`gap-1 ${isSaved(item.id) ? "text-primary" : "text-muted-foreground"}`}
+                            onClick={() => toggleSave(item.id)}
+                            disabled={savingId === item.id}
+                          >
+                            <Heart className={`h-3.5 w-3.5 ${isSaved(item.id) ? "fill-current" : ""}`} />
+                            {isSaved(item.id) ? "Saved" : "Save"}
+                          </Button>
+                        ) : null}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="gap-1 text-muted-foreground"
+                          onClick={() => handleShare(item.title, item.link)}
+                        >
+                          <Share2 className="h-3.5 w-3.5" />
+                          Share
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              )}
+
+              {/* Pagination */}
+              {articles.last_page > 1 && (
+                <div className="flex items-center justify-between pt-4">
+                  <p className="text-sm text-muted-foreground">
+                    Page {articles.current_page} of {articles.last_page}
                   </p>
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={articles.current_page <= 1}
+                      onClick={() => applyFilters({ page: articles.current_page - 1 })}
+                    >
+                      Previous
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={articles.current_page >= articles.last_page}
+                      onClick={() => applyFilters({ page: articles.current_page + 1 })}
+                    >
+                      Next
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>
-          </div>
 
-          {/* Footer Attribution */}
-          <div className="mt-8 text-center text-sm text-gray-500 dark:text-gray-400">
-            <p>Data courtesy of each publisher via RSS. Headlines link to the original source.</p>
+            {/* Sidebar */}
+            <aside className="space-y-6">
+              <Card>
+                <CardContent className="p-4">
+                  <h3 className="font-semibold text-foreground mb-3">Trending News</h3>
+                  <ul className="space-y-2">
+                    {trending.length > 0 ? (
+                      trending.map((t) => (
+                        <li key={t.id}>
+                          <a
+                            href={t.link}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-start gap-2 text-sm text-foreground hover:text-primary group"
+                          >
+                            <ChevronRight className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground group-hover:text-primary" />
+                            <span className="line-clamp-2 flex-1">{t.title}</span>
+                          </a>
+                          <p className="text-xs text-muted-foreground ml-6 mt-0.5">
+                            {t.source} | {formatDate(t.published_at)}
+                          </p>
+                        </li>
+                      ))
+                    ) : (
+                      <li className="text-sm text-muted-foreground">No trending items yet.</li>
+                    )}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 space-y-2">
+                  <h3 className="font-semibold text-foreground">Weekly Briefing</h3>
+                  <p className="text-sm text-muted-foreground">Top insights sent to your inbox</p>
+                  <Button size="sm" className="w-full gap-2">
+                    <Mail className="h-4 w-4" />
+                    Subscribe
+                  </Button>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 space-y-2">
+                  <h3 className="font-semibold text-foreground">My Saved Articles</h3>
+                  <p className="text-sm text-muted-foreground">View your saved reads</p>
+                  {isLoggedIn ? (
+                    <Link href={route("nonprofit.news.saved")}>
+                      <Button size="sm" variant="outline" className="w-full gap-2">
+                        <Bookmark className="h-4 w-4" />
+                        Go to Saved
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Link href={`${route("login")}?redirect=${encodeURIComponent(route("nonprofit.news"))}`}>
+                      <Button size="sm" variant="outline" className="w-full gap-2">
+                        Log in to view saved
+                      </Button>
+                    </Link>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardContent className="p-4 space-y-2">
+                  <h3 className="font-semibold text-foreground">Submit a News Tip</h3>
+                  <p className="text-sm text-muted-foreground">Share a story with us.</p>
+                  <Link href={route("contact")}>
+                    <Button size="sm" variant="outline" className="w-full gap-2">
+                      <Send className="h-4 w-4" />
+                      Submit Link
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            </aside>
           </div>
         </div>
       </div>
 
-      <style jsx>{`
-        .line-clamp-3 {
-          display: -webkit-box;
-          -webkit-line-clamp: 3;
-          -webkit-box-orient: vertical;
-          overflow: hidden;
-        }
-      `}</style>
+      {/* Filters modal */}
+      <Dialog open={filterOpen} onOpenChange={setFilterOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Filter by source</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">Select sources to show</p>
+            <div className="max-h-60 overflow-y-auto space-y-2">
+              {allSources.map((src) => (
+                <label key={src} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={data.sources.length === 0 || data.sources.includes(src)}
+                    onChange={() => toggleSource(src)}
+                    className="rounded border-input"
+                  />
+                  <span className="text-sm">{src}</span>
+                </label>
+              ))}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <Button onClick={() => { applyFilters({ page: 1 }); setFilterOpen(false) }}>
+                Apply
+              </Button>
+              <Button variant="outline" onClick={clearFilters}>
+                Clear
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </FrontendLayout>
   )
 }

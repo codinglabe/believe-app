@@ -231,6 +231,12 @@ class User extends Authenticatable implements MustVerifyEmail
             ->withTimestamps()->with(['user', 'nteeCode']);
     }
 
+    public function savedNewsArticles(): BelongsToMany
+    {
+        return $this->belongsToMany(NonprofitNewsArticle::class, 'user_saved_nonprofit_news', 'user_id', 'nonprofit_news_article_id')
+            ->withTimestamps();
+    }
+
     public function jobApplications()
     {
         return $this->hasMany(JobApplication::class);
