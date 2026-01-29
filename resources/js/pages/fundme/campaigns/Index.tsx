@@ -56,6 +56,7 @@ interface PaginatedCampaigns {
 
 interface Props {
   campaigns: PaginatedCampaigns;
+  totalDonations: { cents: number; dollars: number };
   filters: { per_page: number; status: string };
   statusOptions: Record<string, string>;
 }
@@ -68,7 +69,7 @@ const statusBadgeClass: Record<string, string> = {
   frozen: "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-200",
 };
 
-export default function FundMeCampaignsIndex({ campaigns, filters, statusOptions }: Props) {
+export default function FundMeCampaignsIndex({ campaigns, totalDonations, filters, statusOptions }: Props) {
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [campaignToDelete, setCampaignToDelete] = useState<CampaignItem | null>(null);
 
@@ -117,6 +118,16 @@ export default function FundMeCampaignsIndex({ campaigns, filters, statusOptions
                   New Campaign
                 </Button>
               </Link>
+            </div>
+            <div className="mt-4 p-4 bg-primary/5 dark:bg-primary/10 rounded-lg border border-primary/20">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Funds Received</p>
+                  <p className="text-3xl font-bold text-primary mt-1">
+                    ${totalDonations.dollars.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </p>
+                </div>
+              </div>
             </div>
             <div className="flex flex-wrap items-center gap-4 mt-4">
               <div className="flex items-center gap-2">
@@ -177,8 +188,11 @@ export default function FundMeCampaignsIndex({ campaigns, filters, statusOptions
                         </Badge>
                       </div>
                       <p className="text-sm mt-2">
-                        ${c.raised_amount_dollars.toLocaleString("en-US", { minimumFractionDigits: 2 })} raised of $
-                        {c.goal_amount_dollars.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        <span className="font-medium text-primary">
+                          ${c.raised_amount_dollars.toLocaleString("en-US", { minimumFractionDigits: 2 })}
+                        </span>{" "}
+                        total donations received of $
+                        {c.goal_amount_dollars.toLocaleString("en-US", { minimumFractionDigits: 2 })} goal
                       </p>
                       <div className="flex flex-wrap gap-2 mt-4">
                         {c.status === "draft" && (

@@ -189,8 +189,13 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
+// Thank-you route must come before {slug} to avoid route conflict
+Route::get('/believe-fundme/thank-you', [FundMeDonationController::class, 'thankYou'])->name('fundme.thank-you')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/believe-fundme/donate', [FundMeDonationController::class, 'store'])->name('fundme.donate.store')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+// Campaign detail page - must come after thank-you to avoid matching it
 Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('fundme.show')->where('slug', '[a-z0-9\-]+');
-Route::post('/believe-fundme/donate', [FundMeDonationController::class, 'store'])->name('fundme.donate.store');
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');

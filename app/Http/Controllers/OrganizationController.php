@@ -742,7 +742,13 @@ public function index(Request $request)
                     });
             }
             
-            $posts = $recentPosts->merge($facebookPosts)->sortByDesc('created_at')->take(5)->values();
+            // $recentPosts is an Eloquent Collection; after mapping to arrays it can still be an Eloquent\Collection
+            // which expects Models (calls getKey()). Convert to a base collection before merging.
+            $posts = collect($recentPosts->all())
+                ->merge($facebookPosts)
+                ->sortByDesc('created_at')
+                ->take(5)
+                ->values();
         }
 
         // Load sidebar data using optimized helper method

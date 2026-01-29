@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\FundMeCampaign;
 use App\Models\FundMeCategory;
+use App\Models\FundMeDonation;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -60,8 +61,18 @@ class FundMeCampaignController extends BaseController
             ];
         });
 
+        // Calculate total donations received across all campaigns for this organization
+        $totalDonationsCents = FundMeDonation::where('organization_id', $org->id)
+            ->where('status', FundMeDonation::STATUS_SUCCEEDED)
+            ->sum('amount');
+        $totalDonationsDollars = round($totalDonationsCents / 100, 2);
+
         return Inertia::render('fundme/campaigns/Index', [
             'campaigns' => $campaigns,
+            'totalDonations' => [
+                'cents' => $totalDonationsCents,
+                'dollars' => $totalDonationsDollars,
+            ],
             'filters' => [
                 'per_page' => $perPage,
                 'status' => $status,

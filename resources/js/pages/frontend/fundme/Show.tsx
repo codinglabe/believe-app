@@ -57,7 +57,7 @@ export default function FundMeShow({ campaign }: Props) {
     }
   }, [pageProps.success, authUser?.name, authUser?.email]);
 
-  const handleDonate = (e: React.FormEvent) => {
+  const handleDonate = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
     const num = parseFloat(amount);
@@ -66,19 +66,40 @@ export default function FundMeShow({ campaign }: Props) {
       return;
     }
     setIsSubmitting(true);
-    router.post(route("fundme.donate.store"), {
-      fundme_campaign_id: campaign.id,
-      amount: num,
-      donor_name: anonymous ? "" : donorName,
-      donor_email: donorEmail,
-      anonymous,
-    }, {
-      onError: (err) => {
-        setErrors(err);
-        setIsSubmitting(false);
-      },
-      onSuccess: () => setIsSubmitting(false),
-    });
+    try {
+      const csrf = (document.querySelector('meta[name="csrf-token"]') as HTMLMetaElement)?.content ?? '';
+      const res = await fetch(route("fundme.donate.store"), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+          "X-CSRF-TOKEN": csrf,
+          "X-Requested-With": "XMLHttpRequest",
+        },
+        body: JSON.stringify({
+          fundme_campaign_id: campaign.id,
+          amount: num,
+          donor_name: anonymous ? "" : donorName,
+          donor_email: donorEmail,
+          anonymous,
+        }),
+        credentials: "same-origin",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.url) {
+        window.location.href = data.url;
+        return;
+      }
+      if (res.status === 401) {
+        window.location.href = `${route("login")}?redirect=${encodeURIComponent(route("fundme.show", { slug: campaign.slug }))}`;
+        return;
+      }
+      setErrors({ amount: data.error || "Something went wrong. Please try again." });
+    } catch {
+      setErrors({ amount: "Something went wrong. Please try again." });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -186,6 +207,22 @@ export default function FundMeShow({ campaign }: Props) {
                   </div>
                 </CardHeader>
                 <CardContent>
+                  {!authUser ? (
+                    <div className="space-y-4 py-4 text-center">
+                      <p className="text-sm text-muted-foreground">
+                        You must be logged in to donate to this campaign.
+                      </p>
+                      <Link href={`${route("login")}?redirect=${encodeURIComponent(route("fundme.show", { slug: campaign.slug }))}`}>
+                        <Button className="w-full gap-2">
+                          <Heart className="h-4 w-4" />
+                          Log in to donate
+                        </Button>
+                      </Link>
+                      <p className="text-xs text-muted-foreground">
+                        Donations go to the organization via Stripe. Only logged-in users can donate.
+                      </p>
+                    </div>
+                  ) : (
                   <form onSubmit={handleDonate} className="space-y-4">
                     <div>
                       <Label>Amount (USD) *</Label>
@@ -262,9 +299,10 @@ export default function FundMeShow({ campaign }: Props) {
                       Donate
                     </Button>
                     <p className="text-xs text-muted-foreground text-center">
-                      Funds go directly to the nonprofit. A receipt will be sent to your email.
+                      You will be taken to Stripe Checkout to complete your donation securely. Funds go to the nonprofit.
                     </p>
                   </form>
+                  )}
                 </CardContent>
               </Card>
             </div>
