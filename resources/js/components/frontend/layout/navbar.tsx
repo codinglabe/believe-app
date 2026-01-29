@@ -37,6 +37,7 @@ import {
   Sparkles,
   Coins,
   HeartHandshake,
+  UserPlus,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -100,6 +101,7 @@ export default function Navbar() {
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
+      { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
       { name: "Chat", href: route("chat.index"), icon: MessageSquare },
     ] : []),
   ]
