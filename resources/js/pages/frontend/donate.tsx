@@ -31,19 +31,19 @@ interface User {
 }
 
 interface DonatePageProps {
-  organizations: Organization[] // Initial list of organizations (could be all or pre-filtered by Laravel)
-  user?: User | null // Optional user data if logged in
-  message?: string // Optional message from controller
-  searchQuery?: string // The current search query from the URL, passed by Laravel
+  organizations: Organization[]
+  user?: User | null
+  message?: string
+  searchQuery?: string
 }
 
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
 // The component now accepts props from Laravel via Inertia
 export default function DonatePage({
-  organizations: initialOrganizations, // Renamed to avoid conflict with local state
+  organizations: initialOrganizations,
   user,
-  searchQuery: initialSearchQuery = "", // Initialize with prop from Laravel
+  searchQuery: initialSearchQuery = "",
 }: DonatePageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
