@@ -18,6 +18,7 @@ import {
   DialogTitle,
 } from "@/components/frontend/ui/dialog"
 import { Search, Filter, Heart, Share2, ExternalLink, ChevronRight, Mail, Bookmark, Send } from "lucide-react"
+import toast from "react-hot-toast"
 
 interface ArticleItem {
   id: number
@@ -76,18 +77,44 @@ function readTime(summary: string | null | undefined): string {
 
 function handleShare(title: string, link: string) {
   if (typeof navigator !== "undefined" && navigator.share) {
-    navigator.share({ title, url: link, text: title }).catch(() => copyLinkToClipboard(link))
+    navigator
+      .share({ title, url: link, text: title })
+      .then(() => toast.success("Shared"))
+      .catch((err) => {
+        if (err?.name !== "AbortError") copyLinkToClipboard(link)
+      })
   } else {
     copyLinkToClipboard(link)
   }
 }
 
 function copyLinkToClipboard(link: string) {
-  navigator.clipboard.writeText(link).then(() => {
-    if (typeof window !== "undefined" && (window as any).toast) {
-      ;(window as any).toast.success("Link copied to clipboard")
-    }
-  })
+  const showCopied = () => toast.success("Link copied to clipboard")
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard
+      .writeText(link)
+      .then(showCopied)
+      .catch(() => fallbackCopy(link, showCopied))
+  } else {
+    fallbackCopy(link, showCopied)
+  }
+}
+
+function fallbackCopy(text: string, onSuccess: () => void) {
+  const el = document.createElement("textarea")
+  el.value = text
+  el.setAttribute("readonly", "")
+  el.style.position = "absolute"
+  el.style.left = "-9999px"
+  document.body.appendChild(el)
+  el.select()
+  try {
+    document.execCommand("copy")
+    onSuccess()
+  } catch {
+    toast.error("Could not copy link. You can copy it from the address bar.")
+  }
+  document.body.removeChild(el)
 }
 
 export default function NonprofitNews({

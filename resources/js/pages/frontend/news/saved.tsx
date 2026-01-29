@@ -4,6 +4,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
 import { Heart, Share2, ExternalLink, ArrowLeft } from "lucide-react"
 import { route } from "ziggy-js"
+import toast from "react-hot-toast"
 
 interface ArticleItem {
   id: number
@@ -27,20 +28,44 @@ function formatDate(s: string | null | undefined): string {
 
 function handleShare(title: string, link: string) {
   if (typeof navigator !== "undefined" && navigator.share) {
-    navigator.share({ title, url: link, text: title }).catch(() => {
-      copyToClipboard(link)
-    })
+    navigator
+      .share({ title, url: link, text: title })
+      .then(() => toast.success("Shared"))
+      .catch((err) => {
+        if (err?.name !== "AbortError") copyToClipboard(link)
+      })
   } else {
     copyToClipboard(link)
   }
 }
 
 function copyToClipboard(text: string) {
-  navigator.clipboard.writeText(text).then(() => {
-    if (typeof window !== "undefined" && (window as any).toast) {
-      ;(window as any).toast.success("Link copied to clipboard")
-    }
-  })
+  const showCopied = () => toast.success("Link copied to clipboard")
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard
+      .writeText(text)
+      .then(showCopied)
+      .catch(() => fallbackCopy(text, showCopied))
+  } else {
+    fallbackCopy(text, showCopied)
+  }
+}
+
+function fallbackCopy(text: string, onSuccess: () => void) {
+  const el = document.createElement("textarea")
+  el.value = text
+  el.setAttribute("readonly", "")
+  el.style.position = "absolute"
+  el.style.left = "-9999px"
+  document.body.appendChild(el)
+  el.select()
+  try {
+    document.execCommand("copy")
+    onSuccess()
+  } catch {
+    toast.error("Could not copy link. You can copy it from the address bar.")
+  }
+  document.body.removeChild(el)
 }
 
 export default function SavedNews({ articles }: Props) {
