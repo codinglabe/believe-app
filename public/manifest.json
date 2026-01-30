@@ -35,20 +35,6 @@
       "purpose": "maskable"
     }
   ],
-  "screenshots": [
-    {
-      "src": "/screenshots/screenshot-540x720.jpg",
-      "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshots/screenshot-1280x720.jpg",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
   "categories": ["productivity"],
   "shortcuts": [
     {

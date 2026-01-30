@@ -134,17 +134,15 @@ export default function Navbar() {
   }
 
 
-  // Fetch balance on mount and when dependencies change
+  // Fetch balance only when logged in (do not hit /wallet/balance on public pages)
   useEffect(() => {
-    const fetchBalance = async () => {
-      if (!isLoggedIn) {
-        setWalletBalance(null)
-        return
-      }
+    if (!isLoggedIn || !auth?.user?.id) {
+      setWalletBalance(null)
+      return
+    }
 
-      // Don't fetch balance if email is not verified
+    const fetchBalance = async () => {
       if (!auth?.user?.email_verified_at) {
-        // Use fallback balance from auth if available
         if (auth?.user?.balance) {
           setWalletBalance(parseFloat(auth.user.balance.toString()))
         }
@@ -190,12 +188,9 @@ export default function Navbar() {
     }
 
     fetchBalance()
-
-    // Refresh balance every 30 seconds
     const interval = setInterval(fetchBalance, 30000)
-
     return () => clearInterval(interval)
-  }, [isLoggedIn, auth?.user?.balance])
+  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance])
 
   // Fetch balance function for manual refresh
   const fetchBalance = async () => {
