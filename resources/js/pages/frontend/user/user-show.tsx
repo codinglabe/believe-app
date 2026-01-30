@@ -113,7 +113,7 @@ export default function UserPage({
 }: UserPageProps) {
   const page = usePage()
   const currentPath = (page.url as string) || ''
-  
+
   // Determine page type from URL
   const pageType = useMemo(() => {
     if (currentPath.includes('/posts')) return 'posts'
@@ -123,7 +123,7 @@ export default function UserPage({
     if (currentPath.includes('/groups')) return 'groups'
     return 'show'
   }, [currentPath])
-  
+
   // Determine active tab based on current page
   const initialTab = useMemo(() => {
     if (pageType === 'posts') return "Posts"
@@ -133,7 +133,7 @@ export default function UserPage({
     if (pageType === 'groups') return "Groups"
     return "Posts"
   }, [pageType])
-  
+
   const [activeTab, setActiveTab] = useState(initialTab)
   const [isPageLoading, setIsPageLoading] = useState(false)
   const [postsState, setPostsState] = useState(posts)
@@ -145,17 +145,17 @@ export default function UserPage({
   const [showComments, setShowComments] = useState<Record<number, boolean>>({})
   const [showReactionPicker, setShowReactionPicker] = useState<number | null>(null)
   const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
-  
+
   // Update active tab when page type changes
   useEffect(() => {
     setActiveTab(initialTab)
   }, [initialTab])
-  
+
   // Sync postsState when posts prop changes (e.g., when switching tabs)
   useEffect(() => {
     setPostsState(posts || [])
   }, [posts])
-  
+
   // Get postFilter from page props
   const currentPostFilter = postFilter || (page.props as any).postFilter || 'user'
 
@@ -209,6 +209,22 @@ export default function UserPage({
   }
 
   const handleMessageClick = () => {
+    const profileUserId = user?.id
+    const profileUserName = user?.name ?? "User"
+    if (!profileUserId) return
+
+    // Same as service-hub contact: store in sessionStorage so chat page opens direct chat
+    sessionStorage.setItem(
+      "chat_initiation",
+      JSON.stringify({
+        seller_id: profileUserId,
+        seller_name: profileUserName,
+        gig_slug: "",
+        gig_title: "",
+        initiated_at: new Date().toISOString(),
+      }),
+    )
+
     if (!auth?.user) {
       router.visit(route("login", { redirect: "/chat" }), { replace: true })
       return
@@ -295,7 +311,7 @@ export default function UserPage({
             if (p.id === postId) {
               const currentReactions = p.reactions || []
               const existingReactionIndex = currentReactions.findIndex((r: any) => r.user_id === auth?.user?.id)
-              
+
               let updatedReactions = [...currentReactions]
               if (data.reaction) {
                 const reactionWithUser = {
@@ -308,14 +324,14 @@ export default function UserPage({
                     image: auth.user.image,
                   } : null),
                 }
-                
+
                 if (existingReactionIndex >= 0) {
                   updatedReactions[existingReactionIndex] = reactionWithUser
                 } else {
                   updatedReactions.push(reactionWithUser)
                 }
               }
-              
+
               return {
                 ...p,
                 reactions_count: data.reactions_count || p.reactions_count || 0,
@@ -570,8 +586,8 @@ export default function UserPage({
               <div className="flex items-center gap-1.5">
                 <Zap className="w-4 h-4 text-yellow-500" />
                 <span className="text-gray-900 dark:text-white font-medium">
-                  {believePointsBalance >= 1000 
-                    ? `${(believePointsBalance / 1000).toFixed(1)}K` 
+                  {believePointsBalance >= 1000
+                    ? `${(believePointsBalance / 1000).toFixed(1)}K`
                     : believePointsBalance.toLocaleString()}
                 </span>
                 <span>Believer Points</span>
@@ -643,8 +659,8 @@ export default function UserPage({
                 <div className="flex items-end justify-between py-3 border-t border-gray-200 dark:border-white/10">
                   <div className="text-center flex flex-col">
                     <p className="text-lg font-bold">
-                      {believePointsBalance >= 1000 
-                        ? `${(believePointsBalance / 1000).toFixed(1)}k` 
+                      {believePointsBalance >= 1000
+                        ? `${(believePointsBalance / 1000).toFixed(1)}k`
                         : believePointsBalance.toLocaleString()}
                     </p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
@@ -654,8 +670,8 @@ export default function UserPage({
                   </div>
                   <div className="text-center flex flex-col">
                     <p className="text-lg font-bold text-gray-900 dark:text-white">
-                      {rewardPointsBalance >= 1000 
-                        ? `${(rewardPointsBalance / 1000).toFixed(1)}k` 
+                      {rewardPointsBalance >= 1000
+                        ? `${(rewardPointsBalance / 1000).toFixed(1)}k`
                         : rewardPointsBalance.toLocaleString()}
                     </p>
                     <p className="text-[10px] text-gray-500 dark:text-gray-500">Reward Points</p>
@@ -744,8 +760,8 @@ export default function UserPage({
                           const postComments = postItem.comments || []
                           // Use a unique key that combines post ID with creator info to ensure uniqueness
                           const creatorId = postItem.creator?.id || postItem.user?.id || 'unknown'
-                          const uniqueKey = postId?.toString().startsWith('fb_') 
-                            ? postId 
+                          const uniqueKey = postId?.toString().startsWith('fb_')
+                            ? postId
                             : `post_${postId}_${creatorId}_${index}`
 
                           return (
@@ -767,7 +783,7 @@ export default function UserPage({
                                       <div className="flex items-center gap-2">
                                         {postItem.creator_slug ? (
                                           <Link
-                                            href={postItem.creator_type === 'organization' 
+                                            href={postItem.creator_type === 'organization'
                                               ? route('organizations.show', postItem.creator_slug)
                                               : route('users.show', postItem.creator_slug)}
                                             className="font-semibold text-base text-gray-900 dark:text-white hover:underline"
@@ -784,7 +800,7 @@ export default function UserPage({
                                         )}
                                       </div>
                                       <p className="text-sm text-gray-600 dark:text-gray-400">
-                                        {postItem.creator_type === 'organization' 
+                                        {postItem.creator_type === 'organization'
                                           ? `@${postItem.creator_slug || ''}`
                                           : `@${postItem.creator_slug || user.slug || user.id}`}
                                       </p>
@@ -811,11 +827,11 @@ export default function UserPage({
                                     {(() => {
                                       const imageUrl = postItem.image || (postItem.images && postItem.images[0])
                                       if (!imageUrl) return null
-                                      
+
                                       const src = imageUrl.startsWith('http') || imageUrl.startsWith('/storage/') || imageUrl.startsWith('/')
                                         ? imageUrl
                                         : `/storage/${imageUrl}`
-                                      
+
                                       return (
                                         <img
                                           src={src}
@@ -829,7 +845,7 @@ export default function UserPage({
                                     })()}
                                   </div>
                                 )}
-                                
+
                                 {/* Show multiple images if available */}
                                 {postItem.images && postItem.images.length > 1 && (
                                   <div className="grid grid-cols-2 gap-3 mb-5">
@@ -862,7 +878,7 @@ export default function UserPage({
                                       <div className="flex items-center gap-2">
                                         {(() => {
                                           const reactions = postItem.reactions || []
-                                          
+
                                           if (reactions.length > 0) {
                                             return (
                                               <div className="flex items-center gap-1.5">
@@ -904,7 +920,7 @@ export default function UserPage({
                                                       }
                                                       return acc
                                                     }, {})
-                                                    
+
                                                     return Object.keys(reactionGroups).slice(0, 4).map((type) => (
                                                       <span
                                                         key={type}
@@ -1092,7 +1108,7 @@ export default function UserPage({
                           <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{user.name}</h3>
                         </div>
                       </div>
-                      
+
                       {user.bio ? (
                         <div className="text-gray-700 dark:text-gray-300 mb-6 leading-relaxed">
                           {user.bio.split('\n').map((paragraph: string, index: number) => {
@@ -1108,7 +1124,7 @@ export default function UserPage({
                       ) : (
                         <p className="text-gray-600 dark:text-gray-400 mb-6">No bio available</p>
                       )}
-                      
+
                       {user.positions && user.positions.length > 0 && (
                         <div className="mb-6">
                           <h3 className="text-lg font-semibold mb-3 text-gray-900 dark:text-white">Positions</h3>
@@ -1198,7 +1214,7 @@ export default function UserPage({
                   {activeTab === "Activity" && (
                     <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
                       <h2 className="text-2xl font-bold mb-6 text-gray-900 dark:text-white">Activity</h2>
-                      
+
                       {/* Summary Stats */}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
                         <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-4 border border-gray-200 dark:border-white/10">
@@ -1230,7 +1246,7 @@ export default function UserPage({
                       {/* Recent Activity Timeline */}
                       <div className="space-y-4">
                         <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">Recent Activity</h3>
-                        
+
                         {activities && activities.length > 0 ? (
                           <>
                             <div className="space-y-3">
@@ -1239,7 +1255,7 @@ export default function UserPage({
                                 let Icon = FileText
                                 let iconBg = 'bg-blue-500/20'
                                 let iconColor = 'text-blue-400'
-                                
+
                                 if (activity.type === 'donation') {
                                   Icon = Heart
                                   iconBg = 'bg-red-500/20'
@@ -1257,7 +1273,7 @@ export default function UserPage({
                                   iconBg = 'bg-blue-500/20'
                                   iconColor = 'text-blue-400'
                                 }
-                                
+
                                 return (
                                   <div key={activity.id} className="flex items-start gap-3 p-3 bg-gray-50 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
                                     <div className={`w-10 h-10 rounded-full ${iconBg} flex items-center justify-center flex-shrink-0`}>
@@ -1280,7 +1296,7 @@ export default function UserPage({
                                 )
                               })}
                             </div>
-                            
+
                             {/* Pagination */}
                             {activityPagination && activityPagination.last_page > 1 && (
                               <div className="flex items-center justify-between mt-6 pt-6 border-t border-gray-200 dark:border-white/10">
@@ -1302,7 +1318,7 @@ export default function UserPage({
                                   >
                                     <ChevronDown className="w-4 h-4 rotate-90" />
                                   </Button>
-                                  
+
                                   {Array.from({ length: activityPagination.last_page }, (_, i) => i + 1)
                                     .filter(page => {
                                       const current = activityPagination.current_page
@@ -1312,7 +1328,7 @@ export default function UserPage({
                                     .map((page, index, array) => {
                                       const prevPage = array[index - 1]
                                       const showEllipsis = prevPage && page - prevPage > 1
-                                      
+
                                       return (
                                         <div key={page} className="flex items-center gap-1">
                                           {showEllipsis && (
@@ -1338,7 +1354,7 @@ export default function UserPage({
                                         </div>
                                       )
                                     })}
-                                  
+
                                   <Button
                                     variant="outline"
                                     size="sm"
@@ -1406,7 +1422,7 @@ export default function UserPage({
                                   )}
                                 </div>
                               </div>
-                              
+
                               {group.topics && group.topics.length > 0 && (
                                 <div className="flex flex-wrap gap-1 mb-2">
                                   {group.topics.slice(0, 3).map((topic: any) => (
@@ -1421,7 +1437,7 @@ export default function UserPage({
                                   )}
                                 </div>
                               )}
-                              
+
                               <div className="flex items-center justify-between text-xs text-gray-500 dark:text-gray-500 mt-3 pt-3 border-t border-gray-200 dark:border-white/10">
                                 <div className="flex items-center gap-1">
                                   <Users className="w-3 h-3" />
@@ -1436,7 +1452,7 @@ export default function UserPage({
                                   </span>
                                 )}
                               </div>
-                              
+
                               {group.latest_message && (
                                 <div className="mt-2 pt-2 border-t border-gray-200 dark:border-white/10">
                                   <div className="flex items-center gap-2">

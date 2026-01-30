@@ -161,14 +161,14 @@ class UserProfileController extends Controller
             'state' => $validated['state'] ?? null,
             'zipcode' => $validated['zipcode'] ?? null,
         ];
-        
+
         // Update timezone if provided and valid
         if (isset($validated['timezone']) && !empty($validated['timezone'])) {
             if (in_array($validated['timezone'], timezone_identifiers_list())) {
                 $updateData['timezone'] = $validated['timezone'];
             }
         }
-        
+
         $user->update($updateData);
 
         // Sync supporter positions
@@ -199,7 +199,7 @@ class UserProfileController extends Controller
         }
 
         $user->update(['timezone' => $validated['timezone']]);
-        
+
         // Update session
         session(['user_timezone' => $validated['timezone']]);
 
@@ -1029,18 +1029,18 @@ class UserProfileController extends Controller
         $totalDonated = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
-        
+
         // Get follower/following counts
         $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
-        
+
         // Get user's chat groups count
         $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
             $query->where('user_id', $user->id);
         })
         ->where('is_active', true)
         ->count();
-        
+
         // Get recent donations for Activity tab
         $recentDonations = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
@@ -1058,7 +1058,7 @@ class UserProfileController extends Controller
                     'payment_method' => $donation->payment_method ?? 'stripe',
                 ];
             });
-        
+
         // Get job applications for Activity tab
         $jobApplications = JobApplication::where('user_id', $user->id)
             ->with('jobPost:id,title,organization_id')
@@ -1073,7 +1073,7 @@ class UserProfileController extends Controller
                     'date' => $application->created_at,
                 ];
             });
-        
+
         // Get enrollments for Activity tab
         $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
             ->with('course:id,name')
@@ -1106,13 +1106,13 @@ class UserProfileController extends Controller
         // Get recent posts (limit to 5 for initial load)
         $authUserId = $authUser ? $authUser->id : null;
         $postFilter = $request->get('filter', 'user'); // 'all' or 'user'
-        
+
         // Build query based on filter
         // Don't eager load user.organization to avoid ambiguous column error
         // The organization will be loaded via accessor when accessed
         $postsQuery = Post::with(['user:id,name,image,slug,role'])
             ->withCount(['reactions', 'comments']);
-        
+
         if ($postFilter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
@@ -1128,7 +1128,7 @@ class UserProfileController extends Controller
                 ->filter()
                 ->unique()
                 ->toArray();
-            
+
             // Get followed organization user IDs from excel_data_id (unregistered orgs that later registered)
             $followedUnregisteredOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
                 ->whereNotNull('excel_data_id')
@@ -1146,12 +1146,12 @@ class UserProfileController extends Controller
                 ->filter()
                 ->unique()
                 ->toArray();
-            
+
             // Get followed user IDs
             $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
                 ->pluck('following_id')
                 ->toArray();
-            
+
             // Combine all IDs: profile owner + followed organizations + followed users
             $allowedUserIds = array_merge(
                 [$user->id], // Profile owner
@@ -1159,13 +1159,13 @@ class UserProfileController extends Controller
                 $followedUnregisteredOrgUserIds,
                 $followedUserIds
             );
-            
+
             $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
         } else if ($postFilter === 'all' && !$authUserId) {
             // If not authenticated, show only profile owner's posts
             $postsQuery->where('user_id', $user->id);
         }
-        
+
         $posts = $postsQuery->latest()
             ->limit(5)
             ->get()
@@ -1174,7 +1174,7 @@ class UserProfileController extends Controller
                 if ($post->images && is_array($post->images) && count($post->images) > 0) {
                     $image = $post->images[0];
                 }
-                
+
                 // Get user's reaction if authenticated
                 $userReaction = null;
                 if ($authUserId) {
@@ -1189,7 +1189,7 @@ class UserProfileController extends Controller
                         ];
                     }
                 }
-                
+
                 // Load recent reactions with user data (limit to 10 for performance)
                 $reactions = PostReaction::where('post_id', $post->id)
                     ->with('user:id,name,image')
@@ -1208,7 +1208,7 @@ class UserProfileController extends Controller
                             ] : null,
                         ];
                     });
-                
+
                 // Load recent comments with user data (limit to 5 for initial load)
                 $comments = PostComment::where('post_id', $post->id)
                     ->with('user:id,name,image')
@@ -1227,14 +1227,14 @@ class UserProfileController extends Controller
                             ] : null,
                         ];
                     });
-                
+
                 // Determine creator info
                 $creator = null;
                 $creatorType = 'user';
                 $creatorName = $post->user->name ?? 'Unknown';
                 $creatorSlug = $post->user->slug ?? null;
                 $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
-                
+
                 // Check if user has an organization
                 if ($post->user && $post->user->role === 'organization' && $post->user->organization) {
                     $org = $post->user->organization;
@@ -1256,7 +1256,7 @@ class UserProfileController extends Controller
                         'image' => $post->user->image ? Storage::url($post->user->image) : null,
                     ];
                 }
-                
+
                 return [
                     'id' => $post->id,
                     'title' => null, // Post model doesn't have title field
@@ -1308,7 +1308,7 @@ class UserProfileController extends Controller
                         $rowData = $excelData->row_data;
                         $transformedData = ExcelDataTransformer::transform($rowData);
                         $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
-                        
+
                         return [
                             'id' => $fav->excel_data_id,
                             'excel_data_id' => $fav->excel_data_id,
@@ -1318,7 +1318,7 @@ class UserProfileController extends Controller
                         ];
                     }
                 }
-                
+
                 // Fallback if neither organization nor excel_data exists
                 return null;
             })
@@ -1328,19 +1328,19 @@ class UserProfileController extends Controller
         // Get sidebar data (People You May Know, Trending Organizations)
         $peopleYouMayKnow = [];
         $trendingOrganizations = [];
-        
+
         if ($authUser) {
             // Get other users the current user might know
             $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $authUser->id)
                 ->pluck('organization_id')
                 ->toArray();
-            
+
             $suggestedOrgs = Organization::where('registration_status', 'approved')
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
                 ->get();
-            
+
             if ($suggestedOrgs->isNotEmpty()) {
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -1351,7 +1351,7 @@ class UserProfileController extends Controller
                     ->map(function($group) {
                         return $group->first()->id;
                     });
-                
+
                 $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
@@ -1371,7 +1371,7 @@ class UserProfileController extends Controller
                 ->orderBy('followers_count', 'desc')
                 ->limit(4)
                 ->get();
-            
+
             if ($trendingOrgs->isNotEmpty()) {
                 $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = ExcelData::whereIn('ein', $eins)
@@ -1382,9 +1382,9 @@ class UserProfileController extends Controller
                     ->map(function($group) {
                         return $group->first()->id;
                     });
-                
+
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
-                
+
                 $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
@@ -1482,7 +1482,7 @@ class UserProfileController extends Controller
         $totalDonated = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
             ->sum('amount');
-        
+
         $followersCount = UserFollow::where('following_id', $user->id)->count();
         $followingCount = UserFavoriteOrganization::where('user_id', $user->id)->count();
 
@@ -1500,28 +1500,29 @@ class UserProfileController extends Controller
             ->sum('points');
         $rewardPointsBalance = (float) ($user->reward_points ?? 0);
 
-        // Get user's chat groups count
-        $groupsCount = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
-            $query->where('user_id', $user->id);
-        })
-        ->where('is_active', true)
-        ->count();
+        // Get user's public chat groups count (only public groups they're a member of)
+        $groupsCount = \App\Models\ChatRoom::where('type', 'public')
+            ->where('is_active', true)
+            ->whereHas('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->count();
 
         // Get sidebar data
         $peopleYouMayKnow = [];
         $trendingOrganizations = [];
-        
+
         if ($authUser) {
             $userFavoriteOrgIds = UserFavoriteOrganization::where('user_id', $authUser->id)
                 ->pluck('organization_id')
                 ->toArray();
-            
+
             $suggestedOrgs = Organization::where('registration_status', 'approved')
                 ->whereNotIn('id', $userFavoriteOrgIds)
                 ->with('user:id,slug,name,image')
                 ->limit(4)
                 ->get();
-            
+
             if ($suggestedOrgs->isNotEmpty()) {
                 $eins = $suggestedOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
@@ -1532,7 +1533,7 @@ class UserProfileController extends Controller
                     ->map(function($group) {
                         return $group->first()->id;
                     });
-                
+
                 $peopleYouMayKnow = $suggestedOrgs->map(function($org) use ($excelDataMap) {
                     return [
                         'id' => $org->id,
@@ -1551,7 +1552,7 @@ class UserProfileController extends Controller
                 ->orderBy('followers_count', 'desc')
                 ->limit(4)
                 ->get();
-            
+
             if ($trendingOrgs->isNotEmpty()) {
                 $eins = $trendingOrgs->pluck('ein')->filter()->unique()->toArray();
                 $excelDataMap = \App\Models\ExcelData::whereIn('ein', $eins)
@@ -1562,9 +1563,9 @@ class UserProfileController extends Controller
                     ->map(function($group) {
                         return $group->first()->id;
                     });
-                
+
                 $colors = ['bg-rose-500', 'bg-cyan-500', 'bg-teal-500', 'bg-blue-500'];
-                
+
                 $trendingOrganizations = $trendingOrgs->map(function($org, $index) use ($excelDataMap, $colors) {
                     return [
                         'id' => $org->id,
@@ -1580,7 +1581,7 @@ class UserProfileController extends Controller
 
         // Build location string from city, state, zipcode
         $locationParts = array_filter([$user->city, $user->state]);
-        $location = !empty($locationParts) 
+        $location = !empty($locationParts)
             ? implode(', ', $locationParts) . ($user->zipcode ? ' ' . $user->zipcode : '')
             : ($user->location ?? null);
 
@@ -1639,16 +1640,16 @@ class UserProfileController extends Controller
     {
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
-        
+
         $authUserId = Auth::id();
         $filter = $request->get('filter', 'user'); // 'all' or 'user'
-        
+
         // Build query based on filter
         // Don't eager load user.organization to avoid ambiguous column error
         // We'll load organization data manually in the map function
         $postsQuery = Post::with(['user:id,name,image,slug,role'])
             ->withCount(['reactions', 'comments']);
-        
+
         if ($filter === 'user') {
             // Only this user's posts
             $postsQuery->where('user_id', $user->id);
@@ -1664,7 +1665,7 @@ class UserProfileController extends Controller
                 ->filter()
                 ->unique()
                 ->toArray();
-            
+
             // Get followed organization user IDs from excel_data_id (unregistered orgs that later registered)
             $followedUnregisteredOrgUserIds = UserFavoriteOrganization::where('user_id', $authUserId)
                 ->whereNotNull('excel_data_id')
@@ -1682,12 +1683,12 @@ class UserProfileController extends Controller
                 ->filter()
                 ->unique()
                 ->toArray();
-            
+
             // Get followed user IDs
             $followedUserIds = \App\Models\UserFollow::where('follower_id', $authUserId)
                 ->pluck('following_id')
                 ->toArray();
-            
+
             // Combine all IDs: profile owner + followed organizations + followed users
             $allowedUserIds = array_merge(
                 [$user->id], // Profile owner
@@ -1695,13 +1696,13 @@ class UserProfileController extends Controller
                 $followedUnregisteredOrgUserIds,
                 $followedUserIds
             );
-            
+
             $postsQuery->whereIn('user_id', array_unique($allowedUserIds));
         } else if ($filter === 'all' && !$authUserId) {
             // If not authenticated, show only profile owner's posts
             $postsQuery->where('user_id', $user->id);
         }
-        
+
         $posts = $postsQuery->latest()
             ->limit(20)
             ->get()
@@ -1710,7 +1711,7 @@ class UserProfileController extends Controller
                 if ($post->images && is_array($post->images) && count($post->images) > 0) {
                     $image = $post->images[0];
                 }
-                
+
                 $userReaction = null;
                 if ($authUserId) {
                     $reaction = PostReaction::where('post_id', $post->id)
@@ -1724,7 +1725,7 @@ class UserProfileController extends Controller
                         ];
                     }
                 }
-                
+
                 $reactions = PostReaction::where('post_id', $post->id)
                     ->with('user:id,name,image')
                     ->latest()
@@ -1742,7 +1743,7 @@ class UserProfileController extends Controller
                             ] : null,
                         ];
                     });
-                
+
                 $comments = PostComment::where('post_id', $post->id)
                     ->with('user:id,name,image')
                     ->latest()
@@ -1760,14 +1761,14 @@ class UserProfileController extends Controller
                             ] : null,
                         ];
                     });
-                
+
                 // Determine creator info
                 $creator = null;
                 $creatorType = 'user';
                 $creatorName = $post->user->name ?? 'Unknown';
                 $creatorSlug = $post->user->slug ?? null;
                 $creatorImage = $post->user->image ? Storage::url($post->user->image) : null;
-                
+
                 // Check if user has an organization - load it manually to avoid relationship issues
                 if ($post->user && $post->user->role === 'organization') {
                     $org = \App\Models\Organization::where('user_id', $post->user->id)->first();
@@ -1799,7 +1800,7 @@ class UserProfileController extends Controller
                         'image' => $post->user->image ? Storage::url($post->user->image) : null,
                     ];
                 }
-                
+
                 return [
                     'id' => $post->id,
                     'title' => null,
@@ -1854,10 +1855,10 @@ class UserProfileController extends Controller
     {
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
-        
+
         $page = $request->get('page', 1);
         $perPage = 5;
-        
+
         // Get all activities and combine them
         $donations = Donation::where('user_id', $user->id)
             ->whereIn('status', ['completed', 'active'])
@@ -1879,7 +1880,7 @@ class UserProfileController extends Controller
                     ],
                 ];
             });
-        
+
         $jobApplications = JobApplication::where('user_id', $user->id)
             ->with('jobPost:id,title,organization_id')
             ->get()
@@ -1897,7 +1898,7 @@ class UserProfileController extends Controller
                     ],
                 ];
             });
-        
+
         $enrollments = \App\Models\Enrollment::where('user_id', $user->id)
             ->with('course:id,title')
             ->get()
@@ -1970,7 +1971,7 @@ class UserProfileController extends Controller
     {
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
-        
+
         $favoriteOrganizations = UserFavoriteOrganization::where('user_id', $user->id)
             ->with(['organization.user:id,slug,name,image'])
             ->latest()
@@ -1994,7 +1995,7 @@ class UserProfileController extends Controller
                         $rowData = $excelData->row_data;
                         $transformedData = ExcelDataTransformer::transform($rowData);
                         $orgName = $transformedData[1] ?? $rowData[1] ?? 'Unknown Organization';
-                        
+
                         return [
                             'id' => $fav->excel_data_id,
                             'excel_data_id' => $fav->excel_data_id,
@@ -2004,7 +2005,7 @@ class UserProfileController extends Controller
                         ];
                     }
                 }
-                
+
                 // Fallback for invalid data
                 return null;
             })
@@ -2018,26 +2019,30 @@ class UserProfileController extends Controller
     }
 
     /**
-     * Show user groups tab
+     * Show user groups tab: only public group chats where this profile user is a member.
      */
     public function groups(Request $request, string $slug)
     {
         $data = $this->getUserData($slug);
         $user = User::where('slug', $slug)->orWhere('id', $slug)->first();
-        
-        // Get user's chat rooms (groups)
-        $chatGroups = \App\Models\ChatRoom::whereHas('members', function ($query) use ($user) {
-            $query->where('user_id', $user->id);
-        })
-        ->where('is_active', true)
-        ->with(['creator:id,name,image', 'members:id,name,image', 'topics:id,name'])
-        ->withCount('members')
-        ->latest()
-        ->limit(20)
-        ->get()
+        if (!$user) {
+            abort(404, 'User not found');
+        }
+
+        // Only public group chats where this user is a member
+        $chatGroups = \App\Models\ChatRoom::where('type', 'public')
+            ->where('is_active', true)
+            ->whereHas('members', function ($query) use ($user) {
+                $query->where('user_id', $user->id);
+            })
+            ->with(['creator:id,name,image', 'members:id,name,image', 'topics:id,name'])
+            ->withCount('members')
+            ->latest()
+            ->limit(50)
+            ->get()
         ->map(function ($room) {
             $latestMessage = $room->latestMessage()->with('user:id,name,image')->first();
-            
+
             return [
                 'id' => $room->id,
                 'name' => $room->name,
@@ -2109,9 +2114,9 @@ class UserProfileController extends Controller
 
         // For API requests (axios/fetch), return JSON response
         // Check if it's NOT an Inertia request (axios doesn't send X-Inertia header)
-        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest' 
+        $isAjaxRequest = $request->header('X-Requested-With') === 'XMLHttpRequest'
             && !$request->header('X-Inertia');
-        
+
         if ($isAjaxRequest || $request->wantsJson() || $request->expectsJson()) {
             return response()->json([
                 'success' => true,
@@ -2119,7 +2124,7 @@ class UserProfileController extends Controller
                 'message' => $message,
             ]);
         }
-        
+
         // For Inertia requests, redirect back
         $referer = $request->header('Referer');
         if ($referer) {
