@@ -1700,10 +1700,10 @@ export default function OrganizationPage({
 
               {/* Right Sidebar */}
               <aside className="lg:col-span-3 space-y-4">
-                {/* People You May Know */}
+                {/* Organizations You May Know */}
                 {peopleToShow.length > 0 && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">People You May Know</h3>
+                    <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Organizations You May Know</h3>
                     <div className="space-y-3">
                       {peopleToShow.map((person, index) => (
                       <div

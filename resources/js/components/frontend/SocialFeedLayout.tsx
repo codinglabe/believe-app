@@ -157,11 +157,11 @@ export default function SocialFeedLayout({
 
             {/* Right Sidebar */}
             <aside className="lg:col-span-3 space-y-4 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100vh-7rem)] lg:overflow-y-auto">
-              {/* People You May Know */}
+              {/* Organizations You May Know */}
               {peopleYouMayKnow.length > 0 && (
                 <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
                   <div className="flex items-center justify-between mb-4">
-                    <h3 className="font-semibold text-gray-900 dark:text-white">People You May Know</h3>
+                    <h3 className="font-semibold text-gray-900 dark:text-white">Organizations You May Know</h3>
                     <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                       View All <ChevronDown className="w-3 h-3 -rotate-90" />
                     </button>

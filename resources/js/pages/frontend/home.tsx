@@ -14,11 +14,12 @@ import SearchSection from "@/components/frontend/SearchSection"
 import { WalletDemoPopup } from "@/components/WalletDemoPopup"
 import { PageHead } from "@/components/frontend/PageHead"
 
-const stats = [
-  { label: "Verified Organizations", value: "2,500+", icon: Shield, color: "text-blue-600" },
-  { label: "Lives Impacted", value: "1.2M+", icon: Heart, color: "text-red-500" },
-  { label: "Countries Reached", value: "85+", icon: Globe, color: "text-green-600" },
-  { label: "Funds Raised", value: "$50M+", icon: TrendingUp, color: "text-purple-600" },
+const platformFeatures = [
+  "Fundraising & donations",
+  "Community & volunteers",
+  "Events, programs & courses",
+  "AI-powered nonprofit tools",
+  "Governance & operations",
 ]
 
 const features = [
@@ -400,36 +401,39 @@ export default function HomePage() {
                 </motion.div>
               </motion.div>
 
-              {/* Right Column - Visual Elements */}
+              {/* Right Column - All-in-One Platform Feature Card */}
               <motion.div
                 initial={{ opacity: 0, x: 50 }}
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.8, delay: 0.3 }}
                 className="relative mt-8 lg:mt-0"
               >
-                {/* Stats Grid with Icons */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
-                  {stats.map((stat, index) => (
-                    <motion.div
-                      key={index}
-                      initial={{ opacity: 0, scale: 0.9 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.5, delay: 0.5 + index * 0.1 }}
-                      whileHover={{ scale: 1.05, y: -5 }}
-                      className="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
-                    >
-                      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4">
-                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-lg sm:rounded-xl flex items-center justify-center flex-shrink-0">
-                          <stat.icon className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1">{stat.value}</div>
-                          <div className="text-white/80 text-xs sm:text-sm font-medium leading-tight">{stat.label}</div>
-                        </div>
-                      </div>
-                    </motion.div>
-                  ))}
-                </div>
+                {/* All-in-One Nonprofit Platform Card - same bg as old stats */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ duration: 0.6, delay: 0.4 }}
+                  className="bg-white/10 backdrop-blur-md rounded-xl sm:rounded-2xl p-4 sm:p-5 md:p-6 border border-white/20 hover:bg-white/20 transition-all duration-300"
+                >
+                  <h3 className="text-lg sm:text-xl font-bold text-white mb-4 sm:mb-5">
+                    All-in-One Nonprofit Platform
+                  </h3>
+                  <ul className="space-y-2.5 sm:space-y-3 mb-5 sm:mb-6">
+                    {platformFeatures.map((feature, index) => (
+                      <li key={index} className="flex items-center gap-3 text-white/90 text-sm sm:text-base">
+                        <CheckCircle className="h-5 w-5 sm:h-5 sm:w-5 text-green-300 flex-shrink-0" />
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href="#features"
+                    className="inline-flex items-center gap-1.5 text-blue-300 hover:text-blue-200 font-semibold text-sm sm:text-base hover:underline focus:outline-none focus:ring-2 focus:ring-white/50 focus:ring-offset-2 focus:ring-offset-transparent rounded"
+                  >
+                    Explore Features
+                    <ArrowRight className="h-4 w-4" />
+                  </Link>
+                </motion.div>
 
                 {/* Additional Visual Elements */}
                 <motion.div
@@ -472,7 +476,7 @@ export default function HomePage() {
       </section>
 
       {/* What Makes Believe Cash Different Section */}
-      <section className="py-20 sm:py-24 md:py-32 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950 dark:via-purple-900 dark:to-blue-950 relative overflow-visible">
+      <section id="features" className="py-20 sm:py-24 md:py-32 bg-gradient-to-br from-purple-50 via-blue-50 to-indigo-50 dark:from-purple-950 dark:via-purple-900 dark:to-blue-950 relative overflow-visible">
         {/* Animated Background Elements */}
         <div className="absolute inset-0 overflow-hidden">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-purple-200/30 dark:bg-purple-800/20 rounded-full blur-3xl animate-pulse"></div>

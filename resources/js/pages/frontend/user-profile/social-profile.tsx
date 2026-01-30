@@ -573,10 +573,10 @@ export default function SocialProfile() {
             {/* Right Sidebar */}
             <div className="lg:col-span-3">
               <div className="space-y-6">
-                {/* People You May Know */}
+                {/* Organizations You May Know */}
                 <Card className="bg-slate-800/50 border-purple-700/30">
                   <CardContent className="p-4">
-                    <h3 className="text-white font-semibold mb-4">People You May Know</h3>
+                    <h3 className="text-white font-semibold mb-4">Organizations You May Know</h3>
                     <div className="space-y-4">
                       {suggestedUsers.map((suggestedUser) => (
                         <div key={suggestedUser.id} className="flex items-center justify-between">

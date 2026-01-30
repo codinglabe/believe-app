@@ -148,7 +148,7 @@ export default function VerifyEmail({ status }: { status?: string }) {
             <p className="text-sm text-gray-400">
               Questions about email verification?{" "}
               <Link
-                href="/help"
+                href={route("contact")}
                 className="text-blue-400 hover:text-blue-300 underline transition-colors"
               >
                 Contact our support team
