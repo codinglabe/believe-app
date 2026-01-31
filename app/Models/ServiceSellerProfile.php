@@ -35,9 +35,16 @@ class ServiceSellerProfile extends Model
         'average_rating',
         'response_rate',
         'member_since',
+
+        'is_suspended',
+        'suspended_at',
+        'suspension_reason',
+        'suspended_by',
     ];
 
     protected $casts = [
+        'is_suspended' => 'boolean',
+        'suspended_at' => 'datetime',
         'skills' => 'array',
         'languages' => 'array',
         'education' => 'array',
@@ -131,5 +138,87 @@ class ServiceSellerProfile extends Model
             'average_rating' => $averageRating,
             'response_rate' => $responseRate,
         ]);
+    }
+
+    // Relationship to admin who suspended
+    public function suspendedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'suspended_by');
+    }
+
+    // Check if seller is active (not suspended)
+    public function isActive(): bool
+    {
+        return !$this->is_suspended;
+    }
+
+    // Suspend seller
+    public function suspend(string $reason, User $admin): void
+    {
+        $this->update([
+            'is_suspended' => true,
+            'suspended_at' => now(),
+            'suspension_reason' => $reason,
+            'suspended_by' => $admin->id,
+        ]);
+
+        // Also suspend all active gigs
+        $this->user->gigs()->where('status', 'active')->update(['status' => 'suspended']);
+    }
+
+    // Unsuspend seller
+    public function unsuspend(): void
+    {
+        $this->update([
+            'is_suspended' => false,
+            'suspended_at' => null,
+            'suspension_reason' => null,
+            'suspended_by' => null,
+        ]);
+
+        // Reactivate suspended gigs
+        $this->user->gigs()->where('status', 'suspended')->update(['status' => 'active']);
+    }
+
+    // Relationship to gigs through user
+    public function gigs()
+    {
+        return $this->hasManyThrough(
+            Gig::class,
+            User::class,
+            'id', // Foreign key on users table
+            'user_id', // Foreign key on gigs table
+            'user_id', // Local key on service_seller_profiles table
+            'id' // Local key on users table
+        );
+    }
+
+    // Relationship to orders through user (as seller)
+    public function ordersAsSeller()
+    {
+        return $this->hasManyThrough(
+            ServiceOrder::class,
+            User::class,
+            'id', // Foreign key on users table
+            'seller_id', // Foreign key on service_orders table
+            'user_id', // Local key on service_seller_profiles table
+            'id' // Local key on users table
+        );
+    }
+
+    /**
+     * Get orders where this user is the buyer
+     */
+    public function ordersAsBuyer()
+    {
+        return $this->hasMany(ServiceOrder::class, 'buyer_id');
+    }
+
+    /**
+     * Get the service seller profile
+     */
+    public function serviceSellerProfile()
+    {
+        return $this->hasOne(ServiceSellerProfile::class);
     }
 }

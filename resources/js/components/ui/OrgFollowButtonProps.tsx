@@ -1,8 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useForm, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
+import { useState, useRef, useCallback, useMemo, useEffect } from "react"
+import { router } from "@inertiajs/react"
 import { UserPlus, UserCheck, Bell, BellOff, ChevronDown } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import {
@@ -26,85 +25,118 @@ export default function OrgFollowButton({
   initialIsFollowing = false,
   initialNotifications = false
 }: OrgFollowButtonProps) {
-  const [isFollowing, setIsFollowing] = useState(initialIsFollowing)
-  const [notifications, setNotifications] = useState(initialNotifications)
-    const [isLoading, setIsLoading] = useState(false)
+  // Use props directly as source of truth, only maintain local state for optimistic updates
+  const [localIsFollowing, setLocalIsFollowing] = useState<boolean | null>(null)
+  const [localNotifications, setLocalNotifications] = useState<boolean | null>(null)
+  const [isLoading, setIsLoading] = useState(false)
 
-    console.log("following:", isFollowing, "notifications:", notifications)
-
-  const { props } = usePage()
-  const { post } = useForm()
-
-  // Sync with props
+  // Track if we're in the middle of an update to prevent loops
+  const updateInProgressRef = useRef(false)
+  
+  // Memoize organization ID to prevent unnecessary re-renders (define first!)
+  const organizationId = useMemo(() => organization?.id, [organization?.id])
+  
+  // Derive current state: use local if set, otherwise use props
+  const isFollowing = localIsFollowing !== null ? localIsFollowing : initialIsFollowing
+  const notifications = localNotifications !== null ? localNotifications : initialNotifications
+  
+  // Reset local state when props change (after page reload)
+  // When the page reloads after follow/unfollow, the prop will have the correct value from backend
   useEffect(() => {
-    setIsFollowing(initialIsFollowing)
-    setNotifications(initialNotifications)
+    // Reset local state to use the authoritative backend value
+    // This happens after a page reload when new props arrive
+    setLocalIsFollowing(null)
+    setLocalNotifications(null)
   }, [initialIsFollowing, initialNotifications])
 
-  // Listen for flash messages to update state
-  useEffect(() => {
-    if (props.flash?.success) {
-      // The page will reload due to redirect, so we don't need to update state manually
-      setIsLoading(false)
-    }
-  }, [props.flash])
-
-  const handleToggleFollow = () => {
-    if (!auth?.user) {
-      window.location.href = route('login')
+  const handleToggleFollow = useCallback(() => {
+    if (!auth?.user || isLoading || updateInProgressRef.current || !organizationId) {
+      if (!auth?.user) {
+        window.location.href = route('login')
+      }
       return
     }
 
+    updateInProgressRef.current = true
     setIsLoading(true)
+    
+    // Optimistically update state - show following immediately when clicking follow
+    const newFollowingState = true // When clicking follow, we're always following
+    setLocalIsFollowing(newFollowingState)
 
-    post(route("user.organizations.toggle-favorite", organization.id), {
-      preserveScroll: true,
+    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+      preserveScroll: false,
+      preserveState: false,
       onSuccess: () => {
-        // State will be updated after page reload from redirect
         setIsLoading(false)
+        updateInProgressRef.current = false
+        // Keep the optimistic update until the page reloads with new data
+        // The redirect will cause Inertia to reload the page with updated props
       },
       onError: (errors) => {
         console.error("Error toggling follow:", errors)
+        // Revert on error
+        setLocalIsFollowing(null) // Reset to use props
         setIsLoading(false)
+        updateInProgressRef.current = false
       },
     })
-  }
+  }, [auth?.user, organizationId, isLoading, isFollowing])
 
-  const handleToggleNotifications = () => {
-    if (!auth?.user || !isFollowing) return
+  const handleToggleNotifications = useCallback(() => {
+    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
 
+    updateInProgressRef.current = true
     setIsLoading(true)
+    
+    // Don't update optimistically - wait for API response to prevent ref conflicts
+    const newNotificationsState = !notifications
 
-    post(route("user.organizations.toggle-notifications", organization.id), {
+    router.post(route("user.organizations.toggle-notifications", organizationId), {}, {
       preserveScroll: true,
       onSuccess: () => {
-        // State will be updated after page reload from redirect
+        // Update state after successful API call
+        setLocalNotifications(newNotificationsState)
         setIsLoading(false)
+        updateInProgressRef.current = false
+        // Reload to sync with backend
+        router.reload({ only: ['organization'] })
       },
       onError: (errors) => {
         console.error("Error toggling notifications:", errors)
         setIsLoading(false)
+        updateInProgressRef.current = false
       },
     })
-  }
+  }, [auth?.user, organizationId, isFollowing, isLoading, notifications])
 
-  const handleUnfollow = () => {
-    if (!auth?.user || !isFollowing) return
+  const handleUnfollow = useCallback(() => {
+    if (!auth?.user || !isFollowing || isLoading || updateInProgressRef.current || !organizationId) return
 
+    updateInProgressRef.current = true
     setIsLoading(true)
+    
+    // Optimistically update state - show not following immediately
+    setLocalIsFollowing(false)
 
-    post(route("user.organizations.toggle-favorite", organization.id), {
-      preserveScroll: true,
+    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+      preserveScroll: false,
+      preserveState: false,
       onSuccess: () => {
-        // State will be updated after page reload from redirect
         setIsLoading(false)
+        updateInProgressRef.current = false
+        // Keep the optimistic update until the page reloads with new data
+        // The redirect will cause Inertia to reload the page with updated props
       },
       onError: (errors) => {
         console.error("Error unfollowing:", errors)
+        // Revert on error
+        setLocalIsFollowing(null) // Reset to use props
         setIsLoading(false)
+        updateInProgressRef.current = false
       },
     })
-  }
+  }, [auth?.user, organizationId, isFollowing, isLoading])
 
   if (!isFollowing) {
     // Subscribe Button (Not Following)
@@ -112,43 +144,50 @@ export default function OrgFollowButton({
       <Button
         onClick={handleToggleFollow}
         variant="outline"
-  size="lg"
-  className="bg-white/10 border-white/20 text-white hover:bg-white/20 w-full sm:w-auto"
+        size="lg"
+        className="bg-white/10 border-white/20 text-white hover:bg-white/20 min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4"
+        title="Follow"
       >
-        <UserPlus className="mr-2 h-4 w-4" />
-        {isLoading ? "Loading..." : "Follow"}
+        <UserPlus className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
+        <span className="hidden sm:inline whitespace-nowrap truncate">{isLoading ? "Loading..." : "Follow"}</span>
       </Button>
     )
   }
 
   // Following State with Dropdown
   return (
-    <DropdownMenu>
+    <DropdownMenu modal={false}>
       <DropdownMenuTrigger asChild>
         <Button
           disabled={isLoading}
           variant="outline"
-          className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-4 py-2 font-medium text-sm border-gray-300"
+          className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 sm:px-3 md:px-4 py-2 font-medium text-xs sm:text-sm md:text-base border-gray-300 h-9 sm:h-10 md:h-11 min-w-[40px] sm:min-w-0 flex-shrink-0 justify-center sm:justify-start"
+          title="Following"
         >
-          <UserCheck className="mr-2 h-4 w-4" />
-          {isLoading ? "Loading..." : "Following"}
-          <ChevronDown className="ml-2 h-4 w-4" />
+          <UserCheck className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
+          <span className="hidden sm:inline whitespace-nowrap truncate">{isLoading ? "Loading..." : "Following"}</span>
+          <ChevronDown className="h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 flex-shrink-0 sm:ml-1.5 md:ml-2" />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
+      <DropdownMenuContent align="end" className="w-48" onCloseAutoFocus={(e) => e.preventDefault()}>
         <DropdownMenuItem
-          onClick={handleToggleNotifications}
+          onSelect={(e) => {
+            e.preventDefault()
+            // Use requestAnimationFrame to defer state update after dropdown closes
+            requestAnimationFrame(() => {
+              handleToggleNotifications()
+            })
+          }}
           className="cursor-pointer"
           disabled={isLoading}
         >
-            {notifications ? (
-                      <>
+          {notifications ? (
+            <>
               <BellOff className="mr-2 h-4 w-4" />
               Turn off notifications
             </>
-
           ) : (
-             <>
+            <>
               <Bell className="mr-2 h-4 w-4" />
               Turn on notifications
             </>
@@ -156,7 +195,13 @@ export default function OrgFollowButton({
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <DropdownMenuItem
-          onClick={handleUnfollow}
+          onSelect={(e) => {
+            e.preventDefault()
+            // Use requestAnimationFrame to defer state update after dropdown closes
+            requestAnimationFrame(() => {
+              handleUnfollow()
+            })
+          }}
           className="cursor-pointer text-red-600 focus:text-red-600"
           disabled={isLoading}
         >

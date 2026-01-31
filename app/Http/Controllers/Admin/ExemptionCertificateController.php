@@ -63,6 +63,7 @@ class ExemptionCertificateController extends Controller
 
         $states = StateSalesTax::orderBy('state')->get(['state', 'state_code']);
 
+
         return Inertia::render('admin/exemption-certificates/Index', [
             'certificates' => $certificates,
             'states' => $states,

@@ -11,9 +11,10 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
 import { Link, useForm } from "@inertiajs/react"
 import { useState } from "react"
-import { Head } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 
 interface ContactPageProps {
+  seo?: { title: string; description?: string }
   hero?: {
     badge_text?: string
     title?: string
@@ -121,6 +122,7 @@ const getContactMethodIcon = (title?: string) => {
 }
 
 export default function ContactPage({
+  seo,
   hero,
   contactMethods = [],
   faqItems = [],
@@ -148,7 +150,7 @@ export default function ContactPage({
 
     return (
     <FrontendLayout>
-      <Head title="Contact Us - Believe in Unity" />
+      <PageHead title={seo?.title ?? "Contact Us"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-blue-50/30 dark:from-gray-950 dark:via-gray-900 dark:to-gray-950">
         {/* Hero Section */}
         <section className="relative overflow-hidden bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-20 md:py-28">

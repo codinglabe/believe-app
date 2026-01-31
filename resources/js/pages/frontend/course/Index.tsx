@@ -12,6 +12,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Progress } from "@/components/ui/progress"
 import { router, usePage, Link } from "@inertiajs/react"
 import { useNotification } from "@/components/frontend/notification-provider"
+import { PageHead } from "@/components/frontend/PageHead"
 import parse from 'html-react-parser';
 interface Topic {
   id: number
@@ -113,6 +114,7 @@ interface FrontendCoursesListPageProps {
 }
 
 export default function FrontendCoursesListPage({
+  seo,
   courses: initialCourses,
   topics,
   eventTypes,
@@ -280,6 +282,7 @@ export default function FrontendCoursesListPage({
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Courses & Events"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}
         <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">

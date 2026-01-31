@@ -1,4 +1,5 @@
-// firebase-messaging-sw.js - Keep this file only
+// firebase-messaging-sw.js - Single service worker at site root
+// Do NOT cache "/" or any HTML/auth routes to prevent 419 CSRF issues.
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js");
 
@@ -11,80 +12,78 @@ const firebaseConfig = {
     appId: "1:554135699251:web:5a34568d2f0cde065ac846",
 };
 
-// Initialize Firebase
 firebase.initializeApp(firebaseConfig);
 const messaging = firebase.messaging();
 
-// Handle background messages - ONLY ONCE
-// messaging.onBackgroundMessage((payload) => {
-//     console.log("[firebase-messaging-sw.js] Received background message:", payload);
+// Background message handler - commented out until SW is stable
+// messaging.onBackgroundMessage((payload) => { ... });
 
-//     const notificationTitle = payload.notification?.title || "New Notification";
-//     const notificationOptions = {
-//         body: payload.notification?.body || "",
-//         icon: "/icon.png",
-//         badge: "/badge.png",
-//         tag: payload.data?.content_item_id || "notification",
-//         data: payload.data || {},
-//         requireInteraction: false,
-//     };
+// Cache version bump for post-deploy cleanup (invalidates old caches)
+const CACHE_NAME = "pwa-cache-v2";
+// Only cache static assets; do NOT cache "/" or HTML/auth routes
+const urlsToCache = ["/offline.html", "/manifest.json"];
 
-//     return self.registration.showNotification(notificationTitle, notificationOptions);
-// });
-
-// Rest of your service worker code (cache, fetch, etc.)
-const CACHE_NAME = "pwa-cache-v1";
-const urlsToCache = ["/", "/offline.html", "/manifest.json"];
+const noCachePaths = ["/", "/login", "/register", "/wallet", "/api/", "/sanctum/"];
+function shouldBypassCache(url) {
+    const path = new URL(url).pathname;
+    return noCachePaths.some((p) => path === p || path.startsWith(p));
+}
 
 self.addEventListener("install", (event) => {
-    console.log("[Service Worker] Installing...");
     event.waitUntil(
-        caches.open(CACHE_NAME).then((cache) => {
-            console.log("[Service Worker] Caching app shell");
-            return cache.addAll(urlsToCache);
-        }),
+        caches.open(CACHE_NAME).then((cache) => cache.addAll(urlsToCache))
     );
     self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-    console.log("[Service Worker] Activating...");
     event.waitUntil(
         caches.keys().then((cacheNames) => {
             return Promise.all(
                 cacheNames.map((cacheName) => {
                     if (cacheName !== CACHE_NAME) {
-                        console.log("[Service Worker] Deleting old cache:", cacheName);
                         return caches.delete(cacheName);
                     }
-                }),
+                })
             );
-        }),
+        })
     );
     self.clients.claim();
 });
 
+// Navigation and auth routes: network only (no cache) to prevent stale CSRF → 419
 self.addEventListener("fetch", (event) => {
-    // ... your fetch handling code
+    const url = event.request.url;
+    const isNavigate = event.request.mode === "navigate";
+
+    if (isNavigate || shouldBypassCache(url)) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+    // Static assets: optional cache (e.g. manifest, offline page)
+    if (event.request.url.includes("/manifest.json") || event.request.url.includes("/offline.html")) {
+        event.respondWith(
+            caches.match(event.request).then((cached) => cached || fetch(event.request))
+        );
+        return;
+    }
+    // All other requests: network first (no caching of HTML/API)
+    event.respondWith(fetch(event.request));
 });
 
 self.addEventListener("notificationclick", (event) => {
-    console.log("[firebase-messaging-sw.js] Notification clicked:", event.notification);
     event.notification.close();
-
     const urlToOpen = event.notification.data?.click_action || event.notification.data?.url || "/";
-
     event.waitUntil(
-        clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
-            for (let i = 0; i < clientList.length; i++) {
-                const client = clientList[i];
+        self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clientList) => {
+            for (const client of clientList) {
                 if (client.url === urlToOpen && "focus" in client) {
                     return client.focus();
                 }
             }
-            if (clients.openWindow) {
-                return clients.openWindow(urlToOpen);
+            if (self.clients.openWindow) {
+                return self.clients.openWindow(urlToOpen);
             }
-        }),
+        })
     );
 });

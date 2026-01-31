@@ -19,6 +19,10 @@ class AuthenticatedSessionController extends Controller
      */
     public function create(Request $request): Response
     {
+        if ($request->filled('redirect')) {
+            $request->session()->put('url.intended', $request->redirect);
+        }
+
         return Inertia::render('auth/login', [
             'canResetPassword' => Route::has('password.request'),
             'status' => $request->session()->get('status'),
@@ -34,6 +38,7 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
+        $user = $request->user();
         $isLivestockDomain = false;
 
         if (function_exists('is_livestock_domain')) {
@@ -44,11 +49,26 @@ class AuthenticatedSessionController extends Controller
                 (request()->has('livestock') ||
                     str_contains(request()->url(), 'livestock'));
         }
-        $route = $isLivestockDomain
-            ? (Route::has('seller.dashboard') ? 'seller.dashboard' : 'home')
-            : ($request->user()->role === 'user' ? 'user.profile.index' : 'dashboard');
 
-        return redirect()->intended(route($route));
+        // Handle livestock domain redirects
+        if ($isLivestockDomain) {
+            $route = Route::has('seller.dashboard') ? 'seller.dashboard' : 'home';
+            return redirect()->intended(route($route));
+        }
+
+        // Redirect users and organizations to their public view pages
+        if ($user->role === 'user') {
+            // Redirect user to their public profile page
+            $slug = $user->slug ?? $user->id;
+            return redirect()->intended(route('users.show', $slug));
+        } elseif (in_array($user->role, ['organization', 'organization_pending'])) {
+            // Redirect organization to their public view page
+            $slug = $user->slug ?? $user->id;
+            return redirect()->intended(route('organizations.show', $slug));
+        }
+
+        // Default redirect for other roles (e.g., admin)
+        return redirect()->intended(route('dashboard'));
     }
 
     /**

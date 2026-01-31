@@ -63,6 +63,7 @@ class DatabaseSeeder extends Seeder
         $this->call(WalletPlanSeeder::class);
         $this->call(ContactPageContentSeeder::class);
         $this->call(PromotionalBannerSeeder::class);
+        $this->call(FundMeCategorySeeder::class);
 
         // Step 5: Seed organization-related data
         $this->call(OrganizationBoardMembersSeeder::class);

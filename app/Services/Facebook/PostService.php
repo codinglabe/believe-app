@@ -4,385 +4,208 @@ namespace App\Services\Facebook;
 
 use App\Models\FacebookAccount;
 use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Storage;
-use Illuminate\Http\Client\Response;
-use Exception;
+use Illuminate\Support\Facades\Log;
 
 class PostService
 {
-    private string $apiVersion = 'v21.0';
-
     /**
-     * Post a simple message to Facebook page
-    */
-    // public function postMessage(FacebookAccount $account, string $message, ?string $link = null): array
-    // {
-    //     $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/feed";
-
-    //     $data = [
-    //         'message' => $message,
-    //         'access_token' => $account->page_access_token,
-    //     ];
-
-    //     if ($link) {
-    //         $data['link'] = $link;
-    //     }
-
-    //     $response = Http::post($url, $data);
-
-    //     return $this->handleResponse($response);
-    // }
-
-    /**
-     * Post with image
+     * Post message to Facebook page using app-specific credentials
      */
-
-    public function postWithImage(FacebookAccount $account, string $message, string $imagePath, ?string $link = null): array
+    public function postMessage(FacebookAccount $account, $message, $link = null)
     {
-        \Log::info('postWithImage called:', [
-            'image_path' => $imagePath,
-            'file_exists' => file_exists($imagePath),
-            'is_file' => is_file($imagePath),
-        ]);
-
-        try {
-            // Check if file exists
-            if (!file_exists($imagePath) || !is_file($imagePath)) {
-                throw new Exception('Image file not found: ' . $imagePath);
-            }
-
-            // Upload image directly to Facebook using multipart form
-            $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/photos";
-
-            $params = [
-                'message' => $message,
-                'access_token' => $account->page_access_token,
-            ];
-
-            if ($link) {
-                $params['link'] = $link;
-            }
-
-            \Log::info('Uploading to Facebook:', [
-                'url' => $url,
-                'page_id' => $account->facebook_page_id,
-                'file_size' => filesize($imagePath),
-                'mime_type' => mime_content_type($imagePath),
-            ]);
-
-            // Use multipart form data for file upload
-            $response = Http::timeout(60)
-                ->attach(
-                    'source',
-                    fopen($imagePath, 'r'),
-                    basename($imagePath)
-                )
-                ->post($url, $params);
-
-            \Log::info('Facebook API response:', [
-                'status' => $response->status(),
-                'body' => $response->body(),
-            ]);
-
-            return $this->handleResponse($response);
-
-        } catch (Exception $e) {
-            \Log::error('postWithImage error:', [
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-            throw $e;
-        }
-    }
-
-    /**
-     * Alternative method: Direct image upload (simpler)
-     */
-    public function postImageDirect(FacebookAccount $account, string $message, string $imagePath, ?string $link = null): array
-    {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/photos";
-
-        // Create multipart form data
-        $multipart = [
-            [
-                'name' => 'message',
-                'contents' => $message,
-            ],
-            [
-                'name' => 'access_token',
-                'contents' => $account->page_access_token,
-            ],
-        ];
-
-        if ($link) {
-            $multipart[] = [
-                'name' => 'link',
-                'contents' => $link,
-            ];
-        }
-
-        // Add image file
-        if (file_exists($imagePath)) {
-            $multipart[] = [
-                'name' => 'source',
-                'contents' => fopen($imagePath, 'r'),
-                'filename' => basename($imagePath),
-            ];
-        }
-
-        $response = Http::timeout(60)
-            ->withOptions([
-                'multipart' => $multipart,
-            ])
-            ->post($url);
-
-        return $this->handleResponse($response);
-    }
-
-    /**
-     * Method 3: Using Guzzle directly (most reliable)
-     */
-    public function postImageWithGuzzle(FacebookAccount $account, string $message, string $imagePath, ?string $link = null): array
-    {
-        $client = new \GuzzleHttp\Client(['timeout' => 60]);
-
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/photos";
-
-        $multipart = [
-            [
-                'name' => 'message',
-                'contents' => $message,
-            ],
-            [
-                'name' => 'access_token',
-                'contents' => $account->page_access_token,
-            ],
-        ];
-
-        if ($link) {
-            $multipart[] = [
-                'name' => 'link',
-                'contents' => $link,
-            ];
-        }
-
-        // Add image
-        if (file_exists($imagePath)) {
-            $multipart[] = [
-                'name' => 'source',
-                'contents' => fopen($imagePath, 'r'),
-                'filename' => basename($imagePath),
-                'headers' => [
-                    'Content-Type' => mime_content_type($imagePath),
-                ],
-            ];
-        }
-
-        try {
-            $response = $client->post($url, [
-                'multipart' => $multipart,
-            ]);
-
-            $body = json_decode($response->getBody()->getContents(), true);
-
-            \Log::info('Guzzle response:', $body);
-
-            return $body;
-
-        } catch (\GuzzleHttp\Exception\RequestException $e) {
-            $error = json_decode($e->getResponse()->getBody()->getContents(), true);
-            throw new Exception('Facebook API Error: ' . ($error['error']['message'] ?? $e->getMessage()));
-        }
-    }
-
-    // ... keep other methods as they are ...
-
-    /**
-     * Post a simple message to Facebook page
-     */
-    public function postMessage(FacebookAccount $account, string $message, ?string $link = null): array
-    {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/feed";
-
-        $data = [
+        $params = [
             'message' => $message,
             'access_token' => $account->page_access_token,
         ];
 
         if ($link) {
-            $data['link'] = $link;
+            $params['link'] = $link;
         }
 
-        $response = Http::post($url, $data);
+        $response = Http::post(
+            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
+            $params
+        );
 
-        \Log::info('Text post response:', [
-            'status' => $response->status(),
-            'body' => $response->body(),
-        ]);
+        if (!$response->successful()) {
+            throw new \Exception('Facebook API error: ' . $response->body());
+        }
 
-        return $this->handleResponse($response);
+        return $response->json();
     }
 
     /**
-     * Post with video
+     * Post with image using app-specific credentials
      */
-    public function postWithVideo(FacebookAccount $account, string $message, $video, ?string $description = null): array
+    public function postWithImage(FacebookAccount $account, $message, $imagePath, $link = null)
     {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/videos";
-
-        if ($video instanceof \Illuminate\Http\UploadedFile) {
-            $response = Http::attach(
-                'source',
-                fopen($video->path(), 'r'),
-                $video->getClientOriginalName()
-            )->post($url, [
-                        'title' => $message,
-                        'description' => $description,
-                        'access_token' => $account->page_access_token,
-                    ]);
-
-            return $this->handleResponse($response);
-        }
-
-        // Handle file path (string)
-        if (is_string($video) && file_exists($video)) {
-            $response = Http::timeout(120) // Videos can take longer
-                ->attach(
-                    'source',
-                    fopen($video, 'r'),
-                    basename($video)
-                )->post($url, [
-                    'title' => $message,
-                    'description' => $description ?? $message,
-                    'access_token' => $account->page_access_token,
-                ]);
-
-            return $this->handleResponse($response);
-        }
-
-        throw new Exception('Invalid video format. Expected UploadedFile or valid file path.');
-    }
-
-    /**
-     * Upload image to Facebook
-     */
-    private function uploadImage(FacebookAccount $account, $image): string
-    {
-        if (is_string($image) && filter_var($image, FILTER_VALIDATE_URL)) {
-            return $image;
-        }
-
-        if ($image instanceof \Illuminate\Http\UploadedFile) {
-            // Store locally temporarily
-            $path = $image->store('temp/facebook');
-            $fullPath = Storage::path($path);
-
-            // Upload to Facebook
-            $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/photos";
-
-            $response = Http::attach(
-                'source',
-                fopen($fullPath, 'r'),
-                basename($fullPath)
-            )->post($url, [
-                        'published' => false,
-                        'access_token' => $account->page_access_token,
-                    ]);
-
-            // Clean up temp file
-            Storage::delete($path);
-
-            $data = $this->handleResponse($response);
-
-            if (isset($data['id'])) {
-                // Get the uploaded image URL
-                $photoUrl = "https://graph.facebook.com/{$this->apiVersion}/{$data['id']}?fields=images&access_token={$account->page_access_token}";
-                $photoResponse = Http::get($photoUrl);
-                $photoData = $photoResponse->json();
-
-                return $photoData['images'][0]['source'] ?? '';
-            }
-        }
-
-        throw new Exception('Invalid image format');
-    }
-
-    /**
-     * Delete a post
-     */
-    public function deletePost(FacebookAccount $account, string $postId): bool
-    {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$postId}";
-
-        $response = Http::delete($url, [
+        // First upload the image
+        $uploadResponse = Http::attach(
+            'source',
+            fopen($imagePath, 'r'),
+            basename($imagePath)
+        )->post("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/photos", [
             'access_token' => $account->page_access_token,
+            'published' => false,
         ]);
 
-        return $response->successful();
-    }
+        if (!$uploadResponse->successful()) {
+            throw new \Exception('Failed to upload image: ' . $uploadResponse->body());
+        }
 
-    /**
-     * Get page insights
-     */
-    public function getPageInsights(FacebookAccount $account, string $metric = 'page_impressions'): array
-    {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}/insights";
+        $photoData = $uploadResponse->json();
 
-        $response = Http::get($url, [
-            'metric' => $metric,
+        // Then create post with the photo
+        $params = [
+            'message' => $message,
+            'attached_media[0]' => json_encode(['media_fbid' => $photoData['id']]),
             'access_token' => $account->page_access_token,
-        ]);
+        ];
 
-        return $this->handleResponse($response);
+        if ($link) {
+            $params['link'] = $link;
+        }
+
+        $postResponse = Http::post(
+            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
+            $params
+        );
+
+        if (!$postResponse->successful()) {
+            throw new \Exception('Failed to create post with image: ' . $postResponse->body());
+        }
+
+        return $postResponse->json();
     }
 
     /**
-     * Test connection to Facebook page
+     * Post with video using app-specific credentials
      */
-    public function testConnection(FacebookAccount $account): bool
+    public function postWithVideo(FacebookAccount $account, $message, $videoPath, $description = null)
     {
-        try {
-            $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}";
-
-            $response = Http::get($url, [
-                'fields' => 'id,name',
+        // Facebook video upload is a multi-step process
+        // Start upload session
+        $startResponse = Http::post(
+            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/videos",
+            [
                 'access_token' => $account->page_access_token,
-            ]);
+                'upload_phase' => 'start',
+                'file_size' => filesize($videoPath),
+            ]
+        );
 
-            return $response->successful();
-        } catch (Exception $e) {
-            return false;
+        if (!$startResponse->successful()) {
+            throw new \Exception('Failed to start video upload: ' . $startResponse->body());
         }
+
+        $startData = $startResponse->json();
+        $videoId = $startData['video_id'];
+        $uploadSessionId = $startData['upload_session_id'];
+
+        // Upload video in chunks
+        $chunkSize = 4 * 1024 * 1024; // 4MB chunks
+        $fileSize = filesize($videoPath);
+        $handle = fopen($videoPath, 'r');
+
+        $startOffset = 0;
+        while ($startOffset < $fileSize) {
+            $chunk = fread($handle, $chunkSize);
+            $endOffset = $startOffset + strlen($chunk) - 1;
+
+            $transferResponse = Http::withHeaders([
+                'Content-Type' => 'application/octet-stream',
+                'Content-Range' => "bytes {$startOffset}-{$endOffset}/{$fileSize}",
+            ])->post($startData['upload_url'], $chunk);
+
+            if (!$transferResponse->successful()) {
+                fclose($handle);
+                throw new \Exception('Failed to upload video chunk: ' . $transferResponse->body());
+            }
+
+            $startOffset = $endOffset + 1;
+        }
+
+        fclose($handle);
+
+        // Finish upload
+        $finishResponse = Http::post(
+            "https://graph.facebook.com/v19.0/{$videoId}",
+            [
+                'access_token' => $account->page_access_token,
+                'upload_phase' => 'finish',
+                'upload_session_id' => $uploadSessionId,
+                'description' => $description,
+            ]
+        );
+
+        if (!$finishResponse->successful()) {
+            throw new \Exception('Failed to finish video upload: ' . $finishResponse->body());
+        }
+
+        // Create post with video
+        $postResponse = Http::post(
+            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
+            [
+                'message' => $message,
+                'attached_media[0]' => json_encode(['media_fbid' => $videoId]),
+                'access_token' => $account->page_access_token,
+            ]
+        );
+
+        if (!$postResponse->successful()) {
+            throw new \Exception('Failed to create post with video: ' . $postResponse->body());
+        }
+
+        return $postResponse->json();
     }
 
     /**
-     * Get page basic info
+     * Get page info using app-specific credentials
      */
-    public function getPageInfo(FacebookAccount $account): array
+    public function getPageInfoForApp(FacebookAccount $account)
     {
-        $url = "https://graph.facebook.com/{$this->apiVersion}/{$account->facebook_page_id}";
+        $response = Http::get("https://graph.facebook.com/v19.0/{$account->facebook_page_id}", [
+            'access_token' => $account->page_access_token,
+            'fields' => 'id,name,category,followers_count,picture{url},cover,about,description',
+        ]);
 
-        $response = Http::get($url, [
-            'fields' => 'id,name,username,picture{url},fan_count,followers_count,link,verification_status,category',
+        if (!$response->successful()) {
+            throw new \Exception('Failed to get page info: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Delete post using app-specific credentials
+     */
+    public function deletePost(FacebookAccount $account, $postId)
+    {
+        $response = Http::delete("https://graph.facebook.com/v19.0/{$postId}", [
             'access_token' => $account->page_access_token,
         ]);
 
-        return $this->handleResponse($response);
+        if (!$response->successful()) {
+            throw new \Exception('Failed to delete post: ' . $response->body());
+        }
+
+        return $response->json();
     }
 
     /**
-     * Handle API response
+     * Get page insights using app-specific credentials
      */
-    private function handleResponse(Response $response): array
+    public function getPageInsights(FacebookAccount $account, $metric = 'page_post_engagements')
     {
-        if ($response->successful()) {
-            return $response->json();
+        $response = Http::get("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/insights/{$metric}", [
+            'access_token' => $account->page_access_token,
+            'period' => 'day',
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('Failed to get page insights: ' . $response->body());
         }
 
-        $errorData = $response->json();
-        $errorMessage = $errorData['error']['message'] ?? 'Unknown Facebook API error';
-        $errorCode = $errorData['error']['code'] ?? 0;
-
-        throw new Exception("Facebook API Error {$errorCode}: {$errorMessage}");
+        return $response->json('data', []);
     }
 }

@@ -1,7 +1,8 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Mail, Phone, MapPin } from "lucide-react"
+import { PageHead } from "@/components/frontend/PageHead"
+import { Mail, Phone, MapPin, Gift, Sparkles } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { usePage } from "@inertiajs/react"
 
@@ -50,7 +51,10 @@ interface ImpactBreakdown {
 
 interface PageProps {
   auth: {
-    user: User
+    user: User & {
+      reward_points?: number
+      believe_points?: number
+    }
   }
   recentDonations: Donation[]
   reward_points: number
@@ -75,6 +79,7 @@ export default function ProfileIndex() {
 
   return (
     <ProfileLayout title="Profile Overview" description="Your account information and recent activity">
+      <PageHead title="My Profile" description="View your profile, impact score, and recent activity. Manage your account and donations." />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         {/* Personal Information */}
         <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
@@ -105,6 +110,48 @@ export default function ProfileIndex() {
             )}
           </CardContent>
         </Card>
+
+        {/* Points Display */}
+        {(user.reward_points !== undefined || user.believe_points !== undefined) && (
+          <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-gray-900 dark:text-white text-lg sm:text-xl">Points</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Reward Points */}
+                {user.reward_points !== undefined && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                    <div className="h-10 w-10 rounded-full bg-blue-500 flex items-center justify-center shrink-0">
+                      <Gift className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">Reward Points</p>
+                      <p className="text-lg font-semibold text-blue-700 dark:text-blue-300">
+                        {(user.reward_points || 0).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                
+                {/* Believe Points */}
+                {user.believe_points !== undefined && (
+                  <div className="flex items-center gap-3 p-3 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
+                    <div className="h-10 w-10 rounded-full bg-purple-500 flex items-center justify-center shrink-0">
+                      <Sparkles className="h-5 w-5 text-white" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-muted-foreground">Believe Points</p>
+                      <p className="text-lg font-semibold text-purple-700 dark:text-purple-300">
+                        {(user.believe_points || 0).toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         {/* Recent Activity */}
         <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 lg:col-span-2">

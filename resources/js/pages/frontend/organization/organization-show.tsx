@@ -1,223 +1,255 @@
 "use client"
 
+import { useState, useEffect, useMemo } from "react"
+import { Link, router, usePage, useForm } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { motion } from "framer-motion"
 import {
-  Heart,
+  ChevronDown,
   MapPin,
-  Globe,
-  Phone,
-  Mail,
-  Calendar,
-  Award,
-  Share2,
-  DollarSign,
-  Star,
-  ExternalLink,
-  ChevronLeft,
-  ChevronRight,
-  ShoppingCart,
-  Check,
-  Plus,
-  Clock,
+  Zap,
   Users,
-  Info,
-  UserCheck,
+  Mail,
+  Heart,
+  MoreHorizontal,
+  ThumbsUp,
+  Share2,
+  CheckCircle,
+  FileText,
+  User,
   UserPlus,
+  Clock,
+  Calendar,
+  MessageCircle,
+  Building2,
+  Globe,
+  ShieldCheck,
+  BadgeCheck,
+  ShoppingBag,
+  Briefcase,
+  Phone,
+  Bell,
+  ArrowLeft,
+  Send,
+  Smile,
+  Laugh,
+  Angry,
+  DollarSign,
+  AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/frontend/ui/card"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 import { Badge } from "@/components/frontend/ui/badge"
+import { Textarea } from "@/components/frontend/ui/textarea"
 import DonationModal from "@/components/frontend/donation-modal"
-import { Link, router, useForm } from "@inertiajs/react"
-import { route } from "ziggy-js" // Import route function from ziggy-js
-import axios from "axios"
-import { showErrorToast, showSuccessToast } from "@/lib/toast"
-import { Loader2, Sparkles } from "lucide-react"
-import { JobStatusBadge, JobTypeBadge, LocationTypeBadge } from "@/components/frontend/jobs/badge"
-import type React from "react"
-import { useEffect, useState } from "react"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
+import InviteOrganizationPopup from "@/components/frontend/InviteOrganizationPopup"
+import { PageHead } from "@/components/frontend/PageHead"
+import { motion, AnimatePresence } from "framer-motion"
+import useAxios from "@/hooks/useAxios"
 
-// Helper to extract channel ID from a YouTube URL
-function extractYouTubeChannelId(url: string): string | null {
-  // Handles URLs like https://www.youtube.com/channel/UCxxxx, /user/xxxx, /@xxxx
-  if (!url) return null
-  const channelMatch = url.match(/youtube\.com\/(channel|user|@)([\w-]+)/)
-  if (channelMatch) {
-    if (channelMatch[1] === "channel") return channelMatch[2]
-    if (channelMatch[1] === "user" || channelMatch[1] === "@") return channelMatch[2]
-  }
-  // Try to extract from full URL
-  const idMatch = url.match(/(?:channel\/|user\/|@)([\w-]+)/)
-  return idMatch ? idMatch[1] : null
+interface OrganizationPageProps {
+  auth?: any
+  organization: any
+  isFav?: boolean
+  posts?: any[]
+  postsCount?: number
+  supportersCount?: number
+  jobsCount?: number
+  supporters?: any[]
+  peopleYouMayKnow?: any[]
+  trendingOrganizations?: any[]
+  products?: any[]
+  jobs?: any[]
+  events?: any[]
+  currentPage?: string
+  believePointsEarned?: number
+  believePointsSpent?: number
+  believePointsBalance?: number
+  postFilter?: string
 }
 
-function YouTubeChannelVideos({ channelUrl }: { channelUrl: string }) {
-  const [videos, setVideos] = useState<any[]>([])
-  const [error, setError] = useState<string | null>(null)
-  const [loading, setLoading] = useState(false)
-  // Get API key from environment variable
-  // Set VITE_YOUTUBE_API_KEY in your .env file
-  const API_KEY = import.meta.env.VITE_YOUTUBE_API_KEY
-
-  useEffect(() => {
-    if (!channelUrl) return
-    setLoading(true)
-    setError(null)
-    // First, get the channel ID if it's a username or handle
-    let channelId = null
-    let username = null
-    if (channelUrl.includes("/channel/")) {
-      channelId = extractYouTubeChannelId(channelUrl)
-    } else if (channelUrl.includes("/user/")) {
-      username = extractYouTubeChannelId(channelUrl)
-    } else if (channelUrl.includes("/@")) {
-      username = extractYouTubeChannelId(channelUrl)
+export default function OrganizationPage({
+  auth,
+  organization,
+  isFav = false,
+  posts = [],
+  postsCount = 0,
+  supportersCount = 0,
+  jobsCount = 0,
+  supporters = [],
+  peopleYouMayKnow = [],
+  trendingOrganizations = [],
+  products = [],
+  jobs = [],
+  events = [],
+  currentPage,
+  believePointsEarned = 0,
+  believePointsSpent = 0,
+  believePointsBalance = 0,
+  postFilter = 'organization',
+}: OrganizationPageProps) {
+  const { url } = usePage()
+  const page = usePage()
+  const axios = useAxios()
+  const currentPostFilter = postFilter || (page.props as any).postFilter || 'organization'
+  // Use organization.is_favorited directly, fallback to isFav prop
+  // Convert to boolean explicitly to handle null/undefined
+  const isFavorite = Boolean(organization.is_favorited ?? isFav ?? false)
+  const [showDonationModal, setShowDonationModal] = useState(false)
+  const [showInvitePopup, setShowInvitePopup] = useState(false)
+  const [followingStates, setFollowingStates] = useState<Record<number, boolean>>({})
+  const [loadingFollow, setLoadingFollow] = useState<Record<number, boolean>>({})
+  
+  // Detect which page we're on based on currentPage prop or route - memoize to prevent infinite loops
+  const currentPath = useMemo(() => {
+    return typeof window !== 'undefined' ? window.location.pathname : url
+  }, [url])
+  
+  const pageType = useMemo(() => {
+    return currentPage || (currentPath.includes('/products') ? 'products' :
+                    currentPath.includes('/jobs') ? 'jobs' :
+                    currentPath.includes('/events') ? 'events' :
+                    currentPath.includes('/about') ? 'about' :
+                    currentPath.includes('/contact') ? 'contact' :
+                    currentPath.includes('/supporters') ? 'supporters' : null)
+  }, [currentPage, currentPath])
+  
+  const isSubPage = pageType !== null
+  
+  // Determine active tab based on current page - memoize to prevent infinite loops
+  const initialTab = useMemo(() => {
+    // For unregistered organizations, default to "About" instead of "Community Feed"
+    let tab = organization.is_registered ? "Community Feed" : "About"
+    if (pageType === 'products') tab = "Products"
+    else if (pageType === 'jobs') tab = "Opportunities"
+    else if (pageType === 'events') tab = "Events"
+    else if (pageType === 'about') tab = "About"
+    else if (pageType === 'contact') tab = "Contact"
+    else if (pageType === 'supporters') tab = "Supporters"
+    
+    // Ensure the initial tab is valid for unregistered organizations
+    if (!organization.is_registered && tab !== "About" && tab !== "Contact" && tab !== "Supporters") {
+      tab = "About"
     }
-    // If username, resolve to channelId
-    const fetchVideos = async (cid: string) => {
-      // Get uploads playlist ID
-      const channelResp = await fetch(
-        `https://www.googleapis.com/youtube/v3/channels?part=contentDetails&id=${cid}&key=${API_KEY}`,
-      )
-      const channelData = await channelResp.json()
-      if (!channelData.items || !channelData.items[0]) {
-        setError("Channel not found.")
-        setLoading(false)
+    
+    return tab
+  }, [pageType, organization.is_registered])
+  
+  const [activeTab, setActiveTab] = useState(initialTab)
+  const [postsState, setPostsState] = useState<any[]>(posts)
+  const [showReactionPicker, setShowReactionPicker] = useState<number | null>(null)
+  const [commentInputs, setCommentInputs] = useState<Record<number, string>>({})
+  const [showComments, setShowComments] = useState<Record<number, boolean>>({})
+  const [isPageLoading, setIsPageLoading] = useState(true)
+  const [isGeneratingAbout, setIsGeneratingAbout] = useState(false)
+  const [hasAutoGenerated, setHasAutoGenerated] = useState(false)
+
+  // Update posts state when posts prop changes - use length and IDs to detect actual changes
+  const postsKey = useMemo(() => {
+    if (!posts || posts.length === 0) return 'empty'
+    return posts.map(p => p?.id || '').filter(Boolean).join(',')
+  }, [posts])
+  
+  useEffect(() => {
+    setPostsState(posts)
+  }, [postsKey])
+
+  // Set loading to false once component is mounted and data is ready
+  useEffect(() => {
+    // Set loading to false when component mounts with data
+    setIsPageLoading(false)
+  }, [organization?.id, currentPage])
+
+  // Navigate to sub-page when tab is clicked
+  const handleTabChange = (tabName: string) => {
+    // For unregistered organizations, only allow About, Contact, and Supporters tabs
+    if (!organization.is_registered && tabName !== "About" && tabName !== "Contact" && tabName !== "Supporters") {
         return
       }
-      const uploadsPlaylistId = channelData.items[0].contentDetails.relatedPlaylists.uploads
-      // Fetch videos from uploads playlist
-      const playlistResp = await fetch(
-        `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=8&playlistId=${uploadsPlaylistId}&key=${API_KEY}`,
-      )
-      const playlistData = await playlistResp.json()
-      setVideos(playlistData.items || [])
-      setLoading(false)
+    
+    setActiveTab(tabName)
+    setIsPageLoading(true) // Set loading immediately when navigation starts
+    const slug = organization.registered_organization?.user?.slug || organization.id
+    
+    let routePath = ''
+    switch(tabName) {
+      case "Products":
+        routePath = route('organizations.products', slug)
+        break
+      case "Opportunities":
+        routePath = route('organizations.jobs', slug)
+        break
+      case "Events":
+        routePath = route('organizations.events', slug)
+        break
+      case "About":
+        routePath = route('organizations.about', slug)
+        break
+      case "Contact":
+        routePath = route('organizations.contact', slug)
+        break
+      case "Supporters":
+        routePath = route('organizations.supporters', slug)
+        break
+      default:
+        routePath = route('organizations.show', slug)
     }
-    const fetchChannelIdFromUsername = async (uname: string) => {
-      // Try to resolve username or handle to channelId
-      const resp = await fetch(
-        `https://www.googleapis.com/youtube/v3/channels?part=id&forUsername=${uname}&key=${API_KEY}`,
-      )
-      const data = await resp.json()
-      if (data.items && data.items[0]) {
-        await fetchVideos(data.items[0].id)
-      } else {
-        // Try handle (for @username)
-        const searchResp = await fetch(
-          `https://www.googleapis.com/youtube/v3/search?part=snippet&q=${uname}&type=channel&key=${API_KEY}`,
-        )
-        const searchData = await searchResp.json()
-        if (searchData.items && searchData.items[0]) {
-          await fetchVideos(searchData.items[0].id.channelId)
-        } else {
-          setError("Channel not found.")
-          setLoading(false)
-        }
-      }
-    }
-    if (channelId) {
-      fetchVideos(channelId)
-    } else if (username) {
-      fetchChannelIdFromUsername(username)
-    } else {
-      setError("Invalid YouTube channel URL.")
-      setLoading(false)
-    }
-  }, [channelUrl])
-
-  if (!channelUrl) return null
-  if (loading) return <div>Loading YouTube videos...</div>
-  if (error) return <div className="text-red-500">{error}</div>
-  if (!videos.length) return <div>No videos found.</div>
-  return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-      {videos.map((item) => (
-        <div key={item.snippet.resourceId.videoId} className="aspect-w-16 aspect-h-9">
-          <iframe
-            width="100%"
-            height="315"
-            src={`https://www.youtube.com/embed/${item.snippet.resourceId.videoId}`}
-            title={item.snippet.title}
-            frameBorder="0"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          ></iframe>
-          <div className="mt-2 text-sm">{item.snippet.title}</div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
-export default function OrganizationPage({ auth, organization, isFav }: { organization: any; isFav: boolean }) {
-  const [isFavorite, setIsFavorite] = useState(organization.is_favorited || false)
-  const [showDonationModal, setShowDonationModal] = useState(false)
-  const [cart, setCart] = useState<any[]>([])
-  const [description, setDescription] = useState(organization.description || '')
-  const [isGeneratingDescription, setIsGeneratingDescription] = useState(false)
-  const [showCartModal, setShowCartModal] = useState(false)
-
-  const { post, processing } = useForm()
-
-  const toggleFavorite = () => {
-    post(route("user.organizations.toggle-favorite", organization.id), {
-      preserveScroll: true,
-      preserveState: true,
-      onSuccess: () => setIsFavorite(!isFavorite),
-      onError: (errors) => {
-        console.error("Error toggling favorite:", errors)
+    
+    router.visit(routePath, {
+      preserveState: false,
+      preserveScroll: false,
+      onStart: () => {
+        setIsPageLoading(true)
+      },
+      onFinish: () => {
+        setIsPageLoading(false)
+      },
+      onError: () => {
+        setIsPageLoading(false)
       },
     })
   }
 
-  const handleProductPageChange = (page: number) => {
-    setCurrentProductPage(page)
-  }
+  // Sync activeTab with route on mount - use initialTab directly to avoid infinite loops
+  useEffect(() => {
+    setActiveTab(initialTab)
+  }, [initialTab])
 
-  const addToCart = (product: any) => {
-    const existingItem = cart.find((item) => item.id === product.id)
-    if (existingItem) {
-      setCart(cart.map((item) => (item.id === product.id ? { ...item, quantity: item.quantity + 1 } : item)))
-    } else {
-      setCart([...cart, { ...product, quantity: 1 }])
+  // Auto-generate description if missing when About tab is active
+  useEffect(() => {
+    const needsDescription = !organization.description || 
+      organization.description.trim() === '' || 
+      organization.description === 'This organization is listed in our database but has not yet registered for additional features.';
+    
+    if (needsDescription && activeTab === "About" && !isGeneratingAbout && !hasAutoGenerated) {
+      setIsGeneratingAbout(true);
+      setHasAutoGenerated(true);
+      
+      // Use useAxios hook to handle CSRF properly (fixes CSRF mismatch on live server)
+      axios.post(route('organizations.generate-mission', organization.id))
+        .then(response => {
+          if (response.data?.success) {
+            router.reload();
+          } else {
+            setIsGeneratingAbout(false);
+            setHasAutoGenerated(false);
+          }
+        })
+        .catch(error => {
+          console.error('Error generating about:', error);
+          setIsGeneratingAbout(false);
+          setHasAutoGenerated(false);
+        });
     }
-  }
-
-  const buyNow = (product: any) => {
-    setCart([{ ...product, quantity: 1 }])
-    setShowCartModal(true)
-  }
-
-  const removeFromCart = (productId: number) => {
-    setCart(cart.filter((item) => item.id !== productId))
-  }
-
-  const updateQuantity = (productId: number, quantity: number) => {
-    if (quantity === 0) {
-      removeFromCart(productId)
-    } else {
-      setCart(cart.map((item) => (item.id === productId ? { ...item, quantity } : item)))
-    }
-  }
-
-  const getCartTotal = () => {
-    return cart.reduce((total, item) => total + item.unit_price * item.quantity, 0)
-  }
-
-  const getCartItemCount = () => {
-    return cart.reduce((total, item) => total + item.quantity, 0)
-  }
+  }, [activeTab, organization.id, organization.description, isGeneratingAbout, hasAutoGenerated, axios])
 
   const handleDonateNow = () => {
     if (!organization.is_registered) {
-      return // Don't allow donations for unregistered organizations
+      return
     }
 
     if (!auth?.user) {
-      router.visit(route("login", { redirect: route("organizations.show", { slug: organization?.user?.slug }) }), {
+      router.visit(route("login", { redirect: route("organizations.show", { slug: organization?.registered_organization?.user?.slug || organization.id }) }), {
         replace: true,
       })
     } else {
@@ -225,607 +257,1588 @@ export default function OrganizationPage({ auth, organization, isFav }: { organi
     }
   }
 
-  const handleGenerateDescription = async () => {
-    setIsGeneratingDescription(true)
+  const handleMessageClick = () => {
+    if (!auth?.user) {
+      router.visit(route("login", { redirect: "/chat" }), { replace: true })
+      return
+    }
+
+    router.visit("/chat")
+  }
+
+  // Reaction configuration
+  const reactionConfig = {
+    like: { emoji: '👍', icon: ThumbsUp, color: 'text-blue-600' },
+    love: { emoji: '❤️', icon: Heart, color: 'text-red-500' },
+    care: { emoji: '🤗', icon: Heart, color: 'text-yellow-500' },
+    angry: { emoji: '😠', icon: Angry, color: 'text-orange-500' },
+    haha: { emoji: '😂', icon: Laugh, color: 'text-yellow-500' },
+  }
+
+  // Get CSRF token
+  const getCsrfToken = () => {
+    const metaToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+    return metaToken || ''
+  }
+
+  // Handle reaction (like, love, etc.)
+  const handleReaction = async (postId: number | string, type: 'like' | 'love' | 'care' | 'angry' | 'haha') => {
+    if (!auth?.user) {
+      router.visit(route("login"))
+      return
+    }
+
+    // Skip Facebook posts (they have string IDs starting with 'fb_')
+    if (typeof postId === 'string' && postId.startsWith('fb_')) {
+      return
+    }
+
+    const post = postsState.find(p => p.id === postId)
+    const currentReaction = post?.user_reaction
+
+    if (currentReaction?.type === type) {
+      // Remove reaction if clicking the same one
+      try {
+        const token = getCsrfToken()
+        const response = await fetch(`/posts/${postId}/reaction`, {
+          method: 'DELETE',
+          headers: {
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+        })
+
+        if (response.ok) {
+          setPostsState(prev => prev.map(p => {
+            if (p.id === postId) {
+              // Remove user's reaction from reactions array
+              const updatedReactions = (p.reactions || []).filter((r: any) => r.user_id !== auth?.user?.id)
+              return {
+                ...p,
+                reactions_count: Math.max(0, (p.reactions_count || 0) - 1),
+                user_reaction: null,
+                reactions: updatedReactions,
+              }
+            }
+            return p
+          }))
+        }
+      } catch (error) {
+        console.error('Error removing reaction:', error)
+      }
+    } else {
+      // Add or update reaction
+      try {
+        const token = getCsrfToken()
+        const response = await fetch(`/posts/${postId}/react`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-TOKEN': token,
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+          },
+          credentials: 'include',
+          body: JSON.stringify({ type }),
+        })
+
+        if (response.ok) {
+          const data = await response.json()
+          setPostsState(prev => prev.map(p => {
+            if (p.id === postId) {
+              // Update reactions array
+              const currentReactions = p.reactions || []
+              const existingReactionIndex = currentReactions.findIndex((r: any) => r.user_id === auth?.user?.id)
+              
+              let updatedReactions = [...currentReactions]
+              if (data.reaction) {
+                // Add or update reaction with user data from backend
+                const reactionWithUser = {
+                  id: data.reaction.id,
+                  type: data.reaction.type,
+                  user_id: data.reaction.user_id,
+                  user: data.reaction.user || (auth?.user ? {
+                    id: auth.user.id,
+                    name: auth.user.name,
+                    image: auth.user.image,
+                  } : null),
+                }
+                
+                if (existingReactionIndex >= 0) {
+                  updatedReactions[existingReactionIndex] = reactionWithUser
+      } else {
+                  updatedReactions.push(reactionWithUser)
+                }
+              }
+              
+              return {
+                ...p,
+                reactions_count: data.reactions_count || p.reactions_count || 0,
+                user_reaction: data.reaction ? {
+                  id: data.reaction.id,
+                  type: data.reaction.type,
+                  user_id: data.reaction.user_id,
+                } : null,
+                reactions: updatedReactions,
+              }
+            }
+            return p
+          }))
+        }
+      } catch (error) {
+        console.error('Error adding reaction:', error)
+      }
+    }
+    setShowReactionPicker(null)
+  }
+
+  // Handle comment
+  const handleComment = async (postId: number | string) => {
+    if (!auth?.user) {
+      router.visit(route("login"))
+      return
+    }
+
+    // Skip Facebook posts (they have string IDs starting with 'fb_')
+    if (typeof postId === 'string' && postId.startsWith('fb_')) {
+      return
+    }
+
+    const comment = commentInputs[postId]?.trim()
+    if (!comment) return
+
     try {
-      // Use the organization.id (ExcelData ID) - works for both registered and unregistered
-      const response = await axios.post(`/organizations/${organization.id}/generate-mission`)
+      const token = getCsrfToken()
+      const response = await fetch(`/posts/${postId}/comment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': token,
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest',
+        },
+        credentials: 'include',
+        body: JSON.stringify({ content: comment }),
+      })
 
-      if (response.data.success && response.data.description) {
-        setDescription(response.data.description)
-        showSuccessToast('Organization description generated successfully!')
-        // Reload the page to get updated organization data
-        router.reload()
-      } else {
-        showErrorToast(response.data.error || 'Failed to generate organization description')
+      if (response.ok) {
+        const data = await response.json()
+        setPostsState(prev => prev.map(p => {
+          if (p.id === postId) {
+            return {
+              ...p,
+              comments: [...(p.comments || []), data.comment],
+              comments_count: (p.comments_count || 0) + 1,
+            }
+          }
+          return p
+        }))
+        setCommentInputs(prev => ({ ...prev, [postId]: '' }))
+        setShowComments(prev => ({ ...prev, [postId]: true }))
       }
-    } catch (error: any) {
-      console.error('Error generating description:', error)
-      const errorMessage = error.response?.data?.error || 'Failed to generate organization description. Please try again.'
-      showErrorToast(errorMessage)
-    } finally {
-      setIsGeneratingDescription(false)
+    } catch (error) {
+      console.error('Error adding comment:', error)
     }
   }
 
-  //   useEffect(() => {
-  //     Inertia.get(route(route().current()), query, {
-  //         preserveState: true,
-  //         replace: true,
-  //     });
-  // }, [query]);
+  // Handle share
+  const handleShare = async (postId: number) => {
+    const post = postsState.find(p => p.id === postId)
+    if (!post) return
 
-  //   useEffect(() => {
-  //     // Check if organization is in user's favorites
-  //     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-  //     setIsFavorite(favorites.includes(organization.id))
-  //   }, [organization.id])
+    const shareUrl = `${window.location.origin}/organizations/${organization.registered_organization?.user?.slug || organization.id}?post=${postId}`
+    const shareText = post.content || post.title || 'Check out this post'
 
-  //   const toggleFavorite = () => {
-  //     const favorites = JSON.parse(localStorage.getItem("favoriteOrganizations") || "[]")
-  //     let updatedFavorites
-
-  //     if (isFavorite) {
-  //       updatedFavorites = favorites.filter((id: number) => id !== organization.id)
-  //     } else {
-  //       updatedFavorites = [...favorites, organization.id]
-  //     }
-
-  //     localStorage.setItem("favoriteOrganizations", JSON.stringify(updatedFavorites))
-  //     setIsFavorite(!isFavorite)
-  //   }
-
-  const [errors, setErrors] = useState<Record<string, string>>({})
-  const [isSubmitting, setIsSubmitting] = useState(false)
-
-  const handleCompletePurchase = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-    setIsSubmitting(true)
-    setErrors({})
-
-    const orderData = {
-      first_name: firstName,
-      last_name: lastName,
-      email,
-      shipping_address: shippingAddress,
-      city,
-      zip,
-      phone,
-      products: cart.map((item) => ({
-        id: item.id,
-        quantity: item.quantity,
-      })),
-      // Add payment info as needed
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: organization.name,
+          text: shareText,
+          url: shareUrl,
+        })
+      } catch (error) {
+        // User cancelled or error occurred
+        console.log('Share cancelled or failed')
+      }
+      } else {
+      // Fallback: copy to clipboard
+      try {
+        await navigator.clipboard.writeText(shareUrl)
+        alert('Link copied to clipboard!')
+      } catch (error) {
+        console.error('Failed to copy link:', error)
+      }
     }
+  }
+
+  // Format date for "Member since"
+  const memberSince = organization.created_at
+    ? new Date(organization.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long' })
+    : 'N/A'
+
+  // Get organization handle/slug
+  const organizationHandle = organization.registered_organization?.user?.slug
+    ? `@${organization.registered_organization.user.slug}`
+    : `@${organization.name.toLowerCase().replace(/\s+/g, '')}`
+
+  // Get organization image
+  const orgImage = organization.registered_organization?.user?.image
+    ? `/storage/${organization.registered_organization.user.image}`
+    : "/placeholder.svg"
+
+  // Get cover image
+  const coverImage = organization.registered_organization?.user?.cover_img
+    ? `/storage/${organization.registered_organization.user.cover_img}`
+    : null
+
+  // Fallback for user posts
+  const userImage = orgImage
+
+  // Get location - include zipcode if available
+  const locationParts = [organization.city, organization.state].filter(Boolean)
+  const location = locationParts.length > 0 
+    ? locationParts.join(', ') + (organization.zipcode ? ` ${organization.zipcode}` : '')
+    : 'Location not specified'
+
+  // Profile tabs - only show About and Contact for unregistered organizations
+  const allTabs = [
+    { name: "Community Feed", count: postsCount || 0 },
+    { name: "About", count: null },
+    { name: "Events", count: null },
+    { name: "Opportunities", count: jobsCount || 0 },
+    { name: "Supporters", count: supportersCount || 0 },
+    { name: "Products", count: products?.length || 0 },
+    { name: "Contact", count: null },
+  ]
+  
+  const profileTabs = organization.is_registered 
+    ? allTabs 
+    : allTabs.filter(tab => tab.name === "About" || tab.name === "Contact" || tab.name === "Supporters")
+
+  // Use only dynamic data from backend - no static defaults - memoize to prevent infinite loops
+  const peopleToShow = useMemo(() => {
+    return peopleYouMayKnow.length > 0 ? peopleYouMayKnow : []
+  }, [peopleYouMayKnow])
+  
+  const trendingOrgsToShow = useMemo(() => {
+    return trendingOrganizations.length > 0 ? trendingOrganizations : []
+  }, [trendingOrganizations])
+
+  const navItems = ["Home", "About", "Donate", "Community", "Services", "More"]
+
+  // Initialize following states for people you may know - use stable key
+  const peopleToShowKey = useMemo(() => {
+    if (!peopleToShow || peopleToShow.length === 0) return 'empty'
+    return peopleToShow.map(p => p?.id || '').filter(Boolean).join(',')
+  }, [peopleToShow])
+  
+  useEffect(() => {
+    const initialStates: Record<number, boolean> = {}
+    peopleToShow.forEach((person) => {
+      if (person.id && typeof person.id === 'number') {
+        initialStates[person.id] = false // Default to not following
+      }
+    })
+    setFollowingStates(initialStates)
+  }, [peopleToShowKey])
+
+  // Handle follow/unfollow for people you may know
+  const handleFollowPerson = (person: any) => {
+    if (!auth?.user) {
+      router.visit(route("login"))
+      return
+    }
+
+    // Use excel_data_id if available, otherwise fall back to id
+    const excelDataId = person.excel_data_id || person.id
+    if (!excelDataId) return
+
+    const personId = person.id
+    setLoadingFollow(prev => ({ ...prev, [personId]: true }))
+    
+    // Use the correct route name with ExcelData ID
+    // Try 'organizations.toggle-favorite' first, fallback to direct URL if route not found
+    let routePath
     try {
-      const response = await axios.post(route("purchase.order"), orderData)
-      if (response.data.url) {
-        window.location.href = response.data.url
-      } else {
-        setIsSubmitting(false)
-        showErrorToast("Stripe URL not received.")
-      }
-    } catch (error: any) {
-      setIsSubmitting(false)
-      if (error.response && error.response.data && error.response.data.errors) {
-        setErrors(error.response.data.errors)
-      } else {
-        showErrorToast("Order failed. Please try again.")
-      }
+      routePath = route("organizations.toggle-favorite", excelDataId)
+    } catch (error) {
+      // Fallback to direct URL if route() fails
+      routePath = `/organizations/${excelDataId}/toggle-favorite`
     }
-  }
-
-  const formatCurrency = (amount: number | null, currency: string | null) => {
-    if (!amount || !currency) return "Not specified"
-
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: currency,
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-  }
-
-  const formatDate = (dateString: string | null) => {
-    if (!dateString) return "No deadline"
-
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
+    
+    router.post(routePath, {}, {
+      preserveScroll: true,
+      preserveState: true,
+      only: [],
+      onSuccess: () => {
+        setFollowingStates(prev => ({
+          ...prev,
+          [personId]: !prev[personId]
+        }))
+        setLoadingFollow(prev => ({ ...prev, [personId]: false }))
+      },
+      onError: () => {
+        setLoadingFollow(prev => ({ ...prev, [personId]: false }))
+      },
     })
   }
 
-  // Format address
-  const fullAddress = `${organization.street}, ${organization.city}, ${organization.state} ${organization.zip}`
-
-  // Form state for checkout
-  const [firstName, setFirstName] = useState("")
-  const [lastName, setLastName] = useState("")
-  const [email, setEmail] = useState("")
-  const [shippingAddress, setShippingAddress] = useState("")
-  const [city, setCity] = useState("")
-  const [zip, setZip] = useState("")
-  const [phone, setPhone] = useState("")
+  const orgName = organization?.name ?? "Organization"
+  const orgDescription = organization?.description ?? organization?.mission ?? undefined
 
   return (
     <FrontendLayout>
-      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-        {/* Hero Section */}
-        <div className="relative h-96 overflow-hidden">
-          <img
-            src={organization.user?.cover_img ? "/storage/" + organization.user.cover_img : "/placeholder.svg"}
-            alt={organization.name}
-            className="object-cover w-full h-full"
-          />
-          <div className="absolute inset-0 bg-black bg-opacity-50" />
-          <div
-            className="absolute inset-0 flex items-end"
-            style={{
-              backgroundImage: `url(${organization.user?.cover_img ? "/storage/" + organization.user.cover_img : "/placeholder.svg"})`,
-              backgroundColor: "#101828",
-              backgroundBlendMode: "soft-light",
-            }}
-          >
-            <div className="container mx-auto px-4 pb-8">
-              <motion.div
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.8 }}
-                className="flex flex-col items-center md:flex-row md:items-end gap-6"
-              >
-                {/* Organization Logo */}
-                <div className="relative flex-shrink-0">
+      <PageHead
+        title={orgName}
+        description={orgDescription ? String(orgDescription).slice(0, 160) : undefined}
+      />
+        <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
+
+          {/* Profile Banner */}
                   <div className="relative">
-                    <img
-                      src={organization.user?.image ? "/storage/" + organization.user.image : "/placeholder.svg"}
-                      alt={`${organization.name} logo`}
-                      width={120}
-                      height={120}
-                      className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full border-4 border-white shadow-lg bg-white object-cover"
-                      priority
-                    />
-                    {organization.is_registered && organization.registration_status === "approved" && (
-                      <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-blue-600 rounded-full p-1">
-                        <Award className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Organization Info */}
-                <div className="flex-1 text-white text-center md:text-left">
-                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 leading-tight">{organization.name}</h1>
-                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-sm">
-                    <div className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4" />
-                      <span className="text-sm">
-                        {organization.city}, {organization.state}
-                      </span>
-                    </div>
-                    {/* <div className="flex items-center gap-1">
-                      <Calendar className="h-4 w-4" />
-                      <span className="text-sm">Founded {organization.ruling}</span>
-                    </div> */}
+            <div
+              className="h-32 sm:h-40 bg-gradient-to-r from-purple-900 via-blue-800 to-purple-900"
+              style={
+                coverImage
+                  ? {
+                      backgroundImage: `url(${coverImage})`,
+                      backgroundSize: 'cover',
+                      backgroundPosition: 'center',
+                    }
+                  : {}
+              }
+            />
+            <div className="max-w-[95rem] mx-auto px-3 sm:px-4">
+              <div className="relative -mt-12 sm:-mt-16 md:-mt-20 pb-3 sm:pb-4 flex flex-col gap-3 sm:gap-4">
+                {/* Top Row: Avatar and Name */}
+                <div className="flex flex-col sm:flex-row items-center sm:items-end gap-3 sm:gap-4">
+                  <div className="relative">
+                    <Avatar className="w-28 h-28 sm:w-32 sm:h-32 border-4 border-white dark:border-[#0a0f1a] ring-2 ring-green-500/50">
+                      <AvatarImage src={orgImage} alt={organization.name} />
+                      <AvatarFallback className="bg-gradient-to-br from-gray-600 to-gray-700 text-3xl">
+                        {organization.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
                     {organization.is_registered && (
-                      <div className="flex items-center gap-1">
-                        <Star className="h-4 w-4 text-yellow-400" />
-                        <span className="text-sm">4.8 (234 reviews)</span>
+                      <div className="absolute -bottom-1 -right-1 w-7 h-7 bg-green-500 rounded-full border-3 border-[#0a0f1a] flex items-center justify-center">
+                        <CheckCircle className="w-5 h-5 text-white" />
                       </div>
                     )}
+                </div>
+
+                  <div className="text-center sm:text-left flex-1 w-full sm:w-auto">
+                    <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+                      <h1 className="text-2xl sm:text-3xl font-bold break-words text-gray-900 dark:text-white">{organization.name}</h1>
+                      <div className="w-6 h-6 bg-gray-600 rounded-full flex items-center justify-center flex-shrink-0">
+                        <Building2 className="w-4 h-4" />
+                    </div>
+                      </div>
+                    <p className="text-gray-600 dark:text-gray-400 text-sm mb-1">{organizationHandle}</p>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      {organization.is_registered && (
+                        <>
+                          <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3" />
+                            Registered
+                          </Badge>
+                          {organization.registered_organization?.user?.email && (
+                            <Badge className="bg-green-600 hover:bg-green-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                              <ShieldCheck className="w-3 h-3" />
+                              Verified
+                            </Badge>
+                          )}
+                        </>
+                      )}
+                      {!organization.is_registered && (
+                        <Badge className="bg-orange-500 hover:bg-orange-600 text-white text-xs px-2 py-0.5 flex items-center gap-1">
+                          <AlertCircle className="w-3 h-3" />
+                          Not Registered
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                 </div>
 
-                {/* Action Buttons */}
+                {/* Action Buttons Row */}
+                <div className="flex items-center justify-center sm:justify-end gap-2 sm:gap-3 w-full sm:w-auto">
+                {/* Follow button - show for both registered and unregistered organizations */}
+                <OrgFollowButton
+                  key={`follow-${organization.id}-${isFavorite}-${organization.is_favorited}`}
+                  organization={organization}
+                  auth={auth}
+                  initialIsFollowing={isFavorite}
+                  initialNotifications={organization.notifications_enabled || false}
+                />
                 {organization.is_registered && (
-                  <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                    <>
                     <Button
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
                       onClick={handleDonateNow}
-                      size="lg"
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-6 sm:px-8 w-full sm:w-auto"
                     >
-                      <Heart className="mr-2 h-5 w-5" />
-                      Donate Now
+                        <Heart className="w-4 h-4 mr-2" />
+                        Donate
                                       </Button>
-                    {organization.registered_organization?.user?.slug && (
-                      <Link
-                        href={route('organizations.enrollments', { slug: organization.registered_organization.user.slug })}
-                      >
                         <Button
-                          size="lg"
-                          variant="outline"
-                          className="bg-white/10 border-white/20 text-white hover:bg-white/20 px-6 sm:px-8 w-full sm:w-auto"
+                        className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                        onClick={handleMessageClick}
                         >
-                          <UserCheck className="mr-2 h-5 w-5" />
-                          Enrolled
+                        <MessageCircle className="w-4 h-4 mr-2" />
+                        Message
                         </Button>
-                      </Link>
-                    )}
-                                      <OrgFollowButton
-  organization={organization}
-  auth={auth}
-  initialIsFollowing={organization.is_favorited || false}
-  initialNotifications={organization.notifications_enabled || false}
-/>
-                    {/* <Button
-  onClick={toggleFavorite}
-  variant="outline"
-  size="lg"
-  className="bg-white/10 border-white/20 text-white hover:bg-white/20 w-full sm:w-auto"
->
-  {isFavorite ? (
-    <UserCheck className="mr-2 h-5 w-5" />
-  ) : (
-    <UserPlus className="mr-2 h-5 w-5" />
-  )}
-  <span className="hidden sm:inline">{isFavorite ? "Following" : "Follow"}</span>
-  <span className="sm:hidden">{isFavorite ? "Following" : "Follow"}</span>
-</Button> */}
-                    {getCartItemCount() > 0 && (
+                    </>
+                  )}
+                  {!organization.is_registered && auth?.user && (
                       <Button
-                        onClick={() => setShowCartModal(true)}
                         variant="outline"
-                        size="lg"
-                        className="bg-white/10 border-white/20 text-white hover:bg-white/20 relative w-full sm:w-auto"
+                      className="bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 border-gray-300 dark:border-white/20"
+                      onClick={() => setShowInvitePopup(true)}
                       >
-                        <ShoppingCart className="mr-2 h-5 w-5" />
-                        Cart ({getCartItemCount()})
+                      <Mail className="w-4 h-4 mr-2" />
+                      Invite
                       </Button>
                     )}
                   </div>
-                )}
-              </motion.div>
             </div>
+
+              {/* Profile Stats */}
+              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 sm:gap-4 md:gap-6 py-3 px-3 sm:px-0 text-sm text-gray-600 dark:text-gray-400 border-t border-gray-200 dark:border-white/10">
+                <div className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4" />
+                  <span className="whitespace-nowrap text-gray-900 dark:text-white">Member since {memberSince}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <MapPin className="w-4 h-4" />
+                  <span className="truncate max-w-[150px] sm:max-w-none text-gray-900 dark:text-white">{location}</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Zap className="w-4 h-4 text-yellow-500" />
+                  <span className="text-gray-900 dark:text-white font-medium">
+                    {believePointsBalance >= 1000 
+                      ? `${(believePointsBalance / 1000).toFixed(1)}K` 
+                      : believePointsBalance.toLocaleString()}
+                  </span>
+                  <span className="text-gray-900 dark:text-white">Believer Points</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Users className="w-4 h-4" />
+                  <span className="text-gray-900 dark:text-white">{supportersCount || 0} supporters</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <Calendar className="w-4 h-4" />
+                  <span className="text-gray-900 dark:text-white">Organized</span>
+                </div>
+              </div>
           </div>
         </div>
 
-        <div className="container mx-auto px-4 py-8">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
             {/* Main Content */}
-            <div className="lg:col-span-2">
-              {/* Modern Navigation Menu */}
-              <div className="mb-8">
-                <div className={`grid gap-3 ${organization.is_registered ? "grid-cols-2 sm:grid-cols-4 lg:grid-cols-4" : "grid-cols-2"}`}>
-                  <Link
-                    href={route('organizations.about', organization.id)}
-                    className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-500 text-white font-medium hover:from-indigo-600 hover:to-purple-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                  >
-                    <Info className="h-4 w-4" />
-                    <span className="text-sm">About</span>
-                  </Link>
-
-                  <Link
-                    href={route('organizations.details', organization.id)}
-                    className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-teal-500 to-emerald-500 text-white font-medium hover:from-teal-600 hover:to-emerald-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                  >
-                    <Info className="h-4 w-4" />
-                    <span className="text-sm">Details</span>
-                  </Link>
+          <main className="max-w-[95rem] mx-auto px-3 sm:px-4 py-4 sm:py-6">
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              {/* Left Sidebar - Public Profile Info */}
+              <aside className="lg:col-span-3 space-y-4">
+                <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500">
+                  <nav className="space-y-1">
+                    {profileTabs.map((tab) => (
+                      <button
+                        key={tab.name}
+                        onClick={() => handleTabChange(tab.name)}
+                        className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all text-left ${
+                          activeTab === tab.name
+                            ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white"
+                            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white"
+                        }`}
+                      >
+                        {tab.name === "Community Feed" && <FileText className="w-5 h-5" />}
+                        {tab.name === "About" && <User className="w-5 h-5" />}
+                        {tab.name === "Events" && <Calendar className="w-5 h-5" />}
+                        {tab.name === "Opportunities" && <Briefcase className="w-5 h-5" />}
+                        {tab.name === "Supporters" && <UserPlus className="w-5 h-5" />}
+                        {tab.name === "Products" && <ShoppingBag className="w-5 h-5" />}
+                        {tab.name === "Contact" && <Phone className="w-5 h-5" />}
+                        <span className="text-sm">{tab.name}</span>
+                        {tab.count !== null && (
+                          <span className="ml-auto text-xs text-gray-500 dark:text-gray-500">({tab.count})</span>
+                        )}
+                      </button>
+                    ))}
+                  </nav>
+                </div>
 
                   {organization.is_registered && (
-                    <>
-                      <Link
-                        href={route('organizations.products', organization.id)}
-                        className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-indigo-500 text-white font-medium hover:from-blue-600 hover:to-indigo-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                      >
-                        <ShoppingCart className="h-4 w-4" />
-                        <span className="text-sm">Products</span>
-                      </Link>
-
-                      <Link
-                        href={route('organizations.jobs', organization.id)}
-                        className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-medium hover:from-emerald-600 hover:to-teal-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                      >
-                        <UserCheck className="h-4 w-4" />
-                        <span className="text-sm">Jobs</span>
-                      </Link>
-
-                      <Link
-                        href={route('organizations.events', organization.id)}
-                        className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                      >
-                        <Calendar className="h-4 w-4" />
-                        <span className="text-sm">Events</span>
-                      </Link>
-
-                      <Link
-                        href={route('organizations.social-media', organization.id)}
-                        className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-medium hover:from-cyan-600 hover:to-blue-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                      >
-                        <Globe className="h-4 w-4" />
-                        <span className="text-sm">Social</span>
-                      </Link>
-
-                      <Link
-                        href={route('organizations.contact', organization.id)}
-                        className="group relative flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white font-medium hover:from-violet-600 hover:to-fuchsia-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                      >
-                        <Mail className="h-4 w-4" />
-                        <span className="text-sm">Contact</span>
-                      </Link>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* Default About Content (simplified) */}
-              <div className="space-y-6">
-
-                {/* Simplified About Preview - Full content on separate page */}
-                <div className="space-y-6">
-                  <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                    <CardHeader>
-                      <div className="flex items-center justify-end">
-                        {(!description ||
-                          description === 'This organization is listed in our database but has not yet registered for additional features.' ||
-                          description.trim() === '') && (
-                          <Button
-                            onClick={handleGenerateDescription}
-                            disabled={isGeneratingDescription}
-                            size="sm"
-                            variant="outline"
-                            className="flex items-center gap-2 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700"
-                          >
-                            {isGeneratingDescription ? (
-                              <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                Generating...
-                              </>
-                            ) : (
-                              <>
-                                <Sparkles className="h-4 w-4" />
-                                Bring About
-                              </>
-                            )}
-                          </Button>
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-100">
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mb-3">Organization Info</p>
+                    <div className="flex items-center gap-3 mb-4">
+                      <Avatar className="w-10 h-10">
+                        <AvatarImage src={orgImage} />
+                        <AvatarFallback className="bg-emerald-600 text-sm">
+                          {organization.name.charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="text-sm font-medium text-gray-900 dark:text-white">
+                          {organization.name}
+                          {organization.classification && (
+                            <span className="text-gray-600 dark:text-gray-400 font-normal"> - {organization.classification}</span>
+                          )}
+                        </p>
+                        {organization.ntee_code && (
+                          <Badge className="bg-emerald-600/20 text-emerald-400 text-[10px] px-1.5 py-0">
+                            {organization.ntee_code}
+                          </Badge>
                         )}
                       </div>
-                    </CardHeader>
-                    <CardContent className="space-y-6">
-                      {/* Organization Name, City, and State */}
-                      <div className="pb-4 border-b border-gray-200 dark:border-gray-700">
-                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                          <div>
-                            <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
-                              {organization.name}
-                            </h3>
-                            {(organization.city || organization.state) && (
-                              <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-400">
-                                <MapPin className="h-4 w-4" />
-                                <span>
-                                  {[organization.city, organization.state].filter(Boolean).join(', ')}
-                                </span>
+                    </div>
+
+                    <div className="flex items-center justify-between py-3 border-t border-gray-200 dark:border-white/10">
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">
+                          {believePointsBalance >= 1000 
+                            ? `${(believePointsBalance / 1000).toFixed(1)}k` 
+                            : believePointsBalance.toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Believer Points</p>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-[9px] text-green-400">+{believePointsEarned.toLocaleString()} earned</p>
+                          {believePointsSpent > 0 && (
+                            <p className="text-[9px] text-red-400">-{believePointsSpent.toLocaleString()} spent</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">{supportersCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Supporters</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="text-lg font-bold text-gray-900 dark:text-white">{postsCount || 0}</p>
+                        <p className="text-[10px] text-gray-500 dark:text-gray-500">Community Feed</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-left-4 duration-500 delay-200">
+                    <h3 className="font-semibold mb-3 text-gray-900 dark:text-white">Mission</h3>
+                    <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
+                  </div>
+                )}
+              </aside>
+
+              {/* Main Feed */}
+              <section className="lg:col-span-6 space-y-4">
+                {isPageLoading ? (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-8 flex items-center justify-center min-h-[400px]">
+                      <div className="text-center">
+                        <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+                        <p className="text-gray-600 dark:text-gray-400">Loading content...</p>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    {/* Community Feed - Only for registered organizations */}
+                    {activeTab === "Community Feed" && organization.is_registered && (
+                  <div className="space-y-4">
+                    {/* Post Filter Tabs */}
+                    <div className="flex items-center gap-2 border-b border-gray-200 dark:border-white/10 pb-2 mb-4">
+                      <button
+                        onClick={() => {
+                          const slug = organization.registered_organization?.user?.slug || organization.id;
+                          router.get(route('organizations.show', slug), { filter: 'organization' }, {
+                            preserveState: true,
+                            preserveScroll: true,
+                            only: ['posts', 'postFilter'],
+                          });
+                        }}
+                        className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                          currentPostFilter === 'organization'
+                            ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Organization Posts
+                      </button>
+                      <button
+                        onClick={() => {
+                          const slug = organization.registered_organization?.user?.slug || organization.id;
+                          router.get(route('organizations.show', slug), { filter: 'all' }, {
+                            preserveState: true,
+                            preserveScroll: true,
+                            only: ['posts', 'postFilter'],
+                          });
+                        }}
+                        className={`px-4 py-2 text-sm font-medium transition-all border-b-2 ${
+                          currentPostFilter === 'all'
+                            ? 'border-purple-600 text-purple-600 dark:text-purple-400'
+                            : 'border-transparent text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+                        }`}
+                      >
+                        All Posts
+                      </button>
+                    </div>
+                    {postsState.length > 0 ? (
+                      postsState.map((postItem, index) => {
+                        const postId = postItem.id
+                        const currentReaction = postItem.user_reaction
+                        const reactionsCount = postItem.reactions_count || postItem.likes_count || 0
+                        const commentsCount = postItem.comments_count || 0
+                        const postComments = postItem.comments || []
+                        // Use a unique key that combines post ID with creator info to ensure uniqueness
+                        const creatorId = postItem.creator?.id || postItem.user?.id || 'unknown'
+                        const uniqueKey = postId?.toString().startsWith('fb_') 
+                          ? postId 
+                          : `post_${postId}_${creatorId}_${index}`
+
+                        return (
+                          <article
+                            key={uniqueKey}
+                            className="bg-white dark:bg-[#111827] rounded-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-500 delay-100"
+                          >
+                            <div className="p-5">
+                              {/* Header */}
+                              <div className="flex items-start justify-between mb-4">
+                                <div className="flex items-center gap-3">
+                                  <Avatar className="w-12 h-12">
+                                    <AvatarImage src={postItem.creator_image || (postItem.creator_type === 'organization' ? orgImage : userImage)} />
+                                    <AvatarFallback className="bg-gradient-to-br from-teal-500 to-cyan-500 text-lg">
+                                      {(postItem.creator_name || organization.name).charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div>
+                                    <div className="flex items-center gap-2">
+                                      {postItem.creator_slug ? (
+                                        <Link
+                                          href={postItem.creator_type === 'organization' 
+                                            ? route('organizations.show', postItem.creator_slug)
+                                            : route('users.show', postItem.creator_slug)}
+                                          className="font-semibold text-base text-gray-900 dark:text-white hover:underline"
+                                        >
+                                          {postItem.creator_name || organization.name}
+                                        </Link>
+                                      ) : (
+                                        <h4 className="font-semibold text-base text-gray-900 dark:text-white">
+                                          {postItem.creator_name || organization.name}
+                                        </h4>
+                                      )}
+                                      {postItem.creator_type === 'organization' && organization.is_registered && (
+                                        <CheckCircle className="w-4 h-4 text-blue-400" />
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                                      {postItem.creator_type === 'organization' ? organizationHandle : `@${postItem.creator_slug || postItem.user?.slug || ''}`}
+                                    </p>
+                                  </div>
+                                </div>
+                                <MoreHorizontal className="w-5 h-5 text-gray-500 dark:text-gray-500 cursor-pointer hover:text-gray-700 dark:hover:text-gray-300" />
+                              </div>
+
+                              {/* Title */}
+                              {postItem.title && (
+                                <h3 className="text-xl font-bold mb-4 text-gray-900 dark:text-white">{postItem.title}</h3>
+                              )}
+
+                              {/* Content Text - Now on top */}
+                              {postItem.content && (
+                                <p className="text-gray-700 dark:text-gray-300 text-base mb-5 leading-relaxed whitespace-pre-wrap">
+                                  {postItem.content}
+                                </p>
+                              )}
+
+                              {/* Main Image */}
+                              {(postItem.image || (postItem.images && postItem.images.length > 0)) && (
+                                <div className="mb-5 rounded-lg overflow-hidden">
+                                  {(() => {
+                                    // Handle both single image and array of images
+                                    const imageUrl = postItem.image || (postItem.images && postItem.images[0]);
+                                    if (!imageUrl) return null;
+                                    
+                                    // Check if it's already a full URL or needs /storage/ prefix
+                                    const src = imageUrl.startsWith('http') || imageUrl.startsWith('/storage/') || imageUrl.startsWith('/')
+                                      ? imageUrl
+                                      : `/storage/${imageUrl}`;
+                                    
+                                    return (
+                                      <img
+                                        src={src}
+                                        alt={postItem.title || 'Post image'}
+                                        className="w-full h-auto object-cover"
+                                        onError={(e) => {
+                                          // Fallback if image fails to load
+                                          e.currentTarget.style.display = 'none';
+                                        }}
+                                      />
+                                    );
+                                  })()}
+                                </div>
+                              )}
+                              
+                              {/* Show multiple images if available */}
+                              {postItem.images && postItem.images.length > 1 && (
+                                <div className="grid grid-cols-2 gap-3 mb-5">
+                                  {postItem.images.slice(1, 5).map((img: string, idx: number) => {
+                                    const src = img.startsWith('http') || img.startsWith('/storage/') || img.startsWith('/')
+                                      ? img
+                                      : `/storage/${img}`;
+                                    return (
+                                      <div key={idx} className="rounded-lg overflow-hidden">
+                                        <img
+                                          src={src}
+                                          alt={`${postItem.title || 'Post'} image ${idx + 2}`}
+                                          className="w-full h-56 object-cover"
+                                          onError={(e) => {
+                                            e.currentTarget.style.display = 'none';
+                                          }}
+                                        />
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Event Card Style for Posts with Event Info */}
+                              {postItem.event_date && (
+                                <div className="bg-gradient-to-br from-gray-100 to-gray-200 dark:from-[#1a2744] dark:to-[#0f1a2e] rounded-lg overflow-hidden border border-gray-200 dark:border-white/10 mb-5 p-4">
+                                  <div className="flex flex-wrap gap-4 text-sm">
+                                    <div className="flex items-center gap-2">
+                                      <CheckCircle className="w-4 h-4 text-green-500" />
+                                      <span className="text-gray-900 dark:text-white">{postItem.event_date}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <Clock className="w-4 h-4 text-cyan-400" />
+                                      <span className="text-gray-900 dark:text-white">{postItem.event_time || '2:00 PM'}</span>
+                                    </div>
+                                    {postItem.event_location && (
+                                      <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
+                                        <MapPin className="w-4 h-4" />
+                                        <span className="text-gray-900 dark:text-white">{postItem.event_location}</span>
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Engagement */}
+                            {reactionsCount > 0 || commentsCount > 0 ? (
+                              <div className="px-5 py-3 border-t border-gray-200 dark:border-white/10">
+                                <div className="flex items-center justify-between text-sm text-gray-600 dark:text-gray-400">
+                                  {reactionsCount > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      {/* Show user avatars with their reaction emojis */}
+                                      {(() => {
+                                        const reactions = postItem.reactions || []
+                                        
+                                        if (reactions.length > 0) {
+                                          return (
+                                            <div className="flex items-center gap-1.5">
+                                              {/* Show user avatars with reaction emojis */}
+                                              <div className="flex items-center -space-x-1">
+                                                {reactions.slice(0, 6).map((reaction: any, idx: number) => (
+                                                  <div
+                                                    key={reaction.id || idx}
+                                                    className="relative group"
+                                                    title={reaction.user?.name ? `${reaction.user.name} reacted with ${reaction.type}` : 'User'}
+                                                  >
+                                                    <Avatar className="w-6 h-6 border-2 border-[#111827] hover:z-10 transition-all hover:scale-110">
+                                                      <AvatarImage
+                                                        src={reaction.user?.image ? (reaction.user.image.startsWith('http') || reaction.user.image.startsWith('/storage/') || reaction.user.image.startsWith('/')
+                                                          ? reaction.user.image
+                                                          : `/storage/${reaction.user.image}`) : undefined}
+                                                      />
+                                                      <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-xs">
+                                                        {reaction.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                                      </AvatarFallback>
+                                                    </Avatar>
+                                                    {/* Show reaction emoji on hover or as overlay */}
+                                                    <div className="absolute -bottom-1 -right-1 w-4 h-4 bg-white dark:bg-[#111827] rounded-full border border-gray-200 dark:border-white/20 flex items-center justify-center text-xs">
+                                                      {reactionConfig[reaction.type as keyof typeof reactionConfig]?.emoji || '👍'}
+                                                    </div>
+                                                  </div>
+                                                ))}
+                                                {reactions.length > 6 && (
+                                                  <div className="w-6 h-6 rounded-full border-2 border-white dark:border-[#111827] bg-gray-100 dark:bg-white/10 flex items-center justify-center text-xs font-semibold">
+                                                    +{reactions.length - 6}
+                                                  </div>
+                                                )}
+                                              </div>
+                                              {/* Show reaction type emojis (grouped) */}
+                                              <div className="flex items-center gap-0.5">
+                                                {(() => {
+                                                  // Group reactions by type to show unique emojis
+                                                  const reactionGroups = reactions.reduce((acc: any, r: any) => {
+                                                    if (r && r.type) {
+                                                      if (!acc[r.type]) {
+                                                        acc[r.type] = true
+                                                      }
+                                                    }
+                                                    return acc
+                                                  }, {})
+                                                  
+                                                  return Object.keys(reactionGroups).slice(0, 4).map((type) => (
+                                                    <span
+                                                      key={type}
+                                                      className="text-base"
+                                                      title={type}
+                                                    >
+                                                      {reactionConfig[type as keyof typeof reactionConfig]?.emoji || '👍'}
+                                                    </span>
+                                                  ))
+                                                })()}
+                                              </div>
+                                            </div>
+                                          )
+                                        }
+
+                                        // Fallback: if no reactions data but count > 0, show reaction emojis only
+                                        return (
+                                          <div className="flex items-center gap-1.5">
+                                            <span className="text-base">👍</span>
+                                          </div>
+                                        )
+                                      })()}
+                                    </div>
+                                  )}
+                                  {commentsCount > 0 && (
+                                    <button
+                                      onClick={() => setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }))}
+                                      className="flex items-center gap-1 hover:text-gray-900 dark:hover:text-white transition-colors"
+                                    >
+                                      <MessageCircle className="w-4 h-4" /> {commentsCount} {commentsCount === 1 ? 'Comment' : 'Comments'}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {/* Action Buttons */}
+                            <div className="grid grid-cols-3 border-t border-gray-200 dark:border-white/10">
+                              <div
+                                className="relative flex-1"
+                                onMouseEnter={() => setShowReactionPicker(postId)}
+                                onMouseLeave={() => setShowReactionPicker(null)}
+                              >
+                                <button
+                                  onClick={() => {
+                                    if (typeof postId === 'string' && postId.startsWith('fb_')) {
+                                      return
+                                    }
+                                    if (currentReaction) {
+                                      handleReaction(postId, currentReaction.type)
+                                    } else {
+                                      handleReaction(postId, 'like')
+                                    }
+                                  }}
+                                  disabled={typeof postId === 'string' && postId.startsWith('fb_')}
+                                  className={`w-full flex items-center justify-center gap-2 py-3 transition-all hover:bg-gray-100 dark:hover:bg-white/5 disabled:opacity-50 disabled:cursor-not-allowed ${
+                                    currentReaction ? reactionConfig[currentReaction.type as keyof typeof reactionConfig]?.color || 'text-blue-500' : 'text-gray-600 dark:text-gray-400'
+                                  }`}
+                                >
+                                  {currentReaction ? (
+                                    <>
+                                      <span className="text-lg">{reactionConfig[currentReaction.type as keyof typeof reactionConfig]?.emoji}</span>
+                                      <span className="text-sm font-medium capitalize text-gray-900 dark:text-white">{currentReaction.type}</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <ThumbsUp className="w-5 h-5" />
+                                      <span className="text-sm font-medium text-gray-900 dark:text-white">Like</span>
+                    </>
+                  )}
+                                </button>
+                                <AnimatePresence>
+                                  {showReactionPicker === postId && (
+                                    <motion.div
+                                      initial={{ opacity: 0, y: 10 }}
+                                      animate={{ opacity: 1, y: 0 }}
+                                      exit={{ opacity: 0, y: 10 }}
+                                      className="absolute bottom-full left-0 mb-2 bg-white dark:bg-[#1a1a2e] rounded-full p-1 flex items-center gap-1 shadow-lg border border-gray-200 dark:border-white/10 z-10"
+                                    >
+                                      {Object.entries(reactionConfig).map(([type, config]) => (
+                                        <motion.button
+                                          key={type}
+                                          whileHover={{ scale: 1.2 }}
+                                          whileTap={{ scale: 0.9 }}
+                                          onClick={() => {
+                                            if (typeof postId === 'string' && postId.startsWith('fb_')) {
+                                              return
+                                            }
+                                            handleReaction(postId, type as any)
+                                          }}
+                                          disabled={typeof postId === 'string' && postId.startsWith('fb_')}
+                                          className="text-2xl transition-all p-2 rounded-full hover:bg-gray-100 dark:hover:bg-white/10 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                                          title={type.charAt(0).toUpperCase() + type.slice(1)}
+                                        >
+                                          {config.emoji}
+                                        </motion.button>
+                                      ))}
+                                    </motion.div>
+                                  )}
+                                </AnimatePresence>
+                </div>
+                              <button
+                                onClick={() => setShowComments(prev => ({ ...prev, [postId]: !prev[postId] }))}
+                                className="flex items-center justify-center gap-2 py-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white transition-all"
+                              >
+                                <MessageCircle className="w-5 h-5" />
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">Comment</span>
+                              </button>
+                              <button
+                                onClick={() => handleShare(postId)}
+                                className="flex items-center justify-center gap-2 py-3 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white transition-all"
+                              >
+                                <Share2 className="w-5 h-5" />
+                                <span className="text-sm font-medium text-gray-900 dark:text-white">Share</span>
+                              </button>
+              </div>
+
+                            {/* Comments Section */}
+                            {showComments[postId] && (
+                              <div className="border-t border-gray-200 dark:border-white/10 p-4 space-y-4">
+                                {/* Comments List */}
+                                {postComments.length > 0 && (
+                                  <div className="space-y-3">
+                                    {postComments.map((comment: any) => (
+                                      <div key={comment.id} className="flex gap-3">
+                                        <Avatar className="w-8 h-8">
+                                          <AvatarImage src={comment.user?.image ? `/storage/${comment.user.image}` : undefined} />
+                                          <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-xs">
+                                            {comment.user?.name?.charAt(0).toUpperCase() || 'U'}
+                                          </AvatarFallback>
+                                        </Avatar>
+                                        <div className="flex-1">
+                                          <div className="bg-gray-50 dark:bg-white/5 rounded-lg p-3">
+                                            <p className="text-sm font-semibold mb-1 text-gray-900 dark:text-white">{comment.user?.name || 'Anonymous'}</p>
+                                            <p className="text-sm text-gray-700 dark:text-gray-300">{comment.content}</p>
+                                          </div>
+                                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                            {new Date(comment.created_at).toLocaleDateString()}
+                                          </p>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Comment Input */}
+                                {auth?.user && (
+                                  <div className="relative">
+                                    <Textarea
+                                      placeholder="Write a comment..."
+                                      value={commentInputs[postId] || ''}
+                                      onChange={(e) => setCommentInputs(prev => ({ ...prev, [postId]: e.target.value }))}
+                                      onKeyDown={(e) => {
+                                        if (e.key === 'Enter' && !e.shiftKey) {
+                                          e.preventDefault()
+                                          handleComment(postId)
+                                        }
+                                      }}
+                                      className="pr-12 rounded-lg bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 focus-visible:ring-2 focus-visible:ring-purple-500 resize-none text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-500"
+                                      rows={2}
+                                    />
+                                    {commentInputs[postId]?.trim() && (
+                          <Button
+                                        onClick={() => handleComment(postId)}
+                            size="sm"
+                                        className="absolute right-2 bottom-2 h-8 w-8 p-0 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                                      >
+                                        <Send className="w-4 h-4" />
+                                      </Button>
+                                    )}
+                                  </div>
+                                )}
+                                {!auth?.user && (
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 text-center py-2">
+                                    <Link href={route("login")} className="text-purple-400 hover:text-purple-300">
+                                      Log in
+                                    </Link> to comment
+                                  </p>
+                                )}
                               </div>
                             )}
+                          </article>
+                        )
+                      })
+                    ) : (
+                      <article className="bg-white dark:bg-[#111827] rounded-xl p-12 text-center animate-in fade-in slide-in-from-bottom-4 duration-500">
+                        <p className="text-gray-600 dark:text-gray-400">No posts available yet.</p>
+                      </article>
+                    )}
+                  </div>
+                )}
+
+                {/* About Tab Content */}
+                {activeTab === "About" && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h2 className="text-2xl font-bold mb-2 text-gray-900 dark:text-white">About</h2>
+                        <h3 className="text-xl font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">{organization.name}</h3>
+                        {/* Auto-generated note - show for unregistered orgs or if we just generated it */}
+                        {(!organization.is_registered || hasAutoGenerated) && organization.description && 
+                          organization.description.trim() !== '' && 
+                          organization.description !== 'This organization is listed in our database but has not yet registered for additional features.' && (
+                          <div className="mt-3 p-3 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-900/20 dark:to-purple-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                            <p className="text-sm text-blue-700 dark:text-blue-300 flex items-start">
+                              <AlertCircle className="w-4 h-4 mr-2 mt-0.5 flex-shrink-0 text-blue-500 dark:text-blue-400" />
+                              <span>✨ Hey there! We've created this summary using AI to help you discover more about this amazing organization. While they haven't completed their profile yet, we wanted to make sure you have helpful information to explore! If you know someone from this organization, we'd love your help inviting them to join our community. As a thank you for helping us grow together, we'll reward you with special points! Let's build something beautiful together! 🌟💙</span>
+                            </p>
                           </div>
-                        </div>
+                        )}
                       </div>
-
-                      {/* About Description */}
-                      <div>
-                        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">About Us</h3>
-                        <p className="text-gray-600 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                          {description || organization.description || 'No description available.'}
-                        </p>
+                    </div>
+                    
+                    {/* Loading state while generating */}
+                    {isGeneratingAbout && (!organization.description || 
+                      organization.description.trim() === '' || 
+                      organization.description === 'This organization is listed in our database but has not yet registered for additional features.') && (
+                      <div className="flex flex-col items-center justify-center py-12">
+                        <div className="w-12 h-12 border-4 border-purple-600 border-t-transparent rounded-full animate-spin mb-4"></div>
+                        <p className="text-gray-600 dark:text-gray-400 text-lg font-medium">Generating organization summary with AI...</p>
+                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">This may take a few moments</p>
                       </div>
-
-                      {/* Mission Statement */}
+                    )}
+                    
+                    {/* Description content */}
+                    {organization.description && 
+                      organization.description.trim() !== '' && 
+                      organization.description !== 'This organization is listed in our database but has not yet registered for additional features.' && (
+                      <div className="text-gray-700 dark:text-gray-300 mb-4 leading-relaxed">
+                        {organization.description.split('\n').map((paragraph: string, index: number) => {
+                          const trimmedParagraph = paragraph.trim();
+                          if (!trimmedParagraph) return null;
+                          return (
+                            <p key={index} className="mb-4 last:mb-0">
+                              {trimmedParagraph}
+                            </p>
+                          );
+                        })}
+                      </div>
+                    )}
                       {organization.mission && organization.mission !== 'Mission statement not available for unregistered organizations.' && (
-                        <div className="border-l-4 border-blue-500 bg-blue-50 dark:bg-blue-900/20 p-6 rounded-r-lg">
-                          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">Our Mission</h3>
-                          <p className="text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-line">
-                            {organization.mission}
-                          </p>
+                      <div className="mb-4">
+                        <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">Mission</h3>
+                        <p className="text-gray-700 dark:text-gray-300 leading-relaxed">{organization.mission}</p>
                         </div>
                       )}
-
-                      {/* Website Link */}
-                      {organization.website && organization.website.trim() !== '' && organization.website !== 'null' && (
-                        <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                    {organization.website && (
                           <div className="flex items-center gap-2">
-                            <Globe className="h-5 w-5 text-gray-600 dark:text-gray-400" />
-                            <div>
-                              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Website: </span>
+                        <Globe className="w-5 h-5 text-gray-500 dark:text-gray-400" />
                               <a
                                 href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="text-sm text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1"
+                            className="text-emerald-400 hover:underline"
                               >
                                 {organization.website.replace(/^https?:\/\//, '')}
-                                <ExternalLink className="h-3 w-3" />
                               </a>
+                        </div>
+                      )}
+                </div>
+                )}
+
+                {/* Products Tab Content - Only for registered organizations */}
+                {activeTab === "Products" && organization.is_registered && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <ShoppingBag className="w-6 h-6" />
+                        Products
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                        {products?.length || 0} Products
+                      </Badge>
+                    </div>
+                    {products && products.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {products.map((product: any) => (
+                          <div
+                            key={product.id}
+                            className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all"
+                          >
+                            {product.image && (
+                              <div className="mb-3 rounded-lg overflow-hidden">
+                                <img
+                                  src={product.image.startsWith('http') ? product.image : `/storage/${product.image}`}
+                                  alt={product.name}
+                                  className="w-full h-48 object-cover"
+                                />
+                              </div>
+                            )}
+                            <h3 className="text-lg font-semibold mb-2 text-gray-900 dark:text-white">{product.name}</h3>
+                            {product.description && (
+                              <p className="text-gray-600 dark:text-gray-400 text-sm mb-3 line-clamp-2">{product.description}</p>
+                            )}
+                            {product.price && (
+                              <div className="flex items-center justify-between">
+                                <span className="text-xl font-bold text-purple-600 dark:text-purple-400">${product.price}</span>
+                                <Link href={route("product.show", product.id)}>
+                                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white text-sm">
+                                    View Details
+                                  </Button>
+                    </Link>
+                              </div>
+                    )}
+                  </div>
+                        ))}
+                </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <ShoppingBag className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400">No products available yet.</p>
+              </div>
+                    )}
+            </div>
+                )}
+
+                {/* Opportunities Tab Content */}
+                {activeTab === "Opportunities" && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <Briefcase className="w-6 h-6" />
+                        Opportunities
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                        {jobs?.length || 0} Openings
+                      </Badge>
+                    </div>
+                    {jobs && jobs.length > 0 ? (
+                      <div className="space-y-4">
+                        {jobs.map((job: any) => (
+                          <div
+                            key={job.id}
+                            className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-5 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{job.title}</h3>
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                  {job.location && (
+                                    <div className="flex items-center gap-1">
+                                      <MapPin className="w-4 h-4" />
+                                      <span className="text-gray-900 dark:text-white">{job.location}</span>
+                                    </div>
+                                  )}
+                                  {job.type && (
+                                    <Badge className="bg-purple-600/20 text-purple-400 text-xs">
+                                      {job.type}
+                                    </Badge>
+                                  )}
+                                  {job.salary && (
+                                    <span className="text-green-600 dark:text-green-400 font-medium">${job.salary}</span>
+                                  )}
+                                </div>
+                                {job.description && (
+                                  <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{job.description}</p>
+                                )}
+                              </div>
                             </div>
+                            <div className="flex items-center gap-3">
+                              {auth?.user?.role === 'user' && (job.status === 'open' || !job.status) && !job.has_applied ? (
+                                <Link href={route("jobs.apply.show", job.id)}>
+                                  <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+                                    Apply Now
+                                  </Button>
+                                </Link>
+                              ) : (
+                        <Button
+                                  disabled 
+                                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white opacity-50 cursor-not-allowed"
+                                >
+                                  {job.has_applied ? 'Already Applied' : (job.status === 'open' || !job.status) ? (auth?.user ? 'Not Available' : 'Sign in to Apply') : 'Not Available'}
+                        </Button>
+                              )}
+                              <Link href={route("jobs.show", job.id)}>
+                                <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
+                                  View Details
+                                </Button>
+                              </Link>
+                            </div>
+                          </div>
+                      ))}
+                    </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Briefcase className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400">No job openings available at the moment.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Events Tab Content - Only for registered organizations */}
+                {activeTab === "Events" && organization.is_registered && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <Calendar className="w-6 h-6" />
+                        Events
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                        {events?.length || 0} Events
+                      </Badge>
+                    </div>
+                    {events && events.length > 0 ? (
+                      <div className="space-y-4">
+                        {events.map((event: any) => (
+                          <div
+                            key={event.id}
+                            className="bg-[#0a0f1a] rounded-lg p-5 border border-white/10 hover:border-purple-500/50 transition-all"
+                          >
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{event.title || event.name}</h3>
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-3">
+                                  {event.start_date && (
+                                    <div className="flex items-center gap-1">
+                                      <Calendar className="w-4 h-4" />
+                                      <span className="text-gray-900 dark:text-white">{new Date(event.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
+                                    </div>
+                                  )}
+                                  {event.start_time && (
+                                    <div className="flex items-center gap-1">
+                                      <Clock className="w-4 h-4" />
+                                      <span className="text-gray-900 dark:text-white">{event.start_time}</span>
+                                    </div>
+                                  )}
+                                  {event.location && (
+                                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                                      <MapPin className="w-4 h-4" />
+                                      <span className="text-gray-900 dark:text-white">{event.location}</span>
+                                    </div>
+                                  )}
+                                  {event.event_type && (
+                                    <Badge className="bg-purple-600/20 text-purple-400 text-xs">
+                                      {event.event_type?.name || event.event_type}
+                                    </Badge>
+                                  )}
+                                </div>
+                                {event.description && (
+                                  <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{event.description}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Link href={route("viewEvent", event.id)}>
+                                <Button className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white">
+                                  View Details
+                  </Button>
+                              </Link>
+                              <Button variant="outline" className="bg-transparent border-gray-300 dark:border-white/20 hover:bg-gray-100 dark:hover:bg-white/10 text-gray-900 dark:text-white">
+                                Register
+                              </Button>
+            </div>
+          </div>
+                        ))}
+        </div>
+                    ) : (
+                      <div className="text-center py-12">
+                        <Calendar className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400">No events scheduled at the moment.</p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Contact Tab Content */}
+                {activeTab === "Contact" && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <h2 className="text-2xl font-bold mb-6 flex items-center gap-2 text-gray-900 dark:text-white">
+                      <Phone className="w-6 h-6" />
+                      Contact Information
+                    </h2>
+                    <div className="space-y-4">
+                      {organization.phone && (
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                            <Phone className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Phone</p>
+                            <a href={`tel:${organization.phone}`} className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                              {organization.phone}
+                            </a>
                           </div>
                         </div>
                       )}
-                    </CardContent>
-                  </Card>
-                </div>
-
-                {/* Quick Links to Other Sections */}
-                <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl border border-blue-200 dark:border-blue-800">
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                    Explore more about this organization:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <Link
-                      href={route('organizations.about', organization.id)}
-                      className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                    >
-                      Full About Page →
-                    </Link>
-                    {organization.is_registered && (
-                      <>
-                        <Link
-                          href={route('organizations.products', organization.id)}
-                          className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          View Products →
-                        </Link>
-                        <Link
-                          href={route('organizations.jobs', organization.id)}
-                          className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          View Jobs →
-                        </Link>
-                        <Link
-                          href={route('organizations.events', organization.id)}
-                          className="px-4 py-2 bg-white dark:bg-gray-800 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-                        >
-                          View Events →
-                        </Link>
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                {/* All tab content moved to separate pages for better performance */}
-              </div>
-            </div>
-
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {organization.is_registered && (
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                  <CardHeader>
-                    <CardTitle className="text-gray-900 dark:text-white flex items-center">
-                      <DollarSign className="mr-2 h-5 w-5 text-green-600" />
-                      Quick Donate
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-2">
-                      {[25, 50, 100, 250].map((amount) => (
-                        <Button
-                          key={amount}
-                          variant="outline"
-                          onClick={() => setShowDonationModal(true)}
-                          className="h-12"
-                        >
-                          ${amount}
-                        </Button>
-                      ))}
-                    </div>
-                    <Button onClick={() => setShowDonationModal(true)} className="w-full bg-blue-600 hover:bg-blue-700">
-                      Custom Amount
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {!organization.is_registered && (
-                <Card className="bg-yellow-50 dark:bg-yellow-900/20 border-yellow-200 dark:border-yellow-800">
-                  <CardHeader>
-                    <CardTitle className="text-yellow-800 dark:text-yellow-200 flex items-center">
-                      <Info className="mr-2 h-5 w-5" />
-                      Organization Status
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-yellow-700 dark:text-yellow-300 text-sm">
-                      This organization is listed in our database but has not yet registered for additional features
-                      like donations, detailed profiles, and community engagement.
-                    </p>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Share */}
-              <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                <CardHeader>
-                  <CardTitle className="text-gray-900 dark:text-white">Share This Organization</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <Button variant="outline" className="w-full bg-transparent">
-                    <Share2 className="mr-2 h-4 w-4" />
-                    Share
-                  </Button>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </div>
-
-        {organization.is_registered && (
-          <DonationModal
-            isOpen={showDonationModal}
-            onClose={() => setShowDonationModal(false)}
-            organization={organization}
-          />
-        )}
+                      {organization.email && (
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                            <Mail className="w-5 h-5 text-white" />
       </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Email</p>
+                            <a href={`mailto:${organization.email}`} className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                              {organization.email}
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      {organization.website && (
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                            <Globe className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Website</p>
+                            <a
+                              href={organization.website.startsWith('http') ? organization.website : `https://${organization.website}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+                            >
+                              {organization.website.replace(/^https?:\/\//, '')}
+                            </a>
+                          </div>
+                        </div>
+                      )}
+                      {location && location !== 'Location not specified' && (
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
+                            <MapPin className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Address</p>
+                            <p className="text-gray-900 dark:text-white">{location}</p>
+                            {organization.address && (
+                              <p className="text-gray-700 dark:text-gray-300 text-sm mt-1">{organization.address}</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      {(!organization.phone && !organization.email && !organization.website && (!location || location === 'Location not specified')) && (
+                        <div className="text-center py-12">
+                          <Phone className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                          <p className="text-gray-600 dark:text-gray-400">Contact information not available.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-      {/* Cart/Checkout Modal */}
-      {showCartModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-2 sm:p-4 z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg w-full max-w-2xl max-h-[95vh] overflow-y-auto">
-            <div className="p-4 sm:p-6">
-              <div className="flex justify-between items-center mb-4 sm:mb-6">
-                <h3 className="text-lg sm:text-xl font-semibold text-gray-900 dark:text-white">Shopping Cart</h3>
-                <Button
-                  variant="ghost"
-                  onClick={() => setShowCartModal(false)}
-                  className="text-gray-500 hover:text-gray-700"
-                >
-                  <X className="h-5 w-5" />
-                </Button>
+                {/* Supporters Tab Content - For both registered and unregistered organizations */}
+                {activeTab === "Supporters" && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center justify-between mb-6">
+                      <h2 className="text-2xl font-bold flex items-center gap-2 text-gray-900 dark:text-white">
+                        <Users className="w-6 h-6" />
+                        Supporters
+                      </h2>
+                      <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                        {supporters?.length || supportersCount || 0} Supporters
+                      </Badge>
+                    </div>
+                    {Array.isArray(supporters) && supporters.length > 0 ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {supporters.map((supporter: any, index: number) => {
+                          const userSlug = supporter.user?.slug || supporter.user?.id
+                          const userRoute = userSlug ? route('users.show', userSlug) : null
+                          
+                          return (
+                            <Link
+                              key={supporter.id || supporter.user_id || `supporter-${index}`}
+                              href={userRoute || '#'}
+                              onClick={(e) => {
+                                if (!userRoute) {
+                                  e.preventDefault()
+                                }
+                              }}
+                              className="bg-gray-50 dark:bg-[#0a0f1a] rounded-lg p-4 border border-gray-200 dark:border-white/10 hover:border-purple-500/50 transition-all cursor-pointer block"
+                            >
+                              <div className="flex items-center gap-3 mb-3">
+                                <Avatar className="w-12 h-12 flex-shrink-0">
+                                  <AvatarImage 
+                                    src={supporter.user?.image ? `/storage/${supporter.user.image}` : supporter.avatar || "/placeholder.svg"} 
+                                  />
+                                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-blue-500 text-sm">
+                                    {supporter.user?.name 
+                                      ? supporter.user.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : supporter.name 
+                                      ? supporter.name.split(' ').map((n: string) => n[0]).join('').toUpperCase()
+                                      : 'U'}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div className="flex-1 min-w-0">
+                                  <h3 className="font-semibold truncate text-gray-900 dark:text-white">
+                                    {supporter.user?.name || supporter.name || 'Anonymous'}
+                                  </h3>
+                                  {supporter.user?.email && (
+                                    <p className="text-xs text-gray-600 dark:text-gray-400 truncate">{supporter.user.email}</p>
+                                  )}
               </div>
-              <div className="space-y-4">
-                {cart.length === 0 ? (
-                  <div className="text-center py-8">
-                    <ShoppingCart className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">Your cart is empty</p>
+                              </div>
+                              <div className="space-y-2">
+                                {supporter.joined_at && (
+                                  <p className="text-xs text-gray-500 dark:text-gray-500">
+                                    Joined {new Date(supporter.joined_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
+                                  </p>
+                                )}
+                                {supporter.notifications && (
+                                  <Badge className="bg-green-600/20 text-green-400 text-xs inline-flex items-center gap-1">
+                                    <Bell className="w-3 h-3" />
+                                    Notifications On
+                                  </Badge>
+                                )}
+                              </div>
+                            </Link>
+                          )
+                        })}
                   </div>
                 ) : (
-                  <>
-                    {cart.map((item) => (
-                      <div key={item.id} className="flex items-center gap-4 border-b border-gray-200 dark:border-gray-700 pb-4">
-                        <img
-                          src={item.image || "/placeholder.svg"}
-                          alt={item.name}
-                          className="w-16 h-16 object-cover rounded"
-                        />
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-gray-900 dark:text-white">{item.name}</h4>
-                          <p className="text-sm text-gray-600 dark:text-gray-400">${item.unit_price}</p>
+                      <div className="text-center py-12">
+                        <Users className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                        <p className="text-gray-600 dark:text-gray-400">No supporters yet.</p>
+                        <p className="text-gray-500 dark:text-gray-500 text-sm mt-2">Be the first to support this organization!</p>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => updateQuantity(item.id, item.quantity - 1)}
+                    )}
+                  </div>
+                )}
+                  </>
+                )}
+              </section>
+
+              {/* Right Sidebar */}
+              <aside className="lg:col-span-3 space-y-4">
+                {/* Organizations You May Know */}
+                {peopleToShow.length > 0 && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
+                    <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Organizations You May Know</h3>
+                    <div className="space-y-3">
+                      {peopleToShow.map((person, index) => (
+                      <div
+                        key={person.id || index}
+                        className="flex items-center gap-3 animate-in fade-in slide-in-from-right-2 duration-300"
+                        style={{ animationDelay: `${index * 100}ms` }}
+                      >
+                        <Link
+                          href={person.excel_data_id 
+                            ? route('organizations.show', person.excel_data_id)
+                            : person.slug 
+                              ? route('organizations.show', person.slug)
+                              : '#'}
+                          onClick={(e) => {
+                            if (!person.excel_data_id && !person.slug) {
+                              e.preventDefault()
+                            }
+                          }}
+                          className="flex-shrink-0"
+                        >
+                          <Avatar className="w-10 h-10 hover:ring-2 hover:ring-purple-500 transition-all cursor-pointer">
+                            <AvatarImage src={person.avatar || "/placeholder.svg"} />
+                            <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-500 text-xs">
+                              {typeof person.avatar === 'string' && person.avatar.length === 2
+                                ? person.avatar
+                                : person.name
+                                    .split(' ')
+                                    .map((n: string) => n[0])
+                                    .join('')
+                                    .toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                        </Link>
+                        <div className="flex-1 min-w-0 overflow-hidden">
+                          <Link 
+                            href={person.excel_data_id 
+                              ? route('organizations.show', person.excel_data_id)
+                              : person.slug 
+                                ? route('organizations.show', person.slug)
+                                : '#'}
+                            className="text-sm font-medium truncate text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors cursor-pointer block"
+                            onClick={(e) => {
+                              if (!person.excel_data_id && !person.slug) {
+                                e.preventDefault()
+                              }
+                            }}
                           >
-                            -
-                          </Button>
-                          <span className="w-8 text-center">{item.quantity}</span>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => updateQuantity(item.id, item.quantity + 1)}
-                          >
-                            +
-                          </Button>
+                            {person.name}
+                          </Link>
+                          <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{person.org || person.description}</p>
                         </div>
-                        <Button variant="ghost" size="sm" onClick={() => removeFromCart(item.id)}>
-                          <Trash2 className="h-4 w-4" />
+                          <Button
+                            size="sm"
+                          onClick={() => handleFollowPerson(person)}
+                          disabled={loadingFollow[person.id as number] || !person.id}
+                            className={`text-xs px-3 py-1.5 h-auto flex-shrink-0 whitespace-nowrap ${
+                              followingStates[person.id as number]
+                                ? "bg-gray-200 dark:bg-white/10 border border-gray-300 dark:border-white/20 hover:bg-gray-300 dark:hover:bg-white/20 text-gray-900 dark:text-white"
+                                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
+                            }`}
+                        >
+                          {loadingFollow[person.id as number] 
+                            ? "Loading..." 
+                            : followingStates[person.id as number] 
+                              ? "Following" 
+                              : "Follow"}
                         </Button>
                       </div>
                     ))}
-                    <div className="flex justify-between items-center pt-4 border-t border-gray-200 dark:border-gray-700">
-                      <span className="text-lg font-semibold text-gray-900 dark:text-white">
-                        Total: ${getCartTotal().toFixed(2)}
-                      </span>
-                      <Button className="bg-blue-600 hover:bg-blue-700">Checkout</Button>
                     </div>
-                  </>
+                  </div>
                 )}
+
+                {/* Trending Organizations */}
+                {trendingOrgsToShow.length > 0 && (
+                  <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">Trending Organizations</h3>
+                      <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
+                        View All <ChevronDown className="w-3 h-3 -rotate-90" />
+                      </button>
               </div>
+                    <div className="space-y-3">
+                      {trendingOrgsToShow.map((org, index) => {
+                      // Determine the route parameter (slug or excel_data_id)
+                      const orgRouteParam = org.slug || org.excel_data_id || org.id
+                      
+                      return (
+                        <Link
+                          key={org.id || index}
+                          href={route('organizations.show', orgRouteParam)}
+                          className="flex items-start gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors animate-in fade-in slide-in-from-right-2 duration-300"
+                          style={{ animationDelay: `${index * 100 + 200}ms` }}
+                        >
+                          <div className={`w-10 h-10 ${org.color || 'bg-emerald-500'} rounded-lg flex items-center justify-center flex-shrink-0`}>
+                            <Heart className="w-5 h-5 text-white" />
             </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white hover:text-purple-600 dark:hover:text-purple-400 transition-colors">
+                              {org.name}
+                            </p>
+                            <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{org.desc || org.description}</p>
+                          </div>
+                        </Link>
+                      )
+                      })}
           </div>
         </div>
       )}
+              </aside>
+            </div>
+          </main>
+
+
+          {/* Modals */}
+          {organization.is_registered && (
+            <DonationModal
+              isOpen={showDonationModal}
+              onClose={() => setShowDonationModal(false)}
+              organization={organization}
+            />
+          )}
+
+          {!organization.is_registered && auth?.user && (
+            <InviteOrganizationPopup
+              isOpen={showInvitePopup}
+              onClose={() => setShowInvitePopup(false)}
+              organization={{
+                id: organization.id,
+                name: organization.name,
+                ein: organization.ein,
+              }}
+            />
+          )}
+        </div>
     </FrontendLayout>
   )
 }

@@ -3,8 +3,7 @@ import { UserInfo } from '@/components/user-info';
 import { useMobileNavigation } from '@/hooks/use-mobile-navigation';
 import { type User } from '@/types';
 import { Link, router } from '@inertiajs/react';
-import { LinkIcon, LogOut, Settings, CreditCard, Crown } from 'lucide-react';
-
+import { LinkIcon, LogOut, Settings, CreditCard, Crown, Globe } from 'lucide-react';
 interface UserMenuContentProps {
     user: User;
 }
@@ -12,6 +11,8 @@ interface UserMenuContentProps {
 export function UserMenuContent({ user }: UserMenuContentProps) {
     const cleanup = useMobileNavigation();
     const isAdmin = user.role === 'admin';
+    const isOrganization = user.role === 'organization' || user.role === 'organization_pending';
+    const organizationPublicViewSlug = (user as any).organization?.public_view_slug;
 
     const handleLogout = () => {
         cleanup();
@@ -65,6 +66,20 @@ export function UserMenuContent({ user }: UserMenuContentProps) {
                         Website
                     </Link>
                 </DropdownMenuItem>
+                {isOrganization && organizationPublicViewSlug && (
+                    <DropdownMenuItem asChild>
+                        <Link 
+                            className="block w-full" 
+                            href={route('organizations.show', organizationPublicViewSlug)} 
+                            as="button" 
+                            prefetch 
+                            onClick={cleanup}
+                        >
+                            <Globe className="mr-2" />
+                            Public View
+                        </Link>
+                    </DropdownMenuItem>
+                )}
                 {!isAdmin && (
                 <DropdownMenuItem asChild>
                         <Link className="block w-full" href="/settings/billing" as="button" prefetch onClick={cleanup}>

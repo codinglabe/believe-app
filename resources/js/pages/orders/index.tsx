@@ -3,8 +3,10 @@ import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard } from 'lucide-react';
-import { showErrorToast } from '@/lib/toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import axios from 'axios';
+import { Plus, Edit, Trash2, LayoutGrid, Search, X, Eye, CreditCard, Package } from 'lucide-react';
+import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +27,9 @@ interface Category {
     payment_method?: string | null;
     created_at: string;
     updated_at: string;
+    product_type?: string;
+    has_manual_product?: boolean;
+    is_printify_order?: boolean;
 }
 
 interface Props {
@@ -53,6 +58,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
     const [loading, setLoading] = useState(false);
     const [searchTerm, setSearchTerm] = useState(filters.search);
     const [searchTimeout, setSearchTimeout] = useState<NodeJS.Timeout | null>(null);
+    const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
 
     const handleDelete = (item: Category) => {
         setItemToDelete(item);
@@ -127,6 +133,26 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
         setSearchTimeout(timeout);
     };
 
+    const handleStatusUpdate = async (orderId: number, newStatus: string) => {
+        setUpdatingStatus(orderId);
+        try {
+            const response = await axios.put(route('orders.update', orderId), {
+                status: newStatus
+            });
+
+            if (response.data.success) {
+                showSuccessToast('Order status updated successfully');
+                router.reload({ only: ['orders'] });
+            } else {
+                showErrorToast(response.data.message || 'Failed to update order status');
+            }
+        } catch (error: any) {
+            showErrorToast(error.response?.data?.message || 'Failed to update order status');
+        } finally {
+            setUpdatingStatus(null);
+        }
+    };
+
     const clearSearch = () => {
         setSearchTerm('');
         setLoading(true);
@@ -198,6 +224,7 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                     <tr>
                                         <th className="px-4 py-3 font-medium min-w-32">Reference Number</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Amount</th>
+                                        <th className="px-4 py-3 font-medium min-w-32">Product Type</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Payment Method</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Date</th>
@@ -218,9 +245,50 @@ export default function Index({ orders, filters, allowedPerPage }: Props) {
                                                 </span>
                                             </td>
                                             <td className="px-4 py-3 min-w-32">
-                                                <Badge variant="secondary" className="font-medium">
-                                                    {item.status}
+                                                <Badge
+                                                    variant={item.product_type === 'Printify' ? 'default' : 'outline'}
+                                                    className={`font-medium ${
+                                                        item.product_type === 'Printify'
+                                                            ? 'bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-200 border-blue-300 dark:border-blue-700'
+                                                            : item.product_type === 'Manual'
+                                                            ? 'bg-green-100 text-green-800 dark:bg-green-900/50 dark:text-green-200 border-green-300 dark:border-green-700'
+                                                            : 'bg-purple-100 text-purple-800 dark:bg-purple-900/50 dark:text-purple-200 border-purple-300 dark:border-purple-700'
+                                                    }`}
+                                                >
+                                                    <Package className="h-3 w-3 mr-1 inline" />
+                                                    {item.product_type || 'N/A'}
                                                 </Badge>
+                                            </td>
+                                            <td className="px-4 py-3 min-w-32">
+                                                {item.has_manual_product && !item.is_printify_order && item.status !== 'cancelled' && item.status !== 'refunded' ? (
+                                                    <Select
+                                                        value={item.status}
+                                                        onValueChange={(value) => handleStatusUpdate(item.id, value)}
+                                                        disabled={updatingStatus === item.id}
+                                                    >
+                                                        <SelectTrigger className="w-full h-8 text-sm">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="processing">Processing</SelectItem>
+                                                            <SelectItem value="shipped">Shipped</SelectItem>
+                                                            <SelectItem value="delivered">Delivered</SelectItem>
+                                                            <SelectItem value="cancelled">Cancelled</SelectItem>
+                                                            <SelectItem value="refunded">Refunded</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                ) : (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className={`font-medium ${
+                                                            item.status === 'cancelled' || item.status === 'refunded'
+                                                                ? 'bg-red-100 text-red-800 dark:bg-red-900/50 dark:text-red-200 border-red-300 dark:border-red-700'
+                                                                : ''
+                                                        }`}
+                                                    >
+                                                        {item.status}
+                                                    </Badge>
+                                                )}
                                             </td>
                                             <td className="px-4 py-3 min-w-32">
                                                 {item.payment_method ? (

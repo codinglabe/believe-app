@@ -155,6 +155,30 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
               )}
             </div>
 
+            {/* Low Credits Warning (Red) - when credits <= 1000 */}
+            {auth.user.role === 'organization' && currentCredits <= 1000 && currentCredits > 0 && (
+              <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-lg flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-red-900 dark:text-red-300 mb-1">Low Credits Warning</div>
+                    <p className="text-sm text-red-800 dark:text-red-400">
+                      You have <strong>{currentCredits.toLocaleString()}</strong> credits remaining. Top up now to continue using AI features.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleBuyCredits}
+                    disabled={isLoadingCredits}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer flex-shrink-0"
+                  >
+                    <Coins className="h-4 w-4" />
+                    {isLoadingCredits ? "Processing..." : "TopUp"}
+                  </button>
+                </div>
+              </div>
+            )}
+
             {currentCredits < data.content_count && (
               <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20">
                 <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5 flex-shrink-0" />
@@ -171,7 +195,7 @@ const AiCampaignsCreate: React.FC<AiCampaignsCreateProps> = ({ defaultChannels, 
                   className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0 cursor-pointer"
                 >
                   <Coins className="h-4 w-4" />
-                  {isLoadingCredits ? "Processing..." : "Upgrade Buy Credits"}
+                  {isLoadingCredits ? "Processing..." : "TopUp"}
                 </button>
               </div>
             )}

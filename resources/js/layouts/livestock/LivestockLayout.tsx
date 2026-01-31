@@ -12,7 +12,6 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { route } from "ziggy-js"
 import { 
     Home, 
     ShoppingBag, 
@@ -207,7 +206,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                                                     <DropdownMenuSeparator />
                                                 </>
                                             )}
-                                            <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout')); }}>
+                                            <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout.livestock')); }}>
                                                 <DropdownMenuItem 
                                                     asChild
                                                     className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
@@ -364,7 +363,7 @@ export default function LivestockLayout({ children }: LivestockLayoutProps) {
                                             </Button>
                                         </Link>
                                     )}
-                                    <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout')); }}>
+                                    <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout.livestock')); }}>
                                         <Button
                                             type="submit"
                                             variant="outline"

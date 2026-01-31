@@ -7,6 +7,7 @@ use App\Http\Requests\Auth\OrganizationRegistrationRequest;
 use App\Models\BoardMember;
 use App\Models\BridgeIntegration;
 use App\Models\Organization;
+use App\Models\OrganizationInvite;
 use App\Models\User;
 use App\Services\BridgeService;
 use App\Services\EINLookupService;
@@ -22,6 +23,7 @@ use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
+use App\Services\SeoService;
 
 class OrganizationRegisterController extends Controller
 {
@@ -41,20 +43,45 @@ class OrganizationRegisterController extends Controller
 
     public function create(Request $request)
     {
-        if ($request->has('ref') || $request->has('ein')) {
+        $seo = SeoService::forPage('register_organization');
 
-            $user = User::where('referral_code', $request->ref)->first();
+        // Handle invite token
+        if ($request->has('invite')) {
+            $invite = OrganizationInvite::where('token', $request->invite)
+                ->where('status', '!=', 'accepted')
+                ->first();
 
-            if (!$user) {
-                return redirect()->route('register')->with('error', 'Invalid referral code');
+            if (!$invite) {
+                return redirect()->route('register.organization')
+                    ->with('error', 'Invalid or expired invitation link');
             }
 
             return Inertia::render('frontend/register/organization', [
+                'seo' => $seo,
+                'ein' => $invite->ein,
+                'inviteToken' => $invite->token,
+                'organizationName' => $invite->organization_name,
+            ]);
+        }
+
+        // Handle legacy referral code (for backward compatibility)
+        if ($request->has('ref') || $request->has('ein')) {
+            $user = User::where('referral_code', $request->ref)->first();
+
+            if (!$user) {
+                return redirect()->route('register.organization')->with('error', 'Invalid referral code');
+            }
+
+            return Inertia::render('frontend/register/organization', [
+                'seo' => $seo,
                 'ein' => $request->query('ein'),
                 'referralCode' => $user->referral_code,
             ]);
         }
-        return Inertia::render('frontend/register/organization', []);
+
+        return Inertia::render('frontend/register/organization', [
+            'seo' => $seo,
+        ]);
     }
 
     public function lookupEIN(Request $request)
@@ -185,9 +212,18 @@ class OrganizationRegisterController extends Controller
                 $originalIRSData = $this->einLookupService->lookupEIN($validated['ein']);
             }
 
+            // Generate unique slug from organization name with incremental numbers
+            $baseSlug = Str::slug($validated['name']);
+            $slug = $baseSlug;
+            $counter = 1;
+            while (User::where('slug', $slug)->exists()) {
+                $slug = $baseSlug . '-' . $counter;
+                $counter++;
+            }
+
             $user = User::create([
                 "name" => $validated['contact_name'],
-                "slug" => Str::slug($validated['contact_name']) . '-' . Str::random(5),
+                "slug" => $slug,
                 "email" => $validated['email'],
                 "contact_number" => $validated['phone'],
                 "password" => Hash::make($validated['password']),
@@ -257,6 +293,30 @@ class OrganizationRegisterController extends Controller
                 'changed_by' => $user->id,
             ]);
 
+            // Handle organization invite if token was provided
+            if ($request->has('invite_token')) {
+                $invite = OrganizationInvite::where('token', $request->invite_token)
+                    ->where('ein', $validated['ein'])
+                    ->where('status', '!=', 'accepted')
+                    ->first();
+
+                if ($invite) {
+                    $invite->update([
+                        'status' => 'accepted',
+                        'accepted_at' => now(),
+                    ]);
+
+                    Log::info('Organization invite accepted', [
+                        'invite_id' => $invite->id,
+                        'organization_id' => $organization->id,
+                        'inviter_id' => $invite->inviter_id,
+                    ]);
+
+                    // Note: Believe points (100) will be awarded to the inviter 
+                    // automatically when the organization verifies their email
+                    // See: App\Listeners\AwardInviteRewardPoints
+                }
+            }
 
             DB::commit();
 
@@ -275,6 +335,14 @@ class OrganizationRegisterController extends Controller
             }
 
             event(new Registered($user));
+
+            // Send verification email with current domain (where user is registering from)
+            // Use actual request host, not config value
+            $scheme = $request->getScheme();
+            $host = $request->getHost();
+            $port = $request->getPort();
+            $currentDomain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+            $user->sendEmailVerificationNotification($currentDomain);
 
             Auth::login($user);
 

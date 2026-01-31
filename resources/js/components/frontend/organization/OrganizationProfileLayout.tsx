@@ -20,7 +20,6 @@ import {
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Link, router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import DonationModal from "@/components/frontend/donation-modal"
 import { useState } from "react"
 import OrgFollowButton from "@/components/ui/OrgFollowButtonProps"
@@ -68,11 +67,12 @@ export default function OrganizationProfileLayout({
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Hero Section */}
-      <div className="relative h-96 overflow-hidden">
+      <div className="relative h-48 xs:h-56 sm:h-64 md:h-80 lg:h-96 overflow-hidden">
         <img
           src={organization.user?.cover_img ? "/storage/" + organization.user.cover_img : "/placeholder.svg"}
           alt={organization.name}
           className="object-cover w-full h-full"
+          loading="lazy"
         />
         <div className="absolute inset-0 bg-black bg-opacity-50" />
         <div
@@ -83,26 +83,26 @@ export default function OrganizationProfileLayout({
             backgroundBlendMode: "soft-light",
           }}
         >
-          <div className="container mx-auto px-4 pb-8">
+          <div className="container mx-auto px-3 sm:px-4 md:px-6 pb-4 sm:pb-6 md:pb-8 w-full">
             <motion.div
               initial={{ opacity: 0, y: 30 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.8 }}
-              className="flex flex-col items-center md:flex-row md:items-end gap-6"
+              className="flex flex-col items-center md:flex-row md:items-end gap-4 sm:gap-5 md:gap-6 w-full"
             >
               {/* Organization Logo */}
-              <div className="relative flex-shrink-0">
+              <div className="relative flex-shrink-0 order-1 md:order-1">
                 <div className="relative">
                   <img
                     src={organization.user?.image ? "/storage/" + organization.user.image : "/placeholder.svg"}
                     alt={`${organization.name} logo`}
                     width={120}
                     height={120}
-                    className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full border-4 border-white shadow-lg bg-white object-cover"
+                    className="w-20 h-20 sm:w-24 sm:h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full border-2 sm:border-4 border-white shadow-lg bg-white object-cover"
                     priority
                   />
                   {organization.is_registered && organization.registration_status === "approved" && (
-                    <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-blue-600 rounded-full p-1">
+                    <div className="absolute -top-1 -right-1 sm:-top-2 sm:-right-2 bg-blue-600 rounded-full p-0.5 sm:p-1">
                       <Award className="h-3 w-3 sm:h-4 sm:w-4 text-white" />
                     </div>
                   )}
@@ -110,19 +110,19 @@ export default function OrganizationProfileLayout({
               </div>
 
               {/* Organization Info */}
-              <div className="flex-1 text-white text-center md:text-left">
-                <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 leading-tight">{organization.name}</h1>
-                <div className="flex flex-wrap items-center justify-center md:justify-start gap-3 sm:gap-4 text-sm">
+              <div className="flex-1 text-white text-center md:text-left w-full min-w-0 order-2 md:order-2 px-1 sm:px-2 md:px-0">
+                <h1 className="text-base sm:text-lg md:text-2xl lg:text-3xl xl:text-4xl font-bold mb-1 sm:mb-2 leading-tight break-words hyphens-auto">{organization.name}</h1>
+                <div className="flex flex-wrap items-center justify-center md:justify-start gap-1.5 sm:gap-2 md:gap-4 text-xs sm:text-sm mt-1">
                   <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    <span className="text-sm">
+                    <MapPin className="h-3 w-3 sm:h-4 sm:w-4 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm truncate max-w-[150px] sm:max-w-none">
                       {organization.city}, {organization.state}
                     </span>
                   </div>
                   {organization.is_registered && (
                     <div className="flex items-center gap-1">
-                      <Star className="h-4 w-4 text-yellow-400" />
-                      <span className="text-sm">4.8 (234 reviews)</span>
+                      <Star className="h-3 w-3 sm:h-4 sm:w-4 text-yellow-400 flex-shrink-0" />
+                      <span className="text-xs sm:text-sm whitespace-nowrap">4.8 (234 reviews)</span>
                     </div>
                   )}
                 </div>
@@ -130,44 +130,50 @@ export default function OrganizationProfileLayout({
 
               {/* Action Buttons */}
               {organization.is_registered && (
-                <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <div className="flex flex-row sm:flex-row gap-1.5 sm:gap-2 md:gap-3 w-full md:w-auto order-3 md:order-3 max-w-full overflow-x-auto overflow-y-hidden">
                   <Button
                     onClick={handleDonateNow}
                     size="lg"
-                    className="bg-blue-600 hover:bg-blue-700 text-white px-6 sm:px-8 w-full sm:w-auto"
+                    className="bg-blue-600 hover:bg-blue-700 text-white px-2 sm:px-3 md:px-4 lg:px-6 h-9 sm:h-10 md:h-11 flex-shrink-0 min-w-[40px] sm:min-w-0 justify-center sm:justify-start"
+                    title="Donate Now"
                   >
-                    <Heart className="mr-2 h-5 w-5" />
-                    Donate Now
+                    <Heart className="h-4 w-4 sm:h-4 sm:w-4 md:h-5 md:w-5 flex-shrink-0 sm:mr-1.5 md:mr-2" />
+                    <span className="hidden sm:inline whitespace-nowrap truncate">Donate Now</span>
                   </Button>
                   {organization.registered_organization?.user?.slug && (
                     <Link
                       href={route('organizations.enrollments', { slug: organization.registered_organization.user.slug })}
+                      className="flex-shrink-0 min-w-[40px] sm:min-w-0"
                     >
                       <Button
                         size="lg"
                         variant="outline"
-                        className="bg-white/10 border-white/20 text-white hover:bg-white/20 px-6 sm:px-8 w-full sm:w-auto"
+                        className="bg-white/10 border-white/20 text-white hover:bg-white/20 px-2 sm:px-3 md:px-4 lg:px-6 h-9 sm:h-10 md:h-11 min-w-[40px] sm:min-w-0 justify-center sm:justify-start"
+                        title="Enrolled"
                       >
-                        <UserCheck className="mr-2 h-5 w-5" />
-                        Enrolled
+                        <UserCheck className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
+                        <span className="hidden sm:inline whitespace-nowrap truncate">Enrolled</span>
                       </Button>
                     </Link>
                   )}
-                  <OrgFollowButton
-                    organization={organization}
-                    auth={auth}
-                    initialIsFollowing={organization.is_favorited || false}
-                    initialNotifications={organization.notifications_enabled || false}
-                  />
+                  <div className="flex-shrink-0 min-w-[40px] sm:min-w-0">
+                    <OrgFollowButton
+                      organization={organization}
+                      auth={auth}
+                      initialIsFollowing={organization.is_favorited || false}
+                      initialNotifications={organization.notifications_enabled || false}
+                    />
+                  </div>
                   {getCartItemCount() > 0 && setShowCartModal && (
                     <Button
                       onClick={() => setShowCartModal(true)}
                       variant="outline"
                       size="lg"
-                      className="bg-white/10 border-white/20 text-white hover:bg-white/20 relative w-full sm:w-auto"
+                      className="bg-white/10 border-white/20 text-white hover:bg-white/20 relative px-2 sm:px-3 md:px-4 h-9 sm:h-10 md:h-11 flex-shrink-0 min-w-[40px] sm:min-w-0 justify-center sm:justify-start"
+                      title={`Cart (${getCartItemCount()})`}
                     >
-                      <ShoppingCart className="mr-2 h-5 w-5" />
-                      Cart ({getCartItemCount()})
+                      <ShoppingCart className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
+                      <span className="hidden sm:inline whitespace-nowrap truncate">Cart ({getCartItemCount()})</span>
                     </Button>
                   )}
                 </div>
@@ -177,7 +183,7 @@ export default function OrganizationProfileLayout({
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-3 sm:px-4 md:px-6 py-6 sm:py-8">
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Main Content */}
           <div className="lg:col-span-2">

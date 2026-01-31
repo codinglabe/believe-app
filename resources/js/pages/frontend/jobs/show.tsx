@@ -1,5 +1,6 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
-import { Head, Link } from "@inertiajs/react";
+import { Link } from "@inertiajs/react";
+import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Badge } from "@/components/frontend/ui/badge";
 import {
@@ -16,6 +17,7 @@ interface JobDetailsProps {
     requirements: string;
     pay_rate: number | null;
     currency: string | null;
+    points: number | null;
     type: string;
     location_type: string;
     city: string | null;
@@ -74,36 +76,38 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
 
   const getJobTypeColor = (type: string) => {
     const colors = {
-      volunteer: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-      paid: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-      internship: 'bg-purple-500/10 text-purple-600 dark:text-purple-400',
-      medicaid: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+      volunteer: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800',
+      paid: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800',
+      internship: 'bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border border-purple-200 dark:border-purple-800',
+      contract: 'bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400 border border-rose-200 dark:border-rose-800',
     };
-    return colors[type as keyof typeof colors] || 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
+    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700';
   };
 
   const getLocationTypeColor = (type: string) => {
     const colors = {
-      onsite: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-      remote: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
-      hybrid: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
+      onsite: 'bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 border border-amber-200 dark:border-amber-800',
+      remote: 'bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800',
+      hybrid: 'bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-400 border border-teal-200 dark:border-teal-800',
     };
-    return colors[type as keyof typeof colors] || 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
+    return colors[type as keyof typeof colors] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700';
   };
 
   const getStatusColor = (status: string) => {
     const colors = {
-      draft: 'bg-gray-500/10 text-gray-600 dark:text-gray-400',
-      open: 'bg-green-500/10 text-green-600 dark:text-green-400',
-      closed: 'bg-red-500/10 text-red-600 dark:text-red-400',
-      filled: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+      draft: 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700',
+      open: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800',
+      closed: 'bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-400 border border-red-200 dark:border-red-800',
+      filled: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800',
     };
-    return colors[status as keyof typeof colors] || 'bg-gray-500/10 text-gray-600 dark:text-gray-400';
+    return colors[status as keyof typeof colors] || 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border border-gray-200 dark:border-gray-700';
   };
+
+  const metaDescription = job.description ? String(job.description).slice(0, 160) : undefined;
 
   return (
     <FrontendLayout>
-      <Head title={`${job.title} - Job Details`} />
+      <PageHead title={job.title} description={metaDescription} />
 
       <div className="container mx-auto px-4 py-8 max-w-6xl">
         <div className="mb-6">
@@ -114,7 +118,7 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
         </div>
 
         {/* Job Header */}
-        <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 rounded-xl p-6 mb-8 border dark:border-gray-700">
+        <div className="bg-gradient-to-br from-slate-50 via-gray-50 to-slate-100 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 rounded-2xl p-8 mb-8 border border-gray-200 dark:border-gray-700 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-start gap-6">
             {job.organization?.user?.image && (
               <div className="w-20 h-20 rounded-lg bg-white dark:bg-gray-700 p-2 border dark:border-gray-600 flex items-center justify-center">
@@ -147,12 +151,12 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
                   {auth?.user?.role === 'user' && job.status === 'open' &&
                         !job.has_applied  ? (
                     <Link href={route("jobs.apply.show", job.id)}>
-                      <Button className="gap-2">
+                      <Button className="gap-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 text-white shadow-md hover:shadow-lg transition-all">
                         Apply Now
                       </Button>
                     </Link>
                                   ) : (
-                    <Button disabled className="gap-2 bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
+                    <Button disabled className="gap-2 bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 cursor-not-allowed">
                       <Bookmark className="h-4 w-4" />
                       {job.has_applied ? 'Already Applied' : job.status === 'open' ? 'Signin First' : 'Not applicable'}
                     </Button>
@@ -161,45 +165,56 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-white dark:bg-gray-700 shadow-sm">
-                    <Building className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50">
+                  <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                    <Building className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Organization</p>
-                    <p className="font-medium">{job.organization?.name}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Organization</p>
+                    <p className="font-semibold text-gray-900 dark:text-white mt-0.5">{job.organization?.name}</p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-white dark:bg-gray-700 shadow-sm">
-                    <MapPin className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50">
+                  <div className="p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                    <MapPin className="h-5 w-5 text-amber-600 dark:text-amber-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Location</p>
-                    <p className="font-medium">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Location</p>
+                    <p className="font-semibold text-gray-900 dark:text-white mt-0.5">
                       {[job.city, job.state, job.country].filter(Boolean).join(', ') || 'Not specified'}
                     </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-white dark:bg-gray-700 shadow-sm">
-                    <DollarSign className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50">
+                  <div className="p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                    {job.type === 'volunteer' ? (
+                      <Award className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    ) : (
+                      <DollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    )}
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Salary</p>
-                    <p className="font-medium">{formatCurrency(job.pay_rate, job.currency)}</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                      {job.type === 'volunteer' ? 'Reward Points' : 'Salary'}
+                    </p>
+                    <p className="font-semibold text-gray-900 dark:text-white mt-0.5">
+                      {job.type === 'volunteer' 
+                        ? (job.points ? `${job.points.toLocaleString()} Points` : 'Not specified')
+                        : formatCurrency(job.pay_rate, job.currency)
+                      }
+                    </p>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-white dark:bg-gray-700 shadow-sm">
-                    <Clock3 className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-white/60 dark:bg-gray-800/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-700/50">
+                  <div className="p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+                    <Clock3 className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   <div>
-                    <p className="text-sm text-muted-foreground">Commitment</p>
-                    <p className="font-medium">
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">Commitment</p>
+                    <p className="font-semibold text-gray-900 dark:text-white mt-0.5">
                       {job.time_commitment_min_hours ? `${job.time_commitment_min_hours} hrs/week` : 'Not specified'}
                     </p>
                   </div>
@@ -214,31 +229,31 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
           {/* Job Details */}
           <div className="lg:col-span-3 space-y-8">
             {/* Job Description */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-semibold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-blue-50 dark:bg-gray-700">
-                    <FileText className="h-5 w-5 text-blue-500 dark:text-blue-400" />
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-8 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-2xl font-bold flex items-center gap-3 text-gray-900 dark:text-white">
+                  <div className="p-2.5 rounded-lg bg-blue-50 dark:bg-blue-900/20">
+                    <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   </div>
                   Job Description
                 </h2>
               </div>
-              <div className="prose dark:prose-invert max-w-none">
+              <div className="prose prose-slate dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">
                 {job.description}
               </div>
             </div>
 
             {/* Requirements */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-semibold flex items-center gap-3">
-                  <div className="p-2 rounded-lg bg-purple-50 dark:bg-gray-700">
-                    <Award className="h-5 w-5 text-purple-500 dark:text-purple-400" />
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-8 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-200 dark:border-gray-700">
+                <h2 className="text-2xl font-bold flex items-center gap-3 text-gray-900 dark:text-white">
+                  <div className="p-2.5 rounded-lg bg-purple-50 dark:bg-purple-900/20">
+                    <Award className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                   </div>
                   Requirements
                 </h2>
               </div>
-              <div className="prose dark:prose-invert max-w-none">
+              <div className="prose prose-slate dark:prose-invert max-w-none text-gray-700 dark:text-gray-300 leading-relaxed">
                 {job.requirements || 'No specific requirements listed.'}
               </div>
             </div>
@@ -247,14 +262,14 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
           {/* Sidebar */}
           <div className="space-y-6">
             {/* Organization Info */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-gray-700">
-                  <Users className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-3 text-gray-900 dark:text-white pb-3 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-2 rounded-lg bg-indigo-50 dark:bg-indigo-900/20">
+                  <Users className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
                 </div>
                 About {job.organization?.name}
               </h3>
-              <p className="text-gray-600 dark:text-gray-300 mb-4">
+              <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm leading-relaxed">
                 {job.organization?.description || 'No description available.'}
               </p>
               {job.organization?.website && (
@@ -262,7 +277,7 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
                   href={job.organization.website}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center text-primary hover:text-primary/80 transition-colors"
+                  className="inline-flex items-center text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors"
                 >
                   <Globe className="h-4 w-4 mr-2" />
                   Visit website
@@ -271,25 +286,25 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
             </div>
 
             {/* Position Details */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-amber-50 dark:bg-gray-700">
-                  <Briefcase className="h-5 w-5 text-amber-500 dark:text-amber-400" />
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-3 text-gray-900 dark:text-white pb-3 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-900/20">
+                  <Briefcase className="h-4 w-4 text-amber-600 dark:text-amber-400" />
                 </div>
                 Position Details
               </h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Category</p>
-                  <p className="font-medium">{job.position?.category?.name || 'Not specified'}</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Category</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{job.position?.category?.name || 'Not specified'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Position Title</p>
-                  <p className="font-medium">{job.position?.title || 'Not specified'}</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Position Title</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{job.position?.title || 'Not specified'}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground mb-2">Description</p>
-                  <p className="text-gray-600 dark:text-gray-300">
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">Description</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
                     {job.position?.default_description || 'No description available.'}
                   </p>
                 </div>
@@ -297,31 +312,31 @@ export default function JobDetails({ job, auth }: JobDetailsProps) {
             </div>
 
             {/* Job Timeline */}
-            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
-              <h3 className="text-xl font-semibold mb-4 flex items-center gap-3">
-                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-gray-700">
-                  <Calendar className="h-5 w-5 text-emerald-500 dark:text-emerald-400" />
+            <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
+              <h3 className="text-lg font-bold mb-4 flex items-center gap-3 text-gray-900 dark:text-white pb-3 border-b border-gray-200 dark:border-gray-700">
+                <div className="p-2 rounded-lg bg-emerald-50 dark:bg-emerald-900/20">
+                  <Calendar className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 </div>
                 Job Timeline
               </h3>
               <div className="space-y-4">
                 <div>
-                  <p className="text-sm text-muted-foreground">Posted</p>
-                  <p className="font-medium">{formatDate(job.date_posted)}</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Posted</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{formatDate(job.date_posted)}</p>
                 </div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Deadline</p>
-                  <p className="font-medium">{formatDate(job.application_deadline)}</p>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-1">Deadline</p>
+                  <p className="font-semibold text-gray-900 dark:text-white">{formatDate(job.application_deadline)}</p>
                 </div>
               </div>
             </div>
 
             {!auth?.user && job.status === 'open' && (
-              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border dark:border-gray-700">
+              <div className="bg-white dark:bg-gray-800 rounded-xl p-6 border border-gray-200 dark:border-gray-700 shadow-sm">
                 <div className="text-center">
-                  <p className="text-gray-600 dark:text-gray-300 mb-4">Interested in this position?</p>
+                  <p className="text-gray-600 dark:text-gray-400 mb-4 text-sm">Interested in this position?</p>
                   <Link href={route("login")}>
-                    <Button className="w-full gap-2">
+                    <Button className="w-full gap-2 bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600">
                       Login to Apply
                     </Button>
                   </Link>

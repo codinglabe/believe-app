@@ -4,7 +4,6 @@ import React from "react"
 import { Link } from "@inertiajs/react"
 import { Coins } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { route } from "ziggy-js"
 import { cn } from "@/lib/utils"
 
 interface BelievePointsDisplayProps {

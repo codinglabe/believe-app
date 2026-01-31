@@ -1,7 +1,7 @@
 import React from 'react'
 import { Link, router, usePage } from '@inertiajs/react'
 import { MerchantButton } from '@/components/merchant-ui'
-import { Menu, Bell, User, ArrowLeft, Settings, LogOut, ChevronDown } from 'lucide-react'
+import { Menu, Bell, User, ArrowLeft, Settings, LogOut, ChevronDown, CreditCard } from 'lucide-react'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -149,6 +149,17 @@ export function MerchantHeader({
                       Settings
                     </Link>
                   </DropdownMenuItem>
+                  {auth?.user?.has_active_subscription && (
+                    <DropdownMenuItem asChild className="focus:bg-[#FF1493]/10 focus:text-white">
+                      <Link 
+                        href="/subscription" 
+                        className="flex items-center gap-2 cursor-pointer text-gray-300 hover:text-white"
+                      >
+                        <CreditCard className="w-4 h-4" />
+                        Manage Subscription
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator className="bg-[#FF1493]/20" />
                   <DropdownMenuItem 
                     onClick={handleLogout}

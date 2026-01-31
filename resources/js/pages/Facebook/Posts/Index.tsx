@@ -156,21 +156,23 @@ export default function Index({ posts, accounts, hasConnectedAccounts, filters }
     const stats = getStats();
 
     const handlePublish = async (postId: number) => {
-        if (!confirm('Are you sure you want to publish this post to Facebook?')) {
-            return;
-        }
+    if (!confirm('Are you sure you want to publish this post to Facebook?')) {
+        return;
+    }
 
-        setLoading(prev => ({ ...prev, [postId]: true }));
+    setLoading(prev => ({ ...prev, [postId]: true }));
 
-        try {
-            await router.post(`/facebook/posts/${postId}/publish`);
-            toast.success('Post published successfully!');
-        } catch (error) {
-            toast.error('Failed to publish post');
-        } finally {
-            setLoading(prev => ({ ...prev, [postId]: false }));
-        }
-    };
+    try {
+        await axios.post(`/facebook/posts/${postId}/publish`);
+        toast.success('Post published successfully!');
+        // Reload to show updated status
+        window.location.reload();
+    } catch (error: any) {
+        toast.error('Failed to publish post: ' + (error.response?.data?.message || error.message));
+    } finally {
+        setLoading(prev => ({ ...prev, [postId]: false }));
+    }
+};
 
     const handleDelete = async (postId: number) => {
         if (!confirm('Are you sure you want to delete this post? This action cannot be undone.')) {

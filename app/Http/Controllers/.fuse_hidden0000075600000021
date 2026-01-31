@@ -34,7 +34,10 @@ class ServiceHubController extends Controller
     public function index(Request $request): Response
     {
         $query = Gig::with(['category', 'user.serviceSellerProfile', 'primaryImage', 'images'])
-            ->where('status', 'active');
+            ->where('status', 'active')
+            ->whereHas('user.serviceSellerProfile', function ($q) {
+                $q->where('is_suspended', false);
+            });
 
         // Search
         if ($request->has('search') && $request->search) {
@@ -504,7 +507,7 @@ class ServiceHubController extends Controller
         }
     }
 
-    public function show(Request $request, $slug): Response
+    public function show(Request $request, $slug)
     {
         $gig = Gig::with([
             'category',
@@ -519,6 +522,12 @@ class ServiceHubController extends Controller
                 $q->select('id', 'name', 'image');
             },
         ])->where('slug', $slug)->firstOrFail();
+
+        // Check if seller is suspended
+        if ($gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+            return redirect()->route('service-hub.index')
+                ->with('error', 'This seller has been suspended. Their services are not available.');
+        }
 
         if ($gig->status !== 'active') {
             abort(404);
@@ -667,6 +676,12 @@ class ServiceHubController extends Controller
             ->where('status', 'active')
             ->findOrFail($gigId);
 
+        // Check if seller is suspended
+        if ($gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+            return redirect()->route('service-hub.index')
+                ->with('error', 'This seller has been suspended. You cannot order from them.');
+        }
+
         // Security check: Prevent users from purchasing their own services
         if ($user && $gig->user_id === $user->id) {
             return redirect()->route('service-hub.show', $gig->slug)
@@ -755,6 +770,11 @@ class ServiceHubController extends Controller
                     }
                     if ($gig && $gig->status !== 'active') {
                         $fail('This service is not available for purchase.');
+                    }
+
+                    // Check if seller is suspended
+                    if ($gig && $gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+                        $fail('This seller has been suspended. You cannot order from them.');
                     }
                 },
             ],
@@ -1563,10 +1583,15 @@ class ServiceHubController extends Controller
             'serviceSellerProfile',
         ])->findOrFail($id);
 
-        // Validation: Check if user has a seller profile
-        if (!$seller->serviceSellerProfile) {
-            abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        // Validation: Check if seller is suspended
+        if ($seller->serviceSellerProfile && $seller->serviceSellerProfile->is_suspended) {
+            abort(404, 'Seller profile not available.');
         }
+
+        // // Validation: Check if user has a seller profile
+        // if (!$seller->serviceSellerProfile) {
+        //     abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        // }
 
         // Validation: Check if the seller profile is verified (optional - you can remove this if you want to show unverified profiles)
         // if ($seller->serviceSellerProfile->verification_status !== 'verified') {
@@ -2102,10 +2127,12 @@ class ServiceHubController extends Controller
 
         $profile = $user->serviceSellerProfile;
 
-        // If no seller profile, redirect to create one
-        if (!$profile) {
-            return redirect()->route('service-hub.seller-profile.create')
-                ->with('info', 'Please create a seller profile first to access your dashboard.');
+        // Check if seller is suspended
+        if ($profile && $profile->is_suspended) {
+            return Inertia::render('frontend/service-hub/seller-suspended', [
+                'suspension_reason' => $profile->suspension_reason,
+                'suspended_at' => $profile->suspended_at,
+            ]);
         }
 
         // Calculate statistics
@@ -2211,6 +2238,7 @@ class ServiceHubController extends Controller
             ],
             'activeServices' => $activeServices,
             'recentOrders' => $recentOrders,
+            'deleteUrl' => route('service-hub.services.destroy', ':id')
         ]);
     }
 
@@ -2567,22 +2595,27 @@ class ServiceHubController extends Controller
         ]);
     }
 
-    public function destroyService(Gig $gig)
+    public function destroyService(int $id)
     {
-        $this->authorize('delete', $gig); // Optional: if you use policies
+        $gig = Gig::findOrFail($id);
 
+        // Check authorization
         if ($gig->user_id !== Auth::id()) {
-            abort(403);
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // Optional: soft delete or check if has active orders
+        // Check for active orders
         if ($gig->orders()->whereIn('status', ['pending', 'in_progress'])->exists()) {
-            return redirect()->back()->with('error', 'Cannot delete service with active/pending orders.');
+            return response()->json([
+                'error' => 'Cannot delete service with active/pending orders.'
+            ], 422);
         }
 
-        $gig->delete(); // or $gig->forceDelete() if you don't use soft deletes
+        // Soft delete if using soft deletes
+        $gig->delete();
 
-        return redirect()->back()->with('success', 'Service deleted successfully.');
+        // Return JSON response for Inertia
+        return response()->json(['success' => 'Service deleted successfully.']);
     }
 
     public function getServiceChats(Request $request)

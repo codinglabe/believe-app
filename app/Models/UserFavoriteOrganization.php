@@ -11,11 +11,15 @@ class UserFavoriteOrganization extends Model
     protected $fillable = [
         'user_id',
         'organization_id',
+        'excel_data_id',
         'notifications',
     ];
 
     protected $casts = [
         'notifications' => 'boolean',
+        'excel_data_id' => 'integer',
+        'organization_id' => 'integer',
+        'user_id' => 'integer',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
     ];

@@ -91,6 +91,7 @@ class MarketplaceController extends Controller
             ->get(['id', 'name']);
 
         return Inertia::render('frontend/marketplace', [
+            'seo' => \App\Services\SeoService::forPage('marketplace'),
             'products' => $processedProducts,
             'categories' => $categories,
             'organizations' => $organizations,
@@ -101,70 +102,90 @@ class MarketplaceController extends Controller
     }
 
     /**
-     * Process products with cached Printify images
+     * Process products with cached Printify images - handles both Printify and manual products
      */
     private function processProductsWithImagesNDVariantsPrice($products)
     {
         return $products->map(function ($product) {
             $productData = $product->toArray();
 
-            // If product has Printify ID, try to get cached images
+            // Handle Printify products
             if ($product->printify_product_id) {
                 $cacheKey = "printify_product_view{$product->printify_product_id}";
 
-                $printifyProduct = $this->printifyService->getProduct($product->printify_product_id);
+                try {
+                    $printifyProduct = $this->printifyService->getProduct($product->printify_product_id);
 
-                // Calculate min and max price from product variants using Printify variant prices
-                if ($productData['variants'] && count($productData['variants']) > 0) {
-                    $prices = [];
+                    // Calculate min and max price from product variants using Printify variant prices
+                    if ($productData['variants'] && count($productData['variants']) > 0) {
+                        $prices = [];
 
-                    foreach ($productData['variants'] as $productVariant) {
-                        $variantId = $productVariant['printify_variant_id'];
+                        foreach ($productData['variants'] as $productVariant) {
+                            $variantId = $productVariant['printify_variant_id'];
 
-                        // Find this variant in Printify response
-                        foreach ($printifyProduct['variants'] as $printifyVariant) {
-                            if ($printifyVariant['id'] == $variantId && $printifyVariant['is_enabled']) {
-                                // Convert cents to dollars and add to prices array
-                                $priceInDollars = $printifyVariant['price'] / 100;
-                                $prices[] = $priceInDollars;
+                            // Find this variant in Printify response
+                            foreach ($printifyProduct['variants'] as $printifyVariant) {
+                                if ($printifyVariant['id'] == $variantId && $printifyVariant['is_enabled']) {
+                                    // Convert cents to dollars and add to prices array
+                                    $priceInDollars = $printifyVariant['price'] / 100;
+                                    $prices[] = $priceInDollars;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (!empty($prices)) {
+                            $minPrice = min($prices);
+                            $maxPrice = max($prices);
+
+                            $productData['min_price'] = $minPrice;
+                            $productData['max_price'] = $maxPrice;
+
+                            // Set display format
+                            if ($minPrice == $maxPrice) {
+                                $productData['price_display'] = '$' . number_format($minPrice, 2);
+                            } else {
+                                $productData['price_display'] = '$' . number_format($minPrice, 2) . ' - $' . number_format($maxPrice, 2);
+                            }
+
+                            // Set base price as minimum
+                            $productData['price'] = $minPrice;
+                        }
+                    }
+
+                    $firstEnabledVariantPrice = null;
+                    if (isset($productData['variants'][0])) {
+                        foreach ($printifyProduct['variants'] as $variant) {
+                            if ($variant['id'] == $productData['variants'][0]['printify_variant_id'] && $variant['is_enabled']) {
+                                $firstEnabledVariantPrice = $variant['price'] / 100;
                                 break;
                             }
                         }
                     }
 
-                    if (!empty($prices)) {
-                        $minPrice = min($prices);
-                        $maxPrice = max($prices);
-
-                        $productData['min_price'] = $minPrice;
-                        $productData['max_price'] = $maxPrice;
-
-                        // Set display format
-                        if ($minPrice == $maxPrice) {
-                            $productData['price_display'] = '$' . number_format($minPrice, 2);
-                        } else {
-                            $productData['price_display'] = '$' . number_format($minPrice, 2) . ' - $' . number_format($maxPrice, 2);
-                        }
-
-                        // Set base price as minimum
-                        $productData['price'] = $minPrice;
+                    if (count($printifyProduct['images']) > 0) {
+                        // Get the first image
+                        $firstImage = $printifyProduct['images'][0];
+                        $productData['image'] = $firstImage['src'];
+                        $productData['image_url'] = $firstImage['src'];
+                        $productData['printify_images'] = $printifyProduct['images'];
                     }
+                } catch (\Exception $e) {
+                    \Log::error('Error processing Printify product in marketplace: ' . $e->getMessage());
+                    // Fallback to basic product data
                 }
+            } else {
+                // Handle manual products
+                $unitPrice = $product->unit_price ?? 0;
+                $productData['price'] = $unitPrice;
+                $productData['min_price'] = $unitPrice;
+                $productData['max_price'] = $unitPrice;
+                $productData['price_display'] = '$' . number_format($unitPrice, 2);
 
-                $firstEnabledVariantPrice = null;
-                foreach ($printifyProduct['variants'] as $variant) {
-                    if ($variant['id'] == $productData['variants'][0]['printify_variant_id'] && $variant['is_enabled']) {
-                        $firstEnabledVariantPrice = $variant['price'] / 100;
-                        break;
-                    }
-                }
-
-                if (count($printifyProduct['images']) > 0) {
-                    // Get the first image
-                    $firstImage = $printifyProduct['images'][0];
-                    $productData['image'] = $firstImage['src'];
-                    $productData['image_url'] = $firstImage['src'];
-                    $productData['printify_images'] = $printifyProduct['images'];
+                // Use product image if available
+                if ($product->image) {
+                    $productData['image'] = $product->image;
+                    $productData['image_url'] = $product->image;
                 }
             }
 

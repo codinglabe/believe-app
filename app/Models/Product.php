@@ -15,6 +15,7 @@ class Product extends Model
         'description',
         'quantity',
         'unit_price',
+        'shipping_charge',
         'profit_margin_percentage',
         'admin_owned',
         'owned_by',
@@ -125,6 +126,30 @@ class Product extends Model
     public function getFirstVariant(): ?ProductVariant
     {
         return $this->variants()->where('is_available', true)->first();
+    }
+
+    /**
+     * Check if this is a Printify product
+     */
+    public function isPrintifyProduct(): bool
+    {
+        return !empty($this->printify_product_id);
+    }
+
+    /**
+     * Check if this is a manual product
+     */
+    public function isManualProduct(): bool
+    {
+        return empty($this->printify_product_id);
+    }
+
+    /**
+     * Get the product type label
+     */
+    public function getProductTypeLabel(): string
+    {
+        return $this->isPrintifyProduct() ? 'Printify' : 'Manual';
     }
 }
 

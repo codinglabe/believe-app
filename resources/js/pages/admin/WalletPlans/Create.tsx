@@ -16,8 +16,6 @@ import {
     Wallet
 } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
-import { route } from "ziggy-js"
-
 const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Dashboard', href: '/dashboard' },
     { title: 'Wallet Plans Management', href: '/admin/wallet-plans' },

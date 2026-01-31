@@ -18,7 +18,6 @@ import {
     ChevronRight
 } from "lucide-react"
 import toast, { Toaster } from "react-hot-toast"
-import { route } from "ziggy-js"
 import { cn } from "@/lib/utils"
 
 interface SellerDashboardLayoutProps {
@@ -68,7 +67,7 @@ export default function SellerDashboardLayout({ children }: SellerDashboardLayou
 
     const handleLogout = (e: React.FormEvent) => {
         e.preventDefault()
-        post(route('logout'))
+        post(route('logout.livestock'))
     }
 
     return (

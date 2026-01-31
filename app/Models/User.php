@@ -12,13 +12,15 @@ use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
 use Laravel\Cashier\Billable;
+use Laravel\Passport\HasApiTokens;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasRoles, Billable;
+    use HasApiTokens, HasFactory, Notifiable, HasRoles, Billable;
 
     /**
      * The guard name for Spatie Permission
@@ -60,6 +62,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'referral_code',
         'referred_by',
         "is_verified",
+        "email_verified_at",
         "ownership_verified_at",
         "verification_status",
         'primary_bank_account_id',
@@ -77,6 +80,9 @@ class User extends Authenticatable implements MustVerifyEmail
         'ai_tokens_used',
         'current_plan_details',
         'current_plan_id',
+        'city',
+        'state',
+        'zipcode',
     ];
 
     /**
@@ -123,6 +129,20 @@ class User extends Authenticatable implements MustVerifyEmail
                     $code = substr(bin2hex(random_bytes(8)), 0, 12);
                 } while (self::where('referral_code', $code)->exists());
                 $user->referral_code = $code;
+            }
+
+            // Auto-generate slug if not provided
+            if (empty($user->slug) && !empty($user->name)) {
+                $baseSlug = Str::slug($user->name);
+                $slug = $baseSlug;
+                $counter = 1;
+
+                while (self::where('slug', $slug)->exists()) {
+                    $slug = $baseSlug . '-' . $counter;
+                    $counter++;
+                }
+
+                $user->slug = $slug;
             }
 
             // Ensure guard_name is set
@@ -209,6 +229,12 @@ class User extends Authenticatable implements MustVerifyEmail
     {
         return $this->belongsToMany(Organization::class, 'user_favorite_organizations')
             ->withTimestamps()->with(['user', 'nteeCode']);
+    }
+
+    public function savedNewsArticles(): BelongsToMany
+    {
+        return $this->belongsToMany(NonprofitNewsArticle::class, 'user_saved_nonprofit_news', 'user_id', 'nonprofit_news_article_id')
+            ->withTimestamps();
     }
 
     public function jobApplications()
@@ -391,14 +417,36 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function organization()
     {
+        // Use hasOneThrough relationship but fix ambiguous column issue
+        // The problem is Laravel automatically selects 'id' without table prefix
+        // We use selectRaw to explicitly qualify all columns, keeping id as primary key
         return $this->hasOneThrough(
             Organization::class,
             BoardMember::class,
             'user_id', // Foreign key on board_members table
-            'id',
+            'id', // Foreign key on organizations table
             'id', // Local key on users table
             'organization_id' // Local key on board_members table
-        );
+        )->selectRaw('
+            organizations.id,
+            organizations.name,
+            organizations.user_id,
+            organizations.ein,
+            organizations.description,
+            organizations.mission,
+            organizations.website,
+            organizations.email,
+            organizations.phone,
+            organizations.contact_name,
+            organizations.contact_title,
+            organizations.city,
+            organizations.state,
+            organizations.zip,
+            organizations.registration_status,
+            organizations.created_at,
+            organizations.updated_at,
+            board_members.user_id as laravel_through_key
+        ');
     }
 
     public function isOrganizationAdmin()
@@ -735,5 +783,99 @@ class User extends Authenticatable implements MustVerifyEmail
     public function currentBelievePoints(): float
     {
         return (float) ($this->believe_points ?? 0);
+    }
+
+    /**
+     * Add reward points to the user's balance and create a ledger entry.
+     *
+     * @param int $points
+     * @param string $source (e.g., 'nonprofit_assessment')
+     * @param int|null $referenceId (e.g., assessment_id)
+     * @param string|null $description
+     * @param array|null $metadata
+     * @return void
+     */
+    public function addRewardPoints(
+        int $points,
+        string $source,
+        ?int $referenceId = null,
+        ?string $description = null,
+        ?array $metadata = null
+    ): void {
+        $this->increment('reward_points', $points);
+        
+        RewardPointLedger::createCredit(
+            $this->id,
+            $source,
+            $referenceId,
+            $points,
+            $description,
+            $metadata
+        );
+    }
+
+    /**
+     * Deduct reward points from the user's balance and create a ledger entry.
+     *
+     * @param int $points
+     * @param string $source (e.g., 'merchant_reward_redemption')
+     * @param int|null $referenceId (e.g., redemption_id)
+     * @param string|null $description
+     * @param array|null $metadata
+     * @return bool Returns true if deduction was successful, false if insufficient points
+     */
+    public function deductRewardPoints(
+        int $points,
+        string $source,
+        ?int $referenceId = null,
+        ?string $description = null,
+        ?array $metadata = null
+    ): bool {
+        if ($this->reward_points < $points) {
+            return false;
+        }
+        
+        $this->decrement('reward_points', $points);
+        
+        RewardPointLedger::createDebit(
+            $this->id,
+            $source,
+            $referenceId,
+            $points,
+            $description,
+            $metadata
+        );
+        
+        return true;
+    }
+
+    /**
+     * Get the current reward points balance of the user.
+     *
+     * @return int
+     */
+    public function currentRewardPoints(): int
+    {
+        return (int) ($this->reward_points ?? 0);
+    }
+
+    /**
+     * Send the email verification notification.
+     *
+     * @param string|null $domain The domain from the request context (where user is accessing from)
+     * @return void
+     */
+    public function sendEmailVerificationNotification(?string $domain = null)
+    {
+        // Get domain from request if not provided
+        if (!$domain && request()) {
+            // Use actual request host, not config value
+            $scheme = request()->getScheme();
+            $host = request()->getHost();
+            $port = request()->getPort();
+            $domain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
+        }
+        
+        $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
     }
 }

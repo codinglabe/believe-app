@@ -35,6 +35,9 @@ import {
   Building2,
   Mail,
   Sparkles,
+  Coins,
+  HeartHandshake,
+  UserPlus,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -65,6 +68,7 @@ interface SharedData extends Record<string, unknown> {
       reward_points?: number // Added reward_points
       believe_points?: number // Added believe_points
       role?: string // Ensure role is also present
+      email_verified_at?: string | null // Email verification status
       service_seller_profile?: {
         id: number
         verification_status?: string
@@ -89,6 +93,7 @@ export default function Navbar() {
   const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
+    { name: "Believe FundMe", href: "/believe-fundme" },
     { name: "Donate", href: "/donate" },
   ]
 
@@ -97,6 +102,7 @@ export default function Navbar() {
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
+      { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
       { name: "Chat", href: route("chat.index"), icon: MessageSquare },
     ] : []),
   ]
@@ -107,6 +113,7 @@ export default function Navbar() {
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
     { name: "Gift Cards", href: route("gift-cards.index"), icon: Gift },
+    { name: "Volunteer Opportunity", href: "/volunteer-opportunities", icon: HeartHandshake },
     { name: "Jobs", href: "/jobs", icon: Briefcase },
     { name: "Courses & Events", href: route("course.index"), icon: GraduationCap },
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
@@ -127,11 +134,18 @@ export default function Navbar() {
   }
 
 
-  // Fetch balance on mount and when dependencies change
+  // Fetch balance only when logged in (do not hit /wallet/balance on public pages)
   useEffect(() => {
+    if (!isLoggedIn || !auth?.user?.id) {
+      setWalletBalance(null)
+      return
+    }
+
     const fetchBalance = async () => {
-      if (!isLoggedIn) {
-        setWalletBalance(null)
+      if (!auth?.user?.email_verified_at) {
+        if (auth?.user?.balance) {
+          setWalletBalance(parseFloat(auth.user.balance.toString()))
+        }
         return
       }
 
@@ -147,7 +161,9 @@ export default function Navbar() {
           cache: 'no-cache',
         })
 
-        if (balanceResponse.ok) {
+        // Check if response is JSON before parsing
+        const contentType = balanceResponse.headers.get('content-type')
+        if (balanceResponse.ok && contentType && contentType.includes('application/json')) {
           const balanceData = await balanceResponse.json()
           if (balanceData.success) {
             setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
@@ -155,6 +171,11 @@ export default function Navbar() {
             if (balanceData.has_subscription !== undefined) {
               setHasSubscription(balanceData.has_subscription)
             }
+          }
+        } else if (balanceResponse.status === 403) {
+          // Email not verified - use fallback balance
+          if (auth?.user?.balance) {
+            setWalletBalance(parseFloat(auth.user.balance.toString()))
           }
         }
       } catch (error) {
@@ -167,17 +188,23 @@ export default function Navbar() {
     }
 
     fetchBalance()
-
-    // Refresh balance every 30 seconds
     const interval = setInterval(fetchBalance, 30000)
-
     return () => clearInterval(interval)
-  }, [isLoggedIn, auth?.user?.balance])
+  }, [isLoggedIn, auth?.user?.id, auth?.user?.balance])
 
   // Fetch balance function for manual refresh
   const fetchBalance = async () => {
     if (!isLoggedIn) {
       setWalletBalance(null)
+      return
+    }
+
+    // Don't fetch balance if email is not verified
+    if (!auth?.user?.email_verified_at) {
+      // Use fallback balance from auth if available
+      if (auth?.user?.balance) {
+        setWalletBalance(parseFloat(auth.user.balance.toString()))
+      }
       return
     }
 
@@ -193,7 +220,9 @@ export default function Navbar() {
         cache: 'no-cache',
       })
 
-      if (balanceResponse.ok) {
+      // Check if response is JSON before parsing
+      const contentType = balanceResponse.headers.get('content-type')
+      if (balanceResponse.ok && contentType && contentType.includes('application/json')) {
         const balanceData = await balanceResponse.json()
         if (balanceData.success) {
           setWalletBalance(balanceData.balance || balanceData.local_balance || 0)
@@ -201,6 +230,11 @@ export default function Navbar() {
           if (balanceData.has_subscription !== undefined) {
             setHasSubscription(balanceData.has_subscription)
           }
+        }
+      } else if (balanceResponse.status === 403) {
+        // Email not verified - use fallback balance
+        if (auth?.user?.balance) {
+          setWalletBalance(parseFloat(auth.user.balance.toString()))
         }
       }
     } catch (error) {
@@ -332,15 +366,13 @@ export default function Navbar() {
                               {/* <Button variant="ghost" size="sm" className="h-9 w-9 px-0">
                                   <Bell className="h-4 w-4" />
                               </Button> */}
-                              <NotificationBell userId={auth.user.id} />
+                              <NotificationBell userId={auth.user.id} emailVerified={!!auth.user.email_verified_at} />
 
                 {/* Wallet Balance Button - Hide for admin users */}
                 {isLoggedIn && auth?.user?.role !== "admin" && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
+                  <div
                     onClick={handleWalletClick}
-                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700"
+                    className="h-9 px-3 flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-full hover:bg-gray-200 dark:hover:bg-gray-700 cursor-pointer transition-colors"
                   >
                     <Wallet className="h-4 w-4 text-green-600" />
                     {/* Only show balance and eye icon if user has subscription (or is organization user) */}
@@ -360,26 +392,68 @@ export default function Navbar() {
                               maximumFractionDigits: 2
                             })}` : "••••••"}
                           </span>
-                          <Button
-                            variant="ghost"
-                            size="sm"
+                          <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation()
                               setShowBalance(!showBalance)
                             }}
-                            className="p-0 h-auto"
+                            className="p-0 h-auto inline-flex items-center justify-center rounded-md hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
                           >
                             {showBalance ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                          </Button>
+                          </button>
                         </>
                       )
                     })()}
-                  </Button>
+                  </div>
                 )}
 
-                              {/* Believe Points Display - Visible for all authenticated users */}
-                              {isLoggedIn && auth?.user?.believe_points !== undefined && (
-                                  <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="compact" showLabel={false} />
+                              {/* Coins Icon Dropdown - Shows Believe Points and Reward Points (hidden for admin) */}
+                              {isLoggedIn && auth?.user?.role !== 'admin' && (auth?.user?.believe_points !== undefined || auth?.user?.reward_points !== undefined) && (
+                                  <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                          <Button variant="ghost" size="sm" className="h-9 w-9 px-0 relative">
+                                              <Coins className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                                          </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent className="w-64" align="end" forceMount>
+                                          <div className="p-3 space-y-3">
+                                              {/* Reward Points */}
+                                              {auth?.user?.reward_points !== undefined && (
+                                                  <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                                                      <div className="flex items-center gap-2">
+                                                          <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+                                                              <Gift className="h-4 w-4 text-white" />
+                                                          </div>
+                                                          <div>
+                                                              <p className="text-xs text-muted-foreground">Reward Points</p>
+                                                              <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                                                  {(auth.user.reward_points || 0).toLocaleString()}
+                                                              </p>
+                                                          </div>
+                                                      </div>
+                                                  </div>
+                                              )}
+                                              
+                                              {/* Believe Points */}
+                                              {auth?.user?.believe_points !== undefined && (
+                                                  <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
+                                                      <div className="flex items-center gap-2">
+                                                          <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                                              <Sparkles className="h-4 w-4 text-white" />
+                                                          </div>
+                                                          <div>
+                                                              <p className="text-xs text-muted-foreground">Believe Points</p>
+                                                              <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                                                                  {(auth.user.believe_points || 0).toLocaleString()}
+                                                              </p>
+                                                          </div>
+                                                      </div>
+                                                  </div>
+                                              )}
+                                          </div>
+                                      </DropdownMenuContent>
+                                  </DropdownMenu>
                               )}
 
                               <DropdownMenu>
@@ -454,7 +528,7 @@ export default function Navbar() {
                                       )}
                                       <DropdownMenuSeparator />
                                       <DropdownMenuItem asChild>
-                                          <Link method="post" className="w-full" href={route('logout')} onClick={handleLogout}>
+                                          <Link method="post" className="w-full" href={route('logout.main')} onClick={handleLogout}>
                                               <LogOut className="mr-2 h-4 w-4" />
                                               <span>Log out</span>
                                           </Link>
@@ -483,7 +557,7 @@ export default function Navbar() {
                       <ThemeToggle />
                       {isLoggedIn ? (
                           <>
-                              <NotificationBell userId={auth.user.id} />
+                              <NotificationBell userId={auth.user.id} emailVerified={!!auth.user.email_verified_at} />
                           </>
                       ) : null}
                       <Button variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)}>
@@ -584,6 +658,46 @@ export default function Navbar() {
                                                   <p className="text-muted-foreground text-xs">{auth?.user?.email ?? 'john@example.com'}</p>
                                               </div>
                                           </div>
+                                          
+                                          {/* Points Display for Mobile - Shows Reward Points and Believe Points (hidden for admin) */}
+                                          {auth?.user?.role !== 'admin' && (auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
+                                              <div className="px-3 py-2 space-y-2">
+                                                  {/* Reward Points */}
+                                                  {auth?.user?.reward_points !== undefined && (
+                                                      <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 border border-blue-200 dark:border-blue-800">
+                                                          <div className="flex items-center gap-2">
+                                                              <div className="h-8 w-8 rounded-full bg-blue-500 flex items-center justify-center">
+                                                                  <Gift className="h-4 w-4 text-white" />
+                                                              </div>
+                                                              <div>
+                                                                  <p className="text-xs text-muted-foreground">Reward Points</p>
+                                                                  <p className="text-sm font-semibold text-blue-700 dark:text-blue-300">
+                                                                      {(auth.user.reward_points || 0).toLocaleString()}
+                                                                  </p>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  )}
+                                                  
+                                                  {/* Believe Points */}
+                                                  {auth?.user?.believe_points !== undefined && (
+                                                      <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
+                                                          <div className="flex items-center gap-2">
+                                                              <div className="h-8 w-8 rounded-full bg-purple-500 flex items-center justify-center">
+                                                                  <Sparkles className="h-4 w-4 text-white" />
+                                                              </div>
+                                                              <div>
+                                                                  <p className="text-xs text-muted-foreground">Believe Points</p>
+                                                                  <p className="text-sm font-semibold text-purple-700 dark:text-purple-300">
+                                                                      {(auth.user.believe_points || 0).toLocaleString()}
+                                                                  </p>
+                                                              </div>
+                                                          </div>
+                                                      </div>
+                                                  )}
+                                              </div>
+                                          )}
+                                          
                                           {/* Wallet section for mobile - Hide for admin users */}
                                           {isLoggedIn && auth?.user?.role !== 'admin' && (
                                               <Button
@@ -621,26 +735,6 @@ export default function Navbar() {
                                               </Button>
                                           )}
 
-                                          {/* Reward Points section for mobile */}
-                                          {auth?.user?.reward_points !== undefined && (
-                                              <div className="space-y-2 rounded-md bg-gray-50 px-3 py-2 dark:bg-gray-800">
-                                                  <div className="flex items-center gap-2">
-                                                      <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                                                      <span className="text-sm font-medium">Reward Points</span>
-                                                  </div>
-                                                  <div className="text-xl font-bold text-purple-600 dark:text-purple-400">
-                                                      {(auth.user.reward_points || 0).toLocaleString('en-US', {
-                                                          minimumFractionDigits: 0,
-                                                          maximumFractionDigits: 2,
-                                                      })}
-                                                  </div>
-                                              </div>
-                                          )}
-
-                                          {/* Believe Points section for mobile */}
-                                          {auth?.user?.believe_points !== undefined && (
-                                              <BelievePointsDisplay balance={auth.user.believe_points || 0} variant="mobile" />
-                                          )}
 
                                           {/* cart mobile button */}
                                           <Link href={route('cart.index')}>
@@ -698,7 +792,7 @@ export default function Navbar() {
                                               <Link
                                                   method="post"
                                                   className="align-items-center flex w-full cursor-pointer justify-start"
-                                                  href={route('logout')}
+                                                  href={route('logout.main')}
                                                   onClick={handleLogout}
                                               >
                                                   <LogOut className="d-flex align-items-center mt-0.5 mr-3 h-3 w-3 justify-center align-middle" />

@@ -17,8 +17,6 @@ import { Button } from "@/components/admin/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/card"
 import { Badge } from "@/components/admin/ui/badge"
 import AppLayout from "@/layouts/app-layout"
-import { route } from "ziggy-js"
-
 interface User {
   id: number
   name: string

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Head, Link, router } from '@inertiajs/react';
+import { Head, Link } from '@inertiajs/react';
 import AppLayout from '@/layouts/app-layout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,8 @@ import {
     AlertTriangle
 } from 'lucide-react';
 import { toast } from 'sonner';
+import axios from 'axios';
+import FacebookPermissionModal from '@/components/facebook/FacebookPermissionModal';
 
 interface FacebookAccount {
     id: number;
@@ -33,17 +35,43 @@ interface FacebookAccount {
 }
 
 interface Props {
-    accounts: FacebookAccount[];
-    oauthUrl: string;
-    organization: {
+    accounts?: FacebookAccount[];
+    hasConnectedAccounts: boolean;
+    organization?: {
         id: number;
         name: string;
     };
 }
 
-export default function Connect({ accounts, oauthUrl, organization }: Props) {
+export default function Connect({
+    accounts = [],
+    hasConnectedAccounts = false,
+    organization = { id: 0, name: 'Your Organization' }
+}: Props) {
     const [disconnecting, setDisconnecting] = useState<Record<number, boolean>>({});
     const [refreshing, setRefreshing] = useState<Record<number, boolean>>({});
+    const [showPermissionModal, setShowPermissionModal] = useState(false);
+
+    const connectToFacebook = () => {
+        // Show permission modal first
+        setShowPermissionModal(true);
+    };
+
+    const handleAcceptPermissions = () => {
+        setShowPermissionModal(false);
+
+        // Redirect to Facebook OAuth with accepted permissions
+        const params = new URLSearchParams({
+            'accepted_permissions': JSON.stringify(['pages_manage_posts', 'pages_read_engagement', 'pages_show_list', 'public_profile'])
+        });
+
+        window.location.href = `/facebook/oauth/redirect?${params.toString()}`;
+    };
+
+    // সরাসরি Facebook OAuth এ redirect
+    // const connectToFacebook = () => {
+    //     window.location.href = '/facebook/oauth/redirect';
+    // };
 
     const handleDisconnect = async (accountId: number, pageName: string) => {
         if (!confirm(`Are you sure you want to disconnect "${pageName}"?`)) {
@@ -53,9 +81,10 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
         setDisconnecting(prev => ({ ...prev, [accountId]: true }));
 
         try {
-            await router.post(`/facebook/${accountId}/disconnect`);
+            await axios.post(`/facebook/${accountId}/disconnect`);
             toast.success('Facebook page disconnected successfully');
-        } catch (error) {
+            window.location.reload();
+        } catch (error: any) {
             toast.error('Failed to disconnect Facebook page');
         } finally {
             setDisconnecting(prev => ({ ...prev, [accountId]: false }));
@@ -66,9 +95,10 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
         setRefreshing(prev => ({ ...prev, [accountId]: true }));
 
         try {
-            await router.post(`/facebook/${accountId}/refresh`);
+            await axios.post(`/facebook/${accountId}/refresh`);
             toast.success('Facebook page refreshed successfully');
-        } catch (error) {
+            window.location.reload();
+        } catch (error: any) {
             toast.error('Failed to refresh Facebook page');
         } finally {
             setRefreshing(prev => ({ ...prev, [accountId]: false }));
@@ -77,15 +107,12 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
 
     const handleSetDefault = async (accountId: number) => {
         try {
-            await router.post(`/facebook/${accountId}/set-default`);
+            await axios.post(`/facebook/${accountId}/set-default`);
             toast.success('Default Facebook page set successfully');
-        } catch (error) {
+            window.location.reload();
+        } catch (error: any) {
             toast.error('Failed to set default page');
         }
-    };
-
-    const connectToFacebook = () => {
-        window.location.href = oauthUrl;
     };
 
     return (
@@ -111,7 +138,7 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
                                 How to Connect
                             </CardTitle>
                             <CardDescription>
-                                Follow these steps to connect your Facebook pages
+                                Connect your Facebook pages in 3 simple steps
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
@@ -133,9 +160,9 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
                                         <span className="font-bold text-primary">2</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Select Pages</h4>
+                                        <h4 className="font-medium">Login to Facebook</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Choose which Facebook pages you want to connect
+                                            Login with your Facebook account that has page admin access
                                         </p>
                                     </div>
                                 </div>
@@ -145,9 +172,9 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
                                         <span className="font-bold text-primary">3</span>
                                     </div>
                                     <div>
-                                        <h4 className="font-medium">Start Posting</h4>
+                                        <h4 className="font-medium">Select Pages</h4>
                                         <p className="text-sm text-muted-foreground">
-                                            Create and schedule posts directly from your dashboard
+                                            Choose which Facebook pages you want to connect
                                         </p>
                                     </div>
                                 </div>
@@ -192,6 +219,13 @@ export default function Connect({ accounts, oauthUrl, organization }: Props) {
                             </div>
                         </CardContent>
                     </Card>
+
+                     {/* Permission Modal */}
+      <FacebookPermissionModal
+        isOpen={showPermissionModal}
+        onClose={() => setShowPermissionModal(false)}
+        onAccept={handleAcceptPermissions}
+      />
                 </div>
 
                 {/* Connected Accounts */}

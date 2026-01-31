@@ -216,7 +216,7 @@ export default function SellerProfile() {
 
                       {/* Action Buttons */}
                       <div className="flex flex-wrap gap-3 pt-2">
-                        {isOwner ? (
+                        {isOwner && (
                           <>
                         <Link href="/service-hub/seller-profile/edit">
                             <Button className="bg-blue-600 hover:bg-blue-700">
@@ -232,42 +232,44 @@ export default function SellerProfile() {
                             </Button>
                         </Link>
                         </>
-                        ) : (
-                          <>
-                            {/* Only show WhatsApp contact if user has a successful order */}
-                            {hasSuccessfulOrder && sellerProfile?.phone ? (
-                              <Button
-                                className="bg-blue-600 hover:bg-blue-700"
-                                onClick={() => {
-                                  if (!sellerProfile?.phone) {
-                                    showErrorToast('Seller phone number is not available');
-                                    return;
-                                  }
-                                  // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
-                                  const phoneNumber = sellerProfile.phone.replace(/[\s\-\(\)]/g, '');
-                                  // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
-                                  const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
-                                  // Open WhatsApp with the phone number
-                                  window.open(`https://wa.me/${whatsappNumber}`, '_blank');
-                                }}
-                              >
-                                <MessageCircle className="mr-2 h-4 w-4" />
-                                Contact Seller
-                              </Button>
-                            ) : (
-                              <Button
-                                variant="outline"
-                                disabled
-                                className="cursor-not-allowed opacity-60"
-                                title={!auth?.user ? "Please login to contact seller" : !hasSuccessfulOrder ? "You need to have a successful order with this seller to contact them" : "Seller contact not available"}
-                              >
-                                <MessageCircle className="mr-2 h-4 w-4" />
-                                Contact Seller
-                              </Button>
-                            )}
+                                              )
+                        //                           : (
+                        //   <>
+                        //     {/* Only show WhatsApp contact if user has a successful order */}
+                        //     {hasSuccessfulOrder && sellerProfile?.phone ? (
+                        //       <Button
+                        //         className="bg-blue-600 hover:bg-blue-700"
+                        //         onClick={() => {
+                        //           if (!sellerProfile?.phone) {
+                        //             showErrorToast('Seller phone number is not available');
+                        //             return;
+                        //           }
+                        //           // Format phone number for WhatsApp (remove spaces, dashes, parentheses, and ensure it starts with country code)
+                        //           const phoneNumber = sellerProfile.phone.replace(/[\s\-\(\)]/g, '');
+                        //           // If phone doesn't start with +, assume it's a local number and add +1 (US/Canada) or handle based on your needs
+                        //           const whatsappNumber = phoneNumber.startsWith('+') ? phoneNumber : `+1${phoneNumber}`;
+                        //           // Open WhatsApp with the phone number
+                        //           window.open(`https://wa.me/${whatsappNumber}`, '_blank');
+                        //         }}
+                        //       >
+                        //         <MessageCircle className="mr-2 h-4 w-4" />
+                        //         Contact Seller
+                        //       </Button>
+                        //     ) : (
+                        //       <Button
+                        //         variant="outline"
+                        //         disabled
+                        //         className="cursor-not-allowed opacity-60"
+                        //         title={!auth?.user ? "Please login to contact seller" : !hasSuccessfulOrder ? "You need to have a successful order with this seller to contact them" : "Seller contact not available"}
+                        //       >
+                        //         <MessageCircle className="mr-2 h-4 w-4" />
+                        //         Contact Seller
+                        //       </Button>
+                        //     )}
 
-                          </>
-                        )}
+                        //   </>
+                        //                           )
+                                              }
                       </div>
                     </div>
                   </div>
@@ -414,12 +416,12 @@ export default function SellerProfile() {
                                   <span className="text-sm">{sellerProfile.location}</span>
                                 </div>
                               )}
-                              {sellerProfile.phone && (
+                              {/* {sellerProfile.phone && (
                                 <div className="flex items-center gap-2">
                                   <Mail className="h-4 w-4 text-muted-foreground" />
                                   <span className="text-sm">{sellerProfile.phone}</span>
                                 </div>
-                              )}
+                              )} */}
                               {sellerProfile.response_time && (
                                 <div className="flex items-center gap-2">
                                   <Clock className="h-4 w-4 text-muted-foreground" />

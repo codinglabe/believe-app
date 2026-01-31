@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/frontend/ui/input"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Link, router, usePage } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 import { useState, useEffect, useCallback } from "react"
 import debounce from "lodash.debounce"
 import pickBy from "lodash.pickby"
@@ -184,6 +185,7 @@ export default function Marketplace({
 
     return (
         <FrontendLayout>
+            <PageHead title="Marketplace" description="Discover products from verified nonprofits. Shop and support causes you care about." />
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
                 {/* Hero Section */}
                 <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
@@ -466,6 +468,12 @@ export default function Marketplace({
                                                             <Link
                                                                 href={`/products/${product.id}`}
                                                                 className="flex-1"
+                                                                onClick={(e) => {
+                                                                    // Prevent navigation if out of stock
+                                                                    if (product.quantity_available <= 0) {
+                                                                        e.preventDefault();
+                                                                    }
+                                                                }}
                                                             >
                                                                 <Button
                                                                     disabled={product.quantity_available <= 0}

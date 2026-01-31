@@ -3,7 +3,6 @@
 import { useState, useEffect } from "react"
 import { useForm, usePage } from "@inertiajs/react"
 import { router } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import AppLayout from "@/layouts/app-layout"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"

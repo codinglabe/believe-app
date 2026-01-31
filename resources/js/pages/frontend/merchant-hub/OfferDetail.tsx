@@ -1,6 +1,7 @@
-import React, { useState } from 'react'
-import { Head, Link, router } from '@inertiajs/react'
-import { motion } from 'framer-motion'
+import React, { useState, useEffect } from 'react'
+import { Link, router } from '@inertiajs/react'
+import { PageHead } from '@/components/frontend/PageHead'
+import { motion, AnimatePresence } from 'framer-motion'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/frontend/ui/card'
 import { Button } from '@/components/frontend/ui/button'
@@ -18,9 +19,24 @@ import {
   DollarSign,
   TrendingUp,
   Clock,
-  Shield
+  Shield,
+  CheckCircle2,
+  X,
+  QrCode,
+  Globe
 } from 'lucide-react'
 import { usePage } from '@inertiajs/react'
+import QRCodeModal from '@/components/frontend/QRCodeModal'
+
+interface PricingBreakdown {
+  regularPrice: number | null
+  discountPercentage: number
+  discountAmount: number | null
+  discountPrice: number | null
+  discountCap?: number | null
+  showDiscountOnly?: boolean
+  isExample?: boolean
+}
 
 interface Offer {
   id: string
@@ -30,6 +46,7 @@ interface Offer {
   pointsRequired: number
   cashRequired?: number
   merchantName: string
+  merchantWebsite?: string | null
   merchantId?: string
   category: string
   description: string
@@ -39,21 +56,45 @@ interface Offer {
   redemptionCount?: number
   rating?: number
   reviews?: number
+  isStandardDiscount?: boolean
+  discountPercentage?: number | null
+  discountCap?: number | null
+  pricingBreakdown?: PricingBreakdown | null
+}
+
+interface RedemptionEligibility {
+  canRedeem: boolean
+  reason: string | null
+  userPoints: number
+  monthlyPointsRedeemed: number
+  hasExistingRedemption: boolean
 }
 
 interface Props {
   offerId: string
   offer?: Offer
   relatedOffers?: Offer[]
+  redemptionEligibility?: RedemptionEligibility
 }
 
-export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [] }: Props) {
-  const { auth } = usePage().props as any
+export default function OfferDetail({ offerId, offer: initialOffer, relatedOffers: initialRelatedOffers = [], redemptionEligibility: initialRedemptionEligibility }: Props) {
+  const { auth, errors, redemption_success } = usePage().props as any
   const [selectedImageIndex, setSelectedImageIndex] = useState(0)
   const [isFavorite, setIsFavorite] = useState(false)
   const [isRedeeming, setIsRedeeming] = useState(false)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [redemptionData, setRedemptionData] = useState<any>(null)
+  const [showQRModal, setShowQRModal] = useState(false)
+  
+  const redemptionEligibility: RedemptionEligibility = initialRedemptionEligibility || {
+    canRedeem: true,
+    reason: null,
+    userPoints: 0,
+    monthlyPointsRedeemed: 0,
+    hasExistingRedemption: false,
+  }
 
-  // Mock data - in production, this would come from props
+  // Use real offer data from props
   const offer: Offer = initialOffer || {
     id: offerId,
     title: 'Gift Card - $50 Value',
@@ -105,6 +146,9 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     }
   ]
 
+  // Calculate if user can redeem
+  const canRedeem = auth?.user && redemptionEligibility.canRedeem && (initialOffer?.isAvailable ?? true)
+
   const images = offer.images || [offer.image]
   const hasMultipleImages = images.length > 1
 
@@ -119,32 +163,42 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     return colors[category] || 'bg-muted text-muted-foreground border-border'
   }
 
+  // Check for redemption success from session
+  useEffect(() => {
+    if (redemption_success && !showSuccessModal) {
+      setRedemptionData(redemption_success)
+      setShowSuccessModal(true)
+    }
+  }, [redemption_success, showSuccessModal])
+
   const handleRedeem = async () => {
     if (!auth?.user) {
       router.visit('/login')
       return
     }
 
-    setIsRedeeming(true)
-    try {
-      await router.post('/merchant-hub/redeem', {
-        offer_id: offer.id,
-        points_used: offer.pointsRequired,
-        cash_paid: offer.cashRequired || 0,
-      }, {
-        preserveScroll: true,
-        onSuccess: () => {
-          setIsRedeeming(false)
-        },
-        onError: (errors) => {
-          console.error('Redemption failed:', errors)
-          setIsRedeeming(false)
-        }
-      })
-    } catch (error) {
-      console.error('Redemption failed:', error)
-      setIsRedeeming(false)
+    // Don't proceed if not eligible
+    if (!canRedeem) {
+      return
     }
+
+    setIsRedeeming(true)
+    router.post('/merchant-hub/redeem', {
+      offer_id: offer.id,
+    }, {
+      preserveScroll: true,
+      onSuccess: () => {
+        setIsRedeeming(false)
+        // Success will be handled by useEffect when redemption_success is available
+      },
+      onError: (errors) => {
+        setIsRedeeming(false)
+        // Error will be displayed via Inertia error handling
+      },
+      onFinish: () => {
+        setIsRedeeming(false)
+      }
+    })
   }
 
   const handleShare = () => {
@@ -159,9 +213,11 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
     }
   }
 
+  const metaDescription = offer.description ? String(offer.description).slice(0, 160) : undefined;
+
   return (
     <FrontendLayout>
-      <Head title={`${offer.title} - Merchant Hub`} />
+      <PageHead title={offer.title} description={metaDescription} />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -324,17 +380,50 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                       </div>
                     </div>
 
-                    {offer.cashRequired && (
-                      <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 border border-green-100 dark:border-green-800">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="text-sm font-medium text-muted-foreground">Cash Required</span>
-                          <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    {/* Pricing Breakdown - ALWAYS show if cashRequired exists */}
+                    {(offer.pricingBreakdown || offer.cashRequired) && (() => {
+                      // Use pricingBreakdown if available, otherwise calculate from cashRequired
+                      const regularPrice = offer.pricingBreakdown?.regularPrice ?? offer.cashRequired ?? 0;
+                      const discountPercentage = offer.pricingBreakdown?.discountPercentage ?? offer.discountPercentage ?? 10;
+                      const discountAmount = offer.pricingBreakdown?.discountAmount ?? (regularPrice * discountPercentage / 100);
+                      const discountPrice = offer.pricingBreakdown?.discountPrice ?? (regularPrice - discountAmount);
+                      
+                      return (
+                        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20 rounded-xl p-4 border border-green-100 dark:border-green-800 space-y-3">
+                          <div className="flex items-center justify-between mb-3">
+                            <span className="text-sm font-medium text-muted-foreground">Regular Price</span>
+                            <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                          </div>
+                          <div className="text-2xl font-bold text-gray-900 dark:text-white line-through">
+                            ${regularPrice.toFixed(2)}
+                          </div>
+
+                          <div className="pt-3 border-t border-green-200 dark:border-green-700 space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-sm font-medium text-muted-foreground">Discount ({discountPercentage}%)</span>
+                              <span className="text-lg font-bold text-green-600 dark:text-green-400">
+                                -${discountAmount.toFixed(2)}
+                              </span>
+                            </div>
+                            {offer.pricingBreakdown?.discountCap && (
+                              <p className="text-xs text-muted-foreground">
+                                Max discount: ${offer.pricingBreakdown.discountCap.toFixed(2)}
+                              </p>
+                            )}
+                          </div>
+
+                          <div className="pt-3 border-t border-green-200 dark:border-green-700">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-muted-foreground">You Pay</span>
+                              <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                            </div>
+                            <div className="text-3xl font-bold text-green-600 dark:text-green-400">
+                              ${discountPrice.toFixed(2)}
+                            </div>
+                          </div>
                         </div>
-                        <div className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          ${offer.cashRequired.toFixed(2)}
-                        </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
 
                   {/* Stats */}
@@ -350,8 +439,8 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                   {/* Redeem Button */}
                   <Button
                     onClick={handleRedeem}
-                    disabled={isRedeeming}
-                    className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    disabled={isRedeeming || !canRedeem}
+                    className="w-full h-12 text-lg bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 disabled:opacity-50 disabled:cursor-not-allowed"
                     size="lg"
                   >
                     {isRedeeming ? (
@@ -364,12 +453,37 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     )}
                   </Button>
 
+                  {/* Error Messages from Server */}
+                  {errors?.error && (
+                    <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg mt-3">
+                      <p className="text-sm text-red-800 dark:text-red-200 text-center">
+                        {errors.error}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Eligibility Messages */}
                   {!auth?.user && (
-                    <p className="text-sm text-center text-muted-foreground">
+                    <p className="text-sm text-center text-muted-foreground mt-3">
                       <Link href="/login" className="text-blue-600 dark:text-blue-400 hover:underline">
                         Sign in
                       </Link>
                       {' '}to redeem this offer
+                    </p>
+                  )}
+                  
+                  {/* Only show eligibility reason if no server error is present */}
+                  {auth?.user && !redemptionEligibility.canRedeem && redemptionEligibility.reason && !errors?.error && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg mt-3">
+                      <p className="text-sm text-amber-800 dark:text-amber-200 text-center">
+                        {redemptionEligibility.reason}
+                      </p>
+                    </div>
+                  )}
+                  
+                  {auth?.user && redemptionEligibility.canRedeem && !offer.isAvailable && (
+                    <p className="text-sm text-center text-muted-foreground mt-3">
+                      This offer is currently unavailable.
                     </p>
                   )}
                 </CardContent>
@@ -389,7 +503,19 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
                     </Avatar>
                     <div>
                       <p className="font-semibold">{offer.merchantName}</p>
-                      <p className="text-sm text-muted-foreground">Verified Merchant</p>
+                      {offer.merchantWebsite ? (
+                        <a
+                          href={offer.merchantWebsite}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="h-3 w-3" />
+                          {offer.merchantWebsite.replace(/^https?:\/\//, '').replace(/\/$/, '')}
+                        </a>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">Verified Merchant</p>
+                      )}
                     </div>
                   </div>
                   <div className="pt-4 border-t space-y-2">
@@ -476,6 +602,118 @@ export default function OfferDetail({ offerId, offer: initialOffer, relatedOffer
           )}
         </div>
       </div>
+
+      {/* Redemption Success Modal */}
+      <AnimatePresence>
+        {showSuccessModal && redemptionData && (
+          <>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowSuccessModal(false)}
+              className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            />
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.9, y: 20 }}
+                transition={{ type: "spring", duration: 0.5 }}
+                onClick={(e) => e.stopPropagation()}
+                className="w-full max-w-md bg-white dark:bg-gray-900 rounded-lg shadow-xl overflow-hidden border border-gray-200 dark:border-gray-700"
+              >
+                {/* Header */}
+                <div className="bg-gradient-to-r from-green-500 to-emerald-500 p-6 text-center">
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ type: "spring", stiffness: 200, damping: 15, delay: 0.1 }}
+                    className="w-16 h-16 bg-white rounded-full flex items-center justify-center mx-auto mb-4"
+                  >
+                    <CheckCircle2 className="w-10 h-10 text-green-500" />
+                  </motion.div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Redemption Successful!</h2>
+                  <p className="text-green-50">Your offer has been redeemed</p>
+                </div>
+
+                {/* Content */}
+                <div className="p-6 space-y-4">
+                  <div className="text-center">
+                    <p className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                      {redemptionData.offer?.title || offer.title}
+                    </p>
+                    <p className="text-sm text-gray-600 dark:text-gray-400">
+                      {redemptionData.offer?.merchant_name || offer.merchantName}
+                    </p>
+                  </div>
+
+                  <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">Receipt Code:</span>
+                      <span className="font-mono font-semibold text-gray-900 dark:text-white">
+                        {redemptionData.code}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">Points Spent:</span>
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {redemptionData.points_spent?.toLocaleString() || offer.pointsRequired.toLocaleString()}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600 dark:text-gray-400">Status:</span>
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400">
+                        {redemptionData.status === 'approved' ? 'Approved' : 'Pending'}
+                      </Badge>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <Button
+                      onClick={() => {
+                        setShowQRModal(true)
+                        setShowSuccessModal(false)
+                      }}
+                      className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    >
+                      <QrCode className="w-4 h-4 mr-2" />
+                      View QR Code
+                    </Button>
+                    <Button
+                      onClick={() => {
+                        setShowSuccessModal(false)
+                        // Clear session data after closing modal
+                        router.reload({ 
+                          only: [],
+                          preserveState: true,
+                          preserveScroll: true,
+                        })
+                      }}
+                      variant="outline"
+                      className="flex-1"
+                    >
+                      Close
+                    </Button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          </>
+        )}
+      </AnimatePresence>
+
+      {/* QR Code Modal */}
+      {redemptionData && (
+        <QRCodeModal
+          isOpen={showQRModal}
+          onClose={() => setShowQRModal(false)}
+          qrCodeUrl={redemptionData.qr_code_url}
+          receiptCode={redemptionData.code}
+          offerTitle={redemptionData.offer?.title || offer.title}
+          merchantName={redemptionData.offer?.merchant_name || offer.merchantName}
+        />
+      )}
     </FrontendLayout>
   )
 }

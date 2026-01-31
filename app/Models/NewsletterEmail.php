@@ -19,7 +19,8 @@ class NewsletterEmail extends Model
         'bounced_at',
         'error_message',
         'message_id',
-        'tracking_data'
+        'tracking_data',
+        'metadata'
     ];
 
     protected $casts = [
@@ -28,7 +29,8 @@ class NewsletterEmail extends Model
         'opened_at' => 'datetime',
         'clicked_at' => 'datetime',
         'bounced_at' => 'datetime',
-        'tracking_data' => 'array'
+        'tracking_data' => 'array',
+        'metadata' => 'array'
     ];
 
     public function newsletter(): BelongsTo

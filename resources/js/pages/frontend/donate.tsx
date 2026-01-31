@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { router, usePage } from "@inertiajs/react" // Using actual Inertia router for clarity in this context
+import { router, usePage } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 import { RadioGroup, RadioGroupItem } from "@/components/frontend/ui/radio-group"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { useNotification } from "@/components/frontend/notification-provider"
@@ -31,19 +32,21 @@ interface User {
 }
 
 interface DonatePageProps {
-  organizations: Organization[] // Initial list of organizations (could be all or pre-filtered by Laravel)
-  user?: User | null // Optional user data if logged in
-  message?: string // Optional message from controller
-  searchQuery?: string // The current search query from the URL, passed by Laravel
+  seo?: { title: string; description?: string }
+  organizations: Organization[]
+  user?: User | null
+  message?: string
+  searchQuery?: string
 }
 
 const donationAmounts = [25, 50, 100, 250, 500, 1000]
 
 // The component now accepts props from Laravel via Inertia
 export default function DonatePage({
-  organizations: initialOrganizations, // Renamed to avoid conflict with local state
+  seo,
+  organizations: initialOrganizations,
   user,
-  searchQuery: initialSearchQuery = "", // Initialize with prop from Laravel
+  searchQuery: initialSearchQuery = "",
 }: DonatePageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -251,6 +254,7 @@ export default function DonatePage({
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Donate"} description={seo?.description} />
       <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
         {/* Hero Section */}
         <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">

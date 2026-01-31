@@ -17,7 +17,6 @@ import {
     Heart, 
     Shield, 
     TrendingUp, 
-    Award, 
     Users, 
     Package, 
     DollarSign, 
@@ -25,15 +24,10 @@ import {
     CheckCircle, 
     Menu, 
     X,
-    Zap,
-    BarChart3,
     FileText,
     Lock,
     Sparkles,
     Star,
-    TrendingDown,
-    Activity,
-    Globe,
     User,
     LogOut,
     LayoutDashboard,
@@ -44,8 +38,6 @@ import {
 import { motion, useScroll, useTransform } from "framer-motion"
 import LivestockLogo from "@/components/livestock/LivestockLogo"
 import { useState, useRef } from "react"
-import { route } from "ziggy-js"
-
 const features = [
     {
         icon: Shield,
@@ -291,7 +283,7 @@ export default function LivestockLanding() {
                                                     <DropdownMenuSeparator />
                                                 </>
                                             )}
-                                            <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout')); }}>
+                                            <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout.livestock')); }}>
                                                 <DropdownMenuItem 
                                                     asChild
                                                     className="cursor-pointer text-red-600 dark:text-red-400 focus:text-red-600 dark:focus:text-red-400"
@@ -446,7 +438,7 @@ export default function LivestockLanding() {
                                             </Button>
                                         </Link>
                                     )}
-                                    <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout')); }}>
+                                    <form onSubmit={(e) => { e.preventDefault(); router.post(route('logout.livestock')); }}>
                                         <Button
                                             type="submit"
                                             variant="outline"

@@ -19,8 +19,6 @@ import {
 import { usePage, router, Link } from "@inertiajs/react"
 import { toast } from "sonner"
 import DonationModal from "@/components/frontend/donation-modal"
-import { route } from "ziggy-js"
-
 type DonationModalOrganization = {
   id: number
   name: string

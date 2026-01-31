@@ -9,6 +9,7 @@ use App\Models\CartItem;
 use App\Models\OrderShippingInfo;
 use App\Models\TempOrder;
 use App\Models\Transaction;
+use App\Models\StateSalesTax;
 use App\Services\PrintifyService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -131,31 +132,90 @@ class CheckoutController extends Controller
                 'status' => 'pending',
             ]);
 
-            // Create Printify order
-            $printifyOrderData = $this->preparePrintifyOrder($cart, $tempOrder);
-            $printifyOrder = $this->printifyService->createOrder($printifyOrderData);
+            // Check if cart has Printify products
+            $hasPrintifyProducts = $cart->items->contains(function ($item) {
+                return !empty($item->product->printify_product_id);
+            });
 
-            if (!isset($printifyOrder['id'])) {
-                throw new \Exception('Failed to create Printify order');
-            }
-
-            $tempOrder->update([
-                'printify_order_id' => $printifyOrder['id'],
-            ]);
-
-            // Calculate shipping from Printify
-            $shippingData = $this->calculateShippingFromPrintify(
-                $printifyOrder['id'],
-                $validated['country'],
-                $validated['state'],
-                $validated['city'],
-                $validated['zip']
-            );
-
-            // Extract tax from Printify order if available
+            $printifyOrderId = null;
+            $shippingData = [];
             $taxAmount = 0;
-            if (isset($shippingData['total_tax'])) {
-                $taxAmount = ($shippingData['total_tax'] ?? 0) / 100;
+
+            if ($hasPrintifyProducts) {
+                // Create Printify order only if there are Printify products
+                $printifyOrderData = $this->preparePrintifyOrder($cart, $tempOrder);
+
+                // Only create order if there are Printify line items
+                if (!empty($printifyOrderData['line_items'])) {
+                    $printifyOrder = $this->printifyService->createOrder($printifyOrderData);
+
+                    if (!isset($printifyOrder['id'])) {
+                        throw new \Exception('Failed to create Printify order');
+                    }
+
+                    $printifyOrderId = $printifyOrder['id'];
+                    $tempOrder->update([
+                        'printify_order_id' => $printifyOrderId,
+                    ]);
+
+                    // Calculate shipping from Printify
+                    $shippingData = $this->calculateShippingFromPrintify(
+                        $printifyOrderId,
+                        $validated['country'],
+                        $validated['state'],
+                        $validated['city'],
+                        $validated['zip']
+                    );
+
+                    // Extract tax from Printify order if available
+                    if (isset($shippingData['total_tax'])) {
+                        $taxAmount = ($shippingData['total_tax'] ?? 0) / 100;
+                    }
+                } else {
+                    // Cart has Printify products but no valid line items (fallback to manual shipping)
+                    $defaultShippingCost = config('app.manual_product_shipping_cost', 9.99);
+                    $shippingData = [
+                        'cost' => $defaultShippingCost,
+                        'methods' => [
+                            [
+                                'id' => 'standard',
+                                'name' => 'Standard Shipping',
+                                'cost' => $defaultShippingCost,
+                                'estimated_days' => '5-10 business days',
+                            ]
+                        ],
+                    ];
+                }
+            } else {
+                // For manual products, use shipping_charge from product
+                $manualProduct = $cart->items->first()?->product;
+                $shippingCost = $manualProduct && $manualProduct->isManualProduct()
+                    ? ($manualProduct->shipping_charge ?? 0)
+                    : config('app.manual_product_shipping_cost', 9.99);
+
+                $shippingData = [
+                    'cost' => $shippingCost,
+                    'methods' => [
+                        [
+                            'id' => 'standard',
+                            'name' => 'Standard Shipping',
+                            'cost' => $shippingCost,
+                            'estimated_days' => '5-10 business days',
+                        ]
+                    ],
+                ];
+
+                // Calculate state-wise sales tax for manual products
+                if (!empty($validated['state'])) {
+                    $stateCode = strtoupper($validated['state']);
+                    $stateTax = \App\Models\StateSalesTax::where('state_code', $stateCode)->first();
+
+                    if ($stateTax) {
+                        $taxRate = (float) $stateTax->base_sales_tax_rate;
+                        $subtotal = $cart->getTotal();
+                        $taxAmount = ($subtotal * $taxRate) / 100;
+                    }
+                }
             }
 
             // Update temp order with shipping and tax
@@ -341,50 +401,57 @@ class CheckoutController extends Controller
         $newShippingCost = 0;
         $printifyStatus = null;
 
-        // Try to get Printify order with retry mechanism
-        for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
-            try {
-                $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
-                $printifyStatus = $printifyOrder['status'] ?? null;
+        // Check if this is a Printify order or manual product
+        if ($tempOrder->printify_order_id) {
+            // Try to get Printify order with retry mechanism
+            for ($attempt = 1; $attempt <= $maxRetries; $attempt++) {
+                try {
+                    $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+                    $printifyStatus = $printifyOrder['status'] ?? null;
 
-                \Log::info('Printify order check attempt', [
-                    'attempt' => $attempt,
-                    'order_id' => $tempOrder->printify_order_id,
-                    'status' => $printifyStatus,
-                    'total_tax' => $printifyOrder['total_tax'] ?? 0,
-                    'total_shipping' => $printifyOrder['total_shipping'] ?? 0,
-                ]);
+                    \Log::info('Printify order check attempt', [
+                        'attempt' => $attempt,
+                        'order_id' => $tempOrder->printify_order_id,
+                        'status' => $printifyStatus,
+                        'total_tax' => $printifyOrder['total_tax'] ?? 0,
+                        'total_shipping' => $printifyOrder['total_shipping'] ?? 0,
+                    ]);
 
-                // Convert cents to dollars
-                $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
-                $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+                    // Convert cents to dollars
+                    $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                    $newShippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
 
-                // Check if tax is calculated (non-zero) or if status is ready
-                $isTaxCalculated = $newTaxAmount > 0;
-                $isStatusReady = in_array($printifyStatus, ['on-hold', 'pending', 'cost-calculation'])
-                    ? false
-                    : true;
+                    // Check if tax is calculated (non-zero) or if status is ready
+                    $isTaxCalculated = $newTaxAmount > 0;
+                    $isStatusReady = in_array($printifyStatus, ['on-hold', 'pending', 'cost-calculation'])
+                        ? false
+                        : true;
 
-                // If tax is calculated OR we've reached max retries, break
-                if ($isTaxCalculated || $attempt === $maxRetries) {
-                    break;
-                }
+                    // If tax is calculated OR we've reached max retries, break
+                    if ($isTaxCalculated || $attempt === $maxRetries) {
+                        break;
+                    }
 
-                // Wait before retrying
-                if ($attempt < $maxRetries) {
-                    sleep($retryDelay);
-                }
+                    // Wait before retrying
+                    if ($attempt < $maxRetries) {
+                        sleep($retryDelay);
+                    }
 
-            } catch (\Exception $e) {
-                \Log::error('Failed to get Printify order on attempt ' . $attempt . ': ' . $e->getMessage());
+                } catch (\Exception $e) {
+                    \Log::error('Failed to get Printify order on attempt ' . $attempt . ': ' . $e->getMessage());
 
-                // If this is the last attempt, use fallback
-                if ($attempt === $maxRetries) {
-                    $newTaxAmount = $this->estimateTaxFallback($tempOrder);
-                    $newShippingCost = $tempOrder->shipping_cost;
-                    \Log::warning('Using estimated tax after all retries failed');
+                    // If this is the last attempt, use fallback
+                    if ($attempt === $maxRetries) {
+                        $newTaxAmount = $this->estimateTaxFallback($tempOrder);
+                        $newShippingCost = $tempOrder->shipping_cost;
+                        \Log::warning('Using estimated tax after all retries failed');
+                    }
                 }
             }
+        } else {
+            // For manual products, use existing tax and shipping from temp order
+            $newTaxAmount = $tempOrder->tax_amount ?? 0;
+            $newShippingCost = $tempOrder->shipping_cost ?? 0;
         }
 
         // // If tax is still 0 after retries, use estimation
@@ -700,14 +767,15 @@ class CheckoutController extends Controller
     }
 
     /**
-     * Prepare Printify order data
+     * Prepare Printify order data - only includes Printify products
      */
     private function preparePrintifyOrder(Cart $cart, TempOrder $tempOrder): array
     {
         $lineItems = [];
 
         foreach ($cart->items as $item) {
-            if (!empty($item->product->printify_product_id)) {
+            // Only include Printify products (skip manual products)
+            if (!empty($item->product->printify_product_id) && !empty($item->printify_variant_id)) {
                 $lineItems[] = [
                     'product_id' => $item->product->printify_product_id,
                     'variant_id' => (int) $item->printify_variant_id,
@@ -808,30 +876,35 @@ class CheckoutController extends Controller
             ->findOrFail($validated['temp_order_id']);
 
         try {
-            // Check if we have a Printify order ID
-            if (!$tempOrder->printify_order_id) {
-                return response()->json([
-                    'success' => false,
-                    'error' => 'No Printify order found',
-                ], 400);
+            // Check if this is a Printify order or manual product
+            if ($tempOrder->printify_order_id) {
+                // Get updated Printify order details
+                $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
+
+                // Calculate new tax amount
+                $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
+                $shippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
+
+                // Log the tax update
+                \Log::info('Tax amount updated on Step2 load', [
+                    'temp_order_id' => $tempOrder->id,
+                    'old_tax_amount' => $tempOrder->tax_amount,
+                    'new_tax_amount' => $newTaxAmount,
+                    'old_shipping_cost' => $tempOrder->shipping_cost,
+                    'new_shipping_cost' => $shippingCost,
+                    'printify_order_id' => $tempOrder->printify_order_id,
+                ]);
+            } else {
+                // For manual products, use existing tax and shipping (already calculated in step 1)
+                $newTaxAmount = $tempOrder->tax_amount ?? 0;
+                $shippingCost = $tempOrder->shipping_cost ?? 0;
+
+                \Log::info('Tax amount for manual product (no update needed)', [
+                    'temp_order_id' => $tempOrder->id,
+                    'tax_amount' => $newTaxAmount,
+                    'shipping_cost' => $shippingCost,
+                ]);
             }
-
-            // Get updated Printify order details
-            $printifyOrder = $this->printifyService->getOrder($tempOrder->printify_order_id);
-
-            // Calculate new tax amount
-            $newTaxAmount = (float) (($printifyOrder['total_tax'] ?? 0) / 100);
-            $shippingCost = (float) (($printifyOrder['total_shipping'] ?? 0) / 100);
-
-            // Log the tax update
-            \Log::info('Tax amount updated on Step2 load', [
-                'temp_order_id' => $tempOrder->id,
-                'old_tax_amount' => $tempOrder->tax_amount,
-                'new_tax_amount' => $newTaxAmount,
-                'old_shipping_cost' => $tempOrder->shipping_cost,
-                'new_shipping_cost' => $shippingCost,
-                'printify_order_id' => $tempOrder->printify_order_id,
-            ]);
 
             // Update temp order with new tax and shipping
             $oldTotal = $tempOrder->total_amount;

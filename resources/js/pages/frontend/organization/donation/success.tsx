@@ -17,7 +17,8 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Link, Head } from "@inertiajs/react"
+import { Link } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 
 interface Donation {
@@ -131,7 +132,7 @@ export default function DonationSuccessPage({ donation, paymentMethod = 'stripe'
 
     return (
         <FrontendLayout>
-            <Head title="Donation Successful - Thank You!" />
+            <PageHead title="Donation Successful" description="Thank you for your donation. Your support makes a difference." />
 
             <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900 py-12 px-4 sm:px-6 lg:px-8">
                 <div className="max-w-4xl mx-auto">

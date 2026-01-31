@@ -13,10 +13,10 @@ return [
         'Nonprofit Tech for Good' => 'https://www.nptechforgood.com/feed/',
     ],
 
-    // Caching / limits
+    // Caching / limits (cache no longer used; articles stored in DB)
     'cache_key' => 'nonprofit_rss_cache_v2',
-    'cache_ttl_seconds' => 1800,               // 30 min
-    'per_feed_limit' => 10,
+    'cache_ttl_seconds' => 1800,
+    'per_feed_limit' => 30,                   // items per feed to fetch and store each run
     'merged_limit' => 60,
 
     // HTTP / fetch

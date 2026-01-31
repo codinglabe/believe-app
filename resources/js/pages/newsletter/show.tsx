@@ -1,6 +1,6 @@
 "use client"
 
-import { Head } from "@inertiajs/react"
+import { Head, router } from "@inertiajs/react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -38,8 +38,15 @@ interface Newsletter {
     html_content: string
     status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
     scheduled_at?: string
+    scheduled_at_formatted?: string
+    scheduled_at_iso?: string
     send_date?: string
+    send_date_formatted?: string
+    send_date_iso?: string
     sent_at?: string
+    sent_at_formatted?: string
+    created_at?: string
+    created_at_formatted?: string
     schedule_type?: 'immediate' | 'scheduled' | 'recurring'
     total_recipients: number
     sent_count: number
@@ -61,9 +68,13 @@ interface Newsletter {
         email: string
         status: string
         sent_at?: string
+        sent_at_formatted?: string
         delivered_at?: string
+        delivered_at_formatted?: string
         opened_at?: string
+        opened_at_formatted?: string
         clicked_at?: string
+        clicked_at_formatted?: string
         bounced_at?: string
         recipient?: {
             name?: string
@@ -72,22 +83,36 @@ interface Newsletter {
     }>
 }
 
-interface NewsletterShowProps {
-    newsletter: Newsletter
+interface PreviewData {
+    organization_name: string
+    organization_email: string
+    organization_phone: string
+    organization_address: string
+    recipient_name: string
+    recipient_email: string
+    current_date: string
+    current_year: string
+    unsubscribe_link: string
+    public_view_link: string
 }
 
-export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
+interface NewsletterShowProps {
+    newsletter: Newsletter
+    previewData?: PreviewData
+}
+
+export default function NewsletterShow({ newsletter, previewData }: NewsletterShowProps) {
     const [isUpdatingSchedule, setIsUpdatingSchedule] = useState(false)
     const [isResumeModalOpen, setIsResumeModalOpen] = useState(false)
     const [isPauseModalOpen, setIsPauseModalOpen] = useState(false)
     const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
     const [isManualSendModalOpen, setIsManualSendModalOpen] = useState(false)
+    const [showVariablePreview, setShowVariablePreview] = useState(false)
     const [newScheduleTime, setNewScheduleTime] = useState(() => {
-        const dateToUse = newsletter.send_date || newsletter.scheduled_at;
+        // Use ISO date from backend (already in user's timezone)
+        const dateToUse = newsletter.send_date_iso || newsletter.scheduled_at_iso;
         if (dateToUse) {
-            // Convert UTC date to user's timezone for display
-            const userDate = new Date(dateToUse);
-            return userDate.toISOString().slice(0, 16);
+            return dateToUse.slice(0, 16);
         }
         return '';
     })
@@ -117,15 +142,45 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
         }
     }
 
-    const formatDate = (dateString: string) => {
-        return formatDateInTimezone(dateString, getBrowserTimezone())
-    }
+    // Dates are already formatted in backend with user's timezone - just use them directly
 
     const openRate = newsletter.total_recipients > 0 ? 
         ((newsletter.opened_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'
     
     const clickRate = newsletter.total_recipients > 0 ? 
         ((newsletter.clicked_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'
+
+    // Use real data from backend, fallback to demo data if not available
+    const sampleData: PreviewData = previewData || {
+        organization_name: 'Your Organization',
+        organization_email: 'contact@example.com',
+        organization_phone: '+1 (555) 000-0000',
+        organization_address: 'Your Organization Address',
+        recipient_name: 'Recipient Name',
+        recipient_email: 'recipient@example.com',
+        current_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        current_year: new Date().getFullYear().toString(),
+        unsubscribe_link: 'https://example.com/unsubscribe?token=preview_token',
+        public_view_link: route('newsletter.show', newsletter.id) || 'https://example.com/newsletter/public/preview',
+    }
+
+    // Function to replace variables with real data
+    const replaceVariables = (text: string): string => {
+        if (!text) return ''
+        
+        let result = text
+        Object.entries(sampleData).forEach(([key, value]) => {
+            const regex = new RegExp(`\\{${key}\\}`, 'g')
+            result = result.replace(regex, value)
+        })
+        
+        return result
+    }
+
+    // Get preview of subject and content with variables replaced
+    const previewSubject = replaceVariables(newsletter.subject)
+    const previewContent = replaceVariables(newsletter.content)
+    const previewHtmlContent = replaceVariables(newsletter.html_content || '')
 
     return (
         <AppSidebarLayout>
@@ -152,14 +207,14 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                                 {getStatusIcon(newsletter.status)}
                                 <span className="ml-1 capitalize">{newsletter.status}</span>
                             </Badge>
-                            {newsletter.sent_at && (
+                            {newsletter.sent_at_formatted && (
                                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    Sent: {formatDate(newsletter.sent_at)}
+                                    Sent: {newsletter.sent_at_formatted}
                                 </span>
                             )}
-                            {newsletter.scheduled_at && (
+                            {(newsletter.send_date_formatted || newsletter.scheduled_at_formatted) && (
                                 <span className="text-sm text-gray-600 dark:text-gray-400">
-                                    Scheduled: {formatDate(newsletter.scheduled_at)}
+                                    Scheduled: {newsletter.send_date_formatted || newsletter.scheduled_at_formatted}
                                 </span>
                             )}
                         </div>
@@ -381,12 +436,11 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                                         type="datetime-local"
                                         value={newScheduleTime}
                                         onChange={(e) => setNewScheduleTime(e.target.value)}
-                                        min={new Date().toISOString().slice(0, 16)}
                                         className="w-full"
                                         required
                                     />
                                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                                        Current schedule: {(newsletter.send_date || newsletter.scheduled_at) ? formatDate(newsletter.send_date || newsletter.scheduled_at || '') : 'Not set'}
+                                        Current schedule: {(newsletter.send_date_formatted || newsletter.scheduled_at_formatted) || 'Not set'}
                                         {newsletter.schedule_type && newsletter.schedule_type !== 'immediate' && (
                                             <span className="ml-1">({newsletter.schedule_type})</span>
                                         )}
@@ -506,20 +560,61 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                                 </div>
 
                                 <div>
-                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Content Preview</h3>
+                                    <div className="flex items-center justify-between mb-2">
+                                        <h3 className="font-semibold text-gray-900 dark:text-white">Content Preview</h3>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setShowVariablePreview(!showVariablePreview)}
+                                            className="text-xs"
+                                        >
+                                            <Eye className="h-3 w-3 mr-1" />
+                                            {showVariablePreview ? 'Show Original' : 'Show with Variables'}
+                                        </Button>
+                                    </div>
                                     <div className="border rounded-lg p-4 bg-gray-50 dark:bg-gray-800 max-h-96 overflow-y-auto">
-                                        {newsletter.html_content ? (
-                                            <div 
-                                                dangerouslySetInnerHTML={{ __html: newsletter.html_content }}
-                                                className="prose prose-sm max-w-none dark:prose-invert"
-                                            />
+                                        {showVariablePreview ? (
+                                            // Show with variables replaced
+                                            previewHtmlContent ? (
+                                                <div 
+                                                    dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
+                                                    className="prose prose-sm max-w-none dark:prose-invert"
+                                                />
+                                            ) : (
+                                                <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                                                    {previewContent}
+                                                </pre>
+                                            )
                                         ) : (
-                                            <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
-                                                {newsletter.content}
-                                            </pre>
+                                            // Show original
+                                            newsletter.html_content ? (
+                                                <div 
+                                                    dangerouslySetInnerHTML={{ __html: newsletter.html_content }}
+                                                    className="prose prose-sm max-w-none dark:prose-invert"
+                                                />
+                                            ) : (
+                                                <pre className="whitespace-pre-wrap text-sm text-gray-700 dark:text-gray-300">
+                                                    {newsletter.content}
+                                                </pre>
+                                            )
                                         )}
                                     </div>
+                                    {showVariablePreview && (
+                                        <div className="mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded text-xs text-blue-800 dark:text-blue-300">
+                                            💡 Variables like {'{organization_name}'}, {'{recipient_name}'} are replaced with real data above
+                                        </div>
+                                    )}
                                 </div>
+                                
+                                {showVariablePreview && (
+                                    <div>
+                                        <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Subject Preview (with variables)</h3>
+                                        <p className="text-gray-700 dark:text-gray-300 p-2 bg-gray-50 dark:bg-gray-800 rounded">
+                                            {previewSubject}
+                                        </p>
+                                    </div>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -536,26 +631,89 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="space-y-4">
+                            <div className="space-y-6">
+                                {/* Rate Cards */}
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{openRate}%</p>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Open Rate</p>
+                                    <div className="text-center p-4 bg-gradient-to-br from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20 rounded-lg border border-purple-200 dark:border-purple-800">
+                                        <p className="text-3xl font-bold text-purple-700 dark:text-purple-300">{openRate}%</p>
+                                        <p className="text-sm text-purple-600 dark:text-purple-400 mt-1">Open Rate</p>
+                                        <p className="text-xs text-gray-500 mt-1">{newsletter.opened_count} of {newsletter.delivered_count} opened</p>
                                     </div>
-                                    <div className="text-center p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
-                                        <p className="text-2xl font-bold text-gray-900 dark:text-white">{clickRate}%</p>
-                                        <p className="text-sm text-gray-600 dark:text-gray-400">Click Rate</p>
+                                    <div className="text-center p-4 bg-gradient-to-br from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                                        <p className="text-3xl font-bold text-orange-700 dark:text-orange-300">{clickRate}%</p>
+                                        <p className="text-sm text-orange-600 dark:text-orange-400 mt-1">Click Rate</p>
+                                        <p className="text-xs text-gray-500 mt-1">{newsletter.clicked_count} clicks</p>
                                     </div>
                                 </div>
 
+                                {/* Progress Bars */}
                                 <div className="space-y-3">
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Delivery Rate</span>
+                                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                                {newsletter.total_recipients > 0 ? 
+                                                    ((newsletter.delivered_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'}%
+                                            </span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                            <div 
+                                                className="bg-green-600 h-2 rounded-full transition-all"
+                                                style={{ 
+                                                    width: `${newsletter.total_recipients > 0 ? 
+                                                        ((newsletter.delivered_count / newsletter.total_recipients) * 100) : 0}%` 
+                                                }}
+                                            />
+                                        </div>
+                                        <p className="text-xs text-gray-500 mt-1">{newsletter.delivered_count} of {newsletter.total_recipients} delivered</p>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Open Rate</span>
+                                            <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">{openRate}%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                            <div 
+                                                className="bg-purple-600 h-2 rounded-full transition-all"
+                                                style={{ 
+                                                    width: `${openRate}%` 
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Click Rate</span>
+                                            <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">{clickRate}%</span>
+                                        </div>
+                                        <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
+                                            <div 
+                                                className="bg-orange-600 h-2 rounded-full transition-all"
+                                                style={{ 
+                                                    width: `${clickRate}%` 
+                                                }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Additional Stats */}
+                                <div className="space-y-2 pt-3 border-t border-gray-200 dark:border-gray-700">
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Bounced</span>
-                                        <span className="font-semibold text-red-600">{newsletter.bounced_count}</span>
+                                        <span className="font-semibold text-red-600 dark:text-red-400">{newsletter.bounced_count}</span>
                                     </div>
                                     <div className="flex justify-between items-center">
                                         <span className="text-sm text-gray-600 dark:text-gray-400">Unsubscribed</span>
-                                        <span className="font-semibold text-orange-600">{newsletter.unsubscribed_count}</span>
+                                        <span className="font-semibold text-orange-600 dark:text-orange-400">{newsletter.unsubscribed_count}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-sm text-gray-600 dark:text-gray-400">Pending</span>
+                                        <span className="font-semibold text-gray-600 dark:text-gray-400">
+                                            {newsletter.total_recipients - newsletter.sent_count}
+                                        </span>
                                     </div>
                                 </div>
                             </div>
@@ -596,7 +754,7 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                                             </Badge>
                                             {email.sent_at && (
                                                 <span className="text-xs text-gray-500">
-                                                    {formatDate(email.sent_at)}
+                                                    {email.sent_at_formatted || email.sent_at || 'N/A'}
                                                 </span>
                                             )}
                                         </div>
@@ -608,33 +766,38 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                 )}
 
                 {/* Modals */}
-                {/* Resume Modal */}
+                {/* Resume/Send Modal */}
                 <Dialog open={isResumeModalOpen} onOpenChange={setIsResumeModalOpen}>
                     <DialogContent>
                         <DialogHeader>
-                            <DialogTitle>Resume Newsletter</DialogTitle>
+                            <DialogTitle>
+                                {newsletter.status === 'draft' ? 'Send Newsletter' : 'Resume Newsletter'}
+                            </DialogTitle>
                             <DialogDescription>
-                                Choose how to resume this newsletter:
+                                {newsletter.status === 'draft' 
+                                    ? 'Are you sure you want to send this newsletter now?'
+                                    : 'Choose how to resume this newsletter:'}
                             </DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4">
-                            <div>
-                                <Label htmlFor="resume_schedule" className="text-sm font-medium">
-                                    Schedule Time (optional)
-                                </Label>
-                                <Input
-                                    id="resume_schedule"
-                                    type="datetime-local"
-                                    value={resumeScheduleTime}
-                                    onChange={(e) => setResumeScheduleTime(e.target.value)}
-                                    min={new Date().toISOString().slice(0, 16)}
-                                    className="w-full mt-2"
-                                />
-                                <p className="text-xs text-gray-500 mt-1">
-                                    Leave empty to send immediately, or set a future time to schedule
-                                </p>
+                        {newsletter.status === 'paused' && (
+                            <div className="space-y-4">
+                                <div>
+                                    <Label htmlFor="resume_schedule" className="text-sm font-medium">
+                                        Schedule Time (optional)
+                                    </Label>
+                                    <Input
+                                        id="resume_schedule"
+                                        type="datetime-local"
+                                        value={resumeScheduleTime}
+                                        onChange={(e) => setResumeScheduleTime(e.target.value)}
+                                        className="w-full mt-2"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                        Leave empty to send immediately, or set a future time to schedule
+                                    </p>
+                                </div>
                             </div>
-                        </div>
+                        )}
                         <DialogFooter>
                             <Button
                                 variant="outline"
@@ -644,28 +807,40 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                             </Button>
                             <Button
                                 onClick={() => {
+                                    // For draft newsletters, use send route. For paused, use resume route.
+                                    const routeToUse = newsletter.status === 'draft' 
+                                        ? route('newsletter.send', newsletter.id)
+                                        : route('newsletter.resume', newsletter.id);
+                                    
                                     const form = document.createElement('form');
                                     form.method = 'POST';
-                                    form.action = route('newsletter.resume', newsletter.id);
+                                    form.action = routeToUse;
                                     
                                     const token = document.createElement('input');
                                     token.type = 'hidden';
                                     token.name = '_token';
                                     token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
                                     
-                                    const scheduleInput = document.createElement('input');
-                                    scheduleInput.type = 'hidden';
-                                    scheduleInput.name = 'scheduled_at';
-                                    scheduleInput.value = resumeScheduleTime;
-                                    
                                     form.appendChild(token);
-                                    form.appendChild(scheduleInput);
+                                    
+                                    // Only add scheduled_at if it's a resume action and time is provided
+                                    if (newsletter.status === 'paused' && resumeScheduleTime) {
+                                        const scheduleInput = document.createElement('input');
+                                        scheduleInput.type = 'hidden';
+                                        scheduleInput.name = 'scheduled_at';
+                                        scheduleInput.value = resumeScheduleTime;
+                                        form.appendChild(scheduleInput);
+                                    }
+                                    
                                     document.body.appendChild(form);
                                     form.submit();
+                                    setIsResumeModalOpen(false);
                                 }}
                                 className="bg-green-600 hover:bg-green-700"
                             >
-                                Resume
+                                {newsletter.status === 'draft' 
+                                    ? 'Send Now' 
+                                    : (resumeScheduleTime ? 'Schedule' : 'Send Now')}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
@@ -741,28 +916,19 @@ export default function NewsletterShow({ newsletter }: NewsletterShowProps) {
                     isOpen={isDeleteModalOpen}
                     onChange={setIsDeleteModalOpen}
                     title="Delete Newsletter"
-                    description="Are you sure you want to delete this newsletter? This action cannot be undone."
+                    description={`Are you sure you want to delete "${newsletter.subject}"? This action cannot be undone.`}
                     confirmLabel="Delete"
                     cancelLabel="Cancel"
                     onConfirm={() => {
-                        const form = document.createElement('form');
-                        form.method = 'POST';
-                        form.action = route('newsletter.destroy', newsletter.id);
-                        
-                        const methodInput = document.createElement('input');
-                        methodInput.type = 'hidden';
-                        methodInput.name = '_method';
-                        methodInput.value = 'DELETE';
-                        
-                        const token = document.createElement('input');
-                        token.type = 'hidden';
-                        token.name = '_token';
-                        token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                        
-                        form.appendChild(methodInput);
-                        form.appendChild(token);
-                        document.body.appendChild(form);
-                        form.submit();
+                        router.delete(route('newsletter.destroy', newsletter.id), {
+                            onSuccess: () => {
+                                router.visit(route('newsletter.index'))
+                            },
+                            onError: (errors) => {
+                                console.error('Delete error:', errors)
+                                alert('Failed to delete newsletter. Please try again.')
+                            }
+                        })
                     }}
                 />
             </div>

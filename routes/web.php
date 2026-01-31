@@ -4,6 +4,7 @@ use App\Http\Controllers\AiCampaignController;
 use App\Http\Controllers\AiChatController;
 use App\Http\Controllers\AboutPageController;
 use App\Http\Controllers\AdminAboutPageController;
+use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\BoardMemberController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
@@ -27,10 +28,12 @@ use App\Http\Controllers\Admin\ComplianceApplicationController as AdminComplianc
 use App\Http\Controllers\Admin\Form1023ApplicationController as AdminForm1023ApplicationController;
 use App\Http\Controllers\Admin\FeesController;
 use App\Http\Controllers\Admin\RewardPointController;
+use App\Http\Controllers\Admin\ServiceSellerController;
 use Inertia\Inertia;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\HomeController;
+use App\Http\Controllers\SitemapController;
 use App\Http\Controllers\OrderController;
 use App\Http\Controllers\ProductController;
 use PhpOffice\PhpSpreadsheet\Worksheet\Row;
@@ -39,6 +42,9 @@ use App\Http\Controllers\ChatController;
 use App\Http\Controllers\ChatTopicController;
 use App\Http\Controllers\CheckoutController;
 use App\Http\Controllers\DonationController;
+use App\Http\Controllers\FundMeCampaignController;
+use App\Http\Controllers\FundMeController;
+use App\Http\Controllers\FundMeDonationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ManageDataController;
 use App\Http\Controllers\StatusCodeController;
@@ -71,6 +77,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
+use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
 use App\Http\Controllers\PlaidVerificationController;
@@ -82,10 +89,12 @@ use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\Facebook\AuthController;
 use App\Http\Controllers\Facebook\ConfigurationController;
+use App\Http\Controllers\FacebookAppController;
 use App\Http\Controllers\OrderItemController;
 use App\Http\Controllers\FollowerController;
 use App\Http\Controllers\PrintifyProductController;
 use App\Http\Controllers\PrintifyWebhookController;
+use App\Http\Controllers\ServiceHubController;
 use App\Http\Controllers\WebhookManagementController;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Http;
@@ -123,9 +132,23 @@ Broadcast::routes(['middleware' => ['auth']]);
 // Routes without Route::domain() only work on the main domain.
 Route::get('/', [HomeController::class, "index"])->name('home');
 
+// SEO: sitemap and robots
+Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
+Route::get('/robots.txt', function () {
+    $url = rtrim(config('app.url'), '/');
+    return response("User-agent: *\nDisallow:\n\nSitemap: {$url}/sitemap.xml\n", 200, [
+        'Content-Type' => 'text/plain',
+    ]);
+})->name('robots');
+
 // Social Media Feed Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/social-feed', [\App\Http\Controllers\PostController::class, 'index'])->name('social-feed.index');
+    Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
+    Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
+    Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
+    // Toggle favorite organization from search page - use explicit name to override any group prefix
+    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
     Route::post('/posts', [\App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
     Route::put('/posts/{post}', [\App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post}', [\App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
@@ -158,12 +181,21 @@ Route::post('/contact', [App\Http\Controllers\ContactController::class, 'store']
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:admin'])->group(function () {
     Route::get('/admin/about', [AdminAboutPageController::class, 'edit'])->name('admin.about.edit');
     Route::put('/admin/about', [AdminAboutPageController::class, 'update'])->name('admin.about.update');
+    Route::get('/admin/seo', [AdminSeoController::class, 'index'])->name('admin.seo.index');
+    Route::put('/admin/seo', [AdminSeoController::class, 'update'])->name('admin.seo.update');
 });
 
 Route::get('/nonprofit-news', [NonprofitNewsController::class, 'index'])
     ->name('nonprofit.news');
+Route::get('/nonprofit-news/saved', [SavedNewsController::class, 'index'])
+    ->name('nonprofit.news.saved')
+    ->middleware('auth');
+Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'toggle'])
+    ->name('nonprofit.news.save.toggle')
+    ->middleware('auth');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
+Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
 Route::get("/jobs/{id}", [JobsController::class, 'show'])->name('jobs.show');
 Route::get('/get-job-positions', [JobsController::class, "getJobPositions"])->name('jobs.positions.by-category');
 
@@ -175,6 +207,16 @@ Route::get('/nodeboss', [NodeBossController::class, 'frontendIndex'])->name('nod
 Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->name('buy.nodeboss');
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
+
+// Believe FundMe – public listing and campaign pages
+Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
+// Thank-you route must come before {slug} to avoid route conflict
+Route::get('/believe-fundme/thank-you', [FundMeDonationController::class, 'thankYou'])->name('fundme.thank-you')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+Route::post('/believe-fundme/donate', [FundMeDonationController::class, 'store'])->name('fundme.donate.store')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+// Campaign detail page - must come after thank-you to avoid matching it
+Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('fundme.show')->where('slug', '[a-z0-9\-]+');
 
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
@@ -227,6 +269,29 @@ Route::get('/service-hub/test-email', [App\Http\Controllers\ServiceHubController
 Route::get('/service-hub/{slug}/reviews', [App\Http\Controllers\ServiceHubController::class, 'reviews'])->name('service-hub.reviews');
 Route::get('/service-hub/{slug}', [App\Http\Controllers\ServiceHubController::class, 'show'])->name('service-hub.show');
 
+// Cancel order route
+Route::post('/service-hub/orders/{orderId}/cancel', [ServiceHubController::class, 'cancelOrder'])
+    ->name('service-hub.order.cancel')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+// Resubmit delivery route
+Route::post('/service-hub/orders/{orderId}/resubmit', [ServiceHubController::class, 'resubmitDelivery'])
+    ->name('service-hub.order.resubmit')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+// Get order status info route
+Route::get('/service-hub/orders/{orderId}/status-info', [ServiceHubController::class, 'getOrderStatusInfo'])
+    ->name('service-hub.order.status-info')
+    ->middleware(['auth', 'EnsureEmailIsVerified']);
+
+// Admin seller management routes
+Route::prefix('admin')->middleware(['auth', 'role:admin'])->group(function () {
+    Route::get('/service-sellers', [ServiceSellerController::class, 'index'])->name('admin.service-sellers.index');
+    Route::get('/service-sellers/{id}', [ServiceSellerController::class, 'show'])->name('admin.service-sellers.show');
+    Route::post('/service-sellers/{id}/suspend', [ServiceSellerController::class, 'suspend'])->name('admin.service-sellers.suspend');
+    Route::post('/service-sellers/{id}/unsuspend', [ServiceSellerController::class, 'unsuspend'])->name('admin.service-sellers.unsuspend');
+});
+
 // Service Chat Routes
 Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->name('service-hub.chat.')->group(function () {
     Route::post('/{slug}/chat', [App\Http\Controllers\ServiceHubController::class, 'createOrGetServiceChat'])->name('create-or-get');
@@ -263,8 +328,22 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant-hub')->na
     Route::get('/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verify'])->name('redemption.verify');
 });
 
+// Merchant QR verification route (requires merchant auth)
+Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::post('/redemption/verify-from-qr', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyFromQr'])->name('redemption.verify-from-qr');
+});
+
+// Merchant verification route (requires merchant auth for approval)
+Route::middleware(['auth:merchant'])->prefix('merchant-hub')->name('merchant-hub.')->group(function () {
+    Route::post('/redemption/{code}/mark-used', [App\Http\Controllers\MerchantRedemptionController::class, 'markAsUsed'])->name('redemption.mark-used');
+    Route::post('/redemption/{code}/cancel', [App\Http\Controllers\MerchantRedemptionController::class, 'cancelRedemption'])->name('redemption.cancel');
+});
+
 // Public QR code route (no auth required - code in URL is sufficient security)
 Route::get('/merchant-hub/redemption/qr-code/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'generateQrCode'])->name('merchant-hub.redemption.qr-code');
+
+// Public verification page route (for merchants scanning QR codes)
+Route::get('/merchant-hub/redemption/verify/{code}', [App\Http\Controllers\MerchantRedemptionController::class, 'verifyPage'])->name('merchant-hub.redemption.verify-page');
 
 // Merchant Program Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('merchant')->name('merchant.')->group(function () {
@@ -350,6 +429,19 @@ Route::get('/all-events', [EventController::class, 'alleventsPage'])->name('alle
 Route::get('/events/{id}/view', [EventController::class, 'viewEvent'])->name('viewEvent');
 
 
+// User public routes
+Route::get('/users/{slug}', [UserProfileController::class, 'show'])->name('users.show');
+Route::get('/users/{slug}/posts', [UserProfileController::class, 'posts'])->name('users.posts');
+Route::get('/users/{slug}/about', [UserProfileController::class, 'about'])->name('users.about');
+Route::get('/users/{slug}/activity', [UserProfileController::class, 'activity'])->name('users.activity');
+Route::get('/users/{slug}/following', [UserProfileController::class, 'following'])->name('users.following');
+Route::get('/users/{slug}/groups', [UserProfileController::class, 'groups'])->name('users.groups');
+
+// User follow routes (requires auth)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::post('/users/{id}/toggle-follow', [UserProfileController::class, 'toggleFollow'])->name('users.toggle-follow');
+});
+
 // Organization routes
 Route::get('/organizations', [OrganizationController::class, 'index'])->name('organizations');
 Route::get('/organizations/{slug}', [OrganizationController::class, 'show'])->name('organizations.show');
@@ -358,9 +450,13 @@ Route::get('/organizations/{slug}/jobs', [OrganizationController::class, 'jobs']
 Route::get('/organizations/{slug}/events', [OrganizationController::class, 'events'])->name('organizations.events');
 Route::get('/organizations/{slug}/social-media', [OrganizationController::class, 'socialMedia'])->name('organizations.social-media');
 Route::get('/organizations/{slug}/about', [OrganizationController::class, 'about'])->name('organizations.about');
+Route::get('/organizations/{slug}/supporters', [OrganizationController::class, 'supporters'])->name('organizations.supporters');
 Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impact'])->name('organizations.impact');
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
+
+// API route for inviting unregistered organizations (requires auth)
+Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
 Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
 Route::post('/organizations/{id}/generate-mission', [OrganizationController::class, 'generateMission'])->name('organizations.generate-mission'); // id is ExcelData ID
 
@@ -372,6 +468,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
     Route::get('/profile/edit', [UserProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/profile/update', [UserProfileController::class, 'update'])->name('profile.update');
+    Route::post('/profile/timezone', [UserProfileController::class, 'updateTimezone'])->name('profile.timezone');
 
     Route::get('/profile/change-password', [UserProfileController::class, 'changePasswordForm'])->name('profile.change-password');
 
@@ -381,6 +478,12 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
+    Route::get('/profile/job-applications', [UserProfileController::class, 'jobApplications'])->name('profile.job-applications');
+    Route::get('/profile/job-applications/{id}', [UserProfileController::class, 'showJobApplication'])->name('profile.job-applications.show');
+    Route::get('/profile/job-applications/{id}/timesheets', [UserProfileController::class, 'getJobApplicationTimesheets'])->name('profile.job-applications.timesheets');
+    Route::post('/profile/job-applications/{id}/request-completion', [UserProfileController::class, 'requestJobCompletion'])->name('profile.job-applications.request-completion');
+    Route::get('/profile/reward-points-ledger', [UserProfileController::class, 'rewardPointsLedger'])->name('profile.reward-points-ledger');
+    Route::get('/profile/redemptions', [UserProfileController::class, 'redemptions'])->name('profile.redemptions');
     Route::get('/profile/transactions', [TransactionController::class, 'index'])->name('profile.transactions');
     Route::get('/profile/billing', [UserProfileController::class, 'billing'])->name('profile.billing');
     Route::get('/profile/timesheet', [UserProfileController::class, 'timesheet'])->name('profile.timesheet');
@@ -389,6 +492,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
     // Toggle favorite status
+    // Note: Route name is 'organizations.toggle-favorite' (explicit name overrides group prefix)
     Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
     Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
@@ -630,6 +734,15 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::get('/campaigns/ai/create', [AiCampaignController::class, 'create'])->name('campaigns.ai-create');
     Route::post('/campaigns/ai', [AiCampaignController::class, 'store'])->name('campaigns.ai-store');
 
+    // Believe FundMe – organization campaigns
+    Route::get('/fundme', [FundMeCampaignController::class, 'index'])->name('fundme.campaigns.index');
+    Route::get('/fundme/create', [FundMeCampaignController::class, 'create'])->name('fundme.campaigns.create');
+    Route::post('/fundme', [FundMeCampaignController::class, 'store'])->name('fundme.campaigns.store');
+    Route::get('/fundme/{fundme_campaign}/edit', [FundMeCampaignController::class, 'edit'])->name('fundme.campaigns.edit');
+    Route::put('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'update'])->name('fundme.campaigns.update');
+    Route::post('/fundme/{fundme_campaign}/submit', [FundMeCampaignController::class, 'submit'])->name('fundme.campaigns.submit');
+    Route::delete('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'destroy'])->name('fundme.campaigns.destroy');
+
     // AI Chat
     Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::post('/ai-chat/send', [AiChatController::class, 'sendMessage'])->name('ai-chat.send');
@@ -677,13 +790,34 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     });
 
 
+    // old Facebook Integration Routes
+    // Route::prefix('facebook')->group(function () {
+    //     // Connection Management
+    //     Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
+    //     Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
+    //     Route::get('/configure', [ConfigurationController::class, 'index'])
+    //         ->name('facebook.configure');
+    //     Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
+    //     Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
+    //     Route::post('/{id}/set-default', [AuthController::class, 'setDefault'])->name('facebook.set-default');
+
+    //     // Posts Management
+    //     Route::prefix('/posts')->group(function () {
+    //         Route::get('/', [PostController::class, 'index'])->name('facebook.posts.index');
+    //         Route::get('/create', [PostController::class, 'create'])->name('facebook.posts.create');
+    //         Route::post('/', [PostController::class, 'store'])->name('facebook.posts.store');
+    //         Route::post('/{id}/publish', [PostController::class, 'publish'])->name('facebook.posts.publish');
+    //         Route::delete('/{id}', [PostController::class, 'destroy'])->name('facebook.posts.destroy');
+    //         Route::get('/{id}/analytics', [PostController::class, 'analytics'])->name('facebook.posts.analytics');
+    //     });
+    // });
+
     // Facebook Integration Routes
     Route::prefix('facebook')->group(function () {
-        // Connection Management
+        // Connection Management (একটি App ID দিয়ে)
         Route::get('/connect', [AuthController::class, 'connect'])->name('facebook.connect');
+        Route::get('/oauth/redirect', [AuthController::class, 'redirectToFacebook'])->name('facebook.redirect');
         Route::get('/callback', [AuthController::class, 'callback'])->name('facebook.callback');
-        Route::get('/configure', [ConfigurationController::class, 'index'])
-            ->name('facebook.configure');
         Route::post('/{id}/disconnect', [AuthController::class, 'disconnect'])->name('facebook.disconnect');
         Route::post('/{id}/refresh', [AuthController::class, 'refresh'])->name('facebook.refresh');
         Route::post('/{id}/set-default', [AuthController::class, 'setDefault'])->name('facebook.set-default');
@@ -695,7 +829,6 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
             Route::post('/', [PostController::class, 'store'])->name('facebook.posts.store');
             Route::post('/{id}/publish', [PostController::class, 'publish'])->name('facebook.posts.publish');
             Route::delete('/{id}', [PostController::class, 'destroy'])->name('facebook.posts.destroy');
-            Route::get('/{id}/analytics', [PostController::class, 'analytics'])->name('facebook.posts.analytics');
         });
     });
 });
@@ -901,11 +1034,15 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
         ->middleware(['role:organization', 'permission:volunteer.read']);
 
     // Volunteer Time Sheet Routes (must come before volunteers/{volunteer} to avoid route conflicts)
+    // IMPORTANT: Specific routes (like fetch-volunteers) must come BEFORE parameterized routes ({timesheet})
     Route::get('volunteers/timesheet', [VolunteerTimesheetController::class, 'index'])
         ->name('volunteers.timesheet.index')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.read']);
     Route::get('volunteers/timesheet/create', [VolunteerTimesheetController::class, 'create'])
         ->name('volunteers.timesheet.create')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
+    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
+        ->name('volunteers.timesheet.fetch-volunteers')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
     Route::post('volunteers/timesheet', [VolunteerTimesheetController::class, 'store'])
         ->name('volunteers.timesheet.store')
@@ -919,12 +1056,12 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
     Route::put('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'update'])
         ->name('volunteers.timesheet.update')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
+    Route::put('volunteers/timesheet/{timesheet}/status', [VolunteerTimesheetController::class, 'updateStatus'])
+        ->name('volunteers.timesheet.update-status')
+        ->middleware(['role:organization', 'permission:volunteer.timesheet.update']);
     Route::delete('volunteers/timesheet/{timesheet}', [VolunteerTimesheetController::class, 'destroy'])
         ->name('volunteers.timesheet.destroy')
         ->middleware(['role:organization', 'permission:volunteer.timesheet.delete']);
-    Route::get('volunteers/timesheet/fetch-volunteers', [VolunteerTimesheetController::class, 'fetchVolunteers'])
-        ->name('volunteers.timesheet.fetch-volunteers')
-        ->middleware(['role:organization', 'permission:volunteer.timesheet.create']);
 
     Route::get('volunteers/{volunteer}', [VolunteerController::class, 'show'])
         ->name('volunteers.show')
@@ -1081,6 +1218,7 @@ Route::get('/products/{id}', [ProductController::class, 'show'])->name('products
                 Route::post('/recipients/import', [NewsletterController::class, 'importRecipients'])->name('recipients.import');
                 Route::post('/recipients/manual/{recipientId}/subscribe', [NewsletterController::class, 'subscribeManualRecipient'])->name('recipients.manual.subscribe');
                 Route::post('/recipients/manual/{recipientId}/unsubscribe', [NewsletterController::class, 'unsubscribeManualRecipient'])->name('recipients.manual.unsubscribe');
+        Route::get('/export', [NewsletterController::class, 'export'])->name('export');
         Route::get('/create', [NewsletterController::class, 'create'])->name('create');
         Route::get('/create-advanced', [NewsletterController::class, 'createAdvanced'])->name('create-advanced');
         Route::post('/', [NewsletterController::class, 'store'])->name('store');
@@ -1613,8 +1751,8 @@ Route::middleware(['web', 'auth', 'EnsureEmailIsVerified'])->prefix('frontend')-
 // Email Invite Routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics.selected'])->prefix('email-invite')->name('email-invite.')->group(function () {
     Route::get('/', [App\Http\Controllers\EmailInviteController::class, 'index'])->name('index');
-    Route::post('/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
-    Route::post('/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
+    Route::match(['get', 'post'], '/connect/gmail', [App\Http\Controllers\EmailInviteController::class, 'connectGmail'])->name('connect.gmail');
+    Route::match(['get', 'post'], '/connect/outlook', [App\Http\Controllers\EmailInviteController::class, 'connectOutlook'])->name('connect.outlook');
     Route::get('/callback', [App\Http\Controllers\EmailInviteController::class, 'callback'])->name('callback');
     Route::post('/connections/{connection}/sync', [App\Http\Controllers\EmailInviteController::class, 'syncContacts'])->name('sync');
     Route::get('/connections/{connection}/sync-status', [App\Http\Controllers\EmailInviteController::class, 'checkSyncStatus'])->name('sync-status');

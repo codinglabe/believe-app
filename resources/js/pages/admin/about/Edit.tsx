@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react"
 import type { ChangeEvent, FormEvent } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Head, useForm, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import {
   Plus,
   Save,

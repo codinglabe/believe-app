@@ -4,8 +4,9 @@ import { MerchantCard, MerchantCardContent, MerchantCardHeader, MerchantCardTitl
 import { MerchantButton } from '@/components/merchant-ui'
 import { MerchantBadge } from '@/components/merchant-ui'
 import { MerchantDashboardLayout } from '@/components/merchant'
-import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download, Gift } from 'lucide-react'
+import { Search, Filter, CheckCircle2, Clock, XCircle, Eye, Download, Gift, QrCode } from 'lucide-react'
 import { motion } from 'framer-motion'
+import QRCodeScannerSimple from '@/components/merchant/QRCodeScannerSimple'
 
 interface Redemption {
   id: string
@@ -16,7 +17,14 @@ interface Redemption {
   cashPaid?: number
   status: 'pending' | 'approved' | 'fulfilled' | 'canceled'
   redeemedAt: string
+  usedAt?: string | null
   code?: string
+  pricingBreakdown?: {
+    regularPrice: number
+    discountPercentage: number
+    discountAmount: number
+    discountPrice: number
+  } | null
 }
 
 interface Props {
@@ -49,6 +57,7 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
 
   // Don't trigger effect on initial load if filters are already set from URL
   const [isInitialLoad, setIsInitialLoad] = useState(true)
+  const [isScannerOpen, setIsScannerOpen] = useState(false)
 
   useEffect(() => {
     if (isInitialLoad) {
@@ -116,6 +125,13 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
               <h1 className="text-3xl font-bold text-white mb-2">Redemptions</h1>
               <p className="text-gray-400">Manage and track all offer redemptions</p>
             </div>
+            <MerchantButton
+              onClick={() => setIsScannerOpen(true)}
+              className="bg-gradient-to-r from-[#FF1493] to-[#DC143C] hover:from-[#FF1493]/90 hover:to-[#DC143C]/90"
+            >
+              <QrCode className="w-4 h-4 mr-2" />
+              Scan QR Code
+            </MerchantButton>
           </div>
 
           {/* Stats Cards */}
@@ -236,7 +252,9 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Offer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Customer</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Points</th>
-                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Cash</th>
+                      <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">
+                        {redemptions.data.some(r => r.pricingBreakdown) ? 'Discounted Price' : 'Cash'}
+                      </th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Status</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Date</th>
                       <th className="text-left py-3 px-4 text-sm font-semibold text-gray-400">Actions</th>
@@ -266,7 +284,11 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
                           <p className="text-[#FF1493] font-semibold">{redemption.pointsUsed.toLocaleString()}</p>
                         </td>
                         <td className="py-4 px-4">
-                          {redemption.cashPaid ? (
+                          {redemption.pricingBreakdown ? (
+                            <p className="text-white font-semibold">
+                              ${redemption.pricingBreakdown.discountPrice.toFixed(2)}
+                            </p>
+                          ) : redemption.cashPaid ? (
                             <p className="text-white font-semibold">${redemption.cashPaid.toFixed(2)}</p>
                           ) : (
                             <p className="text-gray-500">-</p>
@@ -363,6 +385,12 @@ export default function RedemptionsIndex({ redemptions, stats, filters: initialF
             </MerchantCardContent>
           </MerchantCard>
         </div>
+
+        {/* QR Code Scanner */}
+        <QRCodeScannerSimple
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+        />
       </MerchantDashboardLayout>
     </>
   )

@@ -32,6 +32,9 @@ import {
   PieChart,
   Gift,
   Coins,
+  Briefcase,
+  QrCode,
+  Globe,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -59,6 +62,7 @@ interface PageProps {
   auth: {
     user: {
       id: number
+      slug?: string
       name: string
       email: string
       phone?: string
@@ -152,6 +156,27 @@ const navigationItems = [
     icon: Coins,
     description: "Purchase and manage Believe Points",
     color: "from-blue-500 to-purple-600",
+  },
+  {
+    name: "My Applications",
+    href: "/profile/job-applications",
+    icon: Briefcase,
+    description: "Job & volunteer applications",
+    color: "from-emerald-500 to-teal-600",
+  },
+  {
+    name: "Reward Points",
+    href: "/profile/reward-points-ledger",
+    icon: Gift,
+    description: "Reward points transaction history",
+    color: "from-amber-500 to-yellow-600",
+  },
+  {
+    name: "Redemptions",
+    href: "/profile/redemptions",
+    icon: QrCode,
+    description: "Merchant offer redemptions",
+    color: "from-purple-500 to-pink-600",
   },
   // {
   //   name: "Node Boss",
@@ -355,6 +380,14 @@ export default function ProfileLayout({ children, title, description }: ProfileL
                     Edit Profile
                   </Button>
                 </Link>
+                {user?.slug || user?.id ? (
+                  <Link href={route('users.show', user.slug || user.id)}>
+                    <Button className="bg-white/20 hover:bg-white/30 text-white border-white/30 backdrop-blur-sm transition-all duration-300 hover:scale-105">
+                      <Globe className="w-4 h-4 mr-2" />
+                      Public View
+                    </Button>
+                  </Link>
+                ) : null}
                 {/* <Button
                   variant="outline"
                   className="bg-transparent border-white/30 text-white hover:bg-white/10 backdrop-blur-sm transition-all duration-300 hover:scale-105"

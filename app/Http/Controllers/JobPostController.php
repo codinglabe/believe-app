@@ -73,7 +73,7 @@ class JobPostController extends BaseController
                 'volunteer' => 'Volunteer',
                 'paid' => 'Paid',
                 'internship' => 'Internship',
-                // 'medicaid' => 'Medicaid',
+                'contract' => 'Contract',
             ],
             'locationTypeOptions' => [
                 'onsite' => 'Onsite',
@@ -107,7 +107,8 @@ class JobPostController extends BaseController
             'requirements' => 'nullable|string',
             'pay_rate' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|size:3',
-            'type' => 'required|in:volunteer,paid,internship,medicaid',
+            'points' => 'nullable|integer|min:0',
+            'type' => 'required|in:volunteer,paid,internship,contract',
             'location_type' => 'required|in:onsite,remote,hybrid',
             'city' => 'nullable|string|max:255',
             'state' => 'nullable|string|max:255',
@@ -119,6 +120,11 @@ class JobPostController extends BaseController
 
         if ($request->user()) {
             $validated['organization_id'] = $request->user()->organization?->id;
+        }
+
+        // Force points to 100 for volunteer jobs
+        if ($validated['type'] === 'volunteer') {
+            $validated['points'] = 100;
         }
 
         $validated['date_posted'] = now()->toDateString();
@@ -152,7 +158,7 @@ class JobPostController extends BaseController
                 'volunteer' => 'Volunteer',
                 'paid' => 'Paid',
                 'internship' => 'Internship',
-                'medicaid' => 'Medicaid',
+                'contract' => 'Contract',
             ],
             'locationTypeOptions' => [
                 'onsite' => 'Onsite',
@@ -190,7 +196,8 @@ class JobPostController extends BaseController
             'requirements' => 'nullable|string',
             'pay_rate' => 'nullable|numeric|min:0',
             'currency' => 'nullable|string|size:3',
-            'type' => 'required|in:volunteer,paid,internship,medicaid',
+            'points' => 'nullable|integer|min:0',
+            'type' => 'required|in:volunteer,paid,internship,contract',
             'location_type' => 'required|in:onsite,remote,hybrid',
             'city' => 'nullable|string|max:255',
             'state' => 'nullable|string|max:255',
@@ -199,6 +206,11 @@ class JobPostController extends BaseController
             'application_deadline' => 'nullable|date|after_or_equal:today',
             'status' => 'required|in:draft,open,closed,filled',
         ]);
+
+        // Force points to 100 for volunteer jobs
+        if ($validated['type'] === 'volunteer') {
+            $validated['points'] = 100;
+        }
 
         $jobPost->update($validated);
 

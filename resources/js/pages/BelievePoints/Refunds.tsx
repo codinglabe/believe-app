@@ -9,7 +9,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Coins, RefreshCw, CheckCircle2, AlertCircle, XCircle, Clock, Receipt } from "lucide-react"
 import { showSuccessToast, showErrorToast } from "@/lib/toast"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import { route } from "ziggy-js"
 import { Badge } from "@/components/ui/badge"
 import {
   AlertDialog,

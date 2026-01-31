@@ -9,7 +9,6 @@ import { router, Head } from "@inertiajs/react"
 import { useState } from "react"
 import { Trash2, Eye, Tag, CheckCircle, Clock, Package, XCircle, Filter } from "lucide-react"
 import { showSuccessToast, showErrorToast } from '@/lib/toast'
-import { route } from "ziggy-js"
 import type { BreadcrumbItem } from "@/types"
 
 const breadcrumbs: BreadcrumbItem[] = [

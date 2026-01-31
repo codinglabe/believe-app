@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Donation;
 use App\Models\Organization;
 use App\Services\ImpactScoreService;
+use App\Services\SeoService;
 use App\Services\StripeConfigService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -54,19 +55,20 @@ class DonationController extends Controller
                 'description' => $org->description ?? $org->mission ?? 'No description available.',
                 'image' => $org->registered_user_image ? asset('storage/' . $org->registered_user_image) : null,
                 'raised' => (float) ($org->balance ?? 0),
-                'goal' => 0, // You can add a goal field if needed
+                'goal' => 0,
                 'supporters' => $org->donations()->distinct('user_id')->count('user_id'),
             ];
         });
 
         return Inertia::render('frontend/donate', [
-            'organizations' => $organizations,
+            'seo' => SeoService::forPage('donate'),
+            'organizations' => $organizations->values(),
             'message' => 'Please log in to view your donations.',
             'user' => $user ? [
                 'name' => $user->name,
                 'email' => $user->email,
             ] : null,
-            'searchQuery' => $request->input('search', ''), // Pass back the current search query
+            'searchQuery' => $request->input('search', ''),
         ]);
     }
 

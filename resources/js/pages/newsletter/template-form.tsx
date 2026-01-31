@@ -10,7 +10,60 @@ import { TextArea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useForm } from "@inertiajs/react"
 import { useState } from "react"
-import { ArrowLeft, Save, Eye, Code } from "lucide-react"
+
+// Variable Item Component
+function VariableItem({ variable, description, sampleValue, onCopy }: { 
+    variable: string
+    description: string
+    sampleValue: string
+    onCopy: () => void
+}) {
+    const [copied, setCopied] = useState(false)
+    
+    const handleCopy = (e: React.MouseEvent) => {
+        e.preventDefault()
+        e.stopPropagation()
+        onCopy()
+        setCopied(true)
+        setTimeout(() => setCopied(false), 2000)
+    }
+    
+    return (
+        <div className="group flex items-start justify-between gap-2 p-1.5 hover:bg-white dark:hover:bg-gray-700 rounded transition-colors">
+            <div className="flex-1 min-w-0">
+                <button
+                    type="button"
+                    onClick={handleCopy}
+                    className="text-left w-full"
+                    title={`Click to copy ${variable}`}
+                >
+                    <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs font-mono block mb-1 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors">
+                        {variable}
+                    </code>
+                    <div className="text-xs text-gray-600 dark:text-gray-400">
+                        <span>{description}</span>
+                        <span className="ml-2 text-gray-500 dark:text-gray-500">
+                            → {sampleValue}
+                        </span>
+                    </div>
+                </button>
+            </div>
+            <button
+                type="button"
+                onClick={handleCopy}
+                className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors shrink-0"
+                title="Copy variable"
+            >
+                {copied ? (
+                    <Check className="h-3 w-3 text-green-600 dark:text-green-400" />
+                ) : (
+                    <Copy className="h-3 w-3" />
+                )}
+            </button>
+        </div>
+    )
+}
+import { ArrowLeft, Save, Eye, Code, Copy, Check } from "lucide-react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 
 interface Template {
@@ -29,11 +82,24 @@ interface Template {
     updated_at: string
 }
 
-interface NewsletterTemplateFormProps {
-    template?: Template
+interface PreviewData {
+    organization_name: string
+    organization_email: string
+    organization_phone: string
+    organization_address: string
+    recipient_name: string
+    recipient_email: string
+    current_date: string
+    current_year: string
+    unsubscribe_link: string
 }
 
-export default function NewsletterTemplateForm({ template }: NewsletterTemplateFormProps) {
+interface NewsletterTemplateFormProps {
+    template?: Template
+    previewData?: PreviewData
+}
+
+export default function NewsletterTemplateForm({ template, previewData }: NewsletterTemplateFormProps) {
     const [viewMode, setViewMode] = useState<'edit' | 'preview'>('edit')
     const isEditing = !!template
 
@@ -48,6 +114,37 @@ export default function NewsletterTemplateForm({ template }: NewsletterTemplateF
             timing: 'morning'
         }
     })
+
+    // Use real data from backend, fallback to demo data if not available
+    const sampleData: PreviewData = previewData || {
+        organization_name: 'Your Organization',
+        organization_email: 'contact@example.com',
+        organization_phone: '+1 (555) 000-0000',
+        organization_address: 'Your Organization Address',
+        recipient_name: 'Recipient Name',
+        recipient_email: 'recipient@example.com',
+        current_date: new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }),
+        current_year: new Date().getFullYear().toString(),
+        unsubscribe_link: 'https://example.com/unsubscribe?token=preview_token',
+    }
+
+    // Function to replace variables with sample data
+    const replaceVariables = (text: string): string => {
+        if (!text) return ''
+        
+        let result = text
+        Object.entries(sampleData).forEach(([key, value]) => {
+            const regex = new RegExp(`\\{${key}\\}`, 'g')
+            result = result.replace(regex, value)
+        })
+        
+        return result
+    }
+
+    // Get preview of subject and content with variables replaced
+    const previewSubject = replaceVariables(data.subject)
+    const previewContent = replaceVariables(data.content)
+    const previewHtmlContent = replaceVariables(data.html_content || '')
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
@@ -230,22 +327,37 @@ export default function NewsletterTemplateForm({ template }: NewsletterTemplateF
                                                     </div>
                                                 </div>
                                             ) : (
-                                                <div className="border rounded-lg p-4 bg-white dark:bg-gray-800">
-                                                    <h3 className="font-semibold text-lg mb-4">
-                                                        {data.subject || 'Template Preview'}
-                                                    </h3>
-                                                    <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
-                                                        {data.content || 'No content yet...'}
-                                                    </div>
-                                                    {data.html_content && (
-                                                        <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded">
-                                                            <h4 className="font-medium mb-2">HTML Preview:</h4>
-                                                            <div 
-                                                                className="text-sm"
-                                                                dangerouslySetInnerHTML={{ __html: data.html_content }}
-                                                            />
+                                                <div className="space-y-4">
+                                                    <div className="border rounded-lg p-4 bg-white dark:bg-gray-800">
+                                                        <div className="mb-3 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                                            <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Subject Preview:</p>
+                                                            <h3 className="font-semibold text-lg">
+                                                                {previewSubject || 'Template Preview'}
+                                                            </h3>
                                                         </div>
-                                                    )}
+                                                        <div className="text-sm text-gray-600 dark:text-gray-400 whitespace-pre-wrap">
+                                                            {previewContent || 'No content yet...'}
+                                                        </div>
+                                                        {previewHtmlContent && (
+                                                            <div className="mt-4 p-4 bg-gray-50 dark:bg-gray-700 rounded">
+                                                                <h4 className="font-medium mb-2">HTML Preview:</h4>
+                                                                <div 
+                                                                    className="text-sm prose prose-sm max-w-none dark:prose-invert"
+                                                                    dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
+                                                                />
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    
+                                                    {/* Variable Replacement Info */}
+                                                    <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
+                                                        <p className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-1">
+                                                            💡 Variables replaced with real data
+                                                        </p>
+                                                        <p className="text-xs text-blue-700 dark:text-blue-400">
+                                                            Variables like {'{organization_name}'}, {'{recipient_name}'} are shown with your actual organization and recipient data in the preview above.
+                                                        </p>
+                                                    </div>
                                                 </div>
                                             )}
                                         </CardContent>
@@ -338,33 +450,92 @@ export default function NewsletterTemplateForm({ template }: NewsletterTemplateF
                                 >
                                     <Card className="shadow-lg">
                                         <CardHeader>
-                                            <CardTitle>Available Variables</CardTitle>
+                                            <CardTitle className="flex items-center gap-2">
+                                                <Code className="h-4 w-4" />
+                                                Available Variables
+                                            </CardTitle>
+                                            <CardDescription>
+                                                Click to copy, use in subject or content
+                                            </CardDescription>
                                         </CardHeader>
                                         <CardContent>
-                                            <div className="space-y-2 text-sm">
-                                                <div className="flex items-center gap-2">
-                                                    <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">
-                                                        {`{organization_name}`}
-                                                    </code>
-                                                    <span className="text-gray-600 dark:text-gray-400">Organization name</span>
+                                            <div className="space-y-3">
+                                                <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                                                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Organization</p>
+                                                    <div className="space-y-1.5">
+                                                        <VariableItem 
+                                                            variable="{organization_name}" 
+                                                            description="Organization name"
+                                                            sampleValue={sampleData.organization_name}
+                                                            onCopy={() => navigator.clipboard.writeText('{organization_name}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{organization_email}" 
+                                                            description="Organization email"
+                                                            sampleValue={sampleData.organization_email}
+                                                            onCopy={() => navigator.clipboard.writeText('{organization_email}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{organization_phone}" 
+                                                            description="Organization phone"
+                                                            sampleValue={sampleData.organization_phone}
+                                                            onCopy={() => navigator.clipboard.writeText('{organization_phone}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{organization_address}" 
+                                                            description="Organization address"
+                                                            sampleValue={sampleData.organization_address}
+                                                            onCopy={() => navigator.clipboard.writeText('{organization_address}')}
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">
-                                                        {`{recipient_name}`}
-                                                    </code>
-                                                    <span className="text-gray-600 dark:text-gray-400">Recipient name</span>
+                                                
+                                                <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                                                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recipient</p>
+                                                    <div className="space-y-1.5">
+                                                        <VariableItem 
+                                                            variable="{recipient_name}" 
+                                                            description="Recipient name"
+                                                            sampleValue={sampleData.recipient_name}
+                                                            onCopy={() => navigator.clipboard.writeText('{recipient_name}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{recipient_email}" 
+                                                            description="Recipient email"
+                                                            sampleValue={sampleData.recipient_email}
+                                                            onCopy={() => navigator.clipboard.writeText('{recipient_email}')}
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">
-                                                        {`{unsubscribe_link}`}
-                                                    </code>
-                                                    <span className="text-gray-600 dark:text-gray-400">Unsubscribe link</span>
+                                                
+                                                <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
+                                                    <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">System</p>
+                                                    <div className="space-y-1.5">
+                                                        <VariableItem 
+                                                            variable="{current_date}" 
+                                                            description="Current date"
+                                                            sampleValue={sampleData.current_date}
+                                                            onCopy={() => navigator.clipboard.writeText('{current_date}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{current_year}" 
+                                                            description="Current year"
+                                                            sampleValue={sampleData.current_year}
+                                                            onCopy={() => navigator.clipboard.writeText('{current_year}')}
+                                                        />
+                                                        <VariableItem 
+                                                            variable="{unsubscribe_link}" 
+                                                            description="Unsubscribe link"
+                                                            sampleValue={sampleData.unsubscribe_link}
+                                                            onCopy={() => navigator.clipboard.writeText('{unsubscribe_link}')}
+                                                        />
+                                                    </div>
                                                 </div>
-                                                <div className="flex items-center gap-2">
-                                                    <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-xs">
-                                                        {`{current_date}`}
-                                                    </code>
-                                                    <span className="text-gray-600 dark:text-gray-400">Current date</span>
+                                                
+                                                <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
+                                                    <p className="text-xs text-blue-800 dark:text-blue-300">
+                                                        💡 <strong>Tip:</strong> Variables are automatically replaced in the Preview tab with your actual organization and recipient data
+                                                    </p>
                                                 </div>
                                             </div>
                                         </CardContent>

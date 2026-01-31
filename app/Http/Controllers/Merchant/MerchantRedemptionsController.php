@@ -112,6 +112,29 @@ class MerchantRedemptionsController extends Controller
 
         // Transform redemptions for frontend
         $transformedRedemptions = $redemptions->through(function ($redemption) {
+            // Calculate pricing breakdown - ALWAYS use offer's cash_required as regular price
+            $pricingBreakdown = null;
+            if ($redemption->offer->cash_required && $redemption->offer->cash_required > 0) {
+                // cash_required on the offer is the REGULAR PRICE (before discount)
+                $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
+                $regularPrice = (float) $redemption->offer->cash_required;
+                $discountAmount = ($regularPrice * $discountPercentage) / 100;
+                
+                // Apply discount cap if set
+                if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
+                    $discountAmount = (float) $redemption->offer->discount_cap;
+                }
+                
+                $discountPrice = $regularPrice - $discountAmount;
+                
+                $pricingBreakdown = [
+                    'regularPrice' => round($regularPrice, 2),
+                    'discountPercentage' => round($discountPercentage, 2),
+                    'discountAmount' => round($discountAmount, 2),
+                    'discountPrice' => round($discountPrice, 2),
+                ];
+            }
+            
             return [
                 'id' => (string) $redemption->id,
                 'offerTitle' => $redemption->offer->title ?? 'N/A',
@@ -121,7 +144,9 @@ class MerchantRedemptionsController extends Controller
                 'cashPaid' => $redemption->cash_spent ? (float) $redemption->cash_spent : null,
                 'status' => $redemption->status,
                 'redeemedAt' => $redemption->created_at->toIso8601String(),
+                'usedAt' => $redemption->used_at ? $redemption->used_at->toIso8601String() : null,
                 'code' => $redemption->receipt_code,
+                'pricingBreakdown' => $pricingBreakdown,
             ];
         });
 
@@ -171,6 +196,29 @@ class MerchantRedemptionsController extends Controller
             $imageUrl = Storage::disk('public')->url($imageUrl);
         }
 
+        // Calculate pricing breakdown - ALWAYS use offer's cash_required as regular price
+        $pricingBreakdown = null;
+        if ($redemption->offer->cash_required && $redemption->offer->cash_required > 0) {
+            // cash_required on the offer is the REGULAR PRICE (before discount)
+            $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
+            $regularPrice = (float) $redemption->offer->cash_required;
+            $discountAmount = ($regularPrice * $discountPercentage) / 100;
+            
+            // Apply discount cap if set
+            if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
+                $discountAmount = (float) $redemption->offer->discount_cap;
+            }
+            
+            $discountPrice = $regularPrice - $discountAmount;
+            
+            $pricingBreakdown = [
+                'regularPrice' => round($regularPrice, 2),
+                'discountPercentage' => round($discountPercentage, 2),
+                'discountAmount' => round($discountAmount, 2),
+                'discountPrice' => round($discountPrice, 2),
+            ];
+        }
+        
         $redemptionData = [
             'id' => (string) $redemption->id,
             'code' => $redemption->receipt_code,
@@ -184,7 +232,9 @@ class MerchantRedemptionsController extends Controller
             'status' => $redemption->status,
             'redeemedAt' => $redemption->created_at->toIso8601String(),
             'updatedAt' => $redemption->updated_at->toIso8601String(),
+            'usedAt' => $redemption->used_at ? $redemption->used_at->toIso8601String() : null,
             'qrCodeUrl' => route('redemptions.qr-code', ['code' => $redemption->receipt_code]),
+            'pricingBreakdown' => $pricingBreakdown,
         ];
 
         return Inertia::render('merchant/Redemptions/Show', [

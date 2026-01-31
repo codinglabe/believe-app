@@ -200,19 +200,39 @@ class CartController extends Controller
             // Use firstOrCreate to ensure cart always exists
             $cart = $user->cart()->firstOrCreate();
 
-            $validated = $request->validate([
+            // Get product first to determine if it's Printify or manual
+            $product = Product::with('organization')->findOrFail($request->product_id);
+            $isPrintifyProduct = !empty($product->printify_product_id);
+
+            // Conditional validation based on product type
+            $rules = [
                 'product_id' => 'required|exists:products,id',
                 'quantity' => 'required|integer|min:1',
-                'printify_variant_id' => 'required|string',
-                'printify_blueprint_id' => 'required|integer',
-                'printify_print_provider_id' => 'required|integer',
-                'variant_options' => 'required|array',
-                'variant_price_modifier' => 'required|numeric',
-                'variant_image' => 'nullable|string',
-            ]);
+            ];
 
-            // Get product with available quantity
-            $product = Product::with('organization')->findOrFail($validated['product_id']);
+            if ($isPrintifyProduct) {
+                // Printify product requires Printify fields
+                $rules = array_merge($rules, [
+                    'printify_variant_id' => 'required|string',
+                    'printify_blueprint_id' => 'required|integer',
+                    'printify_print_provider_id' => 'required|integer',
+                    'variant_options' => 'required|array',
+                    'variant_price_modifier' => 'required|numeric',
+                    'variant_image' => 'nullable|string',
+                ]);
+            } else {
+                // Manual product - Printify fields are optional/null
+                $rules = array_merge($rules, [
+                    'printify_variant_id' => 'nullable|string',
+                    'printify_blueprint_id' => 'nullable|integer',
+                    'printify_print_provider_id' => 'nullable|integer',
+                    'variant_options' => 'nullable|array',
+                    'variant_price_modifier' => 'nullable|numeric',
+                    'variant_image' => 'nullable|string',
+                ]);
+            }
+
+            $validated = $request->validate($rules);
             $newProductOrganizationId = $product->organization_id;
 
             // Check if product is available
@@ -234,84 +254,30 @@ class CartController extends Controller
             // Get current cart items
             $currentCartItems = $cart->items()->with('product')->get();
 
-            // If cart is empty, just add the new product
-            if ($currentCartItems->isEmpty()) {
-                // Add new product to cart
-                $this->createCartItem($cart, $validated, $product);
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Product added to cart',
-                    'cartData' => $this->getCartData($request, $cart)
-                ]);
+            // NEW LOGIC: Only allow one product in cart at a time
+            // Delete all existing items when adding a new product
+            if ($currentCartItems->isNotEmpty()) {
+                $cart->items()->delete();
             }
 
-            // Check organization of existing items
-            $existingOrganizationIds = $currentCartItems->pluck('product.organization_id')->unique();
-
-            // If cart already has items from this organization, just add/update
-            if ($existingOrganizationIds->contains($newProductOrganizationId)) {
-                // Check if product with same variant already in cart
-                $existingItem = $cart->items()
-                    ->where('product_id', $validated['product_id'])
-                    ->where('printify_variant_id', $validated['printify_variant_id'])
-                    ->first();
-
-                if ($existingItem) {
-                    // Calculate total quantity after adding
-                    $newTotalQuantity = $existingItem->quantity + $validated['quantity'];
-
-                    // Check if total quantity exceeds available stock
-                    if ($newTotalQuantity > $product->quantity_available) {
-                        $remaining = $product->quantity_available - $existingItem->quantity;
-                        $message = $remaining > 0
-                            ? "You already have {$existingItem->quantity} in cart. You can add only {$remaining} more."
-                            : "You already have maximum quantity in cart";
-
-                        return response()->json([
-                            'success' => false,
-                            'message' => $message
-                        ], 422);
-                    }
-
-                    // Update quantity if same variant exists
-                    $existingItem->update([
-                        'quantity' => $newTotalQuantity
-                    ]);
-                } else {
-                    // Check variant availability and add new item
-                    if (!$this->isVariantAvailable($product, $validated['printify_variant_id'])) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Selected variant is out of stock'
-                        ], 422);
-                    }
-
-                    $this->createCartItem($cart, $validated, $product);
+            // Check variant availability for Printify products
+            if ($isPrintifyProduct && !empty($validated['printify_variant_id'])) {
+                if (!$this->isVariantAvailable($product, $validated['printify_variant_id'])) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Selected variant is out of stock'
+                    ], 422);
                 }
-
-                return response()->json([
-                    'success' => true,
-                    'message' => 'Product added to cart',
-                    'cartData' => $this->getCartData($request, $cart)
-                ]);
             }
-
-            // If cart has items from DIFFERENT organization, ask user for confirmation
-            // (This should be handled in the frontend)
-            // For now, we'll clear the cart and add the new product
-            $cart->items()->delete();
 
             // Add new product to cart
-            $this->createCartItem($cart, $validated, $product);
+            $this->createCartItem($cart, $validated, $product, $isPrintifyProduct);
 
             return response()->json([
                 'success' => true,
-                'message' => 'Cart cleared and new product added from different organization',
+                'message' => 'Product added to cart',
                 'cartData' => $this->getCartData($request, $cart),
-                'cart_cleared' => true, // Flag for frontend
-                'previous_organization' => $existingOrganizationIds->first(),
-                'new_organization' => $newProductOrganizationId
+                'cart_cleared' => $currentCartItems->isNotEmpty() // Flag if cart was cleared
             ]);
 
         } catch (\Exception $e) {
@@ -327,24 +293,37 @@ class CartController extends Controller
     /**
      * Helper method to create cart item
      */
-    private function createCartItem($cart, $validated, $product)
+    private function createCartItem($cart, $validated, $product, $isPrintifyProduct = false)
     {
-        $basePrice = $product->unit_price;
-        $totalPrice = $basePrice + $validated['variant_price_modifier'];
+        $basePrice = $product->unit_price ?? 0;
+        $priceModifier = $validated['variant_price_modifier'] ?? 0;
+        $totalPrice = $basePrice + $priceModifier;
 
-        $variantOptions = json_encode($validated['variant_options']);
+        $variantOptions = $validated['variant_options'] ?? [];
+        $variantOptionsJson = !empty($variantOptions) ? json_encode($variantOptions) : null;
 
-        $cart->items()->create([
+        $cartItemData = [
             'product_id' => $validated['product_id'],
             'quantity' => $validated['quantity'],
             'unit_price' => $totalPrice,
-            'printify_variant_id' => $validated['printify_variant_id'],
-            'printify_blueprint_id' => $validated['printify_blueprint_id'],
-            'printify_print_provider_id' => $validated['printify_print_provider_id'],
-            'variant_options' => $variantOptions,
-            'variant_price_modifier' => $validated['variant_price_modifier'],
+            'variant_options' => $variantOptionsJson,
+            'variant_price_modifier' => $priceModifier,
             'variant_image' => $validated['variant_image'] ?? null,
-        ]);
+        ];
+
+        // Only add Printify fields if it's a Printify product
+        if ($isPrintifyProduct) {
+            $cartItemData['printify_variant_id'] = $validated['printify_variant_id'] ?? null;
+            $cartItemData['printify_blueprint_id'] = $validated['printify_blueprint_id'] ?? null;
+            $cartItemData['printify_print_provider_id'] = $validated['printify_print_provider_id'] ?? null;
+        } else {
+            // For manual products, set Printify fields to null
+            $cartItemData['printify_variant_id'] = null;
+            $cartItemData['printify_blueprint_id'] = null;
+            $cartItemData['printify_print_provider_id'] = null;
+        }
+
+        $cart->items()->create($cartItemData);
     }
 
     /**

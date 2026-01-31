@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Pagination } from "@/components/admin/Pagination"
 import { ConfirmationModal } from "@/components/confirmation-modal"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
 import { useState, useEffect } from "react"
 import { useForm, router } from "@inertiajs/react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
@@ -90,6 +92,18 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
         description: '',
         onConfirm: () => {}
     })
+    const [testEmailModal, setTestEmailModal] = useState<{
+        isOpen: boolean
+        email: string
+    }>({
+        isOpen: false,
+        email: ''
+    })
+    const { data: testEmailData, setData: setTestEmailData, post: postTestEmail, processing: testEmailProcessing, reset: resetTestEmail } = useForm({
+        email: '',
+        subject: 'Test Newsletter Email',
+        content: 'This is a test email from the newsletter system.'
+    })
 
     const { data, setData, post, processing, errors, reset } = useForm({
         email: '',
@@ -137,18 +151,22 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
     }
 
     const handleSendTest = (email: string) => {
-        // For now, show a simple prompt for test email content
-        const subject = prompt('Enter test email subject:', 'Test Newsletter Email');
-        const content = prompt('Enter test email content:', 'This is a test email from the newsletter system.');
-        
-        if (subject && content) {
-            // Use Inertia to send the test email
-            post(route('newsletter.recipients.test-email'), {
-                email: email,
-                subject: subject,
-                content: content
-            });
-        }
+        setTestEmailData({
+            email: email,
+            subject: 'Test Newsletter Email',
+            content: 'This is a test email from the newsletter system.'
+        })
+        setTestEmailModal({ isOpen: true, email })
+    }
+
+    const handleTestEmailSubmit = (e: React.FormEvent) => {
+        e.preventDefault()
+        postTestEmail(route('newsletter.recipients.test-email'), {
+            onSuccess: () => {
+                setTestEmailModal({ isOpen: false, email: '' })
+                resetTestEmail()
+            }
+        })
     }
 
     const handleSubscribe = (orgId: number, email: string) => {
@@ -867,6 +885,70 @@ export default function NewsletterRecipients({ organizations, manualRecipients, 
                 onConfirm={confirmationModal.onConfirm}
                 isLoading={processing}
             />
+
+            {/* Test Email Modal */}
+            <Dialog open={testEmailModal.isOpen} onOpenChange={(open) => setTestEmailModal(prev => ({ ...prev, isOpen: open }))}>
+                <DialogContent className="max-w-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Send Test Email</DialogTitle>
+                        <DialogDescription>
+                            Send a test email to {testEmailModal.email} to preview how your newsletter will look
+                        </DialogDescription>
+                    </DialogHeader>
+                    <form onSubmit={handleTestEmailSubmit} className="space-y-4">
+                        <div>
+                            <Label htmlFor="test_email">Email Address</Label>
+                            <Input
+                                id="test_email"
+                                type="email"
+                                value={testEmailData.email}
+                                onChange={(e) => setTestEmailData('email', e.target.value)}
+                                required
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="test_subject">Subject</Label>
+                            <Input
+                                id="test_subject"
+                                value={testEmailData.subject}
+                                onChange={(e) => setTestEmailData('subject', e.target.value)}
+                                required
+                                className="mt-1"
+                            />
+                        </div>
+                        <div>
+                            <Label htmlFor="test_content">Content</Label>
+                            <Textarea
+                                id="test_content"
+                                value={testEmailData.content}
+                                onChange={(e) => setTestEmailData('content', e.target.value)}
+                                rows={6}
+                                required
+                                className="mt-1"
+                            />
+                        </div>
+                        <DialogFooter>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                    setTestEmailModal({ isOpen: false, email: '' })
+                                    resetTestEmail()
+                                }}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={testEmailProcessing}
+                            >
+                                {testEmailProcessing ? 'Sending...' : 'Send Test Email'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </AppSidebarLayout>
     )
 }

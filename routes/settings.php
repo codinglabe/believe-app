@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\NonprofitExemptionCertificateController;
 use App\Http\Controllers\PaymentMethodSettingController;
 use App\Http\Controllers\Settings\PasswordController;
 use App\Http\Controllers\Settings\ProfileController;
@@ -40,6 +41,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
             Route::get('/settings/application', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'index'])->name('application.index');
             Route::post('/settings/application/optimize', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'optimize'])->name('application.optimize');
             Route::post('/settings/application/clear', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'clear'])->name('application.clear');
+            Route::post('/settings/application/footer', [\App\Http\Controllers\Settings\ApplicationSettingsController::class, 'updateFooter'])->name('application.footer.update');
         });
         Route::get('settings/appearance', function () {
             return Inertia::render('settings/appearance');
@@ -47,10 +49,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])-
 
         // Exemption Certificates - For nonprofit organizations
         Route::middleware('role:organization')->group(function () {
-            Route::get('settings/exemption-certificates', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'index'])->name('exemption-certificates.index');
-            Route::post('settings/exemption-certificates', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');
-            Route::put('settings/exemption-certificates/{id}', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'update'])->name('exemption-certificates.update');
-            Route::delete('settings/exemption-certificates/{id}', [\App\Http\Controllers\NonprofitExemptionCertificateController::class, 'destroy'])->name('exemption-certificates.destroy');
+            Route::get('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'index'])->name('exemption-certificates.index');
+            Route::post('settings/exemption-certificates', [NonprofitExemptionCertificateController::class, 'store'])->name('exemption-certificates.store');
+            Route::put('settings/exemption-certificates/{id}', [NonprofitExemptionCertificateController::class, 'update'])->name('exemption-certificates.update');
+            Route::delete('settings/exemption-certificates/{id}', [NonprofitExemptionCertificateController::class, 'destroy'])->name('exemption-certificates.destroy');
 
             // State Sales Tax - For organizations to view
             Route::get('settings/state-sales-tax', [\App\Http\Controllers\Admin\StateSalesTaxController::class, 'index'])->name('state-sales-tax.index');

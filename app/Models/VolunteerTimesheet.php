@@ -11,14 +11,21 @@ class VolunteerTimesheet extends Model
         'organization_id',
         'created_by',
         'work_date',
+        'start_date',
+        'end_date',
         'hours',
         'description',
         'notes',
+        'status',
+        'is_completion_request',
     ];
 
     protected $casts = [
         'work_date' => 'date',
+        'start_date' => 'date',
+        'end_date' => 'date',
         'hours' => 'decimal:6',
+        'is_completion_request' => 'boolean',
     ];
 
     // Relationships
@@ -53,5 +60,13 @@ class VolunteerTimesheet extends Model
             'job_application_id',
             'user_id'
         );
+    }
+
+    /**
+     * Get the assessment associated with this timesheet.
+     */
+    public function assessment()
+    {
+        return $this->hasOne(VolunteerAssessment::class, 'timesheet_id');
     }
 }

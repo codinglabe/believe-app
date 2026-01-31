@@ -18,8 +18,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Link } from "@inertiajs/react"
-import { route } from "ziggy-js"
-
+import { PageHead } from "@/components/frontend/PageHead"
 interface User {
   id: number
   name: string
@@ -128,6 +127,7 @@ export default function OrganizationEnrollmentsPage({
 
   return (
     <FrontendLayout>
+      <PageHead title="Course Enrollments" description="View and manage enrollments for your organization's courses and events." />
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
         <div className="container mx-auto px-4 py-8">
           {/* Header */}

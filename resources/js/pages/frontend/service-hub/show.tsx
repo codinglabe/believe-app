@@ -40,7 +40,8 @@ import {
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
-import { Head } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
+import { ContactSellerButton } from "@/components/frontend/service-hub/contact-seller-button"
 
 interface Gig {
   id: number
@@ -169,9 +170,11 @@ export default function ServiceShow() {
     router.visit(`/service-hub/create-order?serviceId=${gig.id}&packageId=${selectedPackage.id}`)
   }
 
+  const metaDescription = gig.description ? String(gig.description).slice(0, 160) : undefined;
+
   return (
     <FrontendLayout>
-      <Head title={`${gig.title} - Service Hub`} />
+      <PageHead title={gig.title} description={metaDescription} />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -535,6 +538,14 @@ export default function ServiceShow() {
                     </div>
                   </CardContent>
                 </Card>
+
+                {!isOwner && !isAdmin && (
+                <Card className="border shadow-sm">
+                  <CardContent className="pt-6 space-y-3">
+                      <ContactSellerButton sellerId={gig.seller.id} sellerName={gig.seller.name} gigSlug={gig.slug} gigTitle={gig.title}></ContactSellerButton>
+                  </CardContent>
+                </Card>
+                )}
               </motion.div>
             </div>
           </div>

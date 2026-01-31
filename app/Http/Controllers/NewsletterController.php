@@ -14,6 +14,8 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
+use Carbon\Carbon;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -26,15 +28,59 @@ class NewsletterController extends BaseController
     {
         $this->authorizePermission($request, 'newsletter.read');
 
-        $newsletters = Newsletter::with(['template', 'organization'])
+        $query = Newsletter::with(['template', 'organization'])
             ->select([
                 'id', 'subject', 'status', 'scheduled_at', 'send_date',
                 'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
                 'delivered_count', 'opened_count', 'clicked_count',
                 'newsletter_template_id', 'organization_id'
-            ])
-            ->latest()
-            ->paginate(10);
+            ]);
+
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('subject', 'LIKE', "%{$search}%")
+                  ->orWhereHas('template', function ($templateQuery) use ($search) {
+                      $templateQuery->where('name', 'LIKE', "%{$search}%");
+                  })
+                  ->orWhereHas('organization', function ($orgQuery) use ($search) {
+                      $orgQuery->where('name', 'LIKE', "%{$search}%");
+                  });
+            });
+        }
+
+        // Apply status filter
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        $newsletters = $query->latest()->paginate(10);
+        
+        // Format all dates - Convert from UTC (database) to user's timezone
+        $userTimezone = config('app.timezone', 'UTC');
+        $newsletters->getCollection()->transform(function ($newsletter) use ($userTimezone) {
+            if ($newsletter->scheduled_at) {
+                // Get raw UTC value from database - Laravel stores as UTC string
+                $rawValue = $newsletter->getRawOriginal('scheduled_at') ?? $newsletter->scheduled_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $newsletter->scheduled_at_formatted = $date->format('M d, Y h:i A');
+                $newsletter->scheduled_at_iso = $date->toISOString();
+            }
+            if ($newsletter->send_date) {
+                // Get raw UTC value from database
+                $rawValue = $newsletter->getRawOriginal('send_date') ?? $newsletter->send_date;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $newsletter->send_date_formatted = $date->format('M d, Y h:i A');
+                $newsletter->send_date_iso = $date->toISOString();
+            }
+            if ($newsletter->sent_at) {
+                $rawValue = $newsletter->getRawOriginal('sent_at') ?? $newsletter->sent_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $newsletter->sent_at_formatted = $date->format('M d, Y h:i A');
+            }
+            return $newsletter;
+        });
 
         $templates = NewsletterTemplate::where('is_active', true)->get();
 
@@ -52,7 +98,112 @@ class NewsletterController extends BaseController
             'newsletters' => $newsletters,
             'templates' => $templates,
             'stats' => $stats,
+            'search' => $request->input('search', ''),
+            'statusFilter' => $request->input('status', 'all'),
         ]);
+    }
+
+    /**
+     * Export newsletters to CSV
+     */
+    public function export(Request $request)
+    {
+        $this->authorizePermission($request, 'newsletter.read');
+
+        $query = Newsletter::with(['template', 'organization'])
+            ->select([
+                'id', 'subject', 'status', 'scheduled_at', 'send_date',
+                'sent_at', 'schedule_type', 'total_recipients', 'sent_count',
+                'delivered_count', 'opened_count', 'clicked_count',
+                'bounced_count', 'unsubscribed_count',
+                'newsletter_template_id', 'organization_id', 'created_at'
+            ]);
+
+        // Apply search filter
+        if ($request->has('search') && !empty($request->search)) {
+            $search = $request->search;
+            $query->where(function ($q) use ($search) {
+                $q->where('subject', 'LIKE', "%{$search}%")
+                  ->orWhereHas('template', function ($templateQuery) use ($search) {
+                      $templateQuery->where('name', 'LIKE', "%{$search}%");
+                  })
+                  ->orWhereHas('organization', function ($orgQuery) use ($search) {
+                      $orgQuery->where('name', 'LIKE', "%{$search}%");
+                  });
+            });
+        }
+
+        // Apply status filter
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        $newsletters = $query->latest()->get();
+
+        $filename = 'newsletters_export_' . date('Y-m-d_H-i-s') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
+        ];
+
+        $callback = function() use ($newsletters) {
+            $file = fopen('php://output', 'w');
+
+            // CSV headers
+            fputcsv($file, [
+                'ID',
+                'Subject',
+                'Status',
+                'Template',
+                'Organization',
+                'Total Recipients',
+                'Sent Count',
+                'Delivered Count',
+                'Opened Count',
+                'Clicked Count',
+                'Bounced Count',
+                'Unsubscribed Count',
+                'Open Rate (%)',
+                'Click Rate (%)',
+                'Scheduled At',
+                'Sent At',
+                'Created At'
+            ]);
+
+            foreach ($newsletters as $newsletter) {
+                $openRate = $newsletter->total_recipients > 0 
+                    ? round(($newsletter->opened_count / $newsletter->total_recipients) * 100, 2) 
+                    : 0;
+                $clickRate = $newsletter->total_recipients > 0 
+                    ? round(($newsletter->clicked_count / $newsletter->total_recipients) * 100, 2) 
+                    : 0;
+
+                fputcsv($file, [
+                    $newsletter->id,
+                    $newsletter->subject,
+                    $newsletter->status,
+                    $newsletter->template->name ?? 'N/A',
+                    $newsletter->organization->name ?? 'N/A',
+                    $newsletter->total_recipients,
+                    $newsletter->sent_count,
+                    $newsletter->delivered_count,
+                    $newsletter->opened_count,
+                    $newsletter->clicked_count,
+                    $newsletter->bounced_count,
+                    $newsletter->unsubscribed_count,
+                    $openRate,
+                    $clickRate,
+                    $newsletter->scheduled_at ? $newsletter->scheduled_at->format('Y-m-d H:i:s') : 'N/A',
+                    $newsletter->sent_at ? $newsletter->sent_at->format('Y-m-d H:i:s') : 'N/A',
+                    $newsletter->created_at->format('Y-m-d H:i:s')
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     /**
@@ -108,7 +259,36 @@ class NewsletterController extends BaseController
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        return Inertia::render('newsletter/template-form');
+        $user = Auth::user();
+        
+        // Build organization address from available fields
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip
+            ]);
+            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+        
+        // Get real data for variable preview
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'contact@example.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => Carbon::now()->format('F j, Y'),
+            'current_year' => (string) Carbon::now()->year,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+        ];
+
+        return Inertia::render('newsletter/template-form', [
+            'previewData' => $previewData,
+        ]);
     }
 
     /**
@@ -164,9 +344,36 @@ class NewsletterController extends BaseController
         $this->authorizePermission($request, 'newsletter.edit');
 
         $template = NewsletterTemplate::findOrFail($id);
+        $user = Auth::user();
+        
+        // Build organization address from available fields
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip
+            ]);
+            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+        
+        // Get real data for variable preview
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'contact@example.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => Carbon::now()->format('F j, Y'),
+            'current_year' => (string) Carbon::now()->year,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+        ];
 
         return Inertia::render('newsletter/template-form', [
             'template' => $template,
+            'previewData' => $previewData,
         ]);
     }
 
@@ -414,9 +621,29 @@ class NewsletterController extends BaseController
             'content' => 'required|string',
         ]);
 
-        // TODO: Implement actual test email sending
-        // For now, just return success
-        return back()->with('success', 'Test email sent successfully!');
+        try {
+            // Send test email
+            Mail::raw($request->content, function ($message) use ($request) {
+                $message->to($request->email)
+                        ->subject('[TEST] ' . $request->subject)
+                        ->from(config('mail.from.address'), config('mail.from.name'));
+            });
+
+            Log::info('Test email sent', [
+                'to' => $request->email,
+                'subject' => $request->subject,
+                'sent_by' => Auth::id(),
+            ]);
+
+            return back()->with('success', 'Test email sent successfully to ' . $request->email . '!');
+        } catch (\Exception $e) {
+            Log::error('Test email failed', [
+                'to' => $request->email,
+                'error' => $e->getMessage(),
+            ]);
+
+            return back()->with('error', 'Failed to send test email: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -620,10 +847,45 @@ class NewsletterController extends BaseController
     {
         $this->authorizePermission($request, 'newsletter.create');
 
-        $templates = NewsletterTemplate::where('is_active', true)->get();
+        $templates = NewsletterTemplate::where('is_active', true)
+            ->select(['id', 'name', 'subject', 'content', 'template_type', 'html_content'])
+            ->get();
+
+        $user = Auth::user();
+        
+        // Build organization address from available fields
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip
+            ]);
+            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+        
+        // Get real data for variable preview
+        // For public view link, we'll use a placeholder since newsletter doesn't exist yet
+        // When newsletter is created, this will be replaced with actual newsletter public URL
+        $publicViewLink = url('/newsletter/public/preview');
+        
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'contact@example.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => Carbon::now()->format('F j, Y'),
+            'current_year' => (string) Carbon::now()->year,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+            'public_view_link' => $publicViewLink,
+        ];
 
         return Inertia::render('newsletter/create', [
             'templates' => $templates,
+            'previewData' => $previewData,
         ]);
     }
 
@@ -635,10 +897,10 @@ class NewsletterController extends BaseController
         $this->authorizePermission($request, 'newsletter.create');
 
         // Debug the request data
-        \Log::info('Newsletter store request data:', [
+        Log::info('Newsletter store request data:', [
             'send_date' => $request->send_date,
             'schedule_type' => $request->schedule_type,
-            'user_timezone' => session('user_timezone'),
+            'user_timezone' => config('app.timezone'),
             'browser_timezone' => $request->header('X-Timezone'),
             'all_data' => $request->all()
         ]);
@@ -661,13 +923,44 @@ class NewsletterController extends BaseController
         ];
 
         // Add send_date validation based on schedule_type
+        // Note: We allow past dates since late newsletters will be sent immediately
         if ($request->schedule_type === 'scheduled' || $request->schedule_type === 'recurring') {
-            $rules['send_date'] = 'required|date|after_or_equal:now';
+            $rules['send_date'] = 'required|date';
         } else {
-            $rules['send_date'] = 'nullable|date|after_or_equal:now';
+            $rules['send_date'] = 'nullable|date';
         }
 
-        $request->validate($rules);
+        // Custom validation to check date in user's timezone context
+        // We removed 'after_or_equal:now' to allow past dates (late newsletters will be sent immediately)
+        $validator = \Illuminate\Support\Facades\Validator::make($request->all(), $rules);
+        
+        // Add custom validation for send_date - Carbon automatically uses config('app.timezone')
+        $validator->after(function ($validator) use ($request) {
+            if (($request->schedule_type === 'scheduled' || $request->schedule_type === 'recurring') && $request->send_date) {
+                try {
+                    // Carbon automatically uses config('app.timezone') set by middleware
+                    $sendDate = Carbon::parse($request->send_date);
+                    $now = Carbon::now();
+                    
+                    // Allow past dates (late newsletters will be sent immediately)
+                    // But warn if it's more than 24 hours in the past
+                    if ($sendDate->lt($now->copy()->subDay())) {
+                        // More than 24 hours late - might be a mistake, but allow it
+                        Log::warning('Newsletter scheduled for more than 24 hours in the past', [
+                            'send_date' => $sendDate->toDateTimeString(),
+                            'current_time' => $now->toDateTimeString(),
+                            'timezone' => config('app.timezone'),
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    $validator->errors()->add('send_date', 'Invalid date format.');
+                }
+            }
+        });
+        
+        if ($validator->fails()) {
+            return back()->withErrors($validator)->withInput();
+        }
 
         $template = NewsletterTemplate::findOrFail($request->newsletter_template_id);
 
@@ -675,34 +968,50 @@ class NewsletterController extends BaseController
         $sendDate = null;
         $status = 'draft';
 
-        // Get user's timezone from session or default to UTC
-        $userTimezone = session('user_timezone', config('app.timezone', 'UTC'));
-
+        // Get user's timezone (set by middleware)
+        $userTimezone = config('app.timezone', 'UTC');
+        
         switch ($request->schedule_type) {
             case 'immediate':
                 $status = 'draft';
                 $sendDate = null;
                 break;
             case 'scheduled':
-                $sendDate = $request->send_date ? \Carbon\Carbon::parse($request->send_date, $userTimezone)->utc() : null;
+                // Parse date explicitly in user's timezone, then convert to UTC for storage
+                if ($request->send_date) {
+                    // Create Carbon instance in user's timezone, then convert to UTC
+                    $sendDate = Carbon::createFromFormat('Y-m-d\TH:i', $request->send_date, $userTimezone)->utc();
+                } else {
+                    $sendDate = null;
+                }
                 $status = 'scheduled';
                 break;
             case 'recurring':
-                $sendDate = $request->send_date ? \Carbon\Carbon::parse($request->send_date, $userTimezone)->utc() : null;
+                // Parse date explicitly in user's timezone, then convert to UTC for storage
+                if ($request->send_date) {
+                    $sendDate = Carbon::createFromFormat('Y-m-d\TH:i', $request->send_date, $userTimezone)->utc();
+                } else {
+                    $sendDate = null;
+                }
                 $status = 'scheduled';
                 break;
         }
 
+        // Get authenticated user and their organization
+        $user = Auth::user();
+        $userOrganization = $user->organization;
+        
         // Get target recipients count
         $newsletter = new Newsletter([
-            'organization_id' => null,
+            'organization_id' => $userOrganization->id ?? null,
             'newsletter_template_id' => $request->newsletter_template_id,
             'subject' => $request->subject,
             'content' => $request->content,
             'html_content' => $request->html_content,
             'status' => $status,
-            'scheduled_at' => $request->scheduled_at,
+            'scheduled_at' => $sendDate, // Use send_date for scheduled_at as well for compatibility
             'send_date' => $sendDate,
+            'schedule_type' => $request->schedule_type,
             'schedule_type' => $request->schedule_type,
             'recurring_settings' => $request->recurring_settings,
             'target_type' => $request->target_type,
@@ -734,9 +1043,63 @@ class NewsletterController extends BaseController
                 'scheduled_at', 'send_date', 'sent_at', 'schedule_type',
                 'total_recipients', 'sent_count', 'delivered_count',
                 'opened_count', 'clicked_count', 'bounced_count',
-                'unsubscribed_count', 'newsletter_template_id', 'organization_id'
+                'unsubscribed_count', 'newsletter_template_id', 'organization_id',
+                'created_at', 'updated_at'
             ])
             ->findOrFail($id);
+        
+        // Format all dates - Convert from UTC (database) to user's timezone
+        $userTimezone = config('app.timezone', 'UTC');
+        
+        if ($newsletter->scheduled_at) {
+            // Get raw UTC value from database - Laravel stores as UTC string
+            $rawValue = $newsletter->getRawOriginal('scheduled_at') ?? $newsletter->scheduled_at;
+            $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+            $newsletter->scheduled_at_formatted = $date->format('M d, Y h:i A');
+            $newsletter->scheduled_at_iso = $date->toISOString();
+        }
+        if ($newsletter->send_date) {
+            // Get raw UTC value from database
+            $rawValue = $newsletter->getRawOriginal('send_date') ?? $newsletter->send_date;
+            $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+            $newsletter->send_date_formatted = $date->format('M d, Y h:i A');
+            $newsletter->send_date_iso = $date->toISOString();
+        }
+        if ($newsletter->sent_at) {
+            $rawValue = $newsletter->getRawOriginal('sent_at') ?? $newsletter->sent_at;
+            $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+            $newsletter->sent_at_formatted = $date->format('M d, Y h:i A');
+        }
+        if ($newsletter->created_at) {
+            $rawValue = $newsletter->getRawOriginal('created_at') ?? $newsletter->created_at;
+            $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+            $newsletter->created_at_formatted = $date->format('M d, Y h:i A');
+        }
+        
+        // Format email dates
+        $newsletter->emails->transform(function ($email) use ($userTimezone) {
+            if ($email->sent_at) {
+                $rawValue = $email->getRawOriginal('sent_at') ?? $email->sent_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $email->sent_at_formatted = $date->format('M d, Y h:i A');
+            }
+            if ($email->delivered_at) {
+                $rawValue = $email->getRawOriginal('delivered_at') ?? $email->delivered_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $email->delivered_at_formatted = $date->format('M d, Y h:i A');
+            }
+            if ($email->opened_at) {
+                $rawValue = $email->getRawOriginal('opened_at') ?? $email->opened_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $email->opened_at_formatted = $date->format('M d, Y h:i A');
+            }
+            if ($email->clicked_at) {
+                $rawValue = $email->getRawOriginal('clicked_at') ?? $email->clicked_at;
+                $date = Carbon::parse($rawValue, 'UTC')->setTimezone($userTimezone);
+                $email->clicked_at_formatted = $date->format('M d, Y h:i A');
+            }
+            return $email;
+        });
 
         // Ensure emails have proper structure even if recipient is deleted
         $newsletter->emails->each(function ($email) {
@@ -746,8 +1109,44 @@ class NewsletterController extends BaseController
             }
         });
 
+        $user = Auth::user();
+        
+        // Build organization address from available fields
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip
+            ]);
+            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+        
+        // Carbon automatically uses config('app.timezone') set by middleware
+        $currentDate = Carbon::now()->format('F j, Y');
+        $currentYear = (string) Carbon::now()->year;
+        
+        // Get real data for variable preview
+        // For public view link, use the actual newsletter public URL
+        $publicViewLink = route('newsletter.show', $newsletter->id);
+        
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'contact@example.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => $currentDate,
+            'current_year' => $currentYear,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+            'public_view_link' => $publicViewLink,
+        ];
+
         return Inertia::render('newsletter/show', [
             'newsletter' => $newsletter,
+            'previewData' => $previewData,
         ]);
     }
 
@@ -767,28 +1166,27 @@ class NewsletterController extends BaseController
         // Update status to sending
         $newsletter->update(['status' => 'sending']);
 
-        // Get active recipients
-        $recipients = NewsletterRecipient::active()->get();
+        // Use new targeting system to get recipients
+        try {
+            $targetedUsers = $newsletter->getTargetedUsers();
 
-        if ($recipients->isEmpty()) {
-            $newsletter->update(['status' => 'failed']);
-            return back()->with('error', 'No active recipients found to send the newsletter to.');
-        }
+            if ($targetedUsers->isEmpty()) {
+                $newsletter->update(['status' => 'failed']);
+                return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings.');
+            }
 
-        // Create email records
-        foreach ($recipients as $recipient) {
-            NewsletterEmail::create([
+            // Dispatch job to send emails (job will create email records)
+            dispatch(new SendNewsletterJob($newsletter));
+
+            return back()->with('success', 'Newsletter is being sent to ' . $targetedUsers->count() . ' recipients.');
+        } catch (\Exception $e) {
+            Log::error('Error in send method', [
                 'newsletter_id' => $newsletter->id,
-                'newsletter_recipient_id' => $recipient->id,
-                'email' => $recipient->email,
-                'status' => 'pending',
+                'error' => $e->getMessage(),
             ]);
+            $newsletter->update(['status' => 'failed']);
+            return back()->with('error', 'Failed to send newsletter: ' . $e->getMessage());
         }
-
-        // Dispatch job to send emails
-        dispatch(new SendNewsletterJob($newsletter));
-
-        return back()->with('success', 'Newsletter is being sent to ' . $recipients->count() . ' recipients.');
     }
 
     /**
@@ -827,9 +1225,41 @@ class NewsletterController extends BaseController
         $newsletter = Newsletter::with(['template'])->findOrFail($id);
         $templates = NewsletterTemplate::where('is_active', true)->get();
 
+        $user = Auth::user();
+        
+        // Build organization address from available fields
+        $orgAddress = '';
+        if ($user->organization) {
+            $addressParts = array_filter([
+                $user->organization->street,
+                $user->organization->city,
+                $user->organization->state,
+                $user->organization->zip
+            ]);
+            $orgAddress = !empty($addressParts) ? implode(', ', $addressParts) : 'Your Organization Address';
+        }
+        
+        // Get real data for variable preview
+        // For public view link, use the actual newsletter public URL if available
+        $publicViewLink = route('newsletter.show', $newsletter->id);
+        
+        $previewData = [
+            'organization_name' => $user->organization->name ?? ($user->name ?? 'Your Organization'),
+            'organization_email' => $user->organization->email ?? ($user->email ?? 'contact@example.com'),
+            'organization_phone' => $user->organization->phone ?? ($user->contact_number ?? '+1 (555) 000-0000'),
+            'organization_address' => $orgAddress ?: 'Your Organization Address',
+            'recipient_name' => $user->name ?? 'Recipient Name',
+            'recipient_email' => $user->email ?? 'recipient@example.com',
+            'current_date' => Carbon::now()->format('F j, Y'),
+            'current_year' => (string) Carbon::now()->year,
+            'unsubscribe_link' => url('/newsletter/unsubscribe?token=preview_token'),
+            'public_view_link' => $publicViewLink,
+        ];
+
         return Inertia::render('newsletter/edit', [
             'newsletter' => $newsletter,
             'templates' => $templates,
+            'previewData' => $previewData,
         ]);
     }
 
@@ -870,49 +1300,74 @@ class NewsletterController extends BaseController
 
         $newsletter = Newsletter::findOrFail($id);
 
-        // Only allow schedule update for scheduled newsletters
-        if ($newsletter->status !== 'scheduled') {
-            return back()->with('error', 'Only scheduled newsletters can have their schedule updated.');
+        // Only allow schedule update for scheduled newsletters (not sent, failed, or sending)
+        if (!in_array($newsletter->status, ['scheduled', 'draft'])) {
+            return back()->with('error', 'Only scheduled or draft newsletters can have their schedule updated.');
         }
 
+        // Allow updating to past dates (for late newsletters) or future dates
         $request->validate([
-            'scheduled_at' => 'required|date|after:now',
+            'scheduled_at' => 'required|date',
         ]);
 
-        // Get user's timezone from session or default to UTC
-        $userTimezone = session('user_timezone', config('app.timezone', 'UTC'));
-
+        // Carbon automatically uses config('app.timezone') set by middleware
         \Illuminate\Support\Facades\Log::info('Update schedule debug:', [
             'scheduled_at_input' => $request->scheduled_at,
-            'user_timezone' => $userTimezone,
+            'user_timezone' => config('app.timezone'),
             'browser_timezone' => $request->header('X-Timezone'),
         ]);
 
-        // Parse the scheduled time in the user's timezone and convert to UTC
-        $scheduledAt = \Carbon\Carbon::parse($request->scheduled_at, $userTimezone)->utc();
+        // Parse the scheduled time (in user's timezone from config) and convert to UTC
+        $scheduledAt = Carbon::parse($request->scheduled_at)->utc();
 
-        \Illuminate\Support\Facades\Log::info('Schedule conversion result:', [
-            'original' => $request->scheduled_at,
+        // Convert back to user timezone for verification
+        $localTime = $scheduledAt->copy()->setTimezone(config('app.timezone'));
+        
+        Log::info('Schedule conversion result:', [
+            'original_input' => $request->scheduled_at,
+            'user_timezone' => config('app.timezone'),
             'converted_utc' => $scheduledAt->toISOString(),
-            'converted_local' => $scheduledAt->setTimezone($userTimezone)->toISOString(),
+            'converted_local' => $localTime->toDateTimeString(),
+            'converted_local_iso' => $localTime->toISOString(),
+            'verification' => "User entered {$request->scheduled_at} in " . config('app.timezone') . ", stored as {$scheduledAt->toDateTimeString()} UTC, which is {$localTime->toDateTimeString()} in " . config('app.timezone'),
         ]);
 
+        // Check if updating to a past date (late newsletter)
+        $isLate = $scheduledAt->lt(now());
+        if ($isLate) {
+            Log::warning("Updating newsletter schedule to past date - will be sent immediately", [
+                'newsletter_id' => $newsletter->id,
+                'scheduled_at' => $scheduledAt->toISOString(),
+                'current_time' => now()->toISOString(),
+            ]);
+        }
+        
         // Update both scheduled_at and send_date to keep them in sync
         $newsletter->update([
             'scheduled_at' => $scheduledAt,
             'send_date' => $scheduledAt, // Keep send_date in sync
         ]);
 
-        \Illuminate\Support\Facades\Log::info('Newsletter schedule updated', [
+        $message = $isLate 
+            ? 'Newsletter schedule updated. Since the time is in the past, it will be sent immediately when the scheduler runs.'
+            : 'Newsletter schedule updated successfully.';
+
+        $localTime = $scheduledAt->copy()->setTimezone(config('app.timezone'));
+        
+        Log::info('Newsletter schedule updated', [
             'newsletter_id' => $newsletter->id,
-            'old_scheduled_at' => $newsletter->getOriginal('scheduled_at'),
-            'new_scheduled_at' => $request->scheduled_at,
-            'old_send_date' => $newsletter->getOriginal('send_date'),
-            'new_send_date' => $request->scheduled_at,
+            'old_scheduled_at_utc' => $newsletter->getOriginal('scheduled_at'),
+            'old_scheduled_at_local' => $newsletter->getOriginal('scheduled_at') ? Carbon::parse($newsletter->getOriginal('scheduled_at'))->setTimezone(config('app.timezone'))->toDateTimeString() : null,
+            'new_scheduled_at_utc' => $scheduledAt->toISOString(),
+            'new_scheduled_at_local' => $localTime->toDateTimeString(),
+            'old_send_date_utc' => $newsletter->getOriginal('send_date'),
+            'new_send_date_utc' => $scheduledAt->toISOString(),
+            'is_late' => $isLate,
+            'user_timezone' => config('app.timezone'),
         ]);
 
         return redirect()->route('newsletter.index')
-            ->with('success', 'Newsletter schedule updated successfully!');
+            ->with('success', $message);
     }
 
     /**
@@ -987,82 +1442,126 @@ class NewsletterController extends BaseController
         Log::info('Newsletter found for manual send', [
             'newsletter_id' => $newsletter->id,
             'current_status' => $newsletter->status,
-            'subject' => $newsletter->subject
+            'subject' => $newsletter->subject,
+            'target_type' => $newsletter->target_type ?? 'all',
+            'target_users' => $newsletter->target_users ?? [],
+            'target_organizations' => $newsletter->target_organizations ?? [],
         ]);
 
-        // Allow manual sending for any status (including sent for "Send Again" functionality)
-        // Only prevent sending if currently in sending status
-        if ($newsletter->status === 'sending') {
-            return back()->with('error', 'Newsletter is currently being sent. Please wait for it to complete.');
-        }
-
-        // Store original status for "Send Again" logic
-        $wasSent = $newsletter->status === 'sent';
-
-        // Update status to sending
-        $newsletter->update([
-            'status' => 'sending',
-            'scheduled_at' => now(),
-        ]);
-
-        // Clear existing email records if this is a "Send Again" (newsletter was previously sent)
-        if ($wasSent) {
-            NewsletterEmail::where('newsletter_id', $newsletter->id)->delete();
-        }
-
-        // For new targeting system, let the job handle recipient creation
-        // For backward compatibility, check if it's using old system
-        if ($newsletter->target_type === 'all' && empty($newsletter->target_users) && empty($newsletter->target_organizations)) {
-            // Old system - use NewsletterRecipient
-            $recipients = NewsletterRecipient::active()->get();
-
-            if ($recipients->isEmpty()) {
-                $newsletter->update(['status' => 'failed']);
-                return back()->with('error', 'No active recipients found to send the newsletter to.');
+        try {
+            // Allow manual sending for any status (including sent for "Send Again" functionality)
+            // Only prevent sending if currently in sending status
+            if ($newsletter->status === 'sending') {
+                return back()->with('error', 'Newsletter is currently being sent. Please wait for it to complete.');
             }
 
-            // Create email records for all recipients
-            foreach ($recipients as $recipient) {
-                NewsletterEmail::create([
+            // Store original status for "Send Again" logic
+            $wasSent = $newsletter->status === 'sent';
+
+            // Update status to sending
+            $newsletter->update([
+                'status' => 'sending',
+                'scheduled_at' => now(),
+            ]);
+
+            Log::info('Newsletter status updated to sending', [
+                'newsletter_id' => $newsletter->id,
+            ]);
+
+            // Clear existing email records if this is a "Send Again" (newsletter was previously sent)
+            if ($wasSent) {
+                NewsletterEmail::where('newsletter_id', $newsletter->id)->delete();
+                Log::info('Cleared existing email records for send again', [
                     'newsletter_id' => $newsletter->id,
-                    'newsletter_recipient_id' => $recipient->id,
-                    'email' => $recipient->email,
-                    'status' => 'pending',
                 ]);
             }
-        } else {
-            // New targeting system - let the job handle recipient creation
-            $targetedUsers = $newsletter->getTargetedUsers();
-            if ($targetedUsers->isEmpty()) {
+
+            // Use new targeting system - getTargetedUsers() handles all cases including 'all'
+            // The job will create email records from the targeted users
+            Log::info('Determining recipients using targeting system', [
+                'newsletter_id' => $newsletter->id,
+                'target_type' => $newsletter->target_type ?? 'all',
+            ]);
+            
+            try {
+                $targetedUsers = $newsletter->getTargetedUsers();
+                Log::info('Got targeted users', [
+                    'newsletter_id' => $newsletter->id,
+                    'targeted_users_count' => $targetedUsers->count(),
+                ]);
+                
+                if ($targetedUsers->isEmpty()) {
+                    $newsletter->update(['status' => 'failed']);
+                    Log::warning('No targeted recipients found', [
+                        'newsletter_id' => $newsletter->id,
+                        'target_type' => $newsletter->target_type,
+                    ]);
+                    return back()->with('error', 'No recipients found to send the newsletter to. Please check your targeting settings or add recipients.');
+                }
+                
+                // Create email records for targeted users (let the job handle it, but we can pre-create for immediate feedback)
+                // Actually, let the job handle this to avoid duplicate creation
+                Log::info('Recipients determined, job will create email records', [
+                    'newsletter_id' => $newsletter->id,
+                    'recipients_count' => $targetedUsers->count(),
+                ]);
+            } catch (\Exception $e) {
+                Log::error('Error getting targeted users', [
+                    'newsletter_id' => $newsletter->id,
+                    'error' => $e->getMessage(),
+                    'trace' => $e->getTraceAsString(),
+                ]);
                 $newsletter->update(['status' => 'failed']);
-                return back()->with('error', 'No targeted recipients found to send the newsletter to.');
+                return back()->with('error', 'Error determining recipients: ' . $e->getMessage());
             }
+
+            // Dispatch job to send emails
+            Log::info('Dispatching SendNewsletterJob', [
+                'newsletter_id' => $newsletter->id,
+            ]);
+            
+            dispatch(new SendNewsletterJob($newsletter));
+
+            // Get recipient count for message
+            $recipientCount = 0;
+            try {
+                $recipientCount = $newsletter->getTargetedUsers()->count();
+            } catch (\Exception $e) {
+                Log::error('Error counting targeted users', [
+                    'newsletter_id' => $newsletter->id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Use a fallback count from email records if they exist
+                $recipientCount = NewsletterEmail::where('newsletter_id', $newsletter->id)
+                    ->where('status', 'pending')
+                    ->count();
+            }
+
+            $message = $wasSent ?
+                'Newsletter is being sent again to ' . $recipientCount . ' recipients.' :
+                'Newsletter is being sent to ' . $recipientCount . ' recipients.';
+
+            Log::info('Newsletter manual send completed', [
+                'newsletter_id' => $newsletter->id,
+                'recipients_count' => $recipientCount,
+                'was_sent' => $wasSent,
+                'message' => $message
+            ]);
+
+            return redirect()->route('newsletter.index')
+                ->with('success', $message);
+                
+        } catch (\Exception $e) {
+            Log::error('Error in manual send', [
+                'newsletter_id' => $newsletter->id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            
+            $newsletter->update(['status' => 'failed']);
+            
+            return back()->with('error', 'Failed to send newsletter: ' . $e->getMessage());
         }
-
-        // Dispatch job to send emails
-        dispatch(new SendNewsletterJob($newsletter));
-
-        // Get recipient count for message
-        $recipientCount = 0;
-        if ($newsletter->target_type === 'all' && empty($newsletter->target_users) && empty($newsletter->target_organizations)) {
-            $recipientCount = NewsletterRecipient::active()->count();
-        } else {
-            $recipientCount = $newsletter->getTargetedUsers()->count();
-        }
-
-        $message = $wasSent ?
-            'Newsletter is being sent again to ' . $recipientCount . ' recipients.' :
-            'Newsletter is being sent to ' . $recipientCount . ' recipients.';
-
-        Log::info('Newsletter manual send completed', [
-            'newsletter_id' => $newsletter->id,
-            'recipients_count' => $recipientCount,
-            'was_sent' => $wasSent,
-            'message' => $message
-        ]);
-
-        return redirect()->route('newsletter.index')
-            ->with('success', $message);
     }
 
     /**
@@ -1074,15 +1573,39 @@ class NewsletterController extends BaseController
 
         $newsletter = Newsletter::findOrFail($id);
 
-        // Allow deletion of draft, paused, scheduled, sending, and sent newsletters
-        if (!in_array($newsletter->status, ['draft', 'paused', 'scheduled', 'sending', 'sent'])) {
-            return back()->with('error', 'Only draft, paused, scheduled, sending, and sent newsletters can be deleted.');
+        Log::info('Newsletter delete request', [
+            'newsletter_id' => $newsletter->id,
+            'status' => $newsletter->status,
+            'user_id' => Auth::id(),
+        ]);
+
+        // Allow deletion of any status except currently sending (to prevent data loss)
+        if ($newsletter->status === 'sending') {
+            return back()->with('error', 'Cannot delete newsletter while it is being sent. Please wait for it to complete or pause it first.');
         }
 
-        $newsletter->delete();
+        try {
+            // Delete associated email records first
+            NewsletterEmail::where('newsletter_id', $newsletter->id)->delete();
+            
+            // Delete the newsletter
+            $newsletter->delete();
 
-        return redirect()->route('newsletter.index')
-            ->with('success', 'Newsletter deleted successfully!');
+            Log::info('Newsletter deleted successfully', [
+                'newsletter_id' => $id,
+            ]);
+
+            return redirect()->route('newsletter.index')
+                ->with('success', 'Newsletter deleted successfully!');
+        } catch (\Exception $e) {
+            Log::error('Error deleting newsletter', [
+                'newsletter_id' => $id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return back()->with('error', 'Failed to delete newsletter: ' . $e->getMessage());
+        }
     }
 
     /**

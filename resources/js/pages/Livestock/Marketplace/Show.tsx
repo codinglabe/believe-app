@@ -7,7 +7,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Link, router, Head, useForm, usePage } from "@inertiajs/react"
 import { useState } from "react"
-import { route } from "ziggy-js"
 import { 
     ArrowLeft,
     Heart,

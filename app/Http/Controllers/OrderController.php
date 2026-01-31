@@ -6,6 +6,7 @@ use App\Models\Order;
 use App\Models\User;
 use App\Services\PrintifyService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Inertia\Response;
 use Stripe\Refund;
@@ -47,9 +48,23 @@ class OrderController extends Controller
             });
         }
 
-        $orders = $query->with(['user', 'shippingInfo'])
+        $orders = $query->with(['user', 'shippingInfo', 'items.product'])
             ->orderBy('created_at', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
+
+        // Add product type information to each order
+        $orders->getCollection()->transform(function ($order) {
+            $order->is_printify_order = !empty($order->printify_order_id);
+
+            // Check if any item is a manual product
+            $hasManualProduct = $order->items->contains(function ($item) {
+                return empty($item->product->printify_product_id);
+            });
+            $order->has_manual_product = $hasManualProduct;
+            $order->product_type = $order->is_printify_order ? 'Printify' : ($hasManualProduct ? 'Manual' : 'Mixed');
+
+            return $order;
+        });
 
         return Inertia::render('orders/index', [
             'orders' => $orders,
@@ -265,7 +280,8 @@ class OrderController extends Controller
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->subtotal,
                     'printify_variant_id' => $item->printify_variant_id,
-                    'variant_data' => json_decode($item->variant_data)->size,
+                    'variant_data' => $this->getVariantData($item->variant_data),
+                    'is_manual_product' => empty($item->product->printify_product_id),
                 ];
             }),
         ];
@@ -629,7 +645,136 @@ class OrderController extends Controller
      */
     public function update(Request $request, Order $order)
     {
-        //
+        $validated = $request->validate([
+            'status' => 'required|in:processing,shipped,delivered,cancelled,refunded',
+        ]);
+
+        // Prevent status change if order is already cancelled
+        if ($order->status === 'cancelled' || $order->status === 'refunded') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot change status of a cancelled or refunded order.'
+            ], 403);
+        }
+
+        // Check if this is a manual product order (not Printify)
+        $isManualOrder = empty($order->printify_order_id);
+
+        if (!$isManualOrder) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Cannot manually update status for Printify orders. Status is managed by Printify.'
+            ], 403);
+        }
+
+        // Check if order has any manual products
+        $hasManualProduct = $order->items->contains(function ($item) {
+            return empty($item->product->printify_product_id);
+        });
+
+        if (!$hasManualProduct) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This order does not contain manual products.'
+            ], 403);
+        }
+
+        // If status is being changed to cancelled, process refund
+        if ($validated['status'] === 'cancelled' && $order->status !== 'cancelled') {
+            try {
+                DB::beginTransaction();
+
+                // Process refund based on payment method
+                $refundResult = $this->processRefund($order);
+
+                if (!$refundResult['success']) {
+                    DB::rollBack();
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Failed to process refund: ' . $refundResult['message']
+                    ], 400);
+                }
+
+                // Update order status and payment status
+                $updateData = [
+                    'status' => 'cancelled',
+                    'payment_status' => 'refunded',
+                    'refunded_at' => now(),
+                ];
+
+                // Store refund ID if it's a Stripe refund
+                if (isset($refundResult['refund_id']) && strpos($refundResult['refund_id'], 'stripe') === false) {
+                    $updateData['stripe_refund_id'] = $refundResult['refund_id'];
+                }
+
+                $order->update($updateData);
+
+                // Restore product inventory
+                foreach ($order->items as $item) {
+                    $product = $item->product;
+                    if ($product) {
+                        $product->update([
+                            'quantity_ordered' => max(0, $product->quantity_ordered - $item->quantity),
+                            'quantity_available' => $product->quantity_available + $item->quantity,
+                        ]);
+                    }
+                }
+
+                DB::commit();
+
+                \Log::info('Manual product order cancelled and refund processed', [
+                    'order_id' => $order->id,
+                    'refund_result' => $refundResult,
+                ]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Order cancelled and refund processed successfully',
+                    'order' => $order->fresh(),
+                    'refund' => $refundResult,
+                ]);
+
+            } catch (\Exception $e) {
+                DB::rollBack();
+                \Log::error('Error cancelling order and processing refund: ' . $e->getMessage());
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Failed to cancel order: ' . $e->getMessage()
+                ], 500);
+            }
+        }
+
+        // For other status changes (not cancelled)
+        $order->update([
+            'status' => $validated['status'],
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Order status updated successfully',
+            'order' => $order->fresh(),
+        ]);
+    }
+
+    /**
+     * Safely get variant data from JSON
+     */
+    private function getVariantData($variantDataJson)
+    {
+        if (empty($variantDataJson)) {
+            return null;
+        }
+
+        $decoded = json_decode($variantDataJson, true);
+
+        if (is_array($decoded) && isset($decoded['size'])) {
+            return $decoded['size'];
+        } elseif (is_object($decoded) && isset($decoded->size)) {
+            return $decoded->size;
+        }
+
+        return null;
     }
 
     /**

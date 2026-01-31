@@ -29,7 +29,7 @@ import {
 } from "lucide-react"
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
-import { Head } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 
 interface Gig {
   id: number
@@ -230,7 +230,7 @@ export default function ServiceHubIndex() {
 
   return (
     <FrontendLayout>
-      <Head title="Service Hub - Find Professional Services" />
+      <PageHead title="Service Hub" description="Find professional services from verified sellers. Book freelancers and support causes through our marketplace." />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-background/80">
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
           <div className="container mx-auto px-4 py-3 md:py-4">

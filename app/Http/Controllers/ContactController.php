@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ContactPageContent;
 use App\Models\ContactSubmission;
+use App\Services\SeoService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Log;
@@ -22,6 +23,7 @@ class ContactController extends Controller
         $cta = ContactPageContent::bySection('cta')->active()->first();
 
         return Inertia::render('frontend/contact', [
+            'seo' => SeoService::forPage('contact'),
             'hero' => $hero ? $hero->content : null,
             'contactMethods' => $contactMethods->map(fn($item) => $item->content),
             'faqItems' => $faqItems->map(fn($item) => $item->content),

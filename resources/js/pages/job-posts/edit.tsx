@@ -26,6 +26,7 @@ interface JobPost {
     requirements: string;
     pay_rate: number | null;
     currency: string | null;
+    points: number | null;
     type: string;
     location_type: string;
     city: string | null;
@@ -61,27 +62,29 @@ export default function Edit({
     currencyOptions,
 }: Props) {
     const [formData, setFormData] = useState({
-        position_id: '',
-        title: '',
-        description: '',
-        requirements: '',
-        pay_rate: '',
-        currency: '',
-        type: '',
-        location_type: '',
-        city: '',
-        state: '',
-        country: '',
-        time_commitment_min_hours: '',
-        application_deadline: '',
-        date_posted: '',
-        status: 'draft',
+        position_id: jobPost.position_id?.toString() || '',
+        title: jobPost.title || '',
+        description: jobPost.description || '',
+        requirements: jobPost.requirements || '',
+        pay_rate: jobPost.pay_rate?.toString() || '',
+        currency: jobPost.currency || '',
+        points: jobPost.points?.toString() || '',
+        type: jobPost.type || '',
+        location_type: jobPost.location_type || '',
+        city: jobPost.city || '',
+        state: jobPost.state || '',
+        country: jobPost.country || '',
+        time_commitment_min_hours: jobPost.time_commitment_min_hours?.toString() || '',
+        application_deadline: jobPost.application_deadline || '',
+        date_posted: jobPost.date_posted || '',
+        status: jobPost.status || 'draft',
     });
 
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
+        const points = jobPost.type === 'volunteer' ? '100' : (jobPost.points?.toString() || '');
         setFormData({
             position_id: jobPost.position_id.toString(),
             title: jobPost.title,
@@ -89,6 +92,7 @@ export default function Edit({
             requirements: jobPost.requirements || '',
             pay_rate: jobPost.pay_rate?.toString() || '',
             currency: jobPost.currency || '',
+            points: points,
             type: jobPost.type,
             location_type: jobPost.location_type,
             city: jobPost.city || '',
@@ -106,7 +110,13 @@ export default function Edit({
         setIsSubmitting(true);
         setErrors({});
 
-        router.put(`/job-posts/${jobPost.id}`, formData, {
+        // Ensure points is 100 for volunteer jobs
+        const submitData = { ...formData };
+        if (submitData.type === 'volunteer') {
+            submitData.points = '100';
+        }
+
+        router.put(`/job-posts/${jobPost.id}`, submitData, {
             onError: (errors) => {
                 setErrors(errors);
                 showErrorToast('Failed to update job post');
@@ -119,11 +129,25 @@ export default function Edit({
     };
 
     const handleChange = (field: string, value: string) => {
-        setFormData((prev) => ({ ...prev, [field]: value }));
+        setFormData((prev) => {
+            const updated = { ...prev, [field]: value };
+            // Auto-set points to 100 when type changes to volunteer
+            if (field === 'type' && value === 'volunteer') {
+                updated.points = '100';
+            }
+            return updated;
+        });
         if (errors[field]) {
             setErrors((prev) => ({ ...prev, [field]: '' }));
         }
     };
+
+    // Auto-set points to 100 when type is volunteer
+    useEffect(() => {
+        if (formData.type === 'volunteer' && formData.points !== '100') {
+            setFormData((prev) => ({ ...prev, points: '100' }));
+        }
+    }, [formData.type]);
 
     return (
         <AppLayout breadcrumbs={breadcrumbs}>
@@ -147,25 +171,25 @@ export default function Edit({
                         <form onSubmit={handleSubmit} className="space-y-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                 <div className="space-y-2">
-                                <Label htmlFor="position_id">Position *</Label>
-                                <select
-                                    id="position_id"
-                                    value={formData.position_id}
-                                    onChange={(e) => handleChange('position_id', e.target.value)}
-                                    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-950 dark:text-white dark:border-gray-600 ${
-                                    errors.position_id ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
-                                    }`}
-                                >
-                                    <option value="">Select a position</option>
-                                    {positions.map((position) => (
-                                    <option key={position.id} value={position.id}>
-                                        {position.title}
-                                    </option>
-                                    ))}
-                                </select>
-                                {errors.position_id && (
-                                    <p className="text-sm text-red-500">{errors.position_id}</p>
-                                )}
+                                    <Label htmlFor="position_id">Position *</Label>
+                                    <Select
+                                        value={formData.position_id || undefined}
+                                        onValueChange={(value) => handleChange('position_id', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select a position" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {positions.map((position) => (
+                                                <SelectItem key={position.id} value={position.id.toString()}>
+                                                    {position.title}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.position_id && (
+                                        <p className="text-sm text-red-500">{errors.position_id}</p>
+                                    )}
                                 </div>
 
                                 <div className="space-y-2">
@@ -183,109 +207,130 @@ export default function Edit({
                                 </div>
 
                                 <div className="space-y-2">
-  <Label htmlFor="type">Job Type *</Label>
-  <select
-    id="type"
-    value={formData.type}
-    onChange={(e) => handleChange('type', e.target.value)}
-    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-950 dark:text-white dark:border-gray-600 ${
-      errors.type ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
-    }`}
-  >
-    <option value="">Select job type</option>
-    {Object.entries(typeOptions).map(([value, label]) => (
-      <option key={value} value={value}>
-        {label}
-      </option>
-    ))}
-  </select>
-  {errors.type && (
-    <p className="text-sm text-red-500">{errors.type}</p>
-  )}
-</div>
+                                    <Label htmlFor="type">Job Type *</Label>
+                                    <Select
+                                        value={formData.type || undefined}
+                                        onValueChange={(value) => handleChange('type', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select job type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Object.entries(typeOptions).map(([value, label]) => (
+                                                <SelectItem key={value} value={value}>
+                                                    {label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.type && (
+                                        <p className="text-sm text-red-500">{errors.type}</p>
+                                    )}
+                                </div>
 
-
-<div className="space-y-2">
-  <Label htmlFor="location_type">Location Type *</Label>
-  <select
-    id="location_type"
-    value={formData.location_type}
-    onChange={(e) => handleChange('location_type', e.target.value)}
-    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-950 dark:text-white dark:border-gray-600 ${
-      errors.location_type ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
-    }`}
-  >
-    <option value="">Select location type</option>
-    {Object.entries(locationTypeOptions).map(([value, label]) => (
-      <option key={value} value={value}>
-        {label}
-      </option>
-    ))}
-  </select>
-  {errors.location_type && (
-    <p className="text-sm text-red-500">{errors.location_type}</p>
-  )}
-</div>
 
                                 <div className="space-y-2">
-  <Label htmlFor="status">Status *</Label>
-  <select
-    id="status"
-    value={formData.status}
-    onChange={(e) => handleChange('status', e.target.value)}
-    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-950 dark:text-white dark:border-gray-600 ${
-      errors.status ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
-    }`}
-  >
-    <option value="">Select status</option>
-    {Object.entries(statusOptions).map(([value, label]) => (
-      <option key={value} value={value}>
-        {label}
-      </option>
-    ))}
-  </select>
-  {errors.status && (
-    <p className="text-sm text-red-500">{errors.status}</p>
-  )}
-</div>
+                                    <Label htmlFor="location_type">Location Type *</Label>
+                                    <Select
+                                        value={formData.location_type || undefined}
+                                        onValueChange={(value) => handleChange('location_type', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select location type" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Object.entries(locationTypeOptions).map(([value, label]) => (
+                                                <SelectItem key={value} value={value}>
+                                                    {label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.location_type && (
+                                        <p className="text-sm text-red-500">{errors.location_type}</p>
+                                    )}
+                                </div>
 
                                 <div className="space-y-2">
-                                    <Label htmlFor="pay_rate">Pay Rate</Label>
-                                    <div className="flex gap-2">
+                                    <Label htmlFor="status">Status *</Label>
+                                    <Select
+                                        value={formData.status || undefined}
+                                        onValueChange={(value) => handleChange('status', value)}
+                                    >
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Select status" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {Object.entries(statusOptions).map(([value, label]) => (
+                                                <SelectItem key={value} value={value}>
+                                                    {label}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                    {errors.status && (
+                                        <p className="text-sm text-red-500">{errors.status}</p>
+                                    )}
+                                </div>
+
+                                {formData.type === 'volunteer' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="points">Points (Reward Points)</Label>
                                         <Input
-                                            id="pay_rate"
+                                            id="points"
                                             type="number"
                                             min="0"
-                                            step="0.01"
-                                            value={formData.pay_rate}
-                                            onChange={(e) => handleChange('pay_rate', e.target.value)}
-                                            placeholder="Enter pay rate"
-                                            className={errors.pay_rate ? 'border-red-500' : ''}
+                                            value={formData.points}
+                                            onChange={(e) => handleChange('points', e.target.value)}
+                                            placeholder="100 points (fixed for volunteer jobs)"
+                                            disabled={true}
+                                            className={`${errors.points ? 'border-red-500' : ''} bg-muted cursor-not-allowed`}
                                         />
-                                        <select
-    id="currency"
-    value={formData.currency}
-    onChange={(e) => handleChange('currency', e.target.value)}
-    className={`w-full border p-2 rounded bg-white text-gray-900 dark:bg-gray-950 dark:text-white dark:border-gray-600 ${
-      errors.currency ? 'border-red-500 dark:border-red-500' : 'border-gray-300'
-    }`}
-  >
-    <option value="">Select currency</option>
-    {Object.entries(currencyOptions).map(([value, label]) => (
-      <option key={value} value={value}>
-        {label}
-      </option>
-    ))}
-  </select>
-
+                                        <p className="text-xs text-muted-foreground">
+                                            Volunteer jobs have a fixed rate of 100 points
+                                        </p>
+                                        {errors.points && (
+                                            <p className="text-sm text-red-500">{errors.points}</p>
+                                        )}
                                     </div>
-                                    {errors.pay_rate && (
-                                        <p className="text-sm text-red-500">{errors.pay_rate}</p>
-                                    )}
-                                    {errors.currency && (
-    <p className="text-sm text-red-500">{errors.currency}</p>
-  )}
-                                </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="pay_rate">Pay Rate</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="pay_rate"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={formData.pay_rate}
+                                                onChange={(e) => handleChange('pay_rate', e.target.value)}
+                                                placeholder="Enter pay rate"
+                                                className={errors.pay_rate ? 'border-red-500' : ''}
+                                            />
+                                            <Select
+                                                value={formData.currency || undefined}
+                                                onValueChange={(value) => handleChange('currency', value)}
+                                            >
+                                                <SelectTrigger className="w-[100px]">
+                                                    <SelectValue placeholder="Currency" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {Object.entries(currencyOptions).map(([value, label]) => (
+                                                        <SelectItem key={value} value={value}>
+                                                            {label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {errors.pay_rate && (
+                                            <p className="text-sm text-red-500">{errors.pay_rate}</p>
+                                        )}
+                                        {errors.currency && (
+                                            <p className="text-sm text-red-500">{errors.currency}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="time_commitment_min_hours">Time Commitment (hours)</Label>

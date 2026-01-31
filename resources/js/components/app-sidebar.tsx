@@ -59,10 +59,10 @@ import {
     Store,
     CreditCard,
     FolderOpen,
-    ShoppingBag
+    ShoppingBag,
+    Search
 } from 'lucide-react';
 import SiteTitle from './site-title';
-import { route } from 'ziggy-js';
 import { Button } from '@/components/ui/button';
 import { Link } from '@inertiajs/react';
 import { motion } from 'framer-motion';
@@ -84,9 +84,17 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         icon: Coins,
     },
 
+    // Believe FundMe (organization campaigns)
+    {
+        title: 'Believe FundMe',
+        href: '/fundme',
+        icon: HandCoins,
+        role: "organization",
+    },
+
     // 2. AI Chat Assistant
     {
-        title: 'AI Chat Assistant',
+        title: 'AI Believe Assistant',
         href: '/ai-chat',
         icon: Bot,
         permission: "ai.chat.use",
@@ -107,6 +115,25 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         ],
         role: "organization"
     },
+    {
+    title: 'Service Hub Management',
+    icon: ShoppingBag,
+    role: "admin",
+    items: [
+        {
+            title: 'Service Sellers',
+            href: '/admin/service-sellers',
+            icon: Users,
+            role: "admin"
+        },
+        {
+            title: 'Service Categories',
+            href: '/admin/service-categories',
+            icon: FolderOpen,
+            role: "admin"
+        },
+    ],
+},
 
     // 4. People & Community
     {
@@ -197,7 +224,51 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         permission: "newsletter.read"
                     },
                     {
-                        title: 'Email / SMS Campaigns',
+                        title: 'Content Management',
+                        icon: FileText,
+                        items: [
+                            {
+                                title: 'Content Items',
+                                href: '/content',
+                                icon: FileText,
+                                permission: "content.read"
+                            },
+                            {
+                                title: 'Create Content',
+                                href: '/content/create',
+                                icon: PlusCircle,
+                                permission: "content.create"
+                            },
+                        ],
+                        permission: "content.read"
+                    },
+                    {
+                        title: 'Facebook',
+                        icon: Facebook,
+                        role: "organization",
+                        items: [
+                            {
+                                title: 'Connect Pages',
+                                href: '/facebook/connect',
+                                icon: LinkIcon,
+                                role: "organization"
+                            },
+                            {
+                                title: 'Posts',
+                                href: '/facebook/posts',
+                                icon: FileText,
+                                role: "organization"
+                            },
+                            {
+                                title: 'Create Post',
+                                href: '/facebook/posts/create',
+                                icon: Plus,
+                                role: "organization"
+                            },
+                        ],
+                    },
+                    {
+                        title: 'Campaigns',
                         icon: Send,
                         items: [
                             {
@@ -245,59 +316,6 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             },
         ],
         permission: "communication.read"
-    },
-
-    // 6. Content & Publishing
-    {
-        title: 'Content & Publishing',
-        icon: FileText,
-        items: [
-            {
-                title: 'Content Management',
-                icon: FileText,
-                items: [
-                    {
-                        title: 'Content Items',
-                        href: '/content',
-                        icon: FileText,
-                        permission: "content.read"
-                    },
-                    {
-                        title: 'Create Content',
-                        href: '/content/create',
-                        icon: PlusCircle,
-                        permission: "content.create"
-                    },
-                ],
-                permission: "content.read"
-            },
-            {
-                title: 'Facebook',
-                icon: Facebook,
-                role: "organization",
-                items: [
-                    {
-                        title: 'Connect Pages',
-                        href: '/facebook/connect',
-                        icon: LinkIcon,
-                        role: "organization"
-                    },
-                    {
-                        title: 'Posts',
-                        href: '/facebook/posts',
-                        icon: FileText,
-                        role: "organization"
-                    },
-                    {
-                        title: 'Create Post',
-                        href: '/facebook/posts/create',
-                        icon: Plus,
-                        role: "organization"
-                    },
-                ],
-            },
-        ],
-        role: "organization"
     },
 
     // 7. Programs & Events
@@ -668,6 +686,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 href: '/settings/profile',
                 icon: Settings,
                 permission: "profile.read"
+            },
+            {
+                title: 'SEO Settings',
+                href: '/admin/seo',
+                icon: Search,
+                role: "admin"
             },
             {
                 title: 'Compliance / Logs',

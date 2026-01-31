@@ -41,13 +41,16 @@ export interface MeetingEvent {
   data?: any
 }
 
-// Echo Configuration
+// Echo / Reverb: use VITE_REVERB_* in env; in production use current host when not set (avoid 127.0.0.1)
+const getReverbHost = () =>
+  import.meta.env.VITE_REVERB_HOST ||
+  (typeof window !== "undefined" ? window.location.hostname : "localhost");
 const echoConfig = {
   broadcaster: "reverb",
   key: import.meta.env.VITE_REVERB_APP_KEY,
-  wsHost: import.meta.env.VITE_REVERB_HOST,
-  wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
-  wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
+  wsHost: getReverbHost(),
+  wsPort: Number(import.meta.env.VITE_REVERB_PORT) || 80,
+  wssPort: Number(import.meta.env.VITE_REVERB_PORT) || 443,
   forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? "https") === "https",
   enabledTransports: ["ws", "wss"],
   auth: {

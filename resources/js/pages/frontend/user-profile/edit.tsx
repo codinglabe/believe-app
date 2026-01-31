@@ -2,7 +2,7 @@
 
 import type React from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Label } from "@/components/frontend/ui/label"
@@ -21,6 +21,9 @@ interface User {
   phone?: string
   dob?: string
   image?: string
+  city?: string
+  state?: string
+  zipcode?: string
 }
 
 interface PageProps {
@@ -32,6 +35,9 @@ interface PageProps {
     dob?: string
     image?: string
     positions: number[]
+    city?: string
+    state?: string
+    zipcode?: string
   }
   availablePositions: { id: number; name: string }[]
 }
@@ -40,15 +46,35 @@ export default function ProfileEdit() {
   const { user, availablePositions } = usePage<PageProps>().props
 
   const { data, setData, post, processing, errors, reset, recentlySuccessful } = useForm({
-    name: user.name || "",
-    email: user.email || "",
-    phone: user.phone || "",
-    dob: user.dob || "",
+    name: user?.name || "",
+    email: user?.email || "",
+    phone: user?.phone || "",
+    dob: user?.dob || "",
     image: null as File | null,
-    positions: user.positions || [],
+    positions: user?.positions || [],
+    city: user?.city || "",
+    state: user?.state || "",
+    zipcode: user?.zipcode || "",
   })
 
-  const [previewUrl, setPreviewUrl] = useState(user.image)
+  const [previewUrl, setPreviewUrl] = useState(user?.image || null)
+
+  // Update form data when user prop changes (e.g., after page reload with updated data)
+  useEffect(() => {
+    if (user) {
+      setData("name", user.name || "")
+      setData("email", user.email || "")
+      setData("phone", user.phone || "")
+      setData("dob", user.dob || "")
+      setData("city", user.city || "")
+      setData("state", user.state || "")
+      setData("zipcode", user.zipcode || "")
+      setData("positions", user.positions || [])
+      if (user.image) {
+        setPreviewUrl(user.image)
+      }
+    }
+  }, [user?.id])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -58,6 +84,9 @@ export default function ProfileEdit() {
     formData.append("email", data.email)
     formData.append("phone", data.phone)
     formData.append("dob", data.dob)
+    formData.append("city", data.city)
+    formData.append("state", data.state)
+    formData.append("zipcode", data.zipcode)
 
     // Add positions as array
     data.positions.forEach((positionId: number) => {
@@ -223,6 +252,53 @@ export default function ProfileEdit() {
                 max={new Date().toISOString().split('T')[0]}
               />
               {errors.dob && <p className="text-red-600 text-sm mt-1">{errors.dob}</p>}
+            </div>
+
+            {/* Location Information */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div>
+                <Label htmlFor="city" className="text-gray-900 dark:text-white">
+                  City
+                </Label>
+                <Input
+                  id="city"
+                  value={data.city}
+                  onChange={(e) => setData("city", e.target.value)}
+                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                  placeholder="City"
+                />
+                {errors.city && <p className="text-red-600 text-sm mt-1">{errors.city}</p>}
+              </div>
+
+              <div>
+                <Label htmlFor="state" className="text-gray-900 dark:text-white">
+                  State
+                </Label>
+                <Input
+                  id="state"
+                  value={data.state}
+                  onChange={(e) => setData("state", e.target.value.toUpperCase())}
+                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                  placeholder="State (e.g., CA)"
+                  maxLength={2}
+                />
+                {errors.state && <p className="text-red-600 text-sm mt-1">{errors.state}</p>}
+              </div>
+
+              <div>
+                <Label htmlFor="zipcode" className="text-gray-900 dark:text-white">
+                  Zip Code
+                </Label>
+                <Input
+                  id="zipcode"
+                  value={data.zipcode}
+                  onChange={(e) => setData("zipcode", e.target.value)}
+                  className="bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600"
+                  placeholder="Zip Code"
+                  maxLength={10}
+                />
+                {errors.zipcode && <p className="text-red-600 text-sm mt-1">{errors.zipcode}</p>}
+              </div>
             </div>
 
             {/* Supporter Positions */}

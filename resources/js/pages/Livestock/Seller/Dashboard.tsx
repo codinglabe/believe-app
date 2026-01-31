@@ -18,8 +18,6 @@ import {
     Package
 } from "lucide-react"
 import { format } from "date-fns"
-import { route } from "ziggy-js"
-
 interface SellerProfile {
     id: number
     farm_name: string

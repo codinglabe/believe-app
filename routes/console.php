@@ -32,6 +32,12 @@ Schedule::command('facebook:process-scheduled')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Process scheduled newsletters
+Schedule::command('newsletter:process-scheduled')
+    ->everyMinute()
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean up old send jobs (optional)
 Schedule::command('sendJobs:cleanup')
     ->daily()
@@ -53,6 +59,12 @@ Schedule::command('irs:check-form990-filings --notify')
 
 // Clean Laravel log file when it exceeds 10MB (runs hourly)
 Schedule::command('log:clean --size=10')
+    ->hourly()
+    ->withoutOverlapping()
+    ->runInBackground();
+
+
+Schedule::command('service-orders:auto-complete')
     ->hourly()
     ->withoutOverlapping()
     ->runInBackground();

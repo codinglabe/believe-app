@@ -21,7 +21,6 @@ import {
     TrendingUp,
     Users
 } from "lucide-react"
-import { route } from "ziggy-js"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Combobox } from "@/components/admin/ui/combobox"
 

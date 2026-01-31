@@ -28,6 +28,7 @@ import { Textarea } from "@/components/frontend/ui/textarea"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
 import { Link, usePage } from "@inertiajs/react"
+import { PageHead } from "@/components/frontend/PageHead"
 
 // Types
 interface EINLookupResponse {
@@ -44,7 +45,19 @@ interface RegistrationResponse {
   errors?: Record<string, string[]>
 }
 
-export default function OrganizationRegisterPage({ referralCode, ein: prefilledEin }: { referralCode: string;  ein?: string}) {
+interface OrganizationRegisterPageProps {
+  seo?: { title: string; description?: string }
+  referralCode?: string
+  ein?: string
+  inviteToken?: string
+  organizationName?: string
+}
+
+interface PageProps extends OrganizationRegisterPageProps {
+  csrf_token?: string
+}
+
+export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName }: OrganizationRegisterPageProps) {
   const { csrf_token } = usePage<PageProps>().props
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -79,6 +92,20 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
       }))
     }
   }, [referralCode])
+
+  // Capture invite token from URL if not provided in props
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const urlInviteToken = params.get('invite')
+    const tokenToUse = inviteToken || urlInviteToken
+    
+    if (tokenToUse) {
+      setFormData((prev) => ({
+        ...prev,
+        invite_token: tokenToUse,
+      }))
+    }
+  }, [inviteToken])
 
   // Form data state
   const [einData, setEinData] = useState({ ein: "" })
@@ -116,6 +143,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
     agree_to_terms: false,
     has_edited_irs_data: false,
     referralCode: referralCode,
+    invite_token: "",
   })
 
   const passwordRequirements = useMemo(() => {
@@ -477,6 +505,9 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
       Object.keys(formData).forEach(key => {
         if (key === 'image' && formData.image) {
           formDataToSend.append('image', formData.image)
+        } else if (key === 'invite_token' && formData.invite_token) {
+          // Explicitly append invite_token
+          formDataToSend.append('invite_token', formData.invite_token)
         } else {
           formDataToSend.append(key, formData[key as keyof typeof formData] as string | Blob)
         }
@@ -553,6 +584,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
   if (registrationSuccess || step === 5) {
     return (
       <FrontendLayout>
+        <PageHead title={seo?.title ?? "Register Your Nonprofit"} description={seo?.description} />
         <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
           {/* Background Image Overlay */}
           <div 
@@ -618,6 +650,7 @@ export default function OrganizationRegisterPage({ referralCode, ein: prefilledE
 
   return (
     <FrontendLayout>
+      <PageHead title={seo?.title ?? "Register Your Nonprofit"} description={seo?.description} />
       <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
         {/* Background Image Overlay */}
         <div 

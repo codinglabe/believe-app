@@ -25,8 +25,6 @@ import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { format } from "date-fns"
 import toast from "react-hot-toast"
 import InputError from "@/components/input-error"
-import { route } from "ziggy-js"
-
 interface GiftCard {
     id: number
     voucher: string | null

@@ -120,7 +120,7 @@ class ProductController extends BaseController
                 'organization',
                 'categories',
                 'variants'
-            ])->whereNotNull("printify_product_id")->findOrFail($id);
+            ])->findOrFail($id);
 
             // Check if product is available for marketplace
             if ($product->status !== 'active' || $product->quantity_available <= 0) {
@@ -137,12 +137,12 @@ class ProductController extends BaseController
             ]);
         }
 
-        // Public marketplace view (original logic)
+        // Public marketplace view - supports both manual and Printify products
         $product = Product::with([
             'organization',
             'categories',
             'variants'
-        ])->whereNotNull("printify_product_id")->findOrFail($id);
+        ])->findOrFail($id);
 
         // Check if product is available for marketplace
         if ($product->status !== 'active' || $product->quantity_available <= 0) {
@@ -152,6 +152,7 @@ class ProductController extends BaseController
         $printifyProduct = null;
         $variantsWithImages = [];
 
+        // Handle Printify products
         if ($product->printify_product_id) {
             try {
                 $printifyProduct = $this->printifyService->getProduct($product->printify_product_id);
@@ -169,9 +170,39 @@ class ProductController extends BaseController
 
             } catch (\Exception $e) {
                 \Log::error('Error fetching Printify product: ' . $e->getMessage());
-                // Fallback: আপনার database variants ব্যবহার করুন
-                $variantsWithImages = $this->getDatabaseVariants($product);
+                // Fallback: use database variants if available
+                $variantsWithImages = [];
+                if ($product->variants->isNotEmpty()) {
+                    foreach ($product->variants as $variant) {
+                        $variantsWithImages[] = [
+                            'id' => $variant->printify_variant_id,
+                            'sku' => $product->sku,
+                            'name' => $product->name,
+                            'price' => $product->unit_price ?? 0,
+                            'is_available' => $variant->is_available ?? true,
+                            'attributes' => [],
+                            'images' => $product->image ? [['src' => $product->image, 'position' => 'front', 'is_default' => true]] : [],
+                            'primary_image' => $product->image,
+                        ];
+                    }
+                }
             }
+        } else {
+            // For manual products, create a simple variant structure
+            $variantsWithImages = [
+                [
+                    'id' => 'manual',
+                    'sku' => $product->sku,
+                    'name' => $product->name,
+                    'cost' => 0,
+                    'price' => $product->unit_price ?? 0,
+                    'is_available' => $product->quantity_available > 0,
+                    'grams' => 0,
+                    'attributes' => [],
+                    'images' => $product->image ? [['src' => $product->image, 'position' => 'front', 'is_default' => true]] : [],
+                    'primary_image' => $product->image,
+                ]
+            ];
         }
 
         // Get first available variant
@@ -521,11 +552,14 @@ class ProductController extends BaseController
             }
         }
 
-        $validated = $request->validate([
+        // Determine if this is a Printify product
+        $isPrintifyProduct = $request->boolean('is_printify_product', false);
+
+        // Base validation rules for all products
+        $rules = [
             'name' => 'required|string|max:255|unique:products,name',
             'description' => 'required|string|max:1000',
             'quantity' => 'required|integer|min:0',
-            // 'profit_margin_percentage' => 'required|numeric|min:0',
             'owned_by' => 'required|in:admin,organization',
             'organization_id' => 'nullable|integer|exists:organizations,id',
             'status' => 'required|in:active,inactive,archived',
@@ -534,24 +568,66 @@ class ProductController extends BaseController
             'tags' => 'nullable|string',
             'categories' => 'array',
             'categories.*' => 'integer|exists:categories,id',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg',
-
-            // Printify specific fields
             'is_printify_product' => 'nullable|boolean',
-            'printify_blueprint_id' => 'required|integer',
-            'printify_provider_id' => 'required|integer',
-            'printify_variants' => 'required|array',
-            'printify_images' => 'required|array|min:1',
-            'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:1024', // 1MB max (Printify API requirement)
-        ], [
-            'printify_images.required' => 'Please upload at least one design image.',
-            'printify_images.min' => 'Please upload at least one design image.',
-            'printify_images.*.required' => 'Please select a design image file.',
-            'printify_images.*.file' => 'The uploaded file is not valid.',
-            'printify_images.*.image' => 'The file must be an image (PNG, JPEG, or JPG).',
-            'printify_images.*.mimes' => 'The design image must be a PNG, JPEG, or JPG file.',
-            'printify_images.*.max' => 'The design image size must not exceed 1MB (Printify requirement). Please compress or resize your image.',
-        ]);
+        ];
+
+        // Conditional validation based on product type
+        if ($isPrintifyProduct) {
+            // Printify product validation
+            $rules = array_merge($rules, [
+                'printify_blueprint_id' => 'required|integer',
+                'printify_provider_id' => 'required|integer',
+                'printify_variants' => 'required|array|min:1',
+                'printify_images' => 'required|array|min:1',
+                'printify_images.*' => 'required|file|image|mimes:png,jpg,jpeg|max:1024', // 1MB max (Printify API requirement)
+                'image' => 'nullable|image|mimes:jpeg,png,jpg,gif,svg', // Optional for Printify (uses design images)
+            ]);
+        } else {
+            // Manual product validation
+            $rules = array_merge($rules, [
+                'unit_price' => 'required|numeric|min:0',
+                'shipping_charge' => 'required|numeric|min:0',
+                'image' => 'required|image|mimes:jpeg,png,jpg,gif,svg', // Required for manual products
+            ]);
+        }
+
+        $messages = [
+            'name.required' => 'Product name is required.',
+            'name.unique' => 'A product with this name already exists.',
+            'description.required' => 'Product description is required.',
+            'quantity.required' => 'Quantity is required.',
+            'quantity.integer' => 'Quantity must be a number.',
+            'quantity.min' => 'Quantity cannot be negative.',
+            'sku.required' => 'SKU is required.',
+            'sku.unique' => 'A product with this SKU already exists.',
+            'image.required' => 'Product image is required for manual products.',
+            'image.image' => 'The file must be an image.',
+            'unit_price.required' => 'Unit price is required for manual products.',
+            'unit_price.numeric' => 'Unit price must be a number.',
+            'unit_price.min' => 'Unit price cannot be negative.',
+            'shipping_charge.required' => 'Shipping charge is required for manual products.',
+            'shipping_charge.numeric' => 'Shipping charge must be a number.',
+            'shipping_charge.min' => 'Shipping charge cannot be negative.',
+        ];
+
+        // Printify-specific error messages
+        if ($isPrintifyProduct) {
+            $messages = array_merge($messages, [
+                'printify_blueprint_id.required' => 'Please select a product type.',
+                'printify_provider_id.required' => 'Please select a print provider.',
+                'printify_variants.required' => 'Please select at least one variant.',
+                'printify_variants.min' => 'Please select at least one variant.',
+                'printify_images.required' => 'Please upload at least one design image.',
+                'printify_images.min' => 'Please upload at least one design image.',
+                'printify_images.*.required' => 'Please select a design image file.',
+                'printify_images.*.file' => 'The uploaded file is not valid.',
+                'printify_images.*.image' => 'The file must be an image (PNG, JPEG, or JPG).',
+                'printify_images.*.mimes' => 'The design image must be a PNG, JPEG, or JPG file.',
+                'printify_images.*.max' => 'The design image size must not exceed 1MB (Printify requirement). Please compress or resize your image.',
+            ]);
+        }
+
+        $validated = $request->validate($rules, $messages);
 
         try {
             $imagePath = null;
@@ -566,7 +642,10 @@ class ProductController extends BaseController
 
             // Handle Printify product creation
             $printifyProductId = null;
-            if ($request->boolean('is_printify_product') && $request->printify_blueprint_id) {
+            $printifyBlueprintId = null;
+            $printifyProviderId = null;
+
+            if ($isPrintifyProduct && $request->printify_blueprint_id) {
                 // Get selected variant IDs from the request
                 $selectedVariantIds = array_column($request->input('printify_variants', []), 'id');
 
@@ -655,14 +734,27 @@ class ProductController extends BaseController
                 ]);
             }
 
+            // Prepare product data
             $productData = [
                 'user_id' => Auth::id(),
                 'image' => $imagePath,
                 'quantity_available' => $validated['quantity'],
-                'printify_product_id' => $printifyProductId,
-                'printify_blueprint_id' => $request->printify_blueprint_id,
-                'printify_provider_id' => $request->printify_provider_id,
             ];
+
+            // Add Printify fields only if it's a Printify product
+            if ($isPrintifyProduct) {
+                $productData['printify_product_id'] = $printifyProductId;
+                $productData['printify_blueprint_id'] = $request->printify_blueprint_id;
+                $productData['printify_provider_id'] = $request->printify_provider_id;
+            } else {
+                // For manual products, set unit_price and shipping_charge
+                $productData['unit_price'] = $validated['unit_price'] ?? 0;
+                $productData['shipping_charge'] = $validated['shipping_charge'] ?? 0;
+
+                // Calculate profit margin for manual products using env PRINTIFY_PROFIT_MARGIN
+                $profitMargin = (float) env('PRINTIFY_PROFIT_MARGIN', 25);
+                $productData['profit_margin_percentage'] = $profitMargin;
+            }
 
             // Merge with validated data
             $productData = array_merge($validated, $productData);
@@ -678,11 +770,13 @@ class ProductController extends BaseController
                 ]);
             }
 
-            if ($request->boolean('is_printify_product') && $request->printify_variants) {
+            // Create ProductVariant records only for Printify products
+            if ($isPrintifyProduct && $request->printify_variants) {
                 foreach ($request->printify_variants as $variant) {
                     ProductVariant::create([
                         'product_id' => $product->id,
                         'printify_variant_id' => $variant['id'],
+                        'is_available' => true,
                     ]);
                 }
             }
@@ -695,8 +789,9 @@ class ProductController extends BaseController
                 ]);
             }
 
+            $productType = $isPrintifyProduct ? 'Printify' : 'manual';
             return redirect()->route('products.index')
-                ->with('success', 'Product created successfully' . ($printifyProductId ? ' in Printify' : ''));
+                ->with('success', ucfirst($productType) . ' product created successfully' . ($printifyProductId ? ' in Printify' : ''));
 
         } catch (\Exception $e) {
             return back()->withErrors(['printify_error' => 'Failed to create product: ' . $e->getMessage()]);

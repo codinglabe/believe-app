@@ -167,4 +167,85 @@ class AuthService
             return false;
         }
     }
+
+    /**
+     * Generate OAuth URL for specific app
+     */
+    public function getOAuthUrlForApp($appId, $appSecret, $redirectUri, $state = null)
+    {
+        $state = $state ?: base64_encode(json_encode(['app_id' => $appId, 'time' => time()]));
+
+        $params = [
+            'client_id' => $appId,
+            'redirect_uri' => $redirectUri,
+            'state' => $state,
+            'scope' => implode(',', [
+                'pages_show_list',
+                'pages_read_engagement',
+                'pages_manage_posts',
+                'pages_read_user_content',
+                'pages_manage_metadata',
+                'pages_manage_engagement',
+            ]),
+            'response_type' => 'code',
+        ];
+
+        return 'https://www.facebook.com/v19.0/dialog/oauth?' . http_build_query($params);
+    }
+
+    /**
+     * Get access token for specific app
+     */
+    public function getAccessTokenForApp($code, $appId, $appSecret, $redirectUri)
+    {
+        $response = Http::get('https://graph.facebook.com/v19.0/oauth/access_token', [
+            'client_id' => $appId,
+            'client_secret' => $appSecret,
+            'redirect_uri' => $redirectUri,
+            'code' => $code,
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('Failed to get access token: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Get long-lived token for specific app
+     */
+    public function getLongLivedTokenForApp($shortLivedToken, $appId, $appSecret)
+    {
+        $response = Http::get('https://graph.facebook.com/v19.0/oauth/access_token', [
+            'grant_type' => 'fb_exchange_token',
+            'client_id' => $appId,
+            'client_secret' => $appSecret,
+            'fb_exchange_token' => $shortLivedToken,
+        ]);
+
+        if (!$response->successful()) {
+            throw new \Exception('Failed to get long-lived token: ' . $response->body());
+        }
+
+        return $response->json();
+    }
+
+    /**
+     * Verify app credentials
+     */
+    public function verifyAppCredentials($appId, $appSecret)
+    {
+        try {
+            $response = Http::get('https://graph.facebook.com/debug_token', [
+                'input_token' => $appId . '|' . $appSecret,
+                'access_token' => $appId . '|' . $appSecret,
+            ]);
+
+            return $response->successful();
+
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
 }

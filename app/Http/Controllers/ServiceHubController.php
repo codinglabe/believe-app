@@ -28,13 +28,17 @@ use Stripe\Stripe;
 use Stripe\Checkout\Session as StripeSession;
 use App\Mail\OrderPlacedNotification;
 use App\Mail\OrderCompletedNotification;
+use Stripe\Refund;
 
 class ServiceHubController extends Controller
 {
     public function index(Request $request): Response
     {
         $query = Gig::with(['category', 'user.serviceSellerProfile', 'primaryImage', 'images'])
-            ->where('status', 'active');
+            ->where('status', 'active')
+            ->whereHas('user.serviceSellerProfile', function ($q) {
+                $q->where('is_suspended', false);
+            });
 
         // Search
         if ($request->has('search') && $request->search) {
@@ -504,7 +508,7 @@ class ServiceHubController extends Controller
         }
     }
 
-    public function show(Request $request, $slug): Response
+    public function show(Request $request, $slug)
     {
         $gig = Gig::with([
             'category',
@@ -519,6 +523,12 @@ class ServiceHubController extends Controller
                 $q->select('id', 'name', 'image');
             },
         ])->where('slug', $slug)->firstOrFail();
+
+        // Check if seller is suspended
+        if ($gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+            return redirect()->route('service-hub.index')
+                ->with('error', 'This seller has been suspended. Their services are not available.');
+        }
 
         if ($gig->status !== 'active') {
             abort(404);
@@ -667,6 +677,12 @@ class ServiceHubController extends Controller
             ->where('status', 'active')
             ->findOrFail($gigId);
 
+        // Check if seller is suspended
+        if ($gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+            return redirect()->route('service-hub.index')
+                ->with('error', 'This seller has been suspended. You cannot order from them.');
+        }
+
         // Security check: Prevent users from purchasing their own services
         if ($user && $gig->user_id === $user->id) {
             return redirect()->route('service-hub.show', $gig->slug)
@@ -755,6 +771,11 @@ class ServiceHubController extends Controller
                     }
                     if ($gig && $gig->status !== 'active') {
                         $fail('This service is not available for purchase.');
+                    }
+
+                    // Check if seller is suspended
+                    if ($gig && $gig->user->serviceSellerProfile && $gig->user->serviceSellerProfile->is_suspended) {
+                        $fail('This seller has been suspended. You cannot order from them.');
                     }
                 },
             ],
@@ -1285,6 +1306,15 @@ class ServiceHubController extends Controller
             'canCancel' => in_array($order->status, ['pending', 'in_progress']),
             'canReview' => $isBuyer && $order->status === 'completed' && !$order->buyerReview,
             'canSellerReview' => $isSeller && $order->status === 'completed' && $order->buyerReview && !$order->sellerReview,
+            'canCancelByBuyer' => $order->canBeCancelledByBuyer(),
+            'remainingCancellationHours' => $order->getRemainingCancellationTime(),
+            'remainingAutoApprovalHours' => $order->getRemainingAutoApprovalTime(),
+            'needsAutoApproval' => $order->needsAutomaticApproval(),
+            'needsResubmission' => $order->needsResubmission(),
+            'isWithinCancellationWindow' => $order->isWithinCancellationWindow(),
+            'canResubmit' => $isSeller && $order->needsResubmission(),
+            // 'needsResubmission' => $order->status === 'in_progress' && $order->delivered_at,
+            // 'canResubmit' => $isSeller && $order->status === 'in_progress' && $order->delivered_at,
             'hasBuyerReview' => $order->buyerReview ? [
                 'rating' => $order->buyerReview->rating,
                 'comment' => $order->buyerReview->comment,
@@ -1430,18 +1460,18 @@ class ServiceHubController extends Controller
         }
     }
 
-    public function rejectOrder(Request $request, $orderId): RedirectResponse
+    public function rejectOrder(Request $request, $orderId)
     {
         $order = ServiceOrder::findOrFail($orderId);
 
         // Check if user is the seller
         if ($order->seller_id !== Auth::id()) {
-            abort(403, 'Only the seller can reject this order.');
+            return response()->json(['error' => 'Only the seller can reject this order.']);
         }
 
         // Check if order is pending
         if ($order->status !== 'pending') {
-            return back()->withErrors(['error' => 'Only pending orders can be rejected.']);
+            return response()->json(['error' => 'Only pending orders can be rejected.']);
         }
 
         $validated = $request->validate([
@@ -1449,21 +1479,162 @@ class ServiceHubController extends Controller
         ]);
 
         try {
+            DB::beginTransaction();
+
+            // Update order status
             $order->update([
                 'status' => 'cancelled',
                 'cancelled_at' => now(),
                 'cancellation_reason' => $validated['rejection_reason'] ?? 'Rejected by seller',
             ]);
 
-            // If payment was made, handle refund logic here if needed
-            // For now, we'll just cancel the order
+            // Process refund if payment was made
+            if ($order->payment_status === 'paid') {
+                $this->refundOrderPayment($order, 'Order rejected by seller');
+            }
+
+            DB::commit();
 
             return redirect()->route('service-hub.seller-orders')
-                ->with('success', 'Order rejected successfully.');
+                ->with('success', 'Order rejected successfully. Refund has been processed if payment was made.');
         } catch (\Exception $e) {
+            DB::rollBack();
             return back()->withErrors(['error' => 'Failed to reject order: ' . $e->getMessage()]);
         }
     }
+// In ServiceHubController.php
+
+public function cancelOrder(Request $request, $orderId): \Illuminate\Http\JsonResponse
+{
+    $order = ServiceOrder::findOrFail($orderId);
+
+    // Check if user is the buyer
+    if ($order->buyer_id !== Auth::id()) {
+        return response()->json(['error' => 'Only the buyer can cancel this order.'], 403);
+    }
+
+    $validated = $request->validate([
+        'cancellation_reason' => 'required|string|max:500',
+    ]);
+
+    try {
+        DB::beginTransaction();
+
+        if ($order->cancelByBuyer($validated['cancellation_reason'])) {
+
+            // Process refund if payment was made
+            if ($order->payment_status === 'paid') {
+                $this->refundOrderPayment($order, $validated['cancellation_reason']);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Order cancelled successfully. Refund has been processed if payment was made.',
+                'order' => [
+                    'id' => $order->id,
+                    'status' => $order->status,
+                    'cancelled_at' => $order->cancelled_at,
+                    'is_refunded' => $order->is_refunded,
+                ]
+            ]);
+        } else {
+            $errorMessage = 'This order cannot be cancelled.';
+            if ($order->status === 'in_progress' && !$order->isWithinCancellationWindow()) {
+                $errorMessage = 'Cannot cancel this order anymore. The 24-hour cancellation period has expired since the seller approved it.';
+            } elseif ($order->status === 'completed' || $order->status === 'cancelled') {
+                $errorMessage = 'This order is already ' . $order->status . '.';
+            }
+
+            return response()->json(['error' => $errorMessage], 422);
+        }
+    } catch (\Exception $e) {
+        DB::rollBack();
+        return response()->json(['error' => 'Failed to cancel order: ' . $e->getMessage()], 500);
+    }
+}
+
+public function resubmitDelivery(Request $request, $orderId): \Illuminate\Http\JsonResponse
+{
+    $order = ServiceOrder::findOrFail($orderId);
+
+    // Check if user is the seller
+    if ($order->seller_id !== Auth::id()) {
+        return response()->json(['error' => 'Only the seller can resubmit delivery.'], 403);
+    }
+
+    // Check if order needs resubmission
+    if (!$order->needsResubmission()) {
+        return response()->json(['error' => 'This order does not need resubmission.'], 422);
+    }
+
+    $validated = $request->validate([
+        'deliverables' => 'required|array|min:1',
+        'deliverables.*.name' => 'required|string|max:255',
+        'deliverables.*.description' => 'nullable|string|max:1000',
+        'deliverables.*.file' => 'required|file|max:10240',
+    ]);
+
+    try {
+        $processedDeliverables = [];
+        foreach ($validated['deliverables'] as $index => $deliverable) {
+            $file = $request->file("deliverables.{$index}.file");
+            $path = $file->store("orders/{$order->id}/deliverables", 'public');
+
+            $processedDeliverables[] = [
+                'name' => $deliverable['name'],
+                'description' => $deliverable['description'] ?? null,
+                'url' => Storage::url($path),
+                'file_name' => $file->getClientOriginalName(),
+                'file_size' => $file->getSize(),
+                'mime_type' => $file->getMimeType(),
+                'type' => 'file',
+            ];
+        }
+
+        // Mark as delivered again
+        $order->update([
+            'status' => 'delivered',
+            'delivered_at' => now(),
+            'deliverables' => $processedDeliverables,
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Delivery resubmitted successfully!',
+            'order' => [
+                'id' => $order->id,
+                'status' => $order->status,
+                'delivered_at' => $order->delivered_at,
+            ]
+        ]);
+    } catch (\Exception $e) {
+        return response()->json(['error' => 'Failed to resubmit delivery: ' . $e->getMessage()], 500);
+    }
+}
+
+public function getOrderStatusInfo(Request $request, $orderId): \Illuminate\Http\JsonResponse
+{
+    $order = ServiceOrder::findOrFail($orderId);
+
+    // Check if user has access to this order
+    if ($order->buyer_id !== Auth::id() && $order->seller_id !== Auth::id()) {
+        abort(403, 'You do not have permission to view this order.');
+    }
+
+    return response()->json([
+        'can_cancel_by_buyer' => $order->canBeCancelledByBuyer(),
+        'remaining_cancellation_hours' => $order->getRemainingCancellationTime(),
+        'remaining_auto_approval_hours' => $order->getRemainingAutoApprovalTime(),
+        'needs_auto_approval' => $order->needsAutomaticApproval(),
+        'is_within_cancellation_window' => $order->isWithinCancellationWindow(),
+        'needs_resubmission' => $order->needsResubmission(),
+        'status' => $order->status,
+        'delivered_at' => $order->delivered_at,
+        'created_at' => $order->created_at,
+    ]);
+}
 
     public function orderSuccess(Request $request): Response
     {
@@ -1563,10 +1734,15 @@ class ServiceHubController extends Controller
             'serviceSellerProfile',
         ])->findOrFail($id);
 
-        // Validation: Check if user has a seller profile
-        if (!$seller->serviceSellerProfile) {
-            abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        // Validation: Check if seller is suspended
+        if ($seller->serviceSellerProfile && $seller->serviceSellerProfile->is_suspended) {
+            abort(404, 'Seller profile not available.');
         }
+
+        // // Validation: Check if user has a seller profile
+        // if (!$seller->serviceSellerProfile) {
+        //     abort(404, 'Seller profile not found. This user does not have a seller profile.');
+        // }
 
         // Validation: Check if the seller profile is verified (optional - you can remove this if you want to show unverified profiles)
         // if ($seller->serviceSellerProfile->verification_status !== 'verified') {
@@ -2102,10 +2278,12 @@ class ServiceHubController extends Controller
 
         $profile = $user->serviceSellerProfile;
 
-        // If no seller profile, redirect to create one
-        if (!$profile) {
-            return redirect()->route('service-hub.seller-profile.create')
-                ->with('info', 'Please create a seller profile first to access your dashboard.');
+        // Check if seller is suspended
+        if ($profile && $profile->is_suspended) {
+            return Inertia::render('frontend/service-hub/seller-suspended', [
+                'suspension_reason' => $profile->suspension_reason,
+                'suspended_at' => $profile->suspended_at,
+            ]);
         }
 
         // Calculate statistics
@@ -2211,6 +2389,7 @@ class ServiceHubController extends Controller
             ],
             'activeServices' => $activeServices,
             'recentOrders' => $recentOrders,
+            'deleteUrl' => route('service-hub.services.destroy', ':id')
         ]);
     }
 
@@ -2567,22 +2746,27 @@ class ServiceHubController extends Controller
         ]);
     }
 
-    public function destroyService(Gig $gig)
+    public function destroyService(int $id)
     {
-        $this->authorize('delete', $gig); // Optional: if you use policies
+        $gig = Gig::findOrFail($id);
 
+        // Check authorization
         if ($gig->user_id !== Auth::id()) {
-            abort(403);
+            return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        // Optional: soft delete or check if has active orders
+        // Check for active orders
         if ($gig->orders()->whereIn('status', ['pending', 'in_progress'])->exists()) {
-            return redirect()->back()->with('error', 'Cannot delete service with active/pending orders.');
+            return response()->json([
+                'error' => 'Cannot delete service with active/pending orders.'
+            ], 422);
         }
 
-        $gig->delete(); // or $gig->forceDelete() if you don't use soft deletes
+        // Soft delete if using soft deletes
+        $gig->delete();
 
-        return redirect()->back()->with('success', 'Service deleted successfully.');
+        // Return JSON response for Inertia
+        return response()->json(['success' => 'Service deleted successfully.']);
     }
 
     public function getServiceChats(Request $request)
@@ -3228,4 +3412,218 @@ class ServiceHubController extends Controller
             ], 400);
         }
     }
+
+
+    /**
+ * Handle refund for a cancelled/rejected order
+ */
+private function refundOrderPayment(ServiceOrder $order, string $cancellationReason): void
+{
+    try {
+        // Check if payment was already refunded
+        if ($order->is_refunded || $order->refunded_at) {
+            Log::info('Order already refunded', ['order_id' => $order->id]);
+            return;
+        }
+
+        // Only refund if payment was actually paid
+        if ($order->payment_status !== 'paid') {
+            Log::info('Order payment not paid, skipping refund', ['order_id' => $order->id]);
+            return;
+        }
+
+        // Handle refund based on payment method
+        if ($order->payment_method === 'believe_points') {
+            $this->refundBelievePoints($order, $cancellationReason);
+        } elseif ($order->payment_method === 'stripe') {
+            $this->refundStripePayment($order, $cancellationReason);
+        }
+
+        // Mark order as refunded
+        $order->update([
+            'is_refunded' => true,
+            'refunded_at' => now(),
+            'refund_reason' => $cancellationReason,
+        ]);
+
+        Log::info('Order refund processed successfully', ['order_id' => $order->id]);
+    } catch (\Exception $e) {
+        Log::error('Failed to refund order payment', [
+            'order_id' => $order->id,
+            'error' => $e->getMessage(),
+            'trace' => $e->getTraceAsString(),
+        ]);
+
+        // You might want to queue a retry or notify admins
+        $this->notifyAdminAboutRefundFailure($order, $e->getMessage());
+    }
+}
+
+/**
+ * Refund Believe Points to buyer
+ */
+private function refundBelievePoints(ServiceOrder $order, string $cancellationReason): bool
+{
+    try {
+        $buyer = $order->buyer;
+        $refundAmount = $order->amount;
+
+        // Add points back to buyer's account
+        $buyer->increment('believe_points', $refundAmount);
+
+        // Create a refund record
+        \App\Models\BelievePointsRefund::create([
+            'order_id' => $order->id,
+            'user_id' => $buyer->id,
+            'amount' => $refundAmount,
+            'reason' => $cancellationReason,
+            'status' => 'completed',
+        ]);
+
+        // Log the transaction
+        Log::info('Believe Points refunded', [
+            'order_id' => $order->id,
+            'buyer_id' => $buyer->id,
+            'amount' => $refundAmount,
+            'reason' => $cancellationReason,
+        ]);
+
+        return true;
+    } catch (\Exception $e) {
+        Log::error('Failed to refund Believe Points', [
+            'order_id' => $order->id,
+            'error' => $e->getMessage(),
+        ]);
+        throw $e;
+    }
+}
+
+/**
+ * Refund Stripe payment using Laravel Cashier
+ */
+private function refundStripePayment(ServiceOrder $order, string $cancellationReason): bool
+{
+    try {
+        // Get Stripe credentials
+        $stripeEnv = StripeConfigService::getEnvironment();
+        $credentials = StripeConfigService::getCredentials($stripeEnv);
+
+        if ($credentials && !empty($credentials['secret_key'])) {
+            Stripe::setApiKey($credentials['secret_key']);
+        } else {
+            // Fallback to default Stripe config
+            Stripe::setApiKey(config('services.stripe.secret'));
+        }
+
+        // Check if we have a Stripe payment intent ID
+        if (!$order->stripe_payment_intent_id && !$order->stripe_session_id) {
+            throw new \Exception('No Stripe payment intent or session ID found for order');
+        }
+
+        // Try to get payment intent from session first
+        $paymentIntentId = $order->stripe_payment_intent_id;
+
+        if (!$paymentIntentId && $order->stripe_session_id) {
+            try {
+                $session = \Stripe\Checkout\Session::retrieve($order->stripe_session_id);
+                $paymentIntentId = $session->payment_intent;
+            } catch (\Exception $e) {
+                Log::warning('Could not retrieve Stripe session', [
+                    'order_id' => $order->id,
+                    'session_id' => $order->stripe_session_id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        if (!$paymentIntentId) {
+            throw new \Exception('No Stripe payment intent ID available for refund');
+        }
+
+        // Create refund using Stripe API
+        $refundData = [
+            'payment_intent' => $paymentIntentId,
+            'reason' => 'requested_by_customer',
+            'metadata' => [
+                'order_id' => $order->id,
+                'order_number' => $order->order_number,
+                'cancellation_reason' => $cancellationReason,
+                'refund_initiated_by' => Auth::id(),
+            ],
+        ];
+
+        // If you want partial refund (without fees), adjust amount
+        // For full refund of service amount only:
+        $refundAmount = (int) ($order->amount * 100); // Convert to cents
+
+        $refundData['amount'] = $refundAmount;
+
+        // Create the refund
+        $refund = Refund::create($refundData);
+
+        // Store refund information
+        $order->update([
+            'stripe_refund_id' => $refund->id,
+            'refund_amount' => $refundAmount / 100, // Convert back to dollars
+            'refund_status' => $refund->status,
+        ]);
+
+        // Create local refund record
+        \App\Models\StripeRefund::create([
+            'order_id' => $order->id,
+            'refund_id' => $refund->id,
+            'payment_intent_id' => $paymentIntentId,
+            'amount' => $refundAmount / 100,
+            'currency' => $refund->currency,
+            'reason' => $cancellationReason,
+            'status' => $refund->status,
+            'stripe_response' => json_encode($refund->toArray()),
+        ]);
+
+        Log::info('Stripe refund created successfully', [
+            'order_id' => $order->id,
+            'refund_id' => $refund->id,
+            'amount' => $refundAmount / 100,
+            'status' => $refund->status,
+        ]);
+
+        return true;
+    } catch (\Exception $e) {
+        Log::error('Failed to create Stripe refund', [
+            'order_id' => $order->id,
+            'error' => $e->getMessage(),
+            'stripe_error' => $e instanceof \Stripe\Exception\ApiErrorException ? $e->getJsonBody() : null,
+        ]);
+        throw $e;
+    }
+}
+
+/**
+ * Notify admin about refund failure
+ */
+private function notifyAdminAboutRefundFailure(ServiceOrder $order, string $errorMessage): void
+{
+    try {
+        // Send email to admin
+        $adminEmail = config('mail.admin_email', 'admin@example.com');
+
+        Mail::to($adminEmail)->send(new \App\Mail\RefundFailedNotification(
+            $order,
+            $errorMessage
+        ));
+
+        // Or send notification via your notification system
+        // Notification::send($admins, new RefundFailed($order, $errorMessage));
+
+        Log::warning('Admin notified about refund failure', [
+            'order_id' => $order->id,
+            'admin_email' => $adminEmail,
+        ]);
+    } catch (\Exception $e) {
+        Log::error('Failed to notify admin about refund failure', [
+            'order_id' => $order->id,
+            'error' => $e->getMessage(),
+        ]);
+    }
+}
 }

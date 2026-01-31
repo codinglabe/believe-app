@@ -5,7 +5,6 @@ import { motion } from "framer-motion"
 import { TrendingUp, ArrowLeft, Award, Users, Heart, Globe } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Link } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { Head } from "@inertiajs/react"
 
 interface Props {

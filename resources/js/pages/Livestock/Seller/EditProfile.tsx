@@ -21,8 +21,6 @@ import {
     Edit,
     ArrowLeft
 } from "lucide-react"
-import { route } from "ziggy-js"
-
 interface Profile {
     id: number
     farm_name: string

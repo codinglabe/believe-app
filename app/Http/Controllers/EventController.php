@@ -10,7 +10,9 @@ use App\Models\Organization;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
+use App\Services\SeoService;
 use Inertia\Response;
 
 class EventController extends BaseController
@@ -352,7 +354,41 @@ class EventController extends BaseController
 
         $events = $events->get();
 
+        // Dynamic SEO: base from settings, override title when filters applied
+        $baseSeo = SeoService::forPage('all_events');
+        $seoTitle = $baseSeo['title'];
+        $seoParts = [];
+        if (!empty($search)) {
+            $seoParts[] = '“' . Str::limit($search, 30) . '”';
+        }
+        if (!empty($status) && $status !== 'all') {
+            $seoParts[] = ucfirst($status);
+        }
+        if (!empty($eventTypeId) && $eventTypeId !== 'all') {
+            $eventType = $eventTypes->firstWhere('id', (int) $eventTypeId);
+            if ($eventType) {
+                $seoParts[] = $eventType->name;
+            }
+        }
+        if (!empty($cityFilter) && $cityFilter !== 'all') {
+            $seoParts[] = $cityFilter;
+        }
+        if (!empty($stateFilter) && $stateFilter !== 'all') {
+            $seoParts[] = $stateFilter;
+        }
+        if (!empty($seoParts)) {
+            $seoTitle = implode(' ', $seoParts) . ' - ' . $baseSeo['title'];
+        }
+        $seoDescription = $baseSeo['description'];
+        if (!empty($search)) {
+            $seoDescription = 'Find events matching your search. ' . $seoDescription;
+        }
+
         return Inertia::render('frontend/events', [
+            'seo' => [
+                'title' => $seoTitle,
+                'description' => $seoDescription,
+            ],
             'events' => $events,
             'eventTypes' => $eventTypes,
             'organizations' => $organizations,

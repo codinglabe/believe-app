@@ -35,6 +35,7 @@ import {
 import { Link, router, usePage } from "@inertiajs/react"
 import { useState, useEffect } from "react"
 import { Head } from "@inertiajs/react"
+import { ContactSellerButton } from "@/components/frontend/service-hub/contact-seller-button"
 
 interface Order {
   id: number
@@ -480,12 +481,13 @@ export default function SellerOrders() {
                                   View Service
                                 </Button>
                               </Link>
-                              <Link href={`/service-hub/seller/${order.buyer.id}`}>
+                              {/* <Link href={`/service-hub/seller/${order.buyer.id}`}>
                                 <Button variant="outline" size="sm">
                                   <MessageCircle className="mr-2 h-4 w-4" />
                                   Contact Buyer
                                 </Button>
-                              </Link>
+                              </Link> */}
+                                         <ContactSellerButton sellerId={order.buyer.id} sellerName={order.buyer.name} gigSlug={order.service.slug} gigTitle={order.service.title}></ContactSellerButton>
                               {order.canDeliver && order.status !== 'pending' && (
                                 <Link href={`/service-hub/orders/${order.id}`}>
                                   <Button

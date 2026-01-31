@@ -29,8 +29,6 @@ import {
 } from "lucide-react"
 import { motion } from "framer-motion"
 import type { BreadcrumbItem } from "@/types"
-import { route } from "ziggy-js"
-
 interface PlanFeature {
     id: number
     name: string

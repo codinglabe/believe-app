@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Events\OrderAutoCompleted;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Support\Str;
@@ -38,6 +39,14 @@ class ServiceOrder extends Model
         'cancelled_at',
         'cancellation_reason',
         'deliverables',
+        'auto_completed_at',
+        'was_auto_completed',
+        'is_refunded',
+        'refunded_at',
+        'refund_reason',
+        'refund_amount',
+        'stripe_refund_id',
+        'refund_status',
     ];
 
     protected $casts = [
@@ -172,5 +181,123 @@ class ServiceOrder extends Model
             'cancelled_at' => now(),
             'cancellation_reason' => $reason,
         ]);
+    }
+
+
+    /**
+     * Check if order can be cancelled by buyer
+     */
+    public function canBeCancelledByBuyer(): bool
+    {
+        // Only buyer can cancel their own orders
+        if (auth()->id() !== $this->buyer_id) {
+            return false;
+        }
+
+        // Can only cancel pending orders
+        if (!in_array($this->status, ['pending'])) {
+            return false;
+        }
+
+        // Check 24-hour rule
+        $orderAge = now()->diffInHours($this->created_at);
+
+        // If order is more than 24 hours old, cannot cancel
+        if ($orderAge > 24) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if order needs resubmission (buyer cancelled after delivery)
+     */
+    public function needsResubmission(): bool
+    {
+        return $this->status === 'in_progress' && $this->delivered_at;
+    }
+
+
+    /**
+     * Check if order needs automatic approval (after 48 hours of delivery)
+     */
+    public function needsAutomaticApproval(): bool
+    {
+        return $this->status === 'delivered' &&
+            $this->delivered_at &&
+            now()->diffInHours($this->delivered_at) >= 48;
+    }
+
+    /**
+     * Automatically approve delivered order after 48 hours
+     */
+    public function autoApproveIfNeeded(): void
+    {
+        if ($this->needsAutomaticApproval()) {
+            $this->status = 'completed';
+            $this->completed_at = now();
+            $this->save();
+
+            // Send notification
+            event(new OrderAutoCompleted($this));
+        }
+    }
+
+    /**
+     * Cancel order by buyer
+     */
+    public function cancelByBuyer(string $reason): bool
+    {
+        if (!$this->canBeCancelledByBuyer()) {
+            return false;
+        }
+
+        $this->update([
+            'status' => 'cancelled',
+            'cancelled_at' => now(),
+            'cancellation_reason' => $reason . ' (Cancelled by buyer)',
+        ]);
+
+        // If order was delivered and cancelled, revert to in_progress
+        if ($this->status === 'delivered') {
+            $this->update([
+                'status' => 'in_progress',
+                'delivered_at' => null,
+                'deliverables' => null,
+            ]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Check if order is within 24-hour cancellation window
+     */
+    public function isWithinCancellationWindow(): bool
+    {
+        return now()->diffInHours($this->created_at) <= 24;
+    }
+
+    /**
+     * Get remaining cancellation time in hours
+     */
+    public function getRemainingCancellationTime(): int
+    {
+        $hoursPassed = now()->diffInHours($this->created_at);
+        return max(0, 24 - $hoursPassed);
+    }
+
+    /**
+     * Get remaining auto-approval time for delivered order
+     */
+    public function getRemainingAutoApprovalTime(): int
+    {
+        if (!$this->delivered_at || $this->status !== 'delivered') {
+            return 0;
+        }
+
+        $hoursPassed = now()->diffInHours($this->delivered_at);
+        return max(0, 48 - $hoursPassed);
     }
 }

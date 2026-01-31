@@ -18,7 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/admin/ui/
 import { Badge } from "@/components/admin/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { route } from "ziggy-js"
 import { useState } from "react"
 
 interface Topic {

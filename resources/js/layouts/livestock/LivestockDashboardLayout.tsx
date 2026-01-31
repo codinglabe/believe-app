@@ -42,7 +42,6 @@ import {
     DialogTitle,
 } from "@/components/ui/dialog"
 import toast, { Toaster } from "react-hot-toast"
-import { route } from "ziggy-js"
 import { cn } from "@/lib/utils"
 
 interface LivestockDashboardLayoutProps {
@@ -210,7 +209,7 @@ export default function LivestockDashboardLayout({ children }: LivestockDashboar
 
     const handleLogout = (e: React.FormEvent) => {
         e.preventDefault()
-        post(route('logout'))
+        post(route('logout.livestock'))
     }
 
     // Check if user should be blocked from navigation

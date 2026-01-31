@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Head, Link, router } from '@inertiajs/react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -39,6 +39,7 @@ export default function Create({
         requirements: '',
         pay_rate: '',
         currency: '',
+        points: '',
         type: '',
         location_type: '',
         city: '',
@@ -52,12 +53,25 @@ export default function Create({
     const [errors, setErrors] = useState<Record<string, string>>({});
     const [isSubmitting, setIsSubmitting] = useState(false);
 
+    // Auto-set points to 100 when type is volunteer
+    useEffect(() => {
+        if (formData.type === 'volunteer') {
+            setFormData((prev) => ({ ...prev, points: '100' }));
+        }
+    }, [formData.type]);
+
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         setIsSubmitting(true);
         setErrors({});
 
-        router.post('/job-posts', formData, {
+        // Ensure points is 100 for volunteer jobs
+        const submitData = { ...formData };
+        if (submitData.type === 'volunteer') {
+            submitData.points = '100';
+        }
+
+        router.post('/job-posts', submitData, {
             onError: (errors) => {
                 setErrors(errors);
                 showErrorToast('Failed to create job post');
@@ -199,39 +213,61 @@ export default function Create({
                                     )}
                                 </div>
 
-                                <div className="space-y-2">
-                                    <Label htmlFor="pay_rate">Pay Rate</Label>
-                                    <div className="flex gap-2">
+                                {formData.type === 'volunteer' ? (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="points">Points (Reward Points)</Label>
                                         <Input
-                                            id="pay_rate"
+                                            id="points"
                                             type="number"
                                             min="0"
-                                            step="0.01"
-                                            value={formData.pay_rate}
-                                            onChange={(e) => handleChange('pay_rate', e.target.value)}
-                                            placeholder="Enter pay rate"
-                                            className={errors.pay_rate ? 'border-red-500' : ''}
+                                            value={formData.points}
+                                            onChange={(e) => handleChange('points', e.target.value)}
+                                            placeholder="100 points (fixed for volunteer jobs)"
+                                            disabled={true}
+                                            className={`${errors.points ? 'border-red-500' : ''} bg-muted cursor-not-allowed`}
                                         />
-                                        <Select
-                                            value={formData.currency}
-                                            onValueChange={(value) => handleChange('currency', value)}
-                                        >
-                                            <SelectTrigger className="w-[100px]">
-                                                <SelectValue placeholder="Currency" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                {Object.entries(currencyOptions).map(([value, label]) => (
-                                                    <SelectItem key={value} value={value}>
-                                                        {label}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <p className="text-xs text-muted-foreground">
+                                            Volunteer jobs have a fixed rate of 100 points
+                                        </p>
+                                        {errors.points && (
+                                            <p className="text-sm text-red-500">{errors.points}</p>
+                                        )}
                                     </div>
-                                    {errors.pay_rate && (
-                                        <p className="text-sm text-red-500">{errors.pay_rate}</p>
-                                    )}
-                                </div>
+                                ) : (
+                                    <div className="space-y-2">
+                                        <Label htmlFor="pay_rate">Pay Rate</Label>
+                                        <div className="flex gap-2">
+                                            <Input
+                                                id="pay_rate"
+                                                type="number"
+                                                min="0"
+                                                step="0.01"
+                                                value={formData.pay_rate}
+                                                onChange={(e) => handleChange('pay_rate', e.target.value)}
+                                                placeholder="Enter pay rate"
+                                                className={errors.pay_rate ? 'border-red-500' : ''}
+                                            />
+                                            <Select
+                                                value={formData.currency}
+                                                onValueChange={(value) => handleChange('currency', value)}
+                                            >
+                                                <SelectTrigger className="w-[100px]">
+                                                    <SelectValue placeholder="Currency" />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {Object.entries(currencyOptions).map(([value, label]) => (
+                                                        <SelectItem key={value} value={value}>
+                                                            {label}
+                                                        </SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                        </div>
+                                        {errors.pay_rate && (
+                                            <p className="text-sm text-red-500">{errors.pay_rate}</p>
+                                        )}
+                                    </div>
+                                )}
 
                                 <div className="space-y-2">
                                     <Label htmlFor="time_commitment_min_hours">Time Commitment (hours)</Label>

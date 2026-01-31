@@ -25,8 +25,6 @@ import {
 } from "lucide-react"
 import { motion } from "framer-motion"
 import type { BreadcrumbItem } from "@/types"
-import { route } from "ziggy-js"
-
 interface WalletPlan {
     id: number
     name: string

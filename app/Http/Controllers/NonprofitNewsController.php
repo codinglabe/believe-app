@@ -2,78 +2,100 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Support\Facades\Cache;
-use Inertia\Inertia;
+use App\Models\NonprofitNewsArticle;
 use Illuminate\Http\Request;
-use App\Services\RssAggregator;
-use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Pagination\Paginator;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class NonprofitNewsController extends Controller
 {
-    public function index(Request $request)
+    private const PER_PAGE = 12;
+    private const TRENDING_LIMIT = 5;
+
+    public function index(Request $request): Response
     {
-        $feeds = config('rss.nonprofit_feeds', []);
-        $perFeed = (int) config('rss.per_feed_limit', 10);
-        $cacheKey = config('rss.cache_key', 'nonprofit_rss_cache');
-        $ttl = (int) config('rss.cache_ttl_seconds', 1800);
-        $mergedLimit = (int) config('rss.merged_limit', 60);
+        $query = trim((string) $request->query('q'));
+        $sources = $request->query('sources', []);
+        $sources = is_array($sources) ? $sources : (array) $sources;
+        $sort = $request->query('sort', 'newest');
+        $page = max(1, (int) $request->query('page', 1));
 
-        $items = Cache::remember($cacheKey, $ttl, function () use ($feeds, $perFeed) {
-            $agg = new RssAggregator($feeds, $perFeed);
-            return $agg->aggregate();
-        });
+        $baseQuery = NonprofitNewsArticle::query()
+            ->published()
+            ->select(['id', 'source', 'title', 'link', 'summary', 'published_at', 'image_url', 'category']);
 
-        // Apply search filter
-        if ($q = trim((string) $request->query('q'))) {
-            $items = array_values(array_filter($items, function ($it) use ($q) {
-                return stripos($it['title'], $q) !== false
-                    || ($it['summary'] && stripos($it['summary'], $q) !== false)
-                    || stripos($it['source'], $q) !== false;
-            }));
+        $baseQuery->search($query);
+        $baseQuery->bySources($sources);
+
+        $featured = (clone $baseQuery)->newest()->first();
+        $trending = (clone $baseQuery)->newest()->limit(self::TRENDING_LIMIT)->get();
+
+        if ($featured) {
+            $baseQuery->where('id', '!=', $featured->id);
         }
+        $mainQuery = clone $baseQuery;
+        $mainQuery = $sort === 'oldest' ? $mainQuery->orderBy('published_at') : $mainQuery->newest();
+        $paginator = $mainQuery->paginate(self::PER_PAGE, ['*'], 'page', $page);
+        $paginator->getCollection()->transform(fn ($a) => $this->transformArticle($a));
 
-        // Apply source filter
-        $selectedSources = $request->query('sources', []);
-        if (!empty($selectedSources)) {
-            $items = array_values(array_filter($items, function ($it) use ($selectedSources) {
-                return in_array($it['source'], $selectedSources);
-            }));
+        $allSources = NonprofitNewsArticle::query()
+            ->published()
+            ->distinct()
+            ->pluck('source')
+            ->sort()
+            ->values()
+            ->all();
+
+        $categoryOptions = $this->getCategoryOptions();
+
+        $savedArticleIds = [];
+        $user = $request->user();
+        if ($user) {
+            $savedArticleIds = $user->savedNewsArticles()->pluck('nonprofit_news_articles.id')->all();
         }
-
-        // Get the page from the request, default to 1
-        $page = $request->query('page', 1);
-        $perPage = 15; // Number of items per page
-
-        // Create a paginator instance
-        $paginator = new LengthAwarePaginator(
-            array_slice($items, ($page - 1) * $perPage, $perPage),
-            count($items),
-            $perPage,
-            $page,
-            [
-                'path' => $request->url(),
-                'query' => $request->query(),
-            ]
-        );
 
         return Inertia::render('frontend/news/index', [
-            'items' => collect($paginator->items())->map(function ($item) {
-                // Convert DateTimeImmutable -> ISO string
-                if (isset($item['published_at']) && $item['published_at'] instanceof \DateTimeInterface) {
-                    $item['published_at'] = $item['published_at']->format('c');
-                }
-                return $item;
-            }),
-            'allSources' => array_keys($feeds),
-            'sources' => $selectedSources,
-            'query' => $q ?? '',
-            'updated_at' => now()->toIso8601String(),
-            'current_page' => $paginator->currentPage(),
-            'last_page' => $paginator->lastPage(),
-            'from' => $paginator->firstItem() ?? 0,
-            'to' => $paginator->lastItem() ?? 0,
-            'total' => $paginator->total(),
+            'featured' => $featured ? $this->transformArticle($featured) : null,
+            'trending' => $trending->map(fn ($a) => $this->transformArticle($a))->all(),
+            'articles' => $paginator,
+            'savedArticleIds' => $savedArticleIds,
+            'filters' => [
+                'q' => $query,
+                'sources' => $sources,
+                'sort' => $sort,
+            ],
+            'allSources' => $allSources,
+            'categoryOptions' => $categoryOptions,
+            'sortOptions' => [
+                'newest' => 'Newest',
+                'oldest' => 'Oldest',
+            ],
         ]);
+    }
+
+    private function transformArticle(NonprofitNewsArticle $a): array
+    {
+        return [
+            'id' => $a->id,
+            'source' => $a->source,
+            'title' => $a->title,
+            'link' => $a->link,
+            'summary' => $a->summary,
+            'published_at' => $a->published_at?->toIso8601String(),
+            'image_url' => $a->image_url,
+            'category' => $a->category,
+        ];
+    }
+
+    private function getCategoryOptions(): array
+    {
+        return [
+            'Funding & Grants' => 'Funding & Grants',
+            'Compliance' => 'Compliance',
+            'Technology' => 'Technology',
+            'HR & Leadership' => 'HR & Leadership',
+            'Policy' => 'Policy',
+            'Global Issues' => 'Global Issues',
+        ];
     }
 }

@@ -265,4 +265,14 @@ class Organization extends Model
     {
         return $this->hasMany(GiftCard::class);
     }
+
+    public function fundmeCampaigns()
+    {
+        return $this->hasMany(FundMeCampaign::class, 'organization_id');
+    }
+
+    public function fundmeDonations()
+    {
+        return $this->hasMany(FundMeDonation::class, 'organization_id');
+    }
 }

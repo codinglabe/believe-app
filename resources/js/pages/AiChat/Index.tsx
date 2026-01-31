@@ -894,7 +894,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
 
   return (
     <AppLayout>
-      <Head title="AI Chat Assistant" />
+      <Head title="AI Believe Assistant" />
 
       <div className="relative h-[calc(100vh-4rem)] w-full">
         {/* Main Chat Area */}
@@ -906,7 +906,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   <Bot className="h-5 w-5 sm:h-6 sm:w-6 text-primary" />
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-xl sm:text-2xl font-bold truncate">AI Chat Assistant</h1>
+                  <h1 className="text-xl sm:text-2xl font-bold truncate">AI Believe Assistant</h1>
                   <p className="text-xs sm:text-sm text-muted-foreground">Ask me anything</p>
                 </div>
               </div>
@@ -923,6 +923,28 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
               </div>
             </div>
 
+            {/* Low Credits Warning (Red) - when credits <= 1000 */}
+            {auth.user.role === 'organization' && currentCredits <= 1000 && currentCredits > 0 && (
+              <div className="mb-4 p-4 bg-red-50 dark:bg-red-950/20 border-2 border-red-500 rounded-lg flex-shrink-0">
+                <div className="flex items-center gap-3">
+                  <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0" />
+                  <div className="flex-1">
+                    <div className="font-semibold text-red-900 dark:text-red-300 mb-1">Low Credits Warning</div>
+                    <p className="text-sm text-red-800 dark:text-red-400">
+                      You have <strong>{currentCredits.toLocaleString()}</strong> credits remaining. Top up now to continue using AI features.
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleBuyCredits}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer flex-shrink-0"
+                  >
+                    <Coins className="h-4 w-4" />
+                    TopUp
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Insufficient Credits Alert */}
             {error === 'insufficient_credits' && (
               <div className="mb-4 p-4 bg-destructive/10 border-2 border-destructive/20 rounded-lg flex-shrink-0">
@@ -938,7 +960,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors font-medium text-sm flex items-center gap-2 cursor-pointer"
                     >
                       <Coins className="h-4 w-4" />
-                      Upgrade Buy Credits
+                      TopUp
                     </button>
                   </div>
                 </div>
@@ -1118,7 +1140,7 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                       className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors font-medium text-sm cursor-pointer"
                     >
                       <Coins className="h-4 w-4" />
-                      <span>Upgrade Buy Credits</span>
+                      <span>TopUp</span>
                     </button>
                   )}
                 </div>
@@ -1149,16 +1171,64 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                   }}
                 >
                 {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full text-center">
-                    <div className="p-4 rounded-full bg-primary/10 mb-4">
-                      <Bot className="h-12 w-12 text-primary" />
+                  <div className="flex flex-col items-center justify-center h-full text-center px-4">
+                    {/* Logo */}
+                    <div className="mb-6 flex items-center justify-center">
+                      <div className="relative">
+                        <img 
+                          src="/believeiu-logo.png" 
+                          alt="Believeiu.cash Logo" 
+                          className="h-16 w-16 sm:h-20 sm:w-20 object-contain"
+                          onError={(e) => {
+                            // Fallback if logo doesn't exist
+                            e.currentTarget.style.display = 'none';
+                          }}
+                        />
+                      </div>
                     </div>
-                    <h3 className="text-xl font-semibold mb-2">Start a conversation</h3>
-                    <p className="text-muted-foreground max-w-md">
-                      Ask me anything! I'm here to help you with your questions and tasks.
-                    </p>
-                    <div className="mt-6 text-sm text-muted-foreground">
-                      <p>💡 Each message costs <strong>1 credit</strong></p>
+                    
+                    {/* Branding */}
+                    <div className="mb-6">
+                      <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-primary/10 border border-primary/20 mb-4">
+                        <Bot className="h-5 w-5 text-primary" />
+                        <span className="text-lg font-semibold text-primary">AI Believe Assistant</span>
+                      </div>
+                      <h3 className="text-2xl sm:text-3xl font-bold mb-3 bg-gradient-to-r from-primary via-primary/90 to-primary/80 bg-clip-text text-transparent">
+                        Start a Conversation
+                      </h3>
+                      <p className="text-muted-foreground max-w-md mx-auto text-base sm:text-lg">
+                        Hello! I'm your AI Believe Assistant. I'm here to help you with your organization's needs.
+                      </p>
+                    </div>
+
+                    {/* Capabilities */}
+                    <div className="mt-6 max-w-md mx-auto">
+                      <p className="text-sm font-medium text-foreground mb-3">I can help you with:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span>Creating campaigns</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span>Generating content</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span>Answering questions</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Sparkles className="h-4 w-4 text-primary" />
+                          <span>Providing insights</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Credit Info */}
+                    <div className="mt-8 p-3 rounded-lg bg-muted/50 border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        💡 Each message costs <strong className="text-foreground">1 credit</strong>
+                      </p>
                     </div>
                   </div>
                 ) : (

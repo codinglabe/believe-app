@@ -596,12 +596,47 @@ class MerchantHubController extends BaseController
         ]);
 
         try {
-            $redemption->update(['status' => $validated['status']]);
+            $oldStatus = $redemption->status;
+            $newStatus = $validated['status'];
+
+            // If canceling and wasn't already canceled, refund points
+            if ($newStatus === 'canceled' && $oldStatus !== 'canceled') {
+                $user = $redemption->user;
+                $pointsToRefund = $redemption->points_spent;
+
+                // Refund points to user
+                $user->increment('reward_points', $pointsToRefund);
+
+                // Create credit ledger entry for refund
+                \App\Models\RewardPointLedger::createCredit(
+                    $user->id,
+                    'merchant_hub_redemption_refund',
+                    $redemption->id,
+                    $pointsToRefund,
+                    "Refund for canceled redemption: {$redemption->offer->title}",
+                    [
+                        'redemption_id' => $redemption->id,
+                        'offer_id' => $redemption->merchant_hub_offer_id,
+                        'offer_title' => $redemption->offer->title,
+                        'merchant_name' => $redemption->offer->merchant->name,
+                        'receipt_code' => $redemption->receipt_code,
+                        'original_points_spent' => $pointsToRefund,
+                    ]
+                );
+
+                \Illuminate\Support\Facades\Log::info('Redemption canceled and points refunded', [
+                    'redemption_id' => $redemption->id,
+                    'user_id' => $user->id,
+                    'points_refunded' => $pointsToRefund,
+                ]);
+            }
+
+            $redemption->update(['status' => $newStatus]);
 
             return redirect()->back()
                 ->with('success', 'Redemption status updated successfully.');
         } catch (\Exception $e) {
-            Log::error('Merchant hub redemption status update error: ' . $e->getMessage());
+            \Illuminate\Support\Facades\Log::error('Merchant hub redemption status update error: ' . $e->getMessage());
             return redirect()->back()
                 ->with('error', 'Failed to update redemption status: ' . $e->getMessage());
         }

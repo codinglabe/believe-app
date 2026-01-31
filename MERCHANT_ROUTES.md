@@ -94,12 +94,11 @@ You can use these routes in your components:
 
 ```tsx
 import { Link } from '@inertiajs/react'
-import { route } from 'ziggy-js'
 
 // Using Link component
 <Link href="/merchant/hub">Merchant Hub</Link>
 
-// Using route helper (if ziggy is configured)
+// Using global route() helper (no import needed)
 <Link href={route('merchant.hub')}>Merchant Hub</Link>
 ```
 

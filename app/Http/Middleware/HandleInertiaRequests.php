@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AdminSetting;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
@@ -68,8 +69,18 @@ class HandleInertiaRequests extends Middleware
         }
 
         // Only load organization relationship if user is not a LivestockUser or Merchant
+        // Load organization manually to avoid ambiguous column error with hasOneThrough
         if ($user && !$isLivestockDomain && !$isMerchantDomain && !($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
-            $user->load("organization", "serviceSellerProfile");
+            // Load organization manually through board_members to avoid relationship query issues
+            // This prevents the ambiguous column error when eager loading
+            $boardMember = $user->boardMemberships()->first();
+            if ($boardMember) {
+                $organization = \App\Models\Organization::find($boardMember->organization_id);
+                if ($organization) {
+                    $user->setRelation('organization', $organization);
+                }
+            }
+            $user->load("serviceSellerProfile");
         }
         // Only access roles if user is not a LivestockUser or Merchant (User model has roles via Spatie Permission)
         $role = null;
@@ -90,6 +101,52 @@ class HandleInertiaRequests extends Middleware
         $userData = null;
         if ($user) {
             if ($isMerchantDomain || ($user instanceof \App\Models\Merchant)) {
+                // Real-time check: Get subscription and refresh from Stripe
+                $subscription = $user->subscriptions()
+                    ->whereIn('stripe_status', ['active', 'trialing', 'canceled'])
+                    ->orderBy('created_at', 'desc')
+                    ->first();
+
+                $hasActiveSubscription = false;
+                
+                if ($subscription) {
+                    // Real-time check: Refresh subscription status from Stripe
+                    try {
+                        if ($subscription->stripe_id) {
+                            $stripe = \Laravel\Cashier\Cashier::stripe();
+                            $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
+                            
+                            // Update local subscription with latest data from Stripe
+                            $subscription->stripe_status = $stripeSubscription->status;
+                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                                \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
+                            
+                            // If cancel_at is set, mark as canceled even if status is still 'active'
+                            if ($stripeSubscription->cancel_at) {
+                                $subscription->stripe_status = 'canceled';
+                            }
+                            
+                            $subscription->save();
+                            
+                            // Check if subscription is truly active (not canceled)
+                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing']) 
+                                && $stripeSubscription->cancel_at === null;
+                        }
+                    } catch (\Exception $e) {
+                        \Log::warning('Failed to refresh subscription status in HandleInertiaRequests', [
+                            'merchant_id' => $user->id,
+                            'subscription_id' => $subscription->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                        
+                        // Fallback: check local status
+                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing']) 
+                            && $subscription->ends_at === null;
+                    }
+                }
+
                 // Merchant user data
                 $userData = [
                     'id' => $user->id,
@@ -97,6 +154,7 @@ class HandleInertiaRequests extends Middleware
                     'email' => $user->email,
                     'business_name' => $user->business_name,
                     'business_description' => $user->business_description,
+                    'website' => $user->website,
                     'phone' => $user->phone,
                     'address' => $user->address,
                     'city' => $user->city,
@@ -107,6 +165,7 @@ class HandleInertiaRequests extends Middleware
                     'role' => $user->role,
                     'email_verified_at' => $user->email_verified_at,
                     'joined' => $user->created_at->format('F Y'),
+                    'has_active_subscription' => $hasActiveSubscription,
                 ];
             } elseif ($isLivestockDomain || ($user instanceof \App\Models\LivestockUser)) {
                 // Livestock user data
@@ -137,6 +196,7 @@ class HandleInertiaRequests extends Middleware
                 if (!($user instanceof \App\Models\LivestockUser) && !($user instanceof \App\Models\Merchant)) {
                     $userData = [
                         'id' => $user->id,
+                        'slug' => $user->slug ?? null,
                         'name' => $user->name,
                         'email' => $user->email,
                         'phone' => $user->contact_number,
@@ -159,6 +219,7 @@ class HandleInertiaRequests extends Middleware
                         'push_token' => $user->push_token ?? null,
                         'timezone' => $user->timezone ?? 'UTC',
                         "organization" => $user->organization ? [
+                            'id' => $user->organization->id,
                             'name' => $user->organization->name,
                             "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,
@@ -169,6 +230,7 @@ class HandleInertiaRequests extends Middleware
                             'joined' => $user->created_at->format('F Y'),
                             'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
                             'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
+                            'public_view_slug' => $user->slug ?? $user->id, // Use user slug for public view
                         ] : null,
                         'service_seller_profile' => $user->serviceSellerProfile ? [
                             'id' => $user->serviceSellerProfile->id,
@@ -179,9 +241,25 @@ class HandleInertiaRequests extends Middleware
             }
         }
 
+        // Get footer settings
+        $footerSettings = \App\Models\AdminSetting::get('footer_settings', null);
+        if ($footerSettings && is_array($footerSettings)) {
+            // Settings are already decoded from JSON
+        } else {
+            $footerSettings = null;
+        }
+
+        // SEO (from admin SEO settings) for main app only — used for social share previews (Facebook, WhatsApp, etc.)
+        $seoSiteName = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getSiteName() : null;
+        $seoCanonical = (!$isLivestockDomain && !$isMerchantDomain) ? $request->url() : null;
+        $seoDefaultImage = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
+            'seoSiteName' => $seoSiteName,
+            'seoCanonical' => $seoCanonical,
+            'seoDefaultImage' => $seoDefaultImage,
             'quote' => ['message' => trim($message), 'author' => trim($author)],
             'auth' => [
                 'user' => $userData,
@@ -203,6 +281,7 @@ class HandleInertiaRequests extends Middleware
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),
             'merchantDomain' => config('merchant.domain'),
+            'footerSettings' => $footerSettings,
         ];
     }
 }

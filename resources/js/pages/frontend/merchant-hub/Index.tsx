@@ -1,5 +1,6 @@
-import React, { useState } from 'react'
-import { Head, Link } from '@inertiajs/react'
+import React, { useState, useEffect, useRef } from 'react'
+import { Link, router } from '@inertiajs/react'
+import { PageHead } from '@/components/frontend/PageHead'
 import { Search, Store, Gift, Sparkles } from 'lucide-react'
 import { motion } from 'framer-motion'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
@@ -7,6 +8,11 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/frontend/ui/button'
 import { Badge } from '@/components/frontend/ui/badge'
 import { Input } from '@/components/frontend/ui/input'
+
+// Global route helper (provided by Laravel/Inertia)
+declare global {
+  function route(name: string, params?: Record<string, unknown>): string
+}
 
 interface Offer {
   id: string
@@ -19,85 +25,139 @@ interface Offer {
   description?: string
 }
 
-interface Props {
-  offers?: Offer[]
+interface Category {
+  id: number
+  name: string
+  slug: string
+  offers_count: number
 }
 
-export default function MerchantHubIndex({ offers: initialOffers = [] }: Props) {
-  const [searchQuery, setSearchQuery] = useState('')
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
+interface PaginationLink {
+  url: string | null
+  label: string
+  active: boolean
+}
 
-  // Mock data - in production, this would come from props
-  const offers: Offer[] = initialOffers.length > 0 ? initialOffers : [
-    {
-      id: '1',
-      title: 'Gift Card - $50 Value',
-      image: '/placeholder.jpg',
-      pointsRequired: 5000,
-      cashRequired: 10,
-      merchantName: 'Retail Store',
-      category: 'Gift Cards',
-      description: 'Redeem points for a $50 gift card'
-    },
-    {
-      id: '2',
-      title: 'Fitness Class Pass',
-      image: '/placeholder.jpg',
-      pointsRequired: 7500,
-      merchantName: 'Fitness Center',
-      category: 'Services',
-      description: 'Unlimited classes for one month'
-    },
-    {
-      id: '3',
-      title: 'Wireless Earbuds',
-      image: '/placeholder.jpg',
-      pointsRequired: 10000,
-      cashRequired: 25,
-      merchantName: 'Tech Store',
-      category: 'Electronics',
-      description: 'Premium wireless earbuds with noise cancellation'
-    },
-    {
-      id: '4',
-      title: 'Dinner for Two',
-      image: '/placeholder.jpg',
-      pointsRequired: 8000,
-      cashRequired: 30,
-      merchantName: 'Fine Dining Restaurant',
-      category: 'Dining',
-      description: 'Three-course dinner for two people'
-    },
-    {
-      id: '5',
-      title: 'Spa Day Package',
-      image: '/placeholder.jpg',
-      pointsRequired: 12000,
-      cashRequired: 50,
-      merchantName: 'Luxury Spa',
-      category: 'Services',
-      description: 'Full day spa experience with massage and treatments'
-    },
-    {
-      id: '6',
-      title: 'Movie Theater Tickets',
-      image: '/placeholder.jpg',
-      pointsRequired: 3000,
-      merchantName: 'Cinema Complex',
-      category: 'Entertainment',
-      description: 'Two tickets to any movie'
+interface PaginatedOffers {
+  data: Offer[]
+  current_page: number
+  last_page: number
+  per_page: number
+  total: number
+  links?: PaginationLink[]
+}
+
+interface Props {
+  offers?: PaginatedOffers
+  categories?: Category[]
+  filters?: {
+    category?: string
+    search?: string
+    min_points?: number
+    max_points?: number
+    has_cash?: boolean
+    sort?: string
+    per_page?: number
+  }
+}
+
+export default function MerchantHubIndex({ offers: initialOffers, categories: initialCategories = [], filters: initialFilters = {} }: Props) {
+  const [searchQuery, setSearchQuery] = useState(initialFilters.search || '')
+  const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(initialFilters.category || null)
+  const isInitialMount = useRef(true)
+
+  // Use real data from backend (already filtered by backend)
+  const offersData: Offer[] = initialOffers?.data || []
+  
+  // Build categories list dynamically from backend data
+  const allCategoriesList = ['All', ...(initialCategories.map(cat => cat.name))]
+  const categories = initialCategories.length > 0 ? allCategoriesList : ['All']
+
+  // Debounce search with useEffect
+  useEffect(() => {
+    // Skip on initial mount
+    if (isInitialMount.current) {
+      isInitialMount.current = false
+      return
     }
-  ]
 
-  const categories = ['All', 'Gift Cards', 'Services', 'Electronics', 'Dining', 'Entertainment']
+    const timeoutId = setTimeout(() => {
+      router.get(
+        route('merchant-hub.index'),
+        {
+          search: searchQuery || undefined,
+          category: selectedCategorySlug || undefined,
+        },
+        {
+          preserveState: true,
+          preserveScroll: true,
+          replace: true,
+        }
+      )
+    }, 500)
 
-  const filteredOffers = offers.filter(offer => {
-    const matchesSearch = offer.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         offer.merchantName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         (offer.description && offer.description.toLowerCase().includes(searchQuery.toLowerCase()))
-    const matchesCategory = !selectedCategory || selectedCategory === 'All' || offer.category === selectedCategory
-    return matchesSearch && matchesCategory
-  })
+    return () => clearTimeout(timeoutId)
+  }, [searchQuery, selectedCategorySlug])
+
+  // Handle search input change
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setSearchQuery(e.target.value)
+  }
+
+  // Handle search form submit
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    router.get(
+      route('merchant-hub.index'),
+      {
+        search: searchQuery || undefined,
+        category: selectedCategorySlug || undefined,
+      },
+      {
+        preserveState: true,
+        preserveScroll: true,
+        replace: true,
+      }
+    )
+  }
+
+  // Handle category filter change
+  const handleCategoryChange = (categoryName: string) => {
+    if (categoryName === 'All') {
+      setSelectedCategorySlug(null)
+      router.get(
+        route('merchant-hub.index'),
+        {
+          search: searchQuery || undefined,
+        },
+        {
+          preserveState: true,
+          preserveScroll: true,
+          replace: true,
+        }
+      )
+    } else {
+      const categoryData = initialCategories.find(cat => cat.name === categoryName)
+      if (categoryData) {
+        setSelectedCategorySlug(categoryData.slug)
+        router.get(
+          route('merchant-hub.index'),
+          {
+            search: searchQuery || undefined,
+            category: categoryData.slug,
+          },
+          {
+            preserveState: true,
+            preserveScroll: true,
+            replace: true,
+          }
+        )
+      }
+    }
+  }
+
+  // Use backend-filtered offers directly (no client-side filtering)
+  const filteredOffers = offersData
 
   const getCategoryColor = (category: string) => {
     const colors: Record<string, string> = {
@@ -112,7 +172,7 @@ export default function MerchantHubIndex({ offers: initialOffers = [] }: Props) 
 
   return (
     <FrontendLayout>
-      <Head title="Merchant Hub - Browse Offers" />
+      <PageHead title="Merchant Hub" description="Browse offers from partner merchants. Redeem reward points and support businesses that give back." />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
         {/* Header */}
         <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
@@ -172,22 +232,25 @@ export default function MerchantHubIndex({ offers: initialOffers = [] }: Props) 
                 transition={{ delay: 0.5, duration: 0.6 }}
                 className="relative max-w-2xl mx-auto"
               >
-                <div className="relative flex items-center">
-                  <Search className="absolute left-4 h-5 w-5 text-muted-foreground" />
-                  <Input
-                    type="text"
-                    placeholder="Search offers, merchants, or categories..."
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-12 pr-32 h-14 text-lg bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-0 shadow-xl text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
-                  />
-                  <Button
-                    size="lg"
-                    className="absolute right-2 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                  >
-                    Search
-                  </Button>
-                </div>
+                <form onSubmit={handleSearchSubmit}>
+                  <div className="relative flex items-center">
+                    <Search className="absolute left-4 h-5 w-5 text-muted-foreground" />
+                    <Input
+                      type="text"
+                      placeholder="Search offers, merchants, or categories..."
+                      value={searchQuery}
+                      onChange={handleSearchChange}
+                      className="pl-12 pr-32 h-14 text-lg bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-0 shadow-xl text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                    />
+                    <Button
+                      type="submit"
+                      size="lg"
+                      className="absolute right-2 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                    >
+                      Search
+                    </Button>
+                  </div>
+                </form>
               </motion.div>
             </div>
           </div>
@@ -198,7 +261,7 @@ export default function MerchantHubIndex({ offers: initialOffers = [] }: Props) 
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-2">
               <h2 className="text-2xl font-bold">Available Offers</h2>
-              <Badge variant="secondary">{filteredOffers.length} offers</Badge>
+              <Badge variant="secondary">{initialOffers?.total || 0} offers</Badge>
             </div>
           </div>
 
@@ -221,21 +284,41 @@ export default function MerchantHubIndex({ offers: initialOffers = [] }: Props) 
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="relative space-y-2">
-                  {categories.map((category) => (
-                    <Button
-                      key={category}
-                      variant={selectedCategory === category || (!selectedCategory && category === 'All') ? 'default' : 'outline'}
-                      onClick={() => setSelectedCategory(category === 'All' ? null : category)}
-                      className={`w-full text-left justify-start ${
-                        selectedCategory === category || (!selectedCategory && category === 'All')
-                          ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium shadow-md'
-                          : ''
-                      }`}
-                      size="sm"
-                    >
-                      {category}
-                    </Button>
-                  ))}
+                  {categories.map((category) => {
+                    const categoryData = category === 'All' 
+                      ? null 
+                      : initialCategories.find(cat => cat.name === category)
+                    const offersCount = category === 'All' 
+                      ? (initialOffers?.total || 0)
+                      : (categoryData?.offers_count || 0)
+                    
+                    const isSelected = category === 'All' 
+                      ? !selectedCategorySlug
+                      : categoryData?.slug === selectedCategorySlug
+                    
+                    return (
+                      <Button
+                        key={category}
+                        variant={isSelected ? 'default' : 'outline'}
+                        onClick={() => handleCategoryChange(category)}
+                        className={`w-full text-left justify-start ${
+                          isSelected
+                            ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white font-medium shadow-md'
+                            : ''
+                        }`}
+                        size="sm"
+                      >
+                        <span className="flex items-center justify-between w-full">
+                          <span>{category}</span>
+                          {offersCount > 0 && (
+                            <Badge variant="secondary" className="ml-2 text-xs">
+                              {offersCount}
+                            </Badge>
+                          )}
+                        </span>
+                      </Button>
+                    )
+                  })}
                 </CardContent>
               </Card>
             </motion.aside>

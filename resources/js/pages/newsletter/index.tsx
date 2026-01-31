@@ -9,7 +9,10 @@ import { Link } from "@inertiajs/react"
 import AppSidebarLayout from "@/layouts/app/app-sidebar-layout"
 import { ConfirmationModal } from "@/components/confirmation-modal"
 import { useEffect, useState } from "react"
-import { getBrowserTimezone, formatDateInTimezone } from "@/lib/timezone-detection"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious, PaginationEllipsis } from "@/components/admin/Pagination"
+import { router } from "@inertiajs/react"
 import { 
     Mail, 
     Users, 
@@ -26,7 +29,11 @@ import {
     Clock,
     CheckCircle,
     XCircle,
-    Target
+    Target,
+    Search,
+    Filter,
+    X,
+    Download
 } from "lucide-react"
 
 interface Newsletter {
@@ -34,8 +41,11 @@ interface Newsletter {
     subject: string
     status: 'draft' | 'paused' | 'scheduled' | 'sending' | 'sent' | 'failed'
     scheduled_at?: string
+    scheduled_at_formatted?: string
     send_date?: string
+    send_date_formatted?: string
     sent_at?: string
+    sent_at_formatted?: string
     schedule_type?: 'immediate' | 'scheduled' | 'recurring'
     total_recipients: number
     sent_count: number
@@ -80,6 +90,9 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
     const [successMessage, setSuccessMessage] = useState('')
     const [isSendModalOpen, setIsSendModalOpen] = useState(false)
     const [newsletterToSend, setNewsletterToSend] = useState<Newsletter | null>(null)
+    const [searchTerm, setSearchTerm] = useState('')
+    const [statusFilter, setStatusFilter] = useState<string>('all')
+    const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null)
 
     useEffect(() => {
         // Check for success message in URL params or flash data
@@ -88,10 +101,36 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
         if (success) {
             setSuccessMessage(decodeURIComponent(success))
             setShowSuccessMessage(true)
-            // Hide message after 5 seconds
-            setTimeout(() => setShowSuccessMessage(false), 5000)
         }
     }, [])
+
+    // Handle search with debounce
+    useEffect(() => {
+        if (debounceTimer) {
+            clearTimeout(debounceTimer)
+        }
+
+        const timer = setTimeout(() => {
+            const params: any = {}
+            if (searchTerm.trim()) {
+                params.search = searchTerm.trim()
+            }
+            if (statusFilter !== 'all') {
+                params.status = statusFilter
+            }
+
+            router.get(route('newsletter.index'), params, {
+                preserveState: true,
+                replace: true,
+            })
+        }, searchTerm ? 500 : 0)
+
+        setDebounceTimer(timer)
+
+        return () => {
+            if (debounceTimer) clearTimeout(debounceTimer)
+        }
+    }, [searchTerm, statusFilter])
 
     const getStatusColor = (status: string) => {
         switch (status) {
@@ -117,9 +156,7 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
         }
     }
 
-    const formatDate = (dateString: string) => {
-        return formatDateInTimezone(dateString, getBrowserTimezone())
-    }
+    // Dates are already formatted in backend with user's timezone - just use them directly
 
     return (
         <AppSidebarLayout>
@@ -158,6 +195,21 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
                         </p>
                     </div>
                     <div className="animate-in slide-in-from-right duration-700 flex gap-3">
+                        <Button
+                            size="lg"
+                            variant="outline"
+                            onClick={() => {
+                                const params = new URLSearchParams()
+                                if (searchTerm) params.append('search', searchTerm)
+                                if (statusFilter !== 'all') params.append('status', statusFilter)
+                                window.location.href = route('newsletter.export') + (params.toString() ? '?' + params.toString() : '')
+                            }}
+                            className="w-full sm:w-auto shadow-lg hover:shadow-xl transition-all duration-300"
+                        >
+                            <Download className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
+                            <span className="hidden sm:inline">Export</span>
+                            <span className="sm:hidden">Export</span>
+                        </Button>
                         <Link href={route('newsletter.create')}>
                             <Button
                                 size="lg"
@@ -270,16 +322,65 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
                     </Link>
                 </div>
 
+                {/* Search and Filter */}
+                <Card className="shadow-lg">
+                    <CardContent className="p-4 sm:p-6">
+                        <div className="flex flex-col sm:flex-row gap-4">
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                                <Input
+                                    placeholder="Search newsletters by subject, template, or organization..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="pl-10 pr-10"
+                                />
+                                {searchTerm && (
+                                    <button
+                                        onClick={() => setSearchTerm('')}
+                                        className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                                    >
+                                        <X className="h-4 w-4" />
+                                    </button>
+                                )}
+                            </div>
+                            <div className="w-full sm:w-48">
+                                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                                    <SelectTrigger>
+                                        <Filter className="h-4 w-4 mr-2" />
+                                        <SelectValue placeholder="Filter by status" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="all">All Status</SelectItem>
+                                        <SelectItem value="draft">Draft</SelectItem>
+                                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                                        <SelectItem value="sending">Sending</SelectItem>
+                                        <SelectItem value="sent">Sent</SelectItem>
+                                        <SelectItem value="paused">Paused</SelectItem>
+                                        <SelectItem value="failed">Failed</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </CardContent>
+                </Card>
+
                 {/* Recent Newsletters */}
                 <Card className="shadow-lg">
                     <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                            <BarChart3 className="h-5 w-5" />
-                            Recent Newsletters
-                        </CardTitle>
-                        <CardDescription>
-                            Your latest email campaigns and their performance
-                        </CardDescription>
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <CardTitle className="flex items-center gap-2">
+                                    <BarChart3 className="h-5 w-5" />
+                                    Newsletters
+                                </CardTitle>
+                                <CardDescription>
+                                    Your email campaigns and their performance
+                                </CardDescription>
+                            </div>
+                            <div className="text-sm text-gray-500">
+                                Showing {newsletters.data.length} of {newsletters.meta?.total || newsletters.data.length}
+                            </div>
+                        </div>
                     </CardHeader>
                     <CardContent>
                         {newsletters.data.length > 0 ? (
@@ -299,12 +400,12 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
                                             <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600 dark:text-gray-400">
                                                 <span className="truncate">Template: {newsletter.template.name}</span>
                                                 <span className="truncate">Recipients: {newsletter.total_recipients}</span>
-                                                {newsletter.sent_at && (
-                                                    <span className="truncate">Sent: {formatDate(newsletter.sent_at)}</span>
+                                                {newsletter.sent_at_formatted && (
+                                                    <span className="truncate">Sent: {newsletter.sent_at_formatted}</span>
                                                 )}
-                                                {(newsletter.scheduled_at || newsletter.send_date) && (
+                                                {(newsletter.send_date_formatted || newsletter.scheduled_at_formatted) && (
                                                     <span className="truncate">
-                                                        Scheduled: {formatDate(newsletter.send_date || newsletter.scheduled_at || '')}
+                                                        Scheduled: {newsletter.send_date_formatted || newsletter.scheduled_at_formatted}
                                                         {newsletter.schedule_type && newsletter.schedule_type !== 'immediate' && (
                                                             <span className="ml-1 text-xs text-gray-500">
                                                                 ({newsletter.schedule_type})
@@ -358,6 +459,34 @@ export default function NewsletterIndex({ newsletters, templates, stats }: Newsl
                         )}
                     </CardContent>
                 </Card>
+
+                {/* Pagination */}
+                {newsletters.links && newsletters.links.length > 3 && (
+                    <div className="flex justify-center mt-6">
+                        <Pagination>
+                            <PaginationContent>
+                                {newsletters.links.map((link: any, index: number) => {
+                                    if (link.url === null) {
+                                        return (
+                                            <PaginationItem key={index}>
+                                                <span className="px-3 py-2 text-gray-400 cursor-not-allowed" dangerouslySetInnerHTML={{ __html: link.label }} />
+                                            </PaginationItem>
+                                        )
+                                    }
+                                    return (
+                                        <PaginationItem key={index}>
+                                            <PaginationLink
+                                                href={link.url || '#'}
+                                                isActive={link.active}
+                                                dangerouslySetInnerHTML={{ __html: link.label }}
+                                            />
+                                        </PaginationItem>
+                                    )
+                                })}
+                            </PaginationContent>
+                        </Pagination>
+                    </div>
+                )}
 
                 {/* Send Confirmation Modal */}
                 <ConfirmationModal
