@@ -301,24 +301,10 @@ export default function FrontendCoursesListPage({
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
                 Courses & Events
               </h1>
-              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto mb-8">
+              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
                 Discover courses and events that make a difference. Learn new skills while contributing to your community's growth
                 and development.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-3xl mx-auto mt-8">
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">{initialCourses.total}+</div>
-                  <div className="text-sm sm:text-base text-white/90">Courses & Events</div>
-                </div>
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">5,000+</div>
-                  <div className="text-sm sm:text-base text-white/90">Students Enrolled</div>
-                </div>
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">200+</div>
-                  <div className="text-sm sm:text-base text-white/90">Organizations</div>
-                </div>
-              </div>
             </motion.div>
           </div>
         </section>
