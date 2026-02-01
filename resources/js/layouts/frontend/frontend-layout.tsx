@@ -3,6 +3,7 @@ import type React from "react"
 import Navbar from "@/components/frontend/layout/navbar"
 import Footer from "@/components/frontend/layout/footer"
 import { NotificationProvider } from "@/components/frontend/notification-provider"
+import SupportWidget from "@/components/frontend/SupportWidget"
 import toast, { Toaster } from "react-hot-toast"
 import { use, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
@@ -61,22 +62,24 @@ export default function RootLayout({
 
     useEffect(() => {
         const saveFCMTokenAfterLogin = async () => {
-            if (auth?.user?.id) {
-                const fcmToken = await requestNotificationPermission();
-                const deviceInfo = getDeviceInfo();
-
+            if (!auth?.user?.id) return
+            try {
+                await initializeMessaging()
+                const fcmToken = await requestNotificationPermission()
+                const deviceInfo = getDeviceInfo()
                 if (fcmToken) {
-                await axios.post("/push-token", {
-                    token: fcmToken,
-                    device_info: deviceInfo
-                });
-                console.log("Token saved after login");
+                    await axios.post("/push-token", {
+                        token: fcmToken,
+                        device_info: deviceInfo,
+                    })
+                    console.log("Token saved after login")
+                }
+            } catch (err) {
+                console.error("[PushNotificationManager] FCM token save error:", err)
             }
         }
-    };
-
-    saveFCMTokenAfterLogin();
-    }, [auth?.user?.id]);
+        saveFCMTokenAfterLogin()
+    }, [auth?.user?.id])
 
 
     const props = usePage();
@@ -127,6 +130,7 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
+        <SupportWidget />
       </div>
     </NotificationProvider>
   )

@@ -543,6 +543,17 @@ class AiChatController extends Controller
         }
     }
 
+    /**
+     * Get user context for audio assistant (Campaigns, Content, Stats)
+     */
+    /*
+    public function getContext(Request $request)
+    {
+        // ... (removed for now as per user request to decouple backend) ...
+        return response()->json(['user' => ['name' => 'Guest']]);
+    }
+    */
+
     public function updateConversation(Request $request, $id)
     {
         $validated = $request->validate([

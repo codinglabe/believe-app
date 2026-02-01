@@ -119,9 +119,9 @@ export default function Navbar() {
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
   ]
 
-  // More dropdown items
+  // More dropdown items (Fractional Ownership commented out)
   const moreItems = [
-    { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
+    // { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
     { name: "Contact", href: "/contact", icon: Mail },
   ]
 
