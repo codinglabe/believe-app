@@ -35,47 +35,76 @@ class PostService
     }
 
     /**
-     * Post with image using app-specific credentials
+     * Post with image using app-specific credentials.
+     * Uses single-request photo publish (POST to /photos with published=true) so the image
+     * appears correctly as a photo post on the page, not as a document/link attachment.
      */
     public function postWithImage(FacebookAccount $account, $message, $imagePath, $link = null)
     {
-        // First upload the image
-        $uploadResponse = Http::attach(
-            'source',
-            fopen($imagePath, 'r'),
-            basename($imagePath)
-        )->post("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/photos", [
-            'access_token' => $account->page_access_token,
-            'published' => false,
-        ]);
-
-        if (!$uploadResponse->successful()) {
-            throw new \Exception('Failed to upload image: ' . $uploadResponse->body());
+        if (!file_exists($imagePath) || !is_readable($imagePath)) {
+            throw new \Exception('Image file not found or not readable: ' . $imagePath);
         }
 
-        $photoData = $uploadResponse->json();
+        $filename = basename($imagePath);
+        if (!preg_match('/\.(jpe?g|png|gif|bmp)$/i', $filename)) {
+            $filename = pathinfo($filename, PATHINFO_FILENAME) . '.jpg';
+        }
+        $mimeType = $this->getImageMimeType($imagePath);
 
-        // Then create post with the photo
+        // Single request: publish photo directly to /photos with published=true.
+        // This creates a proper photo post (image visible in feed). The two-step
+        // upload-then-feed flow can result in a document-style attachment.
+        $fileContents = file_get_contents($imagePath);
         $params = [
             'message' => $message,
-            'attached_media[0]' => json_encode(['media_fbid' => $photoData['id']]),
             'access_token' => $account->page_access_token,
+            'published' => 'true',
         ];
-
         if ($link) {
             $params['link'] = $link;
         }
 
-        $postResponse = Http::post(
-            "https://graph.facebook.com/v19.0/{$account->facebook_page_id}/feed",
-            $params
-        );
+        $response = Http::attach(
+            'source',
+            $fileContents,
+            $filename,
+            ['Content-Type' => $mimeType]
+        )->post("https://graph.facebook.com/v19.0/{$account->facebook_page_id}/photos", $params);
 
-        if (!$postResponse->successful()) {
-            throw new \Exception('Failed to create post with image: ' . $postResponse->body());
+        if (!$response->successful()) {
+            Log::error('Facebook image upload failed', [
+                'response' => $response->body(),
+                'status' => $response->status(),
+            ]);
+            throw new \Exception('Failed to upload image: ' . $response->body());
         }
 
-        return $postResponse->json();
+        $data = $response->json();
+        // /photos with published=true returns id (photo) and post_id (feed post). Use post_id for permalinks.
+        if (!isset($data['post_id']) && isset($data['id'])) {
+            $data['post_id'] = $data['id'];
+        }
+        return $data;
+    }
+
+    /**
+     * Get MIME type for image file (Facebook accepts jpeg, png, gif, bmp)
+     */
+    private function getImageMimeType(string $path): string
+    {
+        $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $map = [
+            'jpg' => 'image/jpeg',
+            'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'gif' => 'image/gif',
+            'bmp' => 'image/bmp',
+        ];
+        if (isset($map[$ext])) {
+            return $map[$ext];
+        }
+        $detected = @mime_content_type($path);
+        return $detected ?: 'image/jpeg';
     }
 
     /**
