@@ -602,6 +602,9 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
         Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
     });
 
+    // AI Chat (Public) - Needs to be outside auth middleware
+    // Route::get('/ai-chat/context', [AiChatController::class, 'getContext'])->name('ai-chat.context');
+
 // KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
 Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
 Route::get('/wallet/kyb-callback', [App\Http\Controllers\BridgeWalletController::class, 'kybCallback'])->name('bridge.kyb-callback');
@@ -743,7 +746,10 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/fundme/{fundme_campaign}/submit', [FundMeCampaignController::class, 'submit'])->name('fundme.campaigns.submit');
     Route::delete('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'destroy'])->name('fundme.campaigns.destroy');
 
+
+
     // AI Chat
+    // AI Chat (Authenticated)
     Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::post('/ai-chat/send', [AiChatController::class, 'sendMessage'])->name('ai-chat.send');
     Route::get('/ai-chat/conversations', [AiChatController::class, 'getConversations'])->name('ai-chat.conversations');

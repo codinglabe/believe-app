@@ -7,8 +7,14 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\CardController;
+use App\Http\Controllers\KnowledgeBaseController;
+use App\Http\Controllers\Api\OrganizationLookupController;
 
 // Public routes
+Route::get('/knowledge-base', [KnowledgeBaseController::class, 'index']);
+Route::post('/knowledge-base/learn', [KnowledgeBaseController::class, 'learn']);
+Route::get('/organizations/lookup', [OrganizationLookupController::class, 'lookup']);
+
 Route::get('/health', function () {
     return response()->json(['status' => 'ok', 'timestamp' => now()]);
 });
