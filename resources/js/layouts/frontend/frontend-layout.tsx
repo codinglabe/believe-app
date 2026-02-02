@@ -6,6 +6,7 @@ import { NotificationProvider } from "@/components/frontend/notification-provide
 import toast, { Toaster } from "react-hot-toast"
 import { use, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
+import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 // import { PWAInstallPrompt } from "@/components/PWAInstallPrompt"
 // import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase"
@@ -91,6 +92,8 @@ export default function RootLayout({
     }, [props.props?.success, props.props?.error])
   return (
       <NotificationProvider>
+          {/* Keep CSRF meta in sync so 419 never happens on public/org pages */}
+          <CsrfTokenSync />
           {/* Toast Container */}
             <Toaster
                 position="top-right"

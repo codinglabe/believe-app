@@ -1,7 +1,7 @@
 import '../css/app.css';
 import './bootstrap'; // <--- Add this line
 
-import { createInertiaApp } from '@inertiajs/react';
+import { createInertiaApp, router } from '@inertiajs/react';
 import { resolvePageComponent } from 'laravel-vite-plugin/inertia-helpers';
 import { configureEcho } from '@laravel/echo-react';
 import { createRoot } from 'react-dom/client';
@@ -41,6 +41,34 @@ createInertiaApp({
     setup({ el, App, props }) {
         const root = createRoot(el);
 
+        // Initial sync: set meta from first page load so CSRF is never stale (e.g. public view, PWA).
+        const initialToken = (props as { initialPage?: { props?: { csrf_token?: string } } })?.initialPage?.props?.csrf_token;
+        if (initialToken && typeof document !== 'undefined') {
+            const meta = document.querySelector('meta[name="csrf-token"]');
+            if (meta) meta.setAttribute('content', initialToken);
+            else {
+                const newMeta = document.createElement('meta');
+                newMeta.name = 'csrf-token';
+                newMeta.content = initialToken;
+                document.head.appendChild(newMeta);
+            }
+        }
+
+        // After every Inertia navigation (including post-login redirect), sync meta so next POST doesn't get 419.
+        router.on('success', (event: { detail: { page: { props?: { csrf_token?: string } } } }) => {
+            const token = event.detail.page?.props?.csrf_token;
+            if (token && typeof document !== 'undefined') {
+                const meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) meta.setAttribute('content', token);
+                else {
+                    const newMeta = document.createElement('meta');
+                    newMeta.name = 'csrf-token';
+                    newMeta.content = token;
+                    document.head.appendChild(newMeta);
+                }
+            }
+        });
+
         root.render(
           <NotificationProvider>
             <App {...props} />
@@ -54,6 +82,30 @@ createInertiaApp({
         showSpinner: true,
     },
 });
+
+// Global axios: always send CSRF from meta (kept in sync by CsrfTokenSync + router.on('success')).
+if (typeof window !== 'undefined') {
+    const getCsrf = () => document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    axios.defaults.headers.common['X-Requested-With'] = 'XMLHttpRequest';
+    axios.defaults.withCredentials = true;
+    axios.interceptors.request.use((config) => {
+        config.headers['X-CSRF-TOKEN'] = getCsrf();
+        return config;
+    });
+    axios.interceptors.response.use(
+        (r) => r,
+        (err) => {
+            if (err.response?.status === 419) {
+                // Refresh page to get new token; CsrfTokenSync will keep meta in sync after.
+                window.location.reload();
+            }
+            if (err.response?.status === 401) {
+                window.location.href = '/login';
+            }
+            return Promise.reject(err);
+        }
+    );
+}
 
 // This will set light / dark mode on load...
 initializeTheme();

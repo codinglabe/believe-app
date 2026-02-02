@@ -60,9 +60,17 @@ export const initializeMessaging = async () => {
     }
 };
 
+const NOTIFICATION_ASKED_KEY = "notification_permission_asked";
+
 export const requestNotificationPermission = async (): Promise<string | null> => {
-    if (!messaging) return null;
+    if (!messaging || typeof window === "undefined") return null;
     try {
+        // Only show the browser prompt once per session when permission is "default"
+        // to avoid repeated "Allow notifications?" prompts (e.g. in Edge).
+        if (Notification.permission === "default") {
+            if (sessionStorage.getItem(NOTIFICATION_ASKED_KEY) === "1") return null;
+            sessionStorage.setItem(NOTIFICATION_ASKED_KEY, "1");
+        }
         const permission = await Notification.requestPermission();
         if (permission !== "granted") return null;
         const vapidKey =

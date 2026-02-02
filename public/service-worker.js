@@ -1,5 +1,13 @@
 const CACHE_NAME = `believe-app-cache-${new Date().getTime()}`;
-const PRECACHE_URLS = ['/', '/manifest.json'];
+// Do NOT precache "/" or auth routes — prevents stale CSRF token → 419 Page Expired
+const PRECACHE_URLS = ['/manifest.json'];
+
+// Auth and sensitive paths: never cache (SW/CDN/browser)
+const AUTH_PATHS = ['/login', '/register', '/forgot-password', '/reset-password', '/verify-email', '/wallet', '/api/', '/sanctum/'];
+function isAuthOrSensitive(url) {
+    const path = new URL(url).pathname;
+    return AUTH_PATHS.some((p) => path === p || path.startsWith(p));
+}
 
 self.addEventListener('install', (event) => {
     event.waitUntil(
@@ -30,8 +38,15 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
     const { request } = event;
+    const url = new URL(request.url);
 
+    // Non-GET: never cache (e.g. POST login) — prevent 419
     if (request.method !== 'GET' || request.headers.has('range')) {
+        return;
+    }
+    // Auth/sensitive routes: network only, no cache
+    if (isAuthOrSensitive(url.href)) {
+        event.respondWith(fetch(request));
         return;
     }
 
@@ -44,7 +59,6 @@ self.addEventListener('fetch', (event) => {
     }
 
     // Filter out unsupported URL schemes
-    const url = new URL(request.url);
     const unsupportedSchemes = ['chrome-extension:', 'chrome:', 'moz-extension:', 'safari-extension:'];
     if (unsupportedSchemes.some(scheme => url.protocol.startsWith(scheme))) {
         // Let the browser handle these requests normally
