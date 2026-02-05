@@ -421,16 +421,16 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 {processing ? 'Creating...' : scheduleType === 'scheduled' ? 'Schedule Newsletter' : 'Save as Draft'}
                                             </Button>
 
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                className="w-full"
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="w-full"
                                                 onClick={() => setShowPreview(true)}
                                                 disabled={!data.subject && !data.content}
                                             >
                                                 <Eye className="h-4 w-4 mr-2" />
                                                 Preview
-                                            </Button>
+                                                </Button>
                                         </CardContent>
                                     </Card>
                                 </motion.div>
@@ -556,7 +556,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 <div>
                                                     <Label className="text-xs text-gray-500">Subject</Label>
                                                     <p className="text-sm font-medium">{data.subject || 'Not set'}</p>
-                                                </div>
+                                                    </div>
                                                 <div>
                                                     <Label className="text-xs text-gray-500">Schedule</Label>
                                                     <p className="text-sm font-medium capitalize">{scheduleType}</p>

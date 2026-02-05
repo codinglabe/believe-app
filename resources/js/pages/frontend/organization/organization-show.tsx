@@ -60,7 +60,8 @@ interface OrganizationPageProps {
   trendingOrganizations?: any[]
   products?: any[]
   jobs?: any[]
-  events?: any[]
+  events?: any[] | { data: any[]; total: number; current_page?: number; last_page?: number }
+  eventsCount?: number
   currentPage?: string
   believePointsEarned?: number
   believePointsSpent?: number
@@ -82,6 +83,7 @@ export default function OrganizationPage({
   products = [],
   jobs = [],
   events = [],
+  eventsCount: eventsCountProp,
   currentPage,
   believePointsEarned = 0,
   believePointsSpent = 0,
@@ -113,6 +115,11 @@ export default function OrganizationPage({
                     currentPath.includes('/contact') ? 'contact' :
                     currentPath.includes('/supporters') ? 'supporters' : null)
   }, [currentPage, currentPath])
+
+  // Normalize events: backend sends paginator { data, total } or plain array
+  const eventsList = useMemo(() => Array.isArray(events) ? events : (events?.data ?? []), [events])
+  const eventsCountFromData = useMemo(() => Array.isArray(events) ? events.length : (events?.total ?? eventsList.length), [events, eventsList.length])
+  const eventsCount = eventsCountProp ?? eventsCountFromData
   
   const isSubPage = pageType !== null
   
@@ -506,7 +513,7 @@ export default function OrganizationPage({
   const allTabs = [
     { name: "Community Feed", count: postsCount || 0 },
     { name: "About", count: null },
-    { name: "Events", count: null },
+    { name: "Events", count: eventsCount },
     { name: "Opportunities", count: jobsCount || 0 },
     { name: "Supporters", count: supportersCount || 0 },
     { name: "Products", count: products?.length || 0 },
@@ -1476,12 +1483,21 @@ export default function OrganizationPage({
                         Events
                       </h2>
                       <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                        {events?.length || 0} Events
+                        {eventsCount} Events
                       </Badge>
                     </div>
-                    {events && events.length > 0 ? (
+                    {eventsList.length > 0 ? (
                       <div className="space-y-4">
-                        {events.map((event: any) => (
+                        {eventsList.map((event: any) => {
+                          const startDt = event.start_date ? new Date(event.start_date) : null
+                          const endDt = event.end_date ? new Date(event.end_date) : null
+                          const formatDate = (d: Date) => d.toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' })
+                          const formatTime = (d: Date) => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                          const startDateStr = startDt ? formatDate(startDt) : null
+                          const startTimeStr = startDt ? (event.start_time || formatTime(startDt)) : null
+                          const endDateStr = endDt ? formatDate(endDt) : null
+                          const endTimeStr = endDt ? (event.end_time || formatTime(endDt)) : null
+                          return (
                           <div
                             key={event.id}
                             className="bg-[#0a0f1a] rounded-lg p-5 border border-white/10 hover:border-purple-500/50 transition-all"
@@ -1489,31 +1505,43 @@ export default function OrganizationPage({
                             <div className="flex items-start justify-between mb-3">
                               <div className="flex-1">
                                 <h3 className="text-xl font-semibold mb-2 text-gray-900 dark:text-white">{event.title || event.name}</h3>
-                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-3">
-                                  {event.start_date && (
-                                    <div className="flex items-center gap-1">
-                                      <Calendar className="w-4 h-4" />
-                                      <span className="text-gray-900 dark:text-white">{new Date(event.start_date).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</span>
-                                    </div>
-                                  )}
-                                  {event.start_time && (
-                                    <div className="flex items-center gap-1">
-                                      <Clock className="w-4 h-4" />
-                                      <span className="text-gray-900 dark:text-white">{event.start_time}</span>
-                                    </div>
-                                  )}
+                                <div className="flex flex-wrap items-center gap-3 text-sm text-gray-600 dark:text-gray-400 mb-2">
                                   {event.location && (
-                                      <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
+                                    <div className="flex items-center gap-1 text-green-600 dark:text-green-400">
                                       <MapPin className="w-4 h-4" />
                                       <span className="text-gray-900 dark:text-white">{event.location}</span>
                                     </div>
                                   )}
-                                  {event.event_type && (
+                                  {(event.event_type || event.eventType) && (
                                     <Badge className="bg-purple-600/20 text-purple-400 text-xs">
-                                      {event.event_type?.name || event.event_type}
+                                      {(event.event_type || event.eventType)?.name || event.event_type || event.eventType}
                                     </Badge>
                                   )}
                                 </div>
+                                {(startDateStr || startTimeStr || endDateStr || endTimeStr) && (
+                                  <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm mb-3 p-3 rounded-lg bg-white/5 dark:bg-black/20 border border-white/10">
+                                    {startDateStr && (
+                                      <div>
+                                        <span className="text-gray-500 dark:text-gray-400">Start</span>
+                                        <div className="flex items-center gap-1.5 text-gray-900 dark:text-white">
+                                          <Calendar className="w-4 h-4 text-purple-400" />
+                                          <span>{startDateStr}</span>
+                                          {startTimeStr && <span className="text-gray-600 dark:text-gray-300">· {startTimeStr}</span>}
+                                        </div>
+                                      </div>
+                                    )}
+                                    {endDt && (
+                                      <div>
+                                        <span className="text-gray-500 dark:text-gray-400">End</span>
+                                        <div className="flex items-center gap-1.5 text-gray-900 dark:text-white">
+                                          <Clock className="w-4 h-4 text-blue-400" />
+                                          <span>{endDateStr}</span>
+                                          {endTimeStr && <span className="text-gray-600 dark:text-gray-300">· {endTimeStr}</span>}
+                                        </div>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                                 {event.description && (
                                   <p className="text-gray-700 dark:text-gray-300 text-sm mb-4 line-clamp-3">{event.description}</p>
                                 )}
@@ -1530,7 +1558,8 @@ export default function OrganizationPage({
                               </Button>
             </div>
           </div>
-                        ))}
+                          )
+                        })}
         </div>
                     ) : (
                       <div className="text-center py-12">

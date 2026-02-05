@@ -83,5 +83,7 @@ class DatabaseSeeder extends Seeder
 
         $this->call(SellerSkillsSeeder::class);
         $this->call(LanguagesSeeder::class);
+
+        $this->call(CommunityVideosSeeder::class);
     }
 }
