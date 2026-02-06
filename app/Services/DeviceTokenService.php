@@ -35,7 +35,21 @@ class DeviceTokenService
     {
         return UserPushToken::where('user_id', $userId)
             ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE)
             ->pluck('push_token')
             ->toArray();
+    }
+
+    /**
+     * Get active token records for a user (for sending + logging + status updates).
+     *
+     * @return \Illuminate\Database\Eloquent\Collection<int, UserPushToken>
+     */
+    public function getActiveTokenRecords($userId)
+    {
+        return UserPushToken::where('user_id', $userId)
+            ->where('is_active', true)
+            ->where('status', UserPushToken::STATUS_ACTIVE)
+            ->get();
     }
 }

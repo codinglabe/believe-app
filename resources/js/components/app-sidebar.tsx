@@ -819,6 +819,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 icon: Mail,
                 role: "admin"
             },
+            {
+                title: 'Push Notifications (FCM)',
+                href: '/admin/push-notifications',
+                icon: Bell,
+                role: "admin"
+            },
         ]
         // Removed group permission - nav-main will show group if any child is visible
     },

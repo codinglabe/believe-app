@@ -1353,6 +1353,12 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
 
+    // FCM / Push Notifications overview (admin only)
+    Route::get('/push-notifications', [App\Http\Controllers\Admin\PushNotificationsController::class, 'index'])->name('admin.push-notifications.index');
+    Route::post('/push-notifications/send-test', [App\Http\Controllers\Admin\PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
+    Route::post('/push-notifications/request-reregister', [App\Http\Controllers\Admin\PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
+    Route::post('/push-notifications/invalidate-token', [App\Http\Controllers\Admin\PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
+
     // KYB Verification Routes
     Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'index'])->name('index');
