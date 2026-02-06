@@ -86,6 +86,7 @@ use App\Http\Controllers\PushTokenController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
+use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\Facebook\AuthController;
@@ -198,6 +199,9 @@ Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'togg
 Route::get('/community-videos', [CommunityVideosController::class, 'index'])->name('community-videos.index');
 Route::get('/community-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('community-videos.channel');
 Route::get('/community-videos/upload', [CommunityVideosController::class, 'upload'])->name('community-videos.upload')->middleware('auth');
+// More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
+Route::get('/community-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('community-videos.show-youtube');
+Route::get('/community-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('community-videos.show-short');
 Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
@@ -1498,6 +1502,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::post('/posts/{post}/publish', [SocialMediaController::class, 'publishPost'])->name('posts.publish');
         Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
         Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
+    });
+
+    // Integrations (organization only)
+    Route::prefix('integrations')->name('integrations.')->middleware('role:organization')->group(function () {
+        Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube');
+        Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
+        Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
+        Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
     });
 });
 

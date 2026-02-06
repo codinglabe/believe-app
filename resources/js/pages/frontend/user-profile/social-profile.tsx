@@ -594,14 +594,6 @@ export default function SocialProfile() {
                               )}
                             </div>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleFollow(suggestedUser.id)}
-                            className="border-purple-600 text-purple-400 hover:bg-purple-600/20"
-                          >
-                            Follow
-                          </Button>
                         </div>
                       ))}
                     </div>

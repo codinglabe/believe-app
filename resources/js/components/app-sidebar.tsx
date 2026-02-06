@@ -60,7 +60,8 @@ import {
     CreditCard,
     FolderOpen,
     ShoppingBag,
-    Search
+    Search,
+    Youtube
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -739,6 +740,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         title: 'Social Media',
                         href: route('social-media.index'),
                         icon: Facebook,
+                        role: "organization"
+                    },
+                    {
+                        title: 'YouTube',
+                        href: route('integrations.youtube'),
+                        icon: Youtube,
                         role: "organization"
                     },
                 ],

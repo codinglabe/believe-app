@@ -435,6 +435,7 @@ class User extends Authenticatable implements MustVerifyEmail
             organizations.description,
             organizations.mission,
             organizations.website,
+            organizations.youtube_channel_url,
             organizations.email,
             organizations.phone,
             organizations.contact_name,

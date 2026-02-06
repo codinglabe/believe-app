@@ -35,6 +35,7 @@ class Organization extends Model
         'contact_name',
         'contact_title',
         'website',
+        'youtube_channel_url',
         'description',
         'mission',
         'registered_user_image',

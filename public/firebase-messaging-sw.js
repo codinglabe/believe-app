@@ -19,7 +19,7 @@ const messaging = firebase.messaging();
 // messaging.onBackgroundMessage((payload) => { ... });
 
 // Cache version bump for post-deploy cleanup (invalidates old caches)
-const CACHE_NAME = "pwa-cache-v2";
+const CACHE_NAME = "pwa-cache-v3";
 // Only cache static assets; do NOT cache "/" or HTML/auth routes
 const urlsToCache = ["/offline.html", "/manifest.json"];
 
@@ -52,9 +52,20 @@ self.addEventListener("activate", (event) => {
 });
 
 // Navigation and auth routes: network only (no cache) to prevent stale CSRF → 419
+// Do NOT intercept API/data routes: let the browser handle them natively to avoid
+// "Failed to fetch" / net::ERR_FAILED (e.g. /wallet/balance, Inertia XHR, community-videos).
 self.addEventListener("fetch", (event) => {
     const url = event.request.url;
+    const path = new URL(url).pathname;
     const isNavigate = event.request.mode === "navigate";
+
+    // Let browser handle same-origin API/data requests without SW (avoids fetch failures)
+    if (!isNavigate) {
+        if (path.startsWith("/api/") || path.startsWith("/wallet/") || path.startsWith("/sanctum/") ||
+            path.startsWith("/community-videos/") || path === "/" || path.startsWith("/login") || path.startsWith("/register")) {
+            return; // do not call respondWith — browser handles request natively
+        }
+    }
 
     if (isNavigate || shouldBypassCache(url)) {
         event.respondWith(fetch(event.request));
