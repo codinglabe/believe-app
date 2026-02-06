@@ -77,6 +77,7 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
+use App\Http\Controllers\CommunityVideosController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -193,6 +194,11 @@ Route::get('/nonprofit-news/saved', [SavedNewsController::class, 'index'])
 Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'toggle'])
     ->name('nonprofit.news.save.toggle')
     ->middleware('auth');
+
+Route::get('/community-videos', [CommunityVideosController::class, 'index'])->name('community-videos.index');
+Route::get('/community-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('community-videos.channel');
+Route::get('/community-videos/upload', [CommunityVideosController::class, 'upload'])->name('community-videos.upload')->middleware('auth');
+Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
