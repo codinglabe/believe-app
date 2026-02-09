@@ -827,6 +827,30 @@ public function index(Request $request)
     {
         $user = Auth::user();
 
+        // Only supporter (personal) accounts can follow organizations; org accounts cannot
+        if (in_array($user->role ?? '', ['organization', 'organization_pending'], true)) {
+            $message = 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.';
+            // Inertia: redirect back so user stays on page and sees flash (no access-denied screen)
+            if ($request->header('X-Inertia')) {
+                $previous = $request->header('Referer', '');
+                $currentPath = $request->url();
+                // Avoid redirecting to this POST-only URL (would cause GET "Method Not Allowed")
+                if ($previous === $currentPath || str_contains($previous, '/organizations/') && str_contains($previous, '/toggle-favorite')) {
+                    return redirect()->route('organizations.show', $id)->with('error', $message);
+                }
+                return redirect()->back()->with('error', $message);
+            }
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json(['success' => false, 'message' => $message], 403);
+            }
+            $previous = $request->header('Referer', '');
+            $currentPath = $request->url();
+            if ($previous === $currentPath || (str_contains($previous, '/organizations/') && str_contains($previous, '/toggle-favorite'))) {
+                return redirect()->route('organizations.show', $id)->with('error', $message);
+            }
+            return redirect()->back()->with('error', $message);
+        }
+
         // Get the ExcelData organization
         $excelDataOrg = ExcelData::findOrFail($id);
 

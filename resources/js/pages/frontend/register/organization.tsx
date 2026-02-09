@@ -3,7 +3,7 @@ import type React from "react"
 import { createPortal } from "react-dom"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useEffect, useState, useRef, useMemo } from "react"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Building2,
   Mail,
@@ -21,6 +21,8 @@ import {
   ImageIcon,
   X,
   Briefcase,
+  FileText,
+  File,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -68,6 +70,140 @@ interface PageProps extends OrganizationRegisterPageProps {
   csrf_token?: string
 }
 
+function OfficerIdDropzone({
+  file,
+  onFileChange,
+  accept = ".pdf,.jpg,.jpeg,.png",
+  maxSizeMB = 5,
+  error,
+  emptyLabel = "Drag & drop your ID here",
+}: {
+  file: File | null
+  onFileChange: (file: File | null) => void
+  accept?: string
+  maxSizeMB?: number
+  error?: string
+  emptyLabel?: string
+}) {
+  const [isDragging, setIsDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const validateAndSet = (f: File) => {
+    const validTypes = accept.split(",").map((t) => t.trim().toLowerCase())
+    const ext = "." + (f.name.split(".").pop()?.toLowerCase() ?? "")
+    const valid = validTypes.some((t) => ext === t || f.type.toLowerCase().includes(t.replace(".", "")))
+    if (!valid) return
+    if (f.size > maxSizeMB * 1024 * 1024) return
+    onFileChange(f)
+  }
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) validateAndSet(f)
+  }
+  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (f) validateAndSet(f)
+  }
+  const remove = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onFileChange(null)
+    if (inputRef.current) inputRef.current.value = ""
+  }
+
+  const isUploaded = !!file
+  const isPdf = file?.type === "application/pdf"
+
+  return (
+    <div className="w-full">
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`
+          relative w-full border-2 border-dashed rounded-lg transition-all cursor-pointer min-h-[140px] flex items-center justify-center
+          ${error ? "border-red-500/60 bg-red-50/30 dark:bg-red-950/20" : ""}
+          ${!error && isDragging ? "border-primary bg-primary/10" : ""}
+          ${!error && !isDragging && isUploaded ? "border-green-500/50 bg-green-50/50 dark:bg-green-900/10 hover:border-green-500" : ""}
+          ${!error && !isDragging && !isUploaded ? "border-border hover:border-primary/50 bg-muted/30" : ""}
+        `}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          onChange={onInputChange}
+          className="hidden"
+        />
+        <AnimatePresence mode="wait">
+          {isUploaded ? (
+            <motion.div
+              key="uploaded"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex items-center gap-3 w-full p-4"
+            >
+              <div className="flex-shrink-0 p-2.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400">
+                {isPdf ? <FileText className="h-8 w-8" /> : <File className="h-8 w-8" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  <p className="text-sm font-medium text-foreground truncate">{file?.name ?? "Document uploaded"}</p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">Click to change or drag a new file</p>
+              </div>
+              <button
+                type="button"
+                onClick={remove}
+                className="flex-shrink-0 p-1.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center p-6 py-8 space-y-3"
+            >
+              <div
+                className={`p-4 rounded-full transition-colors ${isDragging ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}
+              >
+                {isDragging ? <Upload className="h-8 w-8" /> : <FileText className="h-8 w-8" />}
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {isDragging ? "Drop file here" : emptyLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">or click to browse</p>
+                <p className="text-xs text-muted-foreground">PDF, JPG or PNG · Max {maxSizeMB}MB</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
 export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName, officers_for_ein_url }: OrganizationRegisterPageProps) {
   const { csrf_token, officers_for_ein_url: officersUrlFromPage } = usePage<PageProps>().props
   const officersForEinUrl = officers_for_ein_url ?? officersUrlFromPage ?? '/register/organization/officers-for-ein'
@@ -113,6 +249,15 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     description: "",
     mission: "",
     image: null as File | null,
+    officer_id: null as File | null,
+    legal_name_confirmation: "",
+    doc_501c3: null as File | null,
+    doc_articles: null as File | null,
+    doc_bylaws: null as File | null,
+    doc_state_registration: null as File | null,
+    doc_board_list: null as File | null,
+    doc_signer_resolution: null as File | null,
+    doc_bank_account: null as File | null,
     agree_to_terms: false,
     attestation_officer_on_990: false,
     has_edited_irs_data: false,
@@ -120,6 +265,19 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     referralCode: referralCode,
     invite_token: "",
   })
+
+  const OFFICER_TITLES = ["President", "Treasurer", "Secretary", "Director", "Executive Director", "CEO", "Other"] as const
+  const VERIFICATION_DOC_KEYS = ["doc_501c3", "doc_articles", "doc_bylaws", "doc_state_registration", "doc_board_list", "doc_signer_resolution", "doc_bank_account"] as const
+  const VERIFICATION_DOC_OPTIONS: { key: typeof VERIFICATION_DOC_KEYS[number]; label: string }[] = [
+    { key: "doc_501c3", label: "IRS 501(c)(3) Determination Letter (CP-575 or equivalent)" },
+    { key: "doc_articles", label: "Articles of Incorporation (stamped/approved)" },
+    { key: "doc_bylaws", label: "Bylaws (current)" },
+    { key: "doc_state_registration", label: "State nonprofit registration / Certificate of Good Standing" },
+    { key: "doc_board_list", label: "Board of Directors list (names + titles)" },
+    { key: "doc_signer_resolution", label: "Authorized signer resolution (or board resolution)" },
+    { key: "doc_bank_account", label: "Proof of nonprofit bank account (voided check or bank letter)" },
+  ]
+  const [selectedDocType, setSelectedDocType] = useState<typeof VERIFICATION_DOC_KEYS[number] | "">("")
 
   const [possibleOfficerMatches, setPossibleOfficerMatches] = useState<Array<PossibleMatch>>([])
   const [showOfficerSelector, setShowOfficerSelector] = useState(false)
@@ -550,7 +708,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       return
     }
     if (!formData.attestation_officer_on_990 && selectedOfficerIdForSubmit == null) {
-      setErrors((e) => ({ ...e, attestation_officer_on_990: "You must confirm you are listed as an officer/director on the organization's IRS filing." }))
+      setErrors((e) => ({ ...e, attestation_officer_on_990: "You must certify that you are a current officer of this organization." }))
       return
     }
 
@@ -572,6 +730,8 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       Object.keys(formData).forEach(key => {
         if (key === 'image' && formData.image) {
           formDataToSend.append('image', formData.image)
+        } else if (key === 'officer_id' && formData.officer_id) {
+          formDataToSend.append('officer_id', formData.officer_id)
         } else if (key === 'invite_token' && formData.invite_token) {
           formDataToSend.append('invite_token', formData.invite_token)
         } else if (key === 'attestation_officer_on_990') {
@@ -580,10 +740,13 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
           const id = selectedOfficerIdForSubmit ?? formData.selected_irs_board_member_id
           const numId = id != null && id !== '' && !Number.isNaN(Number(id)) ? Number(id) : null
           if (numId != null) formDataToSend.append(key, String(numId))
-        } else if (key !== 'selected_irs_board_member_id') {
-          formDataToSend.append(key, formData[key as keyof typeof formData] as string | Blob)
+        } else if (key !== 'selected_irs_board_member_id' && key !== 'officer_id' && !VERIFICATION_DOC_KEYS.includes(key as typeof VERIFICATION_DOC_KEYS[number])) {
+          const val = formData[key as keyof typeof formData]
+          if (val != null && val !== '') formDataToSend.append(key, val as string | Blob)
         }
       })
+      if (formData.legal_name_confirmation) formDataToSend.append('legal_name_confirmation', formData.legal_name_confirmation)
+      VERIFICATION_DOC_KEYS.forEach((k) => { const f = formData[k]; if (f) formDataToSend.append(k, f) })
 
       const response = await fetch("/register/organization", {
         method: "POST",
@@ -653,8 +816,18 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
           formData.password &&
           formData.password_confirmation
         )
-      case 4:
-        return !!(formData.agree_to_terms && formData.attestation_officer_on_990 && formData.description && formData.mission)
+      case 4: {
+        const docCount = VERIFICATION_DOC_KEYS.filter((k) => formData[k]).length
+        return !!(
+          formData.agree_to_terms &&
+          formData.attestation_officer_on_990 &&
+          formData.description &&
+          formData.mission &&
+          formData.legal_name_confirmation?.trim() &&
+          formData.officer_id &&
+          docCount >= 6
+        )
+      }
       default:
         return false
     }
@@ -1342,17 +1515,31 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         {errors.contact_name && <p className="text-red-600 text-sm mt-1">{errors.contact_name}</p>}
                       </div>
 
-                      <div>
-                        <Label htmlFor="contact_title">Contact Title *</Label>
-                        <Input
+                      <div className="space-y-2">
+                        <Label htmlFor="contact_title">Officer Title *</Label>
+                        <select
                           id="contact_title"
-                          type="text"
-                          placeholder="Executive Director, CEO, etc."
-                          value={formData.contact_title}
-                          onChange={(e) => handleInputChange("contact_title", e.target.value)}
-                          className="h-12"
+                          value={formData.contact_title === "" ? "" : (OFFICER_TITLES.includes(formData.contact_title as typeof OFFICER_TITLES[number]) ? formData.contact_title : "Other")}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            handleInputChange("contact_title", v === "Other" ? "" : v)
+                          }}
+                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           required
-                        />
+                        >
+                          <option value="">Select your role</option>
+                          {OFFICER_TITLES.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                        {(formData.contact_title === "" || !OFFICER_TITLES.includes(formData.contact_title as typeof OFFICER_TITLES[number])) && (
+                          <Input
+                            placeholder="Enter your title"
+                            value={formData.contact_title}
+                            onChange={(e) => handleInputChange("contact_title", e.target.value)}
+                            className="h-12"
+                          />
+                        )}
                         {errors.contact_title && <p className="text-red-600 text-sm mt-1">{errors.contact_title}</p>}
                       </div>
 
@@ -1516,6 +1703,110 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         <div className="text-right text-sm text-gray-500 mt-1">{formData.mission.length}/2000</div>
                         {errors.mission && <p className="text-red-600 text-sm mt-1">{errors.mission}</p>}
                       </div>
+
+                      <div className="space-y-2">
+                        <Label>Legal organization name (from IRS filing)</Label>
+                        <p className="text-sm font-medium text-foreground rounded-md border bg-muted/50 px-3 py-2">{formData.name || "—"}</p>
+                        <Label htmlFor="legal_name_confirmation">Re-enter legal name to confirm *</Label>
+                        <Input
+                          id="legal_name_confirmation"
+                          type="text"
+                          placeholder="Type the exact legal name above"
+                          value={formData.legal_name_confirmation}
+                          onChange={(e) => handleInputChange("legal_name_confirmation", e.target.value)}
+                          className="h-12"
+                        />
+                        {errors.legal_name_confirmation && <p className="text-red-600 text-sm mt-1">{errors.legal_name_confirmation}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Government-issued ID (officer verification) *</Label>
+                        <OfficerIdDropzone
+                          file={formData.officer_id}
+                          onFileChange={(file) => setFormData((prev) => ({ ...prev, officer_id: file }))}
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          maxSizeMB={5}
+                          error={errors.officer_id}
+                        />
+                        <p className="text-xs text-muted-foreground">PDF, JPG or PNG. Max 5MB. Used to verify officer identity.</p>
+                        {errors.officer_id && <p className="text-red-600 text-sm mt-1">{errors.officer_id}</p>}
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+                          <h4 className="font-medium text-foreground">Verification documents (6 of 7 required)</h4>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Select a document type, then attach the file. Form 990 is not needed — we have it on file.
+                        </p>
+                        {(() => {
+                          const docCount = VERIFICATION_DOC_KEYS.filter((k) => formData[k]).length
+                          return (
+                            <p className={`text-sm font-medium ${docCount >= 6 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                              {docCount} of 7 uploaded {docCount >= 6 ? "— you can proceed" : "— at least 6 required"}
+                            </p>
+                          )
+                        })()}
+                        {VERIFICATION_DOC_OPTIONS.filter((o) => formData[o.key]).length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-sm">Attached documents</Label>
+                            <ul className="space-y-1.5">
+                              {VERIFICATION_DOC_OPTIONS.filter((o) => formData[o.key]).map((o) => (
+                                <li key={o.key} className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                                  <span className="min-w-0 truncate text-foreground">{o.label}</span>
+                                  <span className="shrink-0 text-muted-foreground">{formData[o.key]?.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFormData((prev) => ({ ...prev, [o.key]: null }))}
+                                    className="shrink-0 rounded p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    aria-label="Remove"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label className="text-sm">Add a document</Label>
+                          <div className="flex flex-col gap-3">
+                            <div className="space-y-1">
+                              <select
+                                value={selectedDocType}
+                                onChange={(e) => setSelectedDocType(e.target.value as typeof VERIFICATION_DOC_KEYS[number] | "")}
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                              >
+                                <option value="">Select document type…</option>
+                                {VERIFICATION_DOC_OPTIONS.filter((o) => !formData[o.key]).map((o) => (
+                                  <option key={o.key} value={o.key}>{o.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {selectedDocType && (
+                              <>
+                                <p className="text-xs text-muted-foreground">Attach a file for: {VERIFICATION_DOC_OPTIONS.find((o) => o.key === selectedDocType)?.label}</p>
+                                <OfficerIdDropzone
+                                  file={null}
+                                  onFileChange={(file) => {
+                                    if (file && selectedDocType) {
+                                      setFormData((prev) => ({ ...prev, [selectedDocType]: file }))
+                                      setSelectedDocType("")
+                                    }
+                                  }}
+                                  accept=".pdf,.jpg,.jpeg,.png"
+                                  maxSizeMB={5}
+                                  emptyLabel="Drag & drop your document here"
+                                />
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {errors.verification_documents && (
+                          <p className="text-red-600 text-sm mt-1">{errors.verification_documents}</p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-4">
@@ -1552,7 +1843,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                             onCheckedChange={(checked) => handleInputChange("attestation_officer_on_990", checked === true)}
                           />
                           <Label htmlFor="attestation_990" className="text-sm leading-relaxed cursor-pointer">
-                            I am listed as an officer or director on this organization&apos;s IRS Form 990 filing.
+                            I certify I am a current officer of this organization.
                           </Label>
                         </div>
                         {formData.attestation_officer_on_990 && (

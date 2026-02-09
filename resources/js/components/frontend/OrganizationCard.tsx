@@ -3,6 +3,7 @@
 import type React from "react"
 import { useState } from "react"
 import { createPortal } from "react-dom"
+import toast from "react-hot-toast"
 
 import { MapPin, Star, ArrowRight, Heart, UserCheck, UserPlus, Building2, Target } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -88,14 +89,14 @@ export default function OrganizationCard({
     setIsFavorited(newFavoriteState)
 
     try {
-      router.post(route("user.organizations.toggle-favorite", organization.id),{},
+      router.post(route("organizations.toggle-favorite", organization.id),{},
         {
           preserveScroll: true,
           onSuccess: () => {
             setIsFavorited(newFavoriteState)
           },
           onError: () => {
-            // Revert on error
+            toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.')
             setIsFavorited(!newFavoriteState)
           },
           onFinish: () => {

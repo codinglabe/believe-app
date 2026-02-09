@@ -135,4 +135,14 @@ return [
     */
 
     'printify_profit_margin' => (float) env('PRINTIFY_PROFIT_MARGIN', 25),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Organization Platform Email Domain
+    |--------------------------------------------------------------------------
+    | Domain for organization system emails (e.g. orgname@believeinunity.org).
+    |
+    */
+
+    'platform_email_domain' => env('PLATFORM_EMAIL_DOMAIN', 'believeinunity.org'),
 ];

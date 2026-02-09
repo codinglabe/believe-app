@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import toast from "react-hot-toast"
 import { Link, router, usePage, useForm } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import {
@@ -552,7 +553,7 @@ export default function OrganizationPage({
   }, [peopleToShowKey])
 
   // Handle follow/unfollow for people you may know
-  const handleFollowPerson = (person: any) => {
+  const handleFollowPerson = async (person: any) => {
     if (!auth?.user) {
       router.visit(route("login"))
       return
@@ -564,32 +565,25 @@ export default function OrganizationPage({
 
     const personId = person.id
     setLoadingFollow(prev => ({ ...prev, [personId]: true }))
-    
-    // Use the correct route name with ExcelData ID
-    // Try 'organizations.toggle-favorite' first, fallback to direct URL if route not found
     let routePath
     try {
       routePath = route("organizations.toggle-favorite", excelDataId)
-    } catch (error) {
-      // Fallback to direct URL if route() fails
+    } catch {
       routePath = `/organizations/${excelDataId}/toggle-favorite`
     }
-    
-    router.post(routePath, {}, {
-      preserveScroll: true,
-      preserveState: true,
-      only: [],
-      onSuccess: () => {
-        setFollowingStates(prev => ({
-          ...prev,
-          [personId]: !prev[personId]
-        }))
-        setLoadingFollow(prev => ({ ...prev, [personId]: false }))
-      },
-      onError: () => {
-        setLoadingFollow(prev => ({ ...prev, [personId]: false }))
-      },
-    })
+    try {
+      const res = await axios.post(routePath)
+      if (res.data?.success !== false) {
+        setFollowingStates(prev => ({ ...prev, [personId]: !prev[personId] }))
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message || (error.response?.status === 403
+        ? 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.'
+        : 'Could not update follow.')
+      toast.error(msg)
+    } finally {
+      setLoadingFollow(prev => ({ ...prev, [personId]: false }))
+    }
   }
 
   const orgName = organization?.name ?? "Organization"
@@ -1732,7 +1726,12 @@ export default function OrganizationPage({
                 {/* Organizations You May Know */}
                 {peopleToShow.length > 0 && (
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
-                    <h3 className="font-semibold mb-4 text-gray-900 dark:text-white">Organizations You May Know</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="font-semibold text-gray-900 dark:text-white">Organizations You May Know</h3>
+                      <Link href={route('organizations')} className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
+                        View All <ChevronDown className="w-3 h-3 -rotate-90" />
+                      </Link>
+                    </div>
                     <div className="space-y-3">
                       {peopleToShow.map((person, index) => (
                       <div
@@ -1795,10 +1794,10 @@ export default function OrganizationPage({
                   <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
                     <div className="flex items-center justify-between mb-4">
                       <h3 className="font-semibold text-gray-900 dark:text-white">Trending Organizations</h3>
-                      <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
+                      <Link href={route('organizations')} className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                         View All <ChevronDown className="w-3 h-3 -rotate-90" />
-                      </button>
-              </div>
+                      </Link>
+                    </div>
                     <div className="space-y-3">
                       {trendingOrgsToShow.map((org, index) => {
                       // Determine the route parameter (slug or excel_data_id)

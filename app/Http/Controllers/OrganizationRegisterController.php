@@ -187,7 +187,7 @@ class OrganizationRegisterController extends Controller
             // Manual validation
             $validator = Validator::make($request->all(), [
                 'ein' => 'required|string|size:9|unique:organizations,ein',
-                'name' => 'nullable|string|max:255',
+                'name' => 'required|string|max:255',
                 'ico' => 'nullable|string|max:255',
                 'street' => 'nullable|string|max:255',
                 'city' => 'nullable|string|max:255',
@@ -211,8 +211,18 @@ class OrganizationRegisterController extends Controller
                 'description' => 'required|string|max:2000',
                 'mission' => 'required|string|max:2000',
                 'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
+                'officer_id' => 'required|file|mimes:jpeg,png,jpg,pdf|max:5120', // Government ID for officer verification
+                'legal_name_confirmation' => 'required|string|max:255', // Must match organization legal name (officer knowledge)
+                // Verification documents: 6 of 7 required (all but one). 990 not needed (we have it).
+                'doc_501c3' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_articles' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_bylaws' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_state_registration' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_board_list' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_signer_resolution' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
+                'doc_bank_account' => 'nullable|file|mimes:jpeg,png,jpg,pdf|max:5120',
                 'agree_to_terms' => 'required|accepted',
-                'attestation_officer_on_990' => 'required|accepted', // "I am listed as an officer/director on this organization's IRS filing."
+                'attestation_officer_on_990' => 'required|accepted', // "I certify I am a current officer of this organization."
                 'selected_irs_board_member_id' => 'nullable|integer|exists:irs_board_members,id', // When multiple matches, user selects one
             ]);
 
@@ -225,6 +235,31 @@ class OrganizationRegisterController extends Controller
             }
 
             $validated = $validator->validated();
+
+            // Officer knowledge: legal name confirmation must match organization name
+            if (trim((string) ($validated['legal_name_confirmation'] ?? '')) !== trim((string) ($validated['name'] ?? ''))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'The legal organization name you entered does not match our records. Please use the exact name from your IRS filing.',
+                    'errors' => ['legal_name_confirmation' => ['Please enter the exact legal name of the organization as shown above.']],
+                ], 422);
+            }
+
+            // Verification documents: 6 of 7 required (all but one; 990 not needed)
+            $docKeys = ['doc_501c3', 'doc_articles', 'doc_bylaws', 'doc_state_registration', 'doc_board_list', 'doc_signer_resolution', 'doc_bank_account'];
+            $docCount = 0;
+            foreach ($docKeys as $key) {
+                if ($request->hasFile($key)) {
+                    $docCount++;
+                }
+            }
+            if ($docCount < 6) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Please upload at least 6 of the 7 verification documents. One is optional (we have Form 990 on file).',
+                    'errors' => ['verification_documents' => ['At least 6 verification documents are required. You may omit one.']],
+                ], 422);
+            }
 
             // 990 officer match + attestation (policy: allow when name matches 990 officer and user self-attests)
             $ein = $validated['ein'];
@@ -277,6 +312,22 @@ class OrganizationRegisterController extends Controller
                 }
             }
 
+            // Store Government ID upload for officer verification (audit trail)
+            $officerIdPath = $request->file('officer_id')->store('organizations/officer_id', 'public');
+            $claimVerificationMetadata = array_merge($claimVerificationMetadata ?? [], [
+                'officer_id_upload_path' => $officerIdPath,
+                'legal_name_confirmed_at' => now()->toIso8601String(),
+            ]);
+
+            // Store verification documents (6 of 7 required; 990 not needed)
+            $verificationDocPaths = [];
+            foreach ($docKeys as $key) {
+                if ($request->hasFile($key)) {
+                    $verificationDocPaths[$key] = $request->file($key)->store('organizations/verification_docs', 'public');
+                }
+            }
+            $claimVerificationMetadata['verification_document_paths'] = $verificationDocPaths;
+
             $taxEvaluation = $this->taxComplianceService->evaluate($validated['tax_period'] ?? null, $validated['ein']);
 
             DB::beginTransaction();
@@ -298,6 +349,16 @@ class OrganizationRegisterController extends Controller
             while (User::where('slug', $slug)->exists()) {
                 $slug = $baseSlug . '-' . $counter;
                 $counter++;
+            }
+
+            // Platform email: orgname@believeinunity.org (unique per organization)
+            $platformEmailDomain = config('app.platform_email_domain', 'believeinunity.org');
+            $platformBase = Str::slug($validated['name']);
+            $platformEmail = $platformBase . '@' . $platformEmailDomain;
+            $platformCounter = 1;
+            while (Organization::where('platform_email', $platformEmail)->exists()) {
+                $platformEmail = $platformBase . '-' . $platformCounter . '@' . $platformEmailDomain;
+                $platformCounter++;
             }
 
             $user = User::create([
@@ -338,6 +399,7 @@ class OrganizationRegisterController extends Controller
                 'filing_req' => $validated['filing_req'] ?? null,
                 'ntee_code' => $validated['ntee_code'] ?? null,
                 'email' => $validated['email'],
+                'platform_email' => $platformEmail,
                 'phone' => $validated['phone'],
                 'contact_name' => $validated['contact_name'],
                 'contact_title' => $validated['contact_title'],
@@ -363,14 +425,14 @@ class OrganizationRegisterController extends Controller
             $boardMember = BoardMember::create([
                 'organization_id' => $organization->id,
                 'user_id' => $user->id,
-                'position' => 'Chairperson / President',
+                'position' => $validated['contact_title'],
                 'appointed_on' => now(),
             ]);
 
             // Record history
             $boardMember->histories()->create([
                 'action' => 'appointed',
-                'details' => "Registered as Chairperson / President",
+                'details' => 'Registered as ' . $validated['contact_title'],
                 'changed_by' => $user->id,
             ]);
 
