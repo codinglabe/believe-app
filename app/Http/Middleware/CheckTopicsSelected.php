@@ -23,9 +23,14 @@ class CheckTopicsSelected
         }
 
             $user = $request->user();
-        
+
         // Allow admin users to bypass topic selection requirement
         if ($user && $user->role === 'admin') {
+            return $next($request);
+        }
+
+        // organization_pending: do NOT require topic select yet — they must complete org onboarding (Form 1023 etc.) first. After they become "organization", topic select will be required.
+        if ($user && $user->role === 'organization_pending') {
             return $next($request);
         }
 
@@ -36,17 +41,17 @@ class CheckTopicsSelected
                 return response()->json([
                     'success' => false,
                     'message' => 'Please select your topics to continue.',
-                    'redirect' => $user->role === 'organization' || $user->role === 'organization_pending' 
+                    'redirect' => $user->role === 'organization'
                         ? route('auth.topics.select')
                         : route('user.topics.select'),
                 ], 403);
             }
 
-            // Use simple role property check instead of Spatie Permission to avoid guard issues
-            // This is more reliable and doesn't depend on guard configuration
-            if($user->role === 'organization' || $user->role === 'organization_pending'){
+            // Require topic select only for organization (approved) and user roles
+            if ($user->role === 'organization') {
                 return redirect()->route('auth.topics.select');
-            }elseif($user->role === 'user'){
+            }
+            if ($user->role === 'user') {
                 return redirect()->route('user.topics.select');
             }
 

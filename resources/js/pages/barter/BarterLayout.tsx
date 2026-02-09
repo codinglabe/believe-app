@@ -13,7 +13,6 @@ import {
   Home,
   Store,
   List,
-  MessageSquare,
   Menu,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -23,7 +22,7 @@ declare global {
   function route(name: string, params?: Record<string, unknown>): string;
 }
 
-export type BarterTab = "home" | "browse" | "listings" | "trades" | "messages";
+export type BarterTab = "home" | "browse" | "listings" | "trades";
 
 interface BarterLayoutProps {
   children: React.ReactNode;
@@ -49,7 +48,6 @@ export function BarterLayout({
     { id: "browse" as const, label: "Browse Offers", shortLabel: "Browse", href: route("barter.marketplace"), icon: Store },
     { id: "listings" as const, label: "My Listings", shortLabel: "Listings", href: route("barter.my-listings"), icon: List },
     { id: "trades" as const, label: "My Trades", shortLabel: "Trades", href: route("barter.active-trades"), icon: Handshake },
-    { id: "messages" as const, label: "Messages", shortLabel: "Messages", href: "#", icon: MessageSquare },
   ];
 
   const sidebarLinks = [
@@ -198,16 +196,14 @@ export function BarterLayout({
         className="fixed bottom-0 left-0 right-0 z-20 border-t border-border bg-card/95 backdrop-blur supports-[padding:env(safe-area-inset-bottom)]:pb-[env(safe-area-inset-bottom)] md:hidden"
         style={{ paddingBottom: "max(env(safe-area-inset-bottom), 8px)" }}
       >
-        <div className="mx-auto grid max-w-lg grid-cols-5 gap-0">
+        <div className="mx-auto grid max-w-lg grid-cols-4 gap-0">
           {tabs.map((tab) => {
             const Icon = tab.icon;
             const isActive = currentTab === tab.id;
-            const isMessages = tab.id === "messages";
             return (
               <Link
                 key={tab.id}
-                href={isMessages ? "#" : tab.href}
-                onClick={(e) => isMessages && e.preventDefault()}
+                href={tab.href}
                 className={cn(
                   "flex min-h-[56px] flex-col items-center justify-center gap-0.5 px-1 py-2 transition touch-manipulation active:bg-muted/50",
                   isActive ? "text-primary" : "text-muted-foreground"

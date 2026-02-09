@@ -79,11 +79,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "dashboard.read"
     },
 
-    // Believe Points
+    // Believe Points (hidden for organization_pending until onboarding complete)
     {
         title: 'Believe Points',
         href: '/believe-points',
         icon: Coins,
+        role: ['organization', 'admin'],
     },
 
     // Nonprofit Barter Network (organization only)
@@ -435,6 +436,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             {
                 title: 'Gift Cards',
                 icon: Gift,
+                role: ['organization', 'admin'],
                 items: [
                     {
                         title: 'Purchased Cards',

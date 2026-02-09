@@ -321,8 +321,8 @@ Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->nam
 Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Cart routes (protected)
-// Believe Points Routes
-Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->name('believe-points.')->group(function () {
+// Believe Points Routes (organization_pending cannot access until onboarding complete)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
     Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
@@ -524,7 +524,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending']);
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
@@ -537,7 +537,7 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'destroy' => 'permission:communication.delete'
 ]);
 
-Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])
+Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending'])
     ->name('auth.topics.select');
 
 Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name("chat.")->group(function () {
@@ -1560,8 +1560,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
 Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'index'])->name('gift-cards.index');
 Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
 
-// Organization routes (view purchased cards) - MUST come before parameterized routes
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role.simple:organization,admin'])->group(function () {
+// Organization routes (view purchased cards) - organization_pending cannot access until onboarding complete
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin'])->group(function () {
     Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
 });
 

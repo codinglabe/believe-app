@@ -25,6 +25,20 @@ class CheckRole
 
         // Check if user has any of the required roles
         if (!$user->hasAnyRole($roles)) {
+            $userRole = $user->getRoleNames()->first() ?? $user->role;
+
+            // organization_pending should be redirected to dashboard (Form 1023 / onboarding)
+            // when they hit a route that only allows 'organization' (e.g. content, campaigns)
+            if ($userRole === 'organization_pending' && in_array('organization', $roles)) {
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'message' => 'Please complete your organization application first.',
+                        'redirect' => route('dashboard'),
+                    ], 403);
+                }
+                return redirect()->route('dashboard');
+            }
+
             // If it's an AJAX request, return JSON response
             if ($request->expectsJson()) {
                 return response()->json([
@@ -37,7 +51,6 @@ class CheckRole
             // Get role-specific back URL
             $backUrl = $request->header('referer');
             if (!$backUrl) {
-                $userRole = $user->getRoleNames()->first();
                 if ($userRole === 'admin' || $userRole === 'organization' || $userRole === 'organization_pending') {
                     $backUrl = route('dashboard');
                 } elseif ($userRole === 'merchant') {
