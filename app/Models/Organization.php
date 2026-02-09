@@ -31,6 +31,7 @@ class Organization extends Model
         'filing_req',
         'ntee_code',
         'email',
+        'platform_email',
         'phone',
         'contact_name',
         'contact_title',

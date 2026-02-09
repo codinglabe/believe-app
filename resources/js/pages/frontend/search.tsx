@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useCallback } from "react"
+import toast from "react-hot-toast"
 import { Link, router } from "@inertiajs/react"
 import SocialFeedLayout from "@/components/frontend/SocialFeedLayout"
 import { PageHead } from "@/components/frontend/PageHead"
@@ -106,8 +107,8 @@ export default function SearchPage() {
         }
         setLoadingFollow(prev => ({ ...prev, [`user_${user.id}`]: false }))
       },
-      onError: (errors) => {
-        console.error('Error following user:', errors)
+      onError: () => {
+        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people.')
         // Revert optimistic update on error
         setFollowingStates(prev => ({
           ...prev,

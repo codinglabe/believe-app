@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useMemo, useEffect } from "react"
+import toast from "react-hot-toast"
 import { router } from "@inertiajs/react"
 import { UserPlus, UserCheck, Bell, BellOff, ChevronDown } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
@@ -64,7 +65,7 @@ export default function OrgFollowButton({
     const newFollowingState = true // When clicking follow, we're always following
     setLocalIsFollowing(newFollowingState)
 
-    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+    router.post(route("organizations.toggle-favorite", organizationId), {}, {
       preserveScroll: false,
       preserveState: false,
       onSuccess: () => {
@@ -73,10 +74,9 @@ export default function OrgFollowButton({
         // Keep the optimistic update until the page reloads with new data
         // The redirect will cause Inertia to reload the page with updated props
       },
-      onError: (errors) => {
-        console.error("Error toggling follow:", errors)
-        // Revert on error
-        setLocalIsFollowing(null) // Reset to use props
+      onError: () => {
+        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.')
+        setLocalIsFollowing(null)
         setIsLoading(false)
         updateInProgressRef.current = false
       },
@@ -119,7 +119,7 @@ export default function OrgFollowButton({
     // Optimistically update state - show not following immediately
     setLocalIsFollowing(false)
 
-    router.post(route("user.organizations.toggle-favorite", organizationId), {}, {
+    router.post(route("organizations.toggle-favorite", organizationId), {}, {
       preserveScroll: false,
       preserveState: false,
       onSuccess: () => {
@@ -128,10 +128,9 @@ export default function OrgFollowButton({
         // Keep the optimistic update until the page reloads with new data
         // The redirect will cause Inertia to reload the page with updated props
       },
-      onError: (errors) => {
-        console.error("Error unfollowing:", errors)
-        // Revert on error
-        setLocalIsFollowing(null) // Reset to use props
+      onError: () => {
+        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.')
+        setLocalIsFollowing(null)
         setIsLoading(false)
         updateInProgressRef.current = false
       },

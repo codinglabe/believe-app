@@ -83,16 +83,11 @@ export default function RootLayout({
     }, [auth?.user?.id])
 
 
-    const props = usePage();
+    const page = usePage<{ success?: string; error?: string }>();
     useEffect(() => {
-        console.log("RootLayout props:", props);
-        if(props.props?.success) {
-            toast.success(props.props?.success)
-        }
-        if(props.props?.error) {
-            toast.error(props.props?.error)
-        }
-    }, [props.props?.success, props.props?.error])
+        if (page.props?.success) toast.success(page.props.success)
+        if (page.props?.error) toast.error(page.props.error)
+    }, [page.props?.success, page.props?.error])
   return (
       <NotificationProvider>
           {/* Keep CSRF meta in sync so 419 never happens on public/org pages */}

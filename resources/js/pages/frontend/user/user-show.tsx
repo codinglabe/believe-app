@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import toast from "react-hot-toast"
 import { Link, router, usePage } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import useAxios from "@/hooks/useAxios"
@@ -441,13 +442,15 @@ export default function UserPage({
     setLoadingFollow(prev => ({ ...prev, [person.id]: true }))
 
     try {
-      await axios.post(route('organizations.toggle-favorite', person.id))
-      setFollowingStates(prev => ({
-        ...prev,
-        [person.id]: !prev[person.id]
-      }))
-    } catch (error) {
-      console.error('Error toggling follow:', error)
+      const res = await axios.post(route('organizations.toggle-favorite', person.id))
+      if (res.data?.success !== false) {
+        setFollowingStates(prev => ({ ...prev, [person.id]: !prev[person.id] }))
+      }
+    } catch (error: any) {
+      const msg = error.response?.data?.message || (error.response?.status === 403
+        ? 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.'
+        : 'Could not update follow.')
+      toast.error(msg)
     } finally {
       setLoadingFollow(prev => ({ ...prev, [person.id]: false }))
     }
@@ -464,17 +467,15 @@ export default function UserPage({
     setLoadingFollowUser(true)
 
     try {
-      await axios.post(route('users.toggle-follow', user.id))
-      setIsFollowingUser(prev => !prev)
-      // Update followers count optimistically
-      if (isFollowingUser) {
-        // Unfollowed - decrease count
-        // Note: We'd need to pass followersCount as a prop and update it, but for now just toggle the state
-      } else {
-        // Followed - increase count
+      const res = await axios.post(route('users.toggle-follow', user.id))
+      if (res.data?.success !== false) {
+        setIsFollowingUser(prev => !prev)
       }
-    } catch (error) {
-      console.error('Error following user:', error)
+    } catch (error: any) {
+      const msg = error.response?.data?.message || (error.response?.status === 403
+        ? 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people.'
+        : 'Could not update follow.')
+      toast.error(msg)
     } finally {
       setLoadingFollowUser(false)
     }
@@ -1508,9 +1509,9 @@ export default function UserPage({
                 <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-gray-900 dark:text-white">Organizations You May Know</h3>
-                    <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
+                    <Link href={route('organizations')} className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                       View All <ChevronDown className="w-3 h-3 -rotate-90" />
-                    </button>
+                    </Link>
                   </div>
                   <div className="space-y-3">
                     {peopleToShow.map((person, index) => {
@@ -1553,9 +1554,9 @@ export default function UserPage({
                 <div className="bg-white dark:bg-[#111827] rounded-xl p-4 animate-in fade-in slide-in-from-right-4 duration-500 delay-100">
                   <div className="flex items-center justify-between mb-4">
                     <h3 className="font-semibold text-gray-900 dark:text-white">Trending Organizations</h3>
-                    <button className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
+                    <Link href={route('organizations')} className="text-xs text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors flex items-center gap-1">
                       View All <ChevronDown className="w-3 h-3 -rotate-90" />
-                    </button>
+                    </Link>
                   </div>
                   <div className="space-y-3">
                     {trendingOrgsToShow.map((org, index) => {
