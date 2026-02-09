@@ -92,6 +92,13 @@ return [
         'redirect_uri' => env('BRIDGE_REDIRECT_URI'), // Public URL for TOS callback (e.g., ngrok for local dev)
     ],
 
+    'youtube' => [
+        'api_key' => env('YOUTUBE_API_KEY', env('VITE_YOUTUBE_API_KEY')),
+        'client_id' => env('YOUTUBE_CLIENT_ID', env('GOOGLE_CLIENT_ID')),
+        'client_secret' => env('YOUTUBE_CLIENT_SECRET', env('GOOGLE_CLIENT_SECRET')),
+        'redirect_uri' => env('YOUTUBE_REDIRECT_URI', env('APP_URL') . '/integrations/youtube/callback'),
+    ],
+
     'phaze' => [
         'api_key' => env('PHAZE_API_KEY'),
         'api_secret' => env('PHAZE_API_SECRET'),

@@ -195,22 +195,6 @@ export default function SocialFeedLayout({
                               <p className="text-xs text-gray-500 dark:text-gray-500 truncate">{person.org || person.description}</p>
                             </div>
                           </Link>
-                          <Button
-                            size="sm"
-                            onClick={() => handleFollowPerson(person)}
-                            disabled={loadingFollow[person.id as number] || !person.id}
-                            className={`text-xs px-3 py-1.5 h-auto flex-shrink-0 whitespace-nowrap ${
-                              followingStates[person.id as number]
-                                ? "bg-gray-200 dark:bg-white/10 border border-gray-300 dark:border-white/20 hover:bg-gray-300 dark:hover:bg-white/20 text-gray-900 dark:text-white"
-                                : "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white"
-                            }`}
-                          >
-                            {loadingFollow[person.id as number]
-                              ? "Loading..."
-                              : followingStates[person.id as number]
-                                ? "Following"
-                                : "Follow"}
-                          </Button>
                         </div>
                       )
                     })}

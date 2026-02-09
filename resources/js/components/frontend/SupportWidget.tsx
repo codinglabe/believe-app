@@ -255,6 +255,7 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
   const sourcesRef = useRef<Set<AudioBufferSourceNode>>(new Set());
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const [isMuted, setIsMuted] = useState(false);
+  const [voiceError, setVoiceError] = useState<string | null>(null);
 
   useEffect(() => {
     const sub = (data: any) => setUiState(data);
@@ -291,24 +292,31 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
   const startVoiceSession = useCallback(async () => {
     if (GlobalVoiceManager.isActive || GlobalVoiceManager.isConnecting) return;
 
+    setVoiceError(null);
     GlobalVoiceManager.isConnecting = true;
     notifySubscribers();
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
       if (!apiKey) {
-        console.error("VITE_GOOGLE_API_KEY is not set");
+        setVoiceError("Voice guide is not configured. Please set up the API key.");
         GlobalVoiceManager.isConnecting = false;
         notifySubscribers();
         return;
       }
+
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
       const knowledge = await fetchFullKnowledge();
       const ai = new GoogleGenAI({ apiKey });
-      
+
       const inputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       const outputCtx = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
       GlobalVoiceManager.audioCtx = { input: inputCtx, output: outputCtx };
+
+      if (inputCtx.state === 'suspended') await inputCtx.resume();
+      if (outputCtx.state === 'suspended') await outputCtx.resume();
 
       const sessionPromise = ai.live.connect({
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
@@ -496,10 +504,21 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
         }
       });
       GlobalVoiceManager.session = await sessionPromise;
-    } catch (err) { stopActiveSession(); }
+    } catch (err: any) {
+      const message = err?.name === 'NotAllowedError' || err?.message?.includes('permission')
+        ? "Microphone access denied. Allow the mic in your browser to use voice."
+        : err?.message?.includes('NotFound')
+          ? "No microphone found."
+          : err?.message?.includes('secure')
+            ? "Voice requires a secure connection (HTTPS)."
+            : err?.message || "Could not start voice. Try again.";
+      setVoiceError(message);
+      stopActiveSession();
+    }
   }, [selectedVoice, customGreeting, stopActiveSession, onNavigate]);
 
   const handleClose = useCallback(() => {
+    setVoiceError(null);
     stopActiveSession();
     setIsOpen(false);
   }, [stopActiveSession]);
@@ -609,18 +628,26 @@ const SupportWidget: React.FC<SupportWidgetProps> = ({
 
           <div className="p-8 border-t border-border bg-background flex flex-col items-center gap-4">
             <button
+              type="button"
               onClick={() => (uiState.isActive || uiState.isConnecting ? stopActiveSession() : startVoiceSession())}
-              className={`h-16 w-16 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 transform ${
+              disabled={uiState.isConnecting}
+              className={`h-16 w-16 rounded-full flex items-center justify-center transition-all shadow-xl active:scale-90 transform disabled:opacity-70 disabled:cursor-wait ${
                 uiState.isActive || uiState.isConnecting
                   ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
                   : "bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700"
               }`}
+              aria-label={uiState.isActive ? "End call" : "Tap to speak"}
             >
               {(uiState.isActive || uiState.isConnecting) ? <PhoneOff size={28} /> : <Phone size={28} />}
             </button>
             <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-              {uiState.isActive ? (uiState.isAgentSpeaking ? "Speaking..." : "Listening...") : "Tap to Speak"}
+              {uiState.isConnecting ? "Connecting..." : uiState.isActive ? (uiState.isAgentSpeaking ? "Speaking..." : "Listening...") : "Tap to Speak"}
             </p>
+            {voiceError && (
+              <p className="text-xs text-destructive text-center max-w-[260px]" role="alert">
+                {voiceError}
+              </p>
+            )}
           </div>
         </div>
       )}

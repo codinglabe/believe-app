@@ -504,10 +504,6 @@ export default function NonprofitNews({
                 <CardContent className="p-4 space-y-2">
                   <h3 className="font-semibold text-foreground">Weekly Briefing</h3>
                   <p className="text-sm text-muted-foreground">Top insights sent to your inbox</p>
-                  <Button size="sm" className="w-full gap-2">
-                    <Mail className="h-4 w-4" />
-                    Subscribe
-                  </Button>
                 </CardContent>
               </Card>
 

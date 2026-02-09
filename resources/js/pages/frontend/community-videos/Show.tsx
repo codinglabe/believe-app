@@ -127,11 +127,6 @@ export default function CommunityVideoShow({ seo, video, relatedVideos = [] }: P
                       )}
                     </div>
                   </div>
-                  {video.channel_slug && (
-                    <Button size="sm" className="rounded-full bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-90 text-white shrink-0 border-0" asChild>
-                      <Link href={`/community-videos/channel/${video.channel_slug}`}>Subscribe</Link>
-                    </Button>
-                  )}
                 </div>
 
                 {/* Description - expandable */}

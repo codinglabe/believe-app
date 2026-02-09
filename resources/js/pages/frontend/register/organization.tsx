@@ -1,5 +1,6 @@
 "use client"
 import type React from "react"
+import { createPortal } from "react-dom"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useEffect, useState, useRef, useMemo } from "react"
 import { motion } from "framer-motion"
@@ -19,6 +20,7 @@ import {
   Upload,
   ImageIcon,
   X,
+  Briefcase,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -38,11 +40,19 @@ interface EINLookupResponse {
   errors?: Record<string, string[]>
 }
 
+interface PossibleMatch {
+  id: number
+  name: string
+  position: string | null
+  tax_year: string | null
+}
+
 interface RegistrationResponse {
   success: boolean
   message?: string
   organization?: any
   errors?: Record<string, string[]>
+  possible_matches?: PossibleMatch[]
 }
 
 interface OrganizationRegisterPageProps {
@@ -51,14 +61,16 @@ interface OrganizationRegisterPageProps {
   ein?: string
   inviteToken?: string
   organizationName?: string
+  officers_for_ein_url?: string
 }
 
 interface PageProps extends OrganizationRegisterPageProps {
   csrf_token?: string
 }
 
-export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName }: OrganizationRegisterPageProps) {
-  const { csrf_token } = usePage<PageProps>().props
+export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName, officers_for_ein_url }: OrganizationRegisterPageProps) {
+  const { csrf_token, officers_for_ein_url: officersUrlFromPage } = usePage<PageProps>().props
+  const officersForEinUrl = officers_for_ein_url ?? officersUrlFromPage ?? '/register/organization/officers-for-ein'
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [step, setStep] = useState(1)
@@ -71,9 +83,78 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
   const [successMessage, setSuccessMessage] = useState("")
   const [csrfToken, setCsrfToken] = useState(csrf_token || "")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-    useEffect(() => {
+  // Form data state (must be before useEffects that use formData)
+  const [einData, setEinData] = useState({ ein: "" })
+  const [formData, setFormData] = useState({
+    ein: "",
+    name: "",
+    ico: "",
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
+    classification: "",
+    ruling: "",
+    deductibility: "",
+    organization: "",
+    status: "",
+    tax_period: "",
+    filing_req: "",
+    ntee_code: "",
+    email: "",
+    phone: "",
+    contact_name: "",
+    contact_title: "",
+    password: "",
+    password_confirmation: "",
+    website: "",
+    description: "",
+    mission: "",
+    image: null as File | null,
+    agree_to_terms: false,
+    attestation_officer_on_990: false,
+    has_edited_irs_data: false,
+    selected_irs_board_member_id: null as number | null,
+    referralCode: referralCode,
+    invite_token: "",
+  })
+
+  const [possibleOfficerMatches, setPossibleOfficerMatches] = useState<Array<PossibleMatch>>([])
+  const [showOfficerSelector, setShowOfficerSelector] = useState(false)
+  const [selectedOfficerId, setSelectedOfficerId] = useState<number | null>(null)
+  const [realtimeOfficers, setRealtimeOfficers] = useState<PossibleMatch[]>([])
+  const [realtimeOfficersLoading, setRealtimeOfficersLoading] = useState(false)
+  const [contactNameDropdownOpen, setContactNameDropdownOpen] = useState(false)
+  const [contactNameDropdownRect, setContactNameDropdownRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
+  const contactNameDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Measure dropdown anchor when open so we can render in a portal and avoid clipping
+  useEffect(() => {
+    if (!contactNameDropdownOpen || !contactNameDropdownRef.current) {
+      setContactNameDropdownRect(null)
+      return
+    }
+    const update = () => {
+      const el = contactNameDropdownRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const gap = 4
+      const padding = 24
+      const maxHeight = Math.min(224, Math.max(120, window.innerHeight - r.bottom - gap - padding))
+      setContactNameDropdownRect({ top: r.bottom, left: r.left, width: r.width, maxHeight })
+    }
+    update()
+    window.addEventListener("scroll", update, true)
+    window.addEventListener("resize", update)
+    return () => {
+      window.removeEventListener("scroll", update, true)
+      window.removeEventListener("resize", update)
+    }
+  }, [contactNameDropdownOpen])
+
+  useEffect(() => {
     if (prefilledEin) {
         setEinData({ ein: prefilledEin.replace(/\D/g, '').slice(0, 9) })
         // formData.ein = prefilledEin.replace(/\D/g, '').slice(0, 9)
@@ -93,6 +174,27 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     }
   }, [referralCode])
 
+  // Real-time fetch officers for EIN when on step 3 or 4 (no submit needed)
+  useEffect(() => {
+    const ein = (formData.ein || "").replace(/\D/g, "")
+    if (ein.length !== 9 || (step !== 3 && step !== 4) || !officersForEinUrl) return
+    let cancelled = false
+    setRealtimeOfficersLoading(true)
+    const url = officersForEinUrl.includes("?") ? `${officersForEinUrl}&ein=${ein}` : `${officersForEinUrl}?ein=${ein}`
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then((res) => res.json())
+      .then((data: { officers?: PossibleMatch[] }) => {
+        if (!cancelled && Array.isArray(data.officers)) setRealtimeOfficers(data.officers)
+      })
+      .catch(() => {
+        if (!cancelled) setRealtimeOfficers([])
+      })
+      .finally(() => {
+        if (!cancelled) setRealtimeOfficersLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [formData.ein, step, officersForEinUrl])
+
   // Capture invite token from URL if not provided in props
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -106,45 +208,6 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       }))
     }
   }, [inviteToken])
-
-  // Form data state
-  const [einData, setEinData] = useState({ ein: "" })
-  const [formData, setFormData] = useState({
-    // Step 1: EIN Lookup
-    ein: "",
-    // Step 2: IRS Data (auto-populated)
-    name: "",
-    ico: "",
-    street: "",
-    city: "",
-    state: "",
-    zip: "",
-    classification: "",
-    ruling: "",
-    deductibility: "",
-    organization: "",
-    status: "",
-    tax_period: "",
-    filing_req: "",
-    ntee_code: "",
-    // Step 3: Contact Information
-    email: "",
-    phone: "",
-    contact_name: "",
-    contact_title: "",
-    password: "",
-    password_confirmation: "",
-    // Step 4: Additional Information
-    website: "",
-    description: "",
-    mission: "",
-    image: null as File | null,
-    // Terms
-    agree_to_terms: false,
-    has_edited_irs_data: false,
-    referralCode: referralCode,
-    invite_token: "",
-  })
 
   const passwordRequirements = useMemo(() => {
     const password = formData.password || ""
@@ -482,8 +545,12 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
   }
 }
 
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (selectedOfficerIdForSubmit?: number) => {
     if (!formData.agree_to_terms || !formData.description || !formData.mission) {
+      return
+    }
+    if (!formData.attestation_officer_on_990 && selectedOfficerIdForSubmit == null) {
+      setErrors((e) => ({ ...e, attestation_officer_on_990: "You must confirm you are listed as an officer/director on the organization's IRS filing." }))
       return
     }
 
@@ -506,9 +573,14 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
         if (key === 'image' && formData.image) {
           formDataToSend.append('image', formData.image)
         } else if (key === 'invite_token' && formData.invite_token) {
-          // Explicitly append invite_token
           formDataToSend.append('invite_token', formData.invite_token)
-        } else {
+        } else if (key === 'attestation_officer_on_990') {
+          formDataToSend.append(key, formData.attestation_officer_on_990 ? '1' : '0')
+        } else if (key === 'selected_irs_board_member_id') {
+          const id = selectedOfficerIdForSubmit ?? formData.selected_irs_board_member_id
+          const numId = id != null && id !== '' && !Number.isNaN(Number(id)) ? Number(id) : null
+          if (numId != null) formDataToSend.append(key, String(numId))
+        } else if (key !== 'selected_irs_board_member_id') {
           formDataToSend.append(key, formData[key as keyof typeof formData] as string | Blob)
         }
       })
@@ -531,7 +603,22 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
         setSuccessMessage(data.message || "Organization registered successfully!")
         setStep(5)
       } else {
-        // Handle validation errors
+        const res = data as RegistrationResponse
+        const possibleMatches = Array.isArray(res.possible_matches) ? res.possible_matches : []
+        const isMultipleMatchesResponse = response.status === 422 && (possibleMatches.length > 0 || res.message?.toLowerCase().includes('select your name') || res.errors?.selected_irs_board_member_id)
+
+        // Multiple 990 officer matches: show list so user can select one
+        if (isMultipleMatchesResponse) {
+          setPossibleOfficerMatches(possibleMatches)
+          setShowOfficerSelector(true)
+          setSelectedOfficerId(null)
+          setErrors((res.errors ? Object.fromEntries(
+            Object.entries(res.errors).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
+          ) : {}) as Record<string, string>)
+          setIsLoading(false)
+          return
+        }
+        // Other validation errors
         if (data.errors) {
           const formattedErrors: Record<string, string> = {}
           Object.entries(data.errors).forEach(([key, value]) => {
@@ -567,7 +654,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
           formData.password_confirmation
         )
       case 4:
-        return !!(formData.agree_to_terms && formData.description && formData.mission)
+        return !!(formData.agree_to_terms && formData.attestation_officer_on_990 && formData.description && formData.mission)
       default:
         return false
     }
@@ -1168,17 +1255,90 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
                       </div>
 
-                      <div>
+                      <div className="relative" ref={contactNameDropdownRef}>
                         <Label htmlFor="contact_name">Primary Contact Name *</Label>
                         <Input
                           id="contact_name"
                           type="text"
-                          placeholder="Contact person's full name"
+                          name="contact_name"
+                          autoComplete="nope"
+                          data-lpignore="true"
+                          data-form-type="other"
+                          placeholder="Type or select your name from IRS filing"
                           value={formData.contact_name}
                           onChange={(e) => handleInputChange("contact_name", e.target.value)}
+                          onFocus={() => setContactNameDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setContactNameDropdownOpen(false), 200)}
                           className="h-12"
                           required
                         />
+                        {/* Dropdown is rendered via portal so it is not clipped by Card overflow-hidden */}
+                        {contactNameDropdownOpen &&
+                          contactNameDropdownRect &&
+                          createPortal(
+                            realtimeOfficersLoading ? (
+                              <div
+                                className="fixed z-[100] rounded-md border bg-background shadow-lg p-2 flex items-center gap-2 text-sm text-muted-foreground"
+                                style={{ top: contactNameDropdownRect.top + 4, left: contactNameDropdownRect.left, width: contactNameDropdownRect.width }}
+                              >
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                                Loading names from IRS filing…
+                              </div>
+                            ) : realtimeOfficers.length > 0 ? (
+                              <div
+                                className="contact-name-officers-dropdown fixed z-[100] rounded-md border bg-background shadow-lg overflow-y-auto"
+                                style={{
+                                  top: contactNameDropdownRect.top + 4,
+                                  left: contactNameDropdownRect.left,
+                                  width: contactNameDropdownRect.width,
+                                  maxHeight: contactNameDropdownRect.maxHeight,
+                                }}
+                              >
+                                <p className="text-xs text-muted-foreground px-3 py-2 border-b">
+                                  Select your name from this organization&apos;s IRS Form 990
+                                </p>
+                                <div className="p-1.5 space-y-1">
+                                  {realtimeOfficers
+                                    .filter((m) => !formData.contact_name || m.name.toLowerCase().includes(formData.contact_name.toLowerCase()))
+                                    .map((m, index) => (
+                                      <motion.button
+                                        key={m.id}
+                                        type="button"
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.2, delay: index * 0.03 }}
+                                        whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className="w-full text-left rounded-lg border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/30 hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 px-3 py-1.5 flex flex-col gap-0 transition-colors cursor-pointer"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault()
+                                          setFormData((prev) => ({
+                                            ...prev,
+                                            contact_name: m.name,
+                                            contact_title: m.position || prev.contact_title,
+                                            selected_irs_board_member_id: m.id,
+                                          }))
+                                          setSelectedOfficerId(m.id)
+                                          setContactNameDropdownOpen(false)
+                                        }}
+                                      >
+                                        <span className="font-medium text-foreground">{m.name}</span>
+                                        {m.position && (
+                                          <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground bg-muted/80 dark:bg-muted/50 rounded px-1.5 py-0 w-fit">
+                                            <Briefcase className="h-2.5 w-2.5 shrink-0" />
+                                            <span>{m.position}</span>
+                                          </span>
+                                        )}
+                                      </motion.button>
+                                    ))}
+                                </div>
+                                {realtimeOfficers.filter((m) => !formData.contact_name || m.name.toLowerCase().includes(formData.contact_name.toLowerCase())).length === 0 && (
+                                  <p className="px-3 py-2 text-sm text-muted-foreground">No matching name. You can type your name above.</p>
+                                )}
+                              </div>
+                            ) : null,
+                            document.body
+                          )}
                         {errors.contact_name && <p className="text-red-600 text-sm mt-1">{errors.contact_name}</p>}
                       </div>
 
@@ -1383,7 +1543,90 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         </Label>
                       </div>
                       {errors.agree_to_terms && <p className="text-red-600 text-sm">{errors.agree_to_terms}</p>}
+
+                      <div className="space-y-2">
+                        <div className="flex items-start space-x-2">
+                          <Checkbox
+                            id="attestation_990"
+                            checked={formData.attestation_officer_on_990 === true}
+                            onCheckedChange={(checked) => handleInputChange("attestation_officer_on_990", checked === true)}
+                          />
+                          <Label htmlFor="attestation_990" className="text-sm leading-relaxed cursor-pointer">
+                            I am listed as an officer or director on this organization&apos;s IRS Form 990 filing.
+                          </Label>
+                        </div>
+                        {formData.attestation_officer_on_990 && (
+                          <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                            <CheckCircle className="h-4 w-4 shrink-0" />
+                            Confirmed. You can proceed to complete registration.
+                          </p>
+                        )}
+                        {errors.attestation_officer_on_990 && <p className="text-red-600 text-sm">{errors.attestation_officer_on_990}</p>}
+                      </div>
                     </div>
+
+                    {showOfficerSelector && (
+                      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        <AlertDescription asChild>
+                          <div>
+                            <p className="font-medium text-amber-800 dark:text-amber-200 mb-2">
+                              {possibleOfficerMatches.length > 0
+                                ? "We found multiple possible matches on your organization's IRS filing. Please select your name."
+                                : "Please select your name from your organization's IRS filing below, or contact support if you don't see it."}
+                            </p>
+                            {possibleOfficerMatches.length > 0 && (
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {possibleOfficerMatches.map((m) => (
+                                <label
+                                  key={m.id}
+                                  className="flex items-center gap-2 p-2 rounded border border-amber-200 dark:border-amber-800 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-900/20"
+                                >
+                                  <input
+                                    type="radio"
+                                    name="selected_officer"
+                                    value={m.id}
+                                    checked={selectedOfficerId === m.id}
+                                    onChange={() => setSelectedOfficerId(m.id)}
+                                    className="text-green-600"
+                                  />
+                                  <span>
+                                    {m.name}
+                                    {m.position && <span className="text-muted-foreground"> — {m.position}</span>}
+                                    {m.tax_year && <span className="text-muted-foreground text-xs"> ({m.tax_year})</span>}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            )}
+                            {errors.selected_irs_board_member_id && <p className="text-red-600 text-sm mt-1">{errors.selected_irs_board_member_id}</p>}
+                            <div className="flex gap-2 mt-3">
+                              {possibleOfficerMatches.length > 0 ? (
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!selectedOfficerId) {
+                                      setErrors((e) => ({ ...e, selected_irs_board_member_id: "Please select your name from the list." }))
+                                      return
+                                    }
+                                    setShowOfficerSelector(false)
+                                    setErrors((e) => ({ ...e, selected_irs_board_member_id: undefined }))
+                                    handleFinalSubmit(selectedOfficerId)
+                                  }}
+                                  disabled={!selectedOfficerId}
+                                >
+                                  Confirm and submit
+                                </Button>
+                              ) : (
+                                <Button type="button" variant="outline" onClick={() => { setShowOfficerSelector(false); setErrors((e) => ({ ...e, selected_irs_board_member_id: undefined })) }}>
+                                  Close — I&apos;ll try again
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Button

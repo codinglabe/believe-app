@@ -111,6 +111,28 @@ html {
     @apply bg-gray-400 dark:bg-gray-500;
 }
 
+/* Contact name officers dropdown - transparent track, thumb only */
+.contact-name-officers-dropdown {
+    scrollbar-width: thin;
+    scrollbar-color: #d1d5db transparent;
+}
+.dark .contact-name-officers-dropdown {
+    scrollbar-color: #4b5563 transparent;
+}
+.contact-name-officers-dropdown::-webkit-scrollbar {
+    width: 8px;
+}
+.contact-name-officers-dropdown::-webkit-scrollbar-track {
+    background: transparent;
+    border-radius: 9999px;
+}
+.contact-name-officers-dropdown::-webkit-scrollbar-thumb {
+    @apply bg-gray-300 dark:bg-gray-600 rounded-full;
+}
+.contact-name-officers-dropdown::-webkit-scrollbar-thumb:hover {
+    @apply bg-gray-400 dark:bg-gray-500;
+}
+
 /* Support Widget popup scrollbar - blue/purple theme (explicit colors, higher specificity) */
 div.support-widget-messages {
     scrollbar-width: thin;

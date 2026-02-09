@@ -224,6 +224,7 @@ class HandleInertiaRequests extends Middleware
                             "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,
                             'website' => $user->organization->website,
+                            'youtube_channel_url' => $user->organization->youtube_channel_url ?? null,
                             'description' => $user->organization->description,
                             'mission' => $user->organization->mission,
                             'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
