@@ -78,6 +78,7 @@ use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\CommunityVideosController;
+use App\Http\Controllers\CommunityVideoEngagementController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -203,6 +204,12 @@ Route::get('/community-videos/upload', [CommunityVideosController::class, 'uploa
 Route::get('/community-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('community-videos.show-youtube');
 Route::get('/community-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('community-videos.show-short');
 Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
+
+Route::post('/community-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('community-videos.engagement.like')->middleware('auth');
+Route::post('/community-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('community-videos.engagement.view')->middleware('auth');
+Route::post('/community-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('community-videos.engagement.share');
+Route::get('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('community-videos.engagement.comments');
+Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('community-videos.engagement.comment')->middleware('auth');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');

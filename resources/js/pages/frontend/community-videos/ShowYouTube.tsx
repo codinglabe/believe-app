@@ -1,13 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
+import { route } from "ziggy-js"
 import { PageHead } from "@/components/frontend/PageHead"
 import { CommunityVideoPlayer } from "@/components/frontend/CommunityVideoPlayer"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
-import { ThumbsUp, ThumbsDown, Share2, MoreHorizontal, Building2, ArrowLeft, ChevronDown, ChevronUp, MessageCircle } from "lucide-react"
+import { ThumbsUp, ThumbsDown, Share2, MoreHorizontal, Building2, ArrowLeft, ChevronDown, ChevronUp, MessageCircle, Heart } from "lucide-react"
+import axios from "axios"
 
 interface VideoData {
   id: string
@@ -27,6 +29,12 @@ interface VideoData {
   comment_count_formatted?: string
   channel_slug?: string | null
   embed_url: string
+  app_likes?: number
+  app_comment_count?: number
+  app_shares?: number
+  user_liked?: boolean
+  total_likes_formatted?: string
+  total_comment_count_formatted?: string
 }
 
 interface MoreVideoItem {
@@ -51,17 +59,120 @@ interface CommentItem {
   time_ago: string
 }
 
+interface AppCommentItem {
+  id: number
+  body: string
+  created_at: string
+  time_ago: string
+  user: { id: number; name: string; avatar: string | null }
+}
+
 interface Props {
   seo?: { title?: string; description?: string }
   video: VideoData
   moreVideos?: MoreVideoItem[]
   comments?: CommentItem[]
+  appComments?: AppCommentItem[]
 }
 
-export default function CommunityVideoShowYouTube({ seo, video, moreVideos = [], comments = [] }: Props) {
+export default function CommunityVideoShowYouTube({ seo, video: initialVideo, moreVideos = [], comments = [], appComments: initialAppComments = [] }: Props) {
+  const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [descriptionExpanded, setDescriptionExpanded] = useState(false)
+  const [video, setVideo] = useState(initialVideo)
+  const [appComments, setAppComments] = useState<AppCommentItem[]>(initialAppComments)
+  const [likeLoading, setLikeLoading] = useState(false)
+  const [commentBody, setCommentBody] = useState("")
+  const [commentSubmitting, setCommentSubmitting] = useState(false)
   const descriptionPreview = video.description ? (video.description.length > 150 ? video.description.slice(0, 150) + "…" : video.description) : ""
   const hasMoreDescription = video.description && video.description.length > 150
+
+  const totalLikesFormatted = video.total_likes_formatted ?? video.likes_formatted ?? String(video.likes ?? 0)
+  const totalCommentFormatted = video.total_comment_count_formatted ?? video.comment_count_formatted ?? String(video.comment_count ?? 0)
+
+  useEffect(() => {
+    if (!auth?.user?.id) return
+    axios.post(route("community-videos.engagement.view"), {
+      video_id: video.id,
+      source: "yt",
+      channel_slug: video.channel_slug ?? undefined,
+    }).catch(() => {})
+  }, [video.id, video.channel_slug, auth?.user?.id])
+
+  const handleLike = async (e: React.MouseEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!auth?.user?.id) {
+      window.location.href = route("login") + "?redirect=" + encodeURIComponent(window.location.pathname + window.location.search)
+      return
+    }
+    setLikeLoading(true)
+    try {
+      const { data } = await axios.post(route("community-videos.engagement.like"), {
+        video_id: video.id,
+        source: "yt",
+        channel_slug: video.channel_slug ?? undefined,
+      })
+      const newLiked = data.liked === true
+      const newAppLikes = Number(data.app_likes) ?? 0
+      setVideo((v) => ({
+        ...v,
+        user_liked: newLiked,
+        app_likes: newAppLikes,
+        total_likes_formatted: numberFormat((v.likes ?? 0) + newAppLikes),
+      }))
+    } catch (_) {
+      setLikeLoading(false)
+    } finally {
+      setLikeLoading(false)
+    }
+  }
+
+  function numberFormat(n: number) {
+    return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(n)
+  }
+
+  const handleShare = async () => {
+    const url = `${window.location.origin}/community-videos/watch/yt/${video.id}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator ?? "")}` : ""}`
+    try {
+      await axios.post(route("community-videos.engagement.share"), {
+        video_id: video.id,
+        source: "yt",
+        channel_slug: video.channel_slug ?? undefined,
+      })
+    } catch (_) {}
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: video.title, url })
+      } catch {
+        await navigator.clipboard.writeText(url)
+      }
+    } else {
+      await navigator.clipboard.writeText(url)
+    }
+  }
+
+  const handleCommentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!auth?.user?.id || !commentBody.trim()) return
+    setCommentSubmitting(true)
+    try {
+      const { data } = await axios.post(route("community-videos.engagement.comment"), {
+        video_id: video.id,
+        source: "yt",
+        body: commentBody.trim(),
+        channel_slug: video.channel_slug ?? undefined,
+      })
+      setAppComments((prev) => [data.comment, ...prev])
+      setVideo((v) => ({
+        ...v,
+        app_comment_count: data.app_comment_count,
+        total_comment_count_formatted: numberFormat((video.comment_count ?? 0) + data.app_comment_count),
+      }))
+      setCommentBody("")
+    } finally {
+      setCommentSubmitting(false)
+    }
+  }
 
   const watchHref = (item: MoreVideoItem) => {
     const q = new URLSearchParams()
@@ -102,14 +213,21 @@ export default function CommunityVideoShowYouTube({ seo, video, moreVideos = [],
                     {video.views_formatted} views · {video.time_ago}
                   </p>
                   <div className="flex items-center gap-1">
-                    <Button variant="ghost" size="sm" className="rounded-full h-9 gap-1">
-                      <ThumbsUp className="w-4 h-4" />
-                      {video.likes_formatted ?? video.likes ?? 0}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className={`rounded-full h-9 gap-1 ${video.user_liked ? "text-red-500 dark:text-red-400" : ""}`}
+                      onClick={handleLike}
+                      disabled={likeLoading}
+                    >
+                      {video.user_liked ? <Heart className="w-4 h-4 fill-current" /> : <ThumbsUp className="w-4 h-4" />}
+                      {totalLikesFormatted}
                     </Button>
                     <Button variant="ghost" size="sm" className="rounded-full h-9">
                       <ThumbsDown className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="sm" className="rounded-full h-9 gap-1">
+                    <Button variant="ghost" size="sm" className="rounded-full h-9 gap-1" onClick={handleShare}>
                       <Share2 className="w-4 h-4" />
                       Share
                     </Button>
@@ -147,11 +265,6 @@ export default function CommunityVideoShowYouTube({ seo, video, moreVideos = [],
                       </p>
                     </div>
                   </div>
-                  {video.channel_slug && (
-                    <Button size="sm" className="rounded-full bg-gradient-to-r from-purple-600 to-blue-600 hover:opacity-90 text-white shrink-0 border-0" asChild>
-                      <Link href={`/community-videos/channel/${video.channel_slug}`}>Subscribe</Link>
-                    </Button>
-                  )}
                 </div>
 
                 {video.description && (
@@ -175,12 +288,60 @@ export default function CommunityVideoShowYouTube({ seo, video, moreVideos = [],
                   </div>
                 )}
 
-                {/* Comments: list + link to YouTube */}
+                {/* Comments: YouTube + app comments */}
                 <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center gap-2 mb-4">
                     <MessageCircle className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    {video.comment_count_formatted ?? video.comment_count ?? 0} comments
+                    {totalCommentFormatted} comments
                   </h3>
+                  {auth?.user ? (
+                    <form
+                      onSubmit={handleCommentSubmit}
+                      className="mb-6 flex gap-2"
+                      onKeyDown={(e) => e.stopPropagation()}
+                    >
+                      <input
+                        type="text"
+                        value={commentBody}
+                        onChange={(e) => setCommentBody(e.target.value)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                        placeholder="Add a comment..."
+                        className="flex-1 min-w-0 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white placeholder:text-gray-500"
+                        maxLength={5000}
+                      />
+                      <Button type="submit" size="sm" disabled={!commentBody.trim() || commentSubmitting} className="rounded-lg">
+                        {commentSubmitting ? "…" : "Comment"}
+                      </Button>
+                    </form>
+                  ) : (
+                    <Link
+                      href={route("login") + "?redirect=" + encodeURIComponent(window.location.pathname + window.location.search)}
+                      className="inline-block mb-6 text-sm text-purple-600 dark:text-purple-400 hover:underline"
+                    >
+                      Sign in to add a comment
+                    </Link>
+                  )}
+                  {appComments.length > 0 && (
+                    <ul className="space-y-4 mb-4">
+                      {appComments.map((c) => (
+                        <li key={c.id} className="flex gap-3">
+                          <Avatar className="h-9 w-9 rounded-full shrink-0">
+                            {c.user.avatar ? <AvatarImage src={c.user.avatar} alt={c.user.name} /> : null}
+                            <AvatarFallback className="rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
+                              {(c.user.name || "?").charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white">
+                              {c.user.name}
+                              <span className="text-xs font-normal text-gray-500 dark:text-gray-400 ml-2">{c.time_ago}</span>
+                            </p>
+                            <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap break-words mt-0.5">{c.body}</p>
+                          </div>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                   {comments.length > 0 ? (
                     <ul className="space-y-4 mb-4">
                       {comments.map((c, i) => (

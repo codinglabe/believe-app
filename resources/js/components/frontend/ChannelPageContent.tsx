@@ -1,10 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { Link } from "@inertiajs/react"
+import { Link, usePage } from "@inertiajs/react"
+import { route } from "ziggy-js"
+import axios from "axios"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
-import { Play, Building2, Youtube, Video, Eye, ThumbsUp, MessageCircle, Share2, ArrowLeft, Clapperboard } from "lucide-react"
+import { Play, Building2, Youtube, Video, Eye, ThumbsUp, MessageCircle, Share2, ArrowLeft, Clapperboard, Heart } from "lucide-react"
+import { cn } from "@/lib/utils"
 
 export interface VideoItem {
   id: number
@@ -33,6 +36,12 @@ export interface YouTubeVideoItem {
   likes_formatted?: string
   comment_count?: number
   comment_count_formatted?: string
+  app_likes?: number
+  app_comment_count?: number
+  app_shares?: number
+  user_liked?: boolean
+  total_likes_formatted?: string
+  total_comment_count_formatted?: string
 }
 
 export interface ShortItem {
@@ -70,13 +79,70 @@ export interface ChannelPageContentProps {
 export function ChannelPageContent({
   channel,
   videos,
-  youtube_videos = [],
+  youtube_videos: initialYoutubeVideos = [],
   shorts = [],
   backLink,
   variant = "default",
 }: ChannelPageContentProps) {
+  const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [activeTab, setActiveTab] = useState<"videos" | "about">("videos")
+  const [youtube_videos, setYoutubeVideos] = useState<YouTubeVideoItem[]>(initialYoutubeVideos)
+  const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null)
   const isDashboard = variant === "dashboard"
+
+  const handleYoutubeLike = async (e: React.MouseEvent, yt: YouTubeVideoItem) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!auth?.user?.id) {
+      window.location.href = route("login") + "?redirect=" + encodeURIComponent(window.location.pathname)
+      return
+    }
+    setLikeLoadingId(yt.id)
+    try {
+      const { data } = await axios.post(route("community-videos.engagement.like"), {
+        video_id: yt.id,
+        source: "yt",
+        channel_slug: channel.slug ?? undefined,
+      })
+      const newLiked = data.liked === true
+      const newAppLikes = Number(data.app_likes) ?? 0
+      const formatCount = (n: number) => (n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(n))
+      setYoutubeVideos((prev) =>
+        prev.map((v) =>
+          v.id === yt.id
+            ? {
+                ...v,
+                user_liked: newLiked,
+                app_likes: newAppLikes,
+                total_likes_formatted: formatCount((v.likes ?? 0) + newAppLikes),
+              }
+            : v
+        )
+      )
+    } finally {
+      setLikeLoadingId(null)
+    }
+  }
+
+  const handleYoutubeShare = async (yt: YouTubeVideoItem) => {
+    const url = `${window.location.origin}/community-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
+    try {
+      await axios.post(route("community-videos.engagement.share"), {
+        video_id: yt.id,
+        source: "yt",
+        channel_slug: channel.slug ?? undefined,
+      })
+    } catch (_) {}
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: yt.title, url })
+      } catch {
+        await navigator.clipboard.writeText(url)
+      }
+    } else {
+      await navigator.clipboard.writeText(url)
+    }
+  }
   const totalViewsFormatted =
     channel.total_views >= 1_000_000
       ? (channel.total_views / 1_000_000).toFixed(1) + "M"
@@ -141,13 +207,6 @@ export function ChannelPageContent({
               </span>
             </div>
             <div className="flex flex-wrap items-center gap-2 mt-4">
-              <Button
-                size="sm"
-                className="rounded-lg bg-purple-600 hover:bg-purple-500 dark:bg-gray-800 dark:hover:bg-gray-700 border border-transparent dark:border-gray-600 text-white font-medium h-9 px-4 dark:hover:border-gray-500"
-                asChild
-              >
-                <Link href={`/community-videos/channel/${channel.slug}`}>Subscribe</Link>
-              </Button>
               {channel.organization_slug && (
                 <Button
                   size="sm"
@@ -346,30 +405,28 @@ export function ChannelPageContent({
                               <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden />
                               {yt.views_formatted} views
                             </span>
-                            <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400">
-                              <ThumbsUp className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                              {yt.likes_formatted ?? yt.likes ?? 0}
-                            </span>
+                            <button
+                              type="button"
+                              onClick={(e) => handleYoutubeLike(e, yt)}
+                              disabled={likeLoadingId === yt.id}
+                              className={cn(
+                                "flex items-center gap-1 transition-colors",
+                                yt.user_liked ? "text-red-500 dark:text-red-400" : "text-purple-500 dark:text-purple-400 hover:text-purple-600 dark:hover:text-purple-300"
+                              )}
+                              title={yt.user_liked ? "Unlike" : "Like"}
+                            >
+                              {yt.user_liked ? <Heart className="w-3.5 h-3.5 shrink-0 fill-current" aria-hidden /> : <ThumbsUp className="w-3.5 h-3.5 shrink-0" aria-hidden />}
+                              {yt.total_likes_formatted ?? yt.likes_formatted ?? yt.likes ?? 0}
+                            </button>
                             <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400">
                               <MessageCircle className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                              {yt.comment_count_formatted ?? yt.comment_count ?? 0}
+                              {yt.total_comment_count_formatted ?? yt.comment_count_formatted ?? yt.comment_count ?? 0}
                             </span>
                             <button
                               type="button"
                               className="flex items-center gap-1 text-purple-500 dark:text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors"
                               title="Share"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                const url = `${window.location.origin}/community-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
-                                if (navigator.share) {
-                                  navigator.share({ title: yt.title, url }).catch(() => {
-                                    navigator.clipboard.writeText(url)
-                                  })
-                                } else {
-                                  navigator.clipboard.writeText(url)
-                                }
-                              }}
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleYoutubeShare(yt) }}
                             >
                               <Share2 className="w-3.5 h-3.5 shrink-0" aria-hidden />
                               Share

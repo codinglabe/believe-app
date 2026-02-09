@@ -3,6 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\CommunityVideo;
+use App\Models\CommunityVideoComment;
+use App\Models\CommunityVideoLike;
+use App\Models\CommunityVideoShare;
+use App\Models\CommunityVideoView;
 use App\Models\Organization;
 use App\Models\User;
 use App\Services\YouTubeService;
@@ -10,6 +14,7 @@ use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -42,6 +47,9 @@ class CommunityVideosController extends Controller
             $youtubeVideos = $youtubeVideos->sortByDesc('views')->values();
         }
 
+        $userId = Auth::id();
+        $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
+
         $videosList = $youtubeVideos->all();
         $featured = null;
         $videos = $videosList;
@@ -56,11 +64,14 @@ class CommunityVideosController extends Controller
             return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
         })->take(15)->values()->all();
 
+        $channelBanners = $this->getChannelBannersForIndex();
+
         return Inertia::render('frontend/community-videos/Index', [
             'seo' => [
                 'title' => 'Community Videos',
                 'description' => 'Watch and share inspiring stories and community events from our supporters and nonprofits.',
             ],
+            'channelBanners' => $channelBanners,
             'featuredVideo' => $featured,
             'videos' => $videos,
             'shorts' => $shorts,
@@ -70,6 +81,42 @@ class CommunityVideosController extends Controller
                 'tab' => $tab,
             ],
         ]);
+    }
+
+    /**
+     * Get channel banners for the index page slider (slug, name, banner_url).
+     * Only includes channels that have a banner image from YouTube.
+     *
+     * @return array<int, array{slug: string, name: string, banner_url: string}>
+     */
+    private function getChannelBannersForIndex(): array
+    {
+        $orgs = Organization::query()
+            ->select('id', 'name', 'youtube_channel_url')
+            ->whereNotNull('youtube_channel_url')
+            ->with('user:id,slug')
+            ->get();
+
+        $youtubeService = app(YouTubeService::class);
+        $banners = [];
+
+        foreach ($orgs as $org) {
+            $channelSlug = $org->user?->slug;
+            if (! $channelSlug) {
+                continue;
+            }
+            $details = $youtubeService->getChannelDetails($org->youtube_channel_url);
+            $bannerUrl = $details['banner_url'] ?? null;
+            if ($bannerUrl && is_string($bannerUrl)) {
+                $banners[] = [
+                    'slug' => $channelSlug,
+                    'name' => $org->name,
+                    'banner_url' => $bannerUrl,
+                ];
+            }
+        }
+
+        return $banners;
     }
 
     /**
@@ -114,6 +161,7 @@ class CommunityVideosController extends Controller
                     'comment_count' => $yt['comment_count'] ?? 0,
                     'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                     'channel_slug' => $channelSlug,
+                    'organization_id' => $org->id,
                     'source' => 'youtube',
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => $sortAt,
@@ -145,6 +193,7 @@ class CommunityVideosController extends Controller
                     'comment_count' => $yt['comment_count'] ?? 0,
                     'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
                     'channel_slug' => $channelSlug,
+                    'organization_id' => $org->id,
                     'source' => 'youtube',
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => PHP_INT_MAX,
@@ -153,6 +202,147 @@ class CommunityVideosController extends Controller
         }
 
         return $all->sortByDesc('sort_at')->values();
+    }
+
+    /**
+     * Attach app engagement counts and user_liked to videos; optionally rank by followed orgs + engagement.
+     */
+    private function attachEngagementAndRank(Collection $youtubeVideos, ?int $userId, string $tab): Collection
+    {
+        $videoIds = $youtubeVideos->pluck('slug')->unique()->all();
+        if (empty($videoIds)) {
+            return $youtubeVideos;
+        }
+
+        $appLikes = CommunityVideoLike::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+
+        $appComments = CommunityVideoComment::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+
+        $appShares = CommunityVideoShare::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+
+        $userLikedIds = [];
+        $followedOrgIds = [];
+        if ($userId) {
+            $userLikedIds = CommunityVideoLike::query()
+                ->where('user_id', $userId)
+                ->where('source', 'yt')
+                ->whereIn('video_id', $videoIds)
+                ->pluck('video_id')
+                ->flip()
+                ->all();
+            $user = User::query()->find($userId);
+            $followedOrgIds = $user ? $user->favoriteOrganizations()->pluck('organizations.id')->flip()->all() : [];
+        }
+
+        $out = $youtubeVideos->map(function ($v) use ($appLikes, $appComments, $appShares, $userLikedIds, $followedOrgIds) {
+            $vid = (string) ($v['slug'] ?? $v['id'] ?? '');
+            $appLike = (int) ($appLikes[$vid] ?? 0);
+            $appComment = (int) ($appComments[$vid] ?? 0);
+            $appShare = (int) ($appShares[$vid] ?? 0);
+            $ytLikes = (int) ($v['likes'] ?? 0);
+            $ytComments = (int) ($v['comment_count'] ?? 0);
+            $totalLikes = $ytLikes + $appLike;
+            $totalComments = $ytComments + $appComment;
+            $orgId = $v['organization_id'] ?? null;
+            $fromFollowedOrg = $orgId && isset($followedOrgIds[$orgId]);
+            $engagementScore = $appLike * 2 + $appComment * 3 + $appShare * 2 + (int) ($v['views'] ?? 0) * 0.001 + ($v['sort_at'] ?? 0) / 1e10;
+            $userLiked = isset($userLikedIds[$vid]);
+
+            return array_merge($v, [
+                'app_likes' => $appLike,
+                'app_comment_count' => $appComment,
+                'app_shares' => $appShare,
+                'total_likes' => $totalLikes,
+                'total_likes_formatted' => number_format($totalLikes),
+                'total_comment_count' => $totalComments,
+                'total_comment_count_formatted' => number_format($totalComments),
+                'user_liked' => $userLiked,
+                'from_followed_org' => $fromFollowedOrg,
+                'engagement_score' => $engagementScore,
+            ]);
+        });
+
+        if ($userId) {
+            $out = $out->sortByDesc('engagement_score')->sortByDesc('from_followed_org')->values();
+        }
+
+        return $out;
+    }
+
+    /**
+     * Get app engagement (likes, comments, shares, user_liked) and app comments for a single video.
+     *
+     * @return array{video: array, app_comments: array}
+     */
+    private function getVideoEngagement(string $videoId, string $source, ?string $channelSlug): array
+    {
+        $appLikes = CommunityVideoLike::query()
+            ->where('video_id', $videoId)
+            ->where('source', $source)
+            ->count();
+        $appCommentCount = CommunityVideoComment::query()
+            ->where('video_id', $videoId)
+            ->where('source', $source)
+            ->count();
+        $appShares = CommunityVideoShare::query()
+            ->where('video_id', $videoId)
+            ->where('source', $source)
+            ->count();
+
+        $userId = Auth::id();
+        $userLiked = $userId
+            ? CommunityVideoLike::query()
+                ->where('user_id', $userId)
+                ->where('video_id', $videoId)
+                ->where('source', $source)
+                ->exists()
+            : false;
+
+        $appComments = CommunityVideoComment::query()
+            ->where('video_id', $videoId)
+            ->where('source', $source)
+            ->with('user:id,name,image')
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($c) {
+                return [
+                    'id' => $c->id,
+                    'body' => $c->body,
+                    'created_at' => $c->created_at->toIso8601String(),
+                    'time_ago' => $c->created_at->diffForHumans(),
+                    'user' => [
+                        'id' => $c->user->id,
+                        'name' => $c->user->name,
+                        'avatar' => $c->user->image ? Storage::url($c->user->image) : null,
+                    ],
+                ];
+            })
+            ->all();
+
+        return [
+            'video' => [
+                'app_likes' => $appLikes,
+                'app_comment_count' => $appCommentCount,
+                'app_shares' => $appShares,
+                'user_liked' => $userLiked,
+            ],
+            'app_comments' => $appComments,
+        ];
     }
 
     public function upload(Request $request): Response
@@ -263,6 +453,19 @@ class CommunityVideosController extends Controller
             ];
         }, $shortsRaw);
 
+        $youtubeVideos = $this->attachEngagementToYoutubeVideoList($youtubeVideos, $slug, Auth::id());
+
+        $platformAppLikes = (int) array_sum(array_column($youtubeVideos, 'app_likes'));
+        $platformAppComments = (int) array_sum(array_column($youtubeVideos, 'app_comment_count'));
+        $platformAppShares = (int) array_sum(array_column($youtubeVideos, 'app_shares'));
+        $platformAppViews = 0;
+        if ($organization) {
+            $platformAppViews = CommunityVideoView::query()
+                ->where('organization_id', $organization->id)
+                ->where('source', 'yt')
+                ->count();
+        }
+
         return [
             'channel' => [
                 'slug' => $slug,
@@ -274,11 +477,75 @@ class CommunityVideosController extends Controller
                 'youtube_channel_url' => $organization?->youtube_channel_url ?? null,
                 'total_videos' => $totalVideos,
                 'total_views' => $totalViews,
+                'platform_app_likes' => $platformAppLikes,
+                'platform_app_comments' => $platformAppComments,
+                'platform_app_shares' => $platformAppShares,
+                'platform_app_views' => $platformAppViews,
             ],
             'videos' => $videos->values()->all(),
             'youtube_videos' => $youtubeVideos,
             'shorts' => $shorts,
         ];
+    }
+
+    /**
+     * Attach app engagement (likes, comments, shares, user_liked) and total counts to a list of YouTube videos.
+     *
+     * @param  array<int, array<string, mixed>>  $youtubeVideos
+     * @return array<int, array<string, mixed>>
+     */
+    private function attachEngagementToYoutubeVideoList(array $youtubeVideos, string $channelSlug, ?int $userId): array
+    {
+        if (empty($youtubeVideos)) {
+            return $youtubeVideos;
+        }
+        $videoIds = array_column($youtubeVideos, 'id');
+        $appLikes = CommunityVideoLike::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+        $appComments = CommunityVideoComment::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+        $appShares = CommunityVideoShare::query()
+            ->where('source', 'yt')
+            ->whereIn('video_id', $videoIds)
+            ->selectRaw('video_id, count(*) as c')
+            ->groupBy('video_id')
+            ->pluck('c', 'video_id');
+        $userLikedIds = [];
+        if ($userId) {
+            $likedRows = CommunityVideoLike::query()
+                ->where('user_id', $userId)
+                ->where('source', 'yt')
+                ->whereIn('video_id', $videoIds)
+                ->pluck('video_id');
+            $userLikedIds = array_fill_keys($likedRows->map(fn ($id) => (string) $id)->all(), true);
+        }
+        $out = [];
+        foreach ($youtubeVideos as $v) {
+            $vid = (string) ($v['id'] ?? '');
+            $appLike = (int) ($appLikes[$vid] ?? 0);
+            $appComment = (int) ($appComments[$vid] ?? 0);
+            $appShare = (int) ($appShares[$vid] ?? 0);
+            $ytLikes = (int) ($v['likes'] ?? 0);
+            $ytComments = (int) ($v['comment_count'] ?? 0);
+            $userLiked = isset($userLikedIds[$vid]);
+            $out[] = array_merge($v, [
+                'app_likes' => $appLike,
+                'app_comment_count' => $appComment,
+                'app_shares' => $appShare,
+                'total_likes_formatted' => number_format($ytLikes + $appLike),
+                'total_comment_count_formatted' => number_format($ytComments + $appComment),
+                'user_liked' => $userLiked,
+            ]);
+        }
+        return $out;
     }
 
     public function show(Request $request, string $slug): Response
@@ -385,7 +652,17 @@ class CommunityVideosController extends Controller
             ->values()
             ->all();
 
-        // Comments for this video (from YouTube API; empty if disabled or API error)
+        // App engagement for this video (likes, comments, shares, user_liked)
+        $engagement = $this->getVideoEngagement($id, 'yt', $channelSlug);
+        $ytLikes = (int) ($video['likes'] ?? 0);
+        $ytComments = (int) ($video['comment_count'] ?? 0);
+        $video = array_merge($video, $engagement['video'], [
+            'total_likes_formatted' => number_format($ytLikes + $engagement['video']['app_likes']),
+            'total_comment_count_formatted' => number_format($ytComments + $engagement['video']['app_comment_count']),
+        ]);
+        $appComments = $engagement['app_comments'];
+
+        // Comments from YouTube API
         $comments = app(YouTubeService::class)->getVideoComments($id, 40);
 
         return Inertia::render('frontend/community-videos/ShowYouTube', [
@@ -396,6 +673,7 @@ class CommunityVideosController extends Controller
             'video' => $video,
             'moreVideos' => $moreVideos,
             'comments' => $comments,
+            'appComments' => $appComments,
         ]);
     }
 
@@ -435,6 +713,16 @@ class CommunityVideosController extends Controller
             $seoTitle = $creator ?: 'Short';
             $seoDescription = 'Watch this short on Community Videos.';
         }
+
+        $engagement = $this->getVideoEngagement($id, 'yt', $channelSlug);
+        $ytLikes = $details ? (int) ($details['likes'] ?? 0) : 0;
+        $ytComments = $details ? (int) ($details['comment_count'] ?? 0) : 0;
+        $totalLikes = $ytLikes + $engagement['video']['app_likes'];
+        $video = array_merge($video, $engagement['video'], [
+            'total_likes' => $totalLikes,
+            'total_likes_formatted' => number_format($totalLikes),
+            'total_comment_count_formatted' => number_format($ytComments + $engagement['video']['app_comment_count']),
+        ]);
 
         return Inertia::render('frontend/community-videos/ShowShort', [
             'seo' => [

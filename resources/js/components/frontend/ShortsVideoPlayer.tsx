@@ -23,6 +23,7 @@ import {
   Captions,
   Loader2,
   ArrowLeft,
+  Heart,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
@@ -66,6 +67,10 @@ export interface ShortsVideoPlayerProps {
   title?: string
   likesFormatted?: string
   commentCountFormatted?: string
+  userLiked?: boolean
+  likeLoading?: boolean
+  onLike?: () => void
+  onShare?: () => void
   channelSlug?: string | null
   creator?: string | null
   creatorAvatar?: string | null
@@ -77,6 +82,10 @@ export function ShortsVideoPlayer({
   title,
   likesFormatted = "0",
   commentCountFormatted = "0",
+  userLiked = false,
+  likeLoading = false,
+  onLike,
+  onShare,
   channelSlug,
   creator,
   creatorAvatar,
@@ -210,13 +219,17 @@ export function ShortsVideoPlayer({
   )
 
   const handleShare = useCallback(() => {
-    const url = `${window.location.origin}/community-videos/shorts/yt/${videoId}${channelSlug ? `?channel_slug=${encodeURIComponent(channelSlug)}&creator=${encodeURIComponent(creator || "")}` : ""}`
-    if (navigator.share) {
-      navigator.share({ title: title || "Short", url }).catch(() => navigator.clipboard.writeText(url))
+    if (onShare) {
+      onShare()
     } else {
-      navigator.clipboard.writeText(url)
+      const url = `${window.location.origin}/community-videos/shorts/yt/${videoId}${channelSlug ? `?channel_slug=${encodeURIComponent(channelSlug)}&creator=${encodeURIComponent(creator || "")}` : ""}`
+      if (navigator.share) {
+        navigator.share({ title: title || "Short", url }).catch(() => navigator.clipboard.writeText(url))
+      } else {
+        navigator.clipboard.writeText(url)
+      }
     }
-  }, [videoId, channelSlug, creator, title])
+  }, [onShare, videoId, channelSlug, creator, title])
 
   useEffect(() => {
     if (!videoId) return
@@ -433,9 +446,15 @@ export function ShortsVideoPlayer({
               showControls ? "opacity-100" : "opacity-0 pointer-events-none"
             )}
           >
-            <button type="button" className="flex flex-col items-center gap-0.5 text-white">
+            <button
+              type="button"
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); onLike?.() }}
+              disabled={likeLoading}
+              className={cn("flex flex-col items-center gap-0.5 text-white", userLiked && "text-red-400")}
+              aria-label={userLiked ? "Unlike" : "Like"}
+            >
               <span className={btnClass}>
-                <ThumbsUp className="h-5 w-5" />
+                {userLiked ? <Heart className="h-5 w-5 fill-current" /> : <ThumbsUp className="h-5 w-5" />}
               </span>
               <span className="text-xs font-medium">{likesFormatted}</span>
             </button>
@@ -451,7 +470,7 @@ export function ShortsVideoPlayer({
               </span>
               <span className="text-xs font-medium">{commentCountFormatted}</span>
             </div>
-            <button type="button" onClick={(e) => { e.stopPropagation(); handleShare() }} className="flex flex-col items-center gap-0.5 text-white">
+            <button type="button" onClick={(e) => { e.stopPropagation(); handleShare() }} className="flex flex-col items-center gap-0.5 text-white" aria-label="Share">
               <span className={btnClass}>
                 <Share2 className="h-5 w-5" />
               </span>

@@ -15,7 +15,7 @@ class SyncIrsBoardMembers extends Command
      * @var string
      */
     protected $signature = 'irs:sync-board-members 
-                            {--year= : Tax year to sync (default: current year)}
+                            {--year= : Tax year to sync (default: previous year — IRS bulk data is usually complete)}
                             {--download : Download IRS data before syncing}
                             {--bulk : Process entire IRS XML file for all organizations (default)}
                             {--ein= : Process board members for a specific organization by EIN}
@@ -41,8 +41,8 @@ class SyncIrsBoardMembers extends Command
      */
     public function handle()
     {
-        // Default to current year (organizations file in December for current year)
-        $taxYear = $this->option('year') ?? (string) now()->year;
+        // Default to previous year: IRS bulk XML for current year is often incomplete; prior year is usually fully available.
+        $taxYear = $this->option('year') ?? (string) (now()->year - 1);
         $ein = $this->option('ein');
         $updateExpired = $this->option('update-expired');
 

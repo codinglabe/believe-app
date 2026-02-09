@@ -58,6 +58,7 @@ class IntegrationsController extends Controller
             return redirect()->route('integrations.youtube')->with('error', 'YouTube integration is not configured. Please set YOUTUBE_CLIENT_ID and redirect URI.');
         }
 
+        // CSRF protection: required by Google OAuth "Use secure flows" – do not remove
         $state = Str::random(40);
         session(['youtube_oauth_state' => $state]);
 

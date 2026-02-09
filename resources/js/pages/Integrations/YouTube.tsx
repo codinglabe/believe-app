@@ -6,7 +6,7 @@ import { Head, Link, router, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Youtube, ExternalLink, ArrowLeft } from "lucide-react"
+import { Youtube, ExternalLink, ArrowLeft, ThumbsUp, MessageCircle, Share2, Eye } from "lucide-react"
 import { toast } from "react-hot-toast"
 import { ChannelPageContent } from "@/components/frontend/ChannelPageContent"
 
@@ -21,6 +21,10 @@ interface ChannelPageData {
     youtube_channel_url: string | null
     total_videos: number
     total_views: number
+    platform_app_likes?: number
+    platform_app_comments?: number
+    platform_app_shares?: number
+    platform_app_views?: number
   }
   videos: Array<{
     id: number
@@ -103,6 +107,47 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
                 <ExternalLink className="w-4 h-4" />
               </a>
               <DisconnectButton />
+            </div>
+          </div>
+          <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-4">
+            <h2 className="text-sm font-medium text-muted-foreground mb-3">Platform engagement (on our site)</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                  <ThumbsUp className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{(channel_page.channel.platform_app_likes ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Likes</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                  <MessageCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{(channel_page.channel.platform_app_comments ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Comments</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                  <Share2 className="w-5 h-5 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{(channel_page.channel.platform_app_shares ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Shares</p>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-card p-4 flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+                  <Eye className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-foreground">{(channel_page.channel.platform_app_views ?? 0).toLocaleString()}</p>
+                  <p className="text-xs text-muted-foreground">Views</p>
+                </div>
+              </div>
             </div>
           </div>
           <ChannelPageContent

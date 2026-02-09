@@ -6,11 +6,13 @@ use App\Http\Requests\Auth\EINLookupRequest;
 use App\Http\Requests\Auth\OrganizationRegistrationRequest;
 use App\Models\BoardMember;
 use App\Models\BridgeIntegration;
+use App\Models\IrsBoardMember;
 use App\Models\Organization;
 use App\Models\OrganizationInvite;
 use App\Models\User;
 use App\Services\BridgeService;
 use App\Services\EINLookupService;
+use App\Services\OrgClaim990Service;
 use App\Services\TaxComplianceService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -30,15 +32,18 @@ class OrganizationRegisterController extends Controller
     protected EINLookupService $einLookupService;
     protected TaxComplianceService $taxComplianceService;
     protected BridgeService $bridgeService;
+    protected OrgClaim990Service $orgClaim990Service;
 
     public function __construct(
         EINLookupService $einLookupService,
         TaxComplianceService $taxComplianceService,
-        BridgeService $bridgeService
+        BridgeService $bridgeService,
+        OrgClaim990Service $orgClaim990Service
     ) {
         $this->einLookupService = $einLookupService;
         $this->taxComplianceService = $taxComplianceService;
         $this->bridgeService = $bridgeService;
+        $this->orgClaim990Service = $orgClaim990Service;
     }
 
     public function create(Request $request)
@@ -61,6 +66,7 @@ class OrganizationRegisterController extends Controller
                 'ein' => $invite->ein,
                 'inviteToken' => $invite->token,
                 'organizationName' => $invite->organization_name,
+                'officers_for_ein_url' => route('register.organization.officers-for-ein'),
             ]);
         }
 
@@ -76,12 +82,27 @@ class OrganizationRegisterController extends Controller
                 'seo' => $seo,
                 'ein' => $request->query('ein'),
                 'referralCode' => $user->referral_code,
+                'officers_for_ein_url' => route('register.organization.officers-for-ein'),
             ]);
         }
 
         return Inertia::render('frontend/register/organization', [
             'seo' => $seo,
+            'officers_for_ein_url' => route('register.organization.officers-for-ein'),
         ]);
+    }
+
+    /**
+     * Return officers for an EIN (real-time, no submit). Used by frontend to show list without full form submit.
+     */
+    public function officersForEin(Request $request)
+    {
+        $ein = preg_replace('/[^0-9]/', '', (string) $request->query('ein', ''));
+        if (strlen($ein) !== 9) {
+            return response()->json(['officers' => []]);
+        }
+        $officers = $this->orgClaim990Service->getOfficersForEIN($ein);
+        return response()->json(['officers' => $officers]);
     }
 
     public function lookupEIN(Request $request)
@@ -156,7 +177,13 @@ class OrganizationRegisterController extends Controller
     {
         try {
 
-            // dd($request->all());
+            // Normalize selected_irs_board_member_id so FormData string is accepted as integer (avoids "must be an integer" and ensures list shows)
+            $request->merge([
+                'selected_irs_board_member_id' => $request->filled('selected_irs_board_member_id') && is_numeric($request->selected_irs_board_member_id)
+                    ? (int) $request->selected_irs_board_member_id
+                    : null,
+            ]);
+
             // Manual validation
             $validator = Validator::make($request->all(), [
                 'ein' => 'required|string|size:9|unique:organizations,ein',
@@ -185,7 +212,8 @@ class OrganizationRegisterController extends Controller
                 'mission' => 'required|string|max:2000',
                 'image' => 'required|image|mimes:jpeg,png,jpg,gif|max:5120', // 5MB max
                 'agree_to_terms' => 'required|accepted',
-                // 'has_edited_irs_data' => 'boolean'
+                'attestation_officer_on_990' => 'required|accepted', // "I am listed as an officer/director on this organization's IRS filing."
+                'selected_irs_board_member_id' => 'nullable|integer|exists:irs_board_members,id', // When multiple matches, user selects one
             ]);
 
             if ($validator->fails()) {
@@ -197,6 +225,57 @@ class OrganizationRegisterController extends Controller
             }
 
             $validated = $validator->validated();
+
+            // 990 officer match + attestation (policy: allow when name matches 990 officer and user self-attests)
+            $ein = $validated['ein'];
+            $contactName = $validated['contact_name'];
+            $contactTitle = $validated['contact_title'] ?? null;
+            $selectedIrsBoardMemberId = $validated['selected_irs_board_member_id'] ?? null;
+
+            $matchResult = $this->orgClaim990Service->matchRegistrantToOfficers($contactName, $contactTitle, $ein);
+
+            $verificationSource = OrgClaim990Service::VERIFICATION_SOURCE;
+            $claimVerificationMetadata = null;
+
+            if ($matchResult['status'] === 'single_match') {
+                $claimVerificationMetadata = $this->orgClaim990Service->buildVerificationMetadata(
+                    (int) $matchResult['matched_id'],
+                    $matchResult['tax_year'] ?? null,
+                    isset($matchResult['matched_position']) ? 'name_and_title' : 'name'
+                );
+            } elseif ($matchResult['status'] === 'multiple_matches') {
+                if (! $selectedIrsBoardMemberId) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'We found multiple possible matches on your organization\'s IRS filing. Please select your name.',
+                        'errors' => ['selected_irs_board_member_id' => ['Please select your name from the list.']],
+                        'possible_matches' => $matchResult['possible_matches'] ?? [],
+                    ], 422);
+                }
+                $irsMember = IrsBoardMember::where('id', $selectedIrsBoardMemberId)->where('ein', $ein)->first();
+                if (! $irsMember) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Invalid selection. Please select your name from the list.',
+                        'errors' => ['selected_irs_board_member_id' => ['Invalid selection.']],
+                    ], 422);
+                }
+                $claimVerificationMetadata = $this->orgClaim990Service->buildVerificationMetadata(
+                    $irsMember->id,
+                    $irsMember->tax_year,
+                    'user_selected'
+                );
+            } else {
+                // no_match or no officers: allow with self-attestation only (don't block MVP)
+                $claimVerificationMetadata = [
+                    'verification_source' => $verificationSource,
+                    'match_type' => empty($matchResult['possible_matches'] ?? []) ? 'no_officers_in_990' : 'no_match_self_attestation',
+                    'verified_at' => now()->toIso8601String(),
+                ];
+                if (! empty($matchResult['possible_matches'])) {
+                    $claimVerificationMetadata['possible_matches_shown'] = array_slice($matchResult['possible_matches'], 0, 10);
+                }
+            }
 
             $taxEvaluation = $this->taxComplianceService->evaluate($validated['tax_period'] ?? null, $validated['ein']);
 
@@ -267,6 +346,8 @@ class OrganizationRegisterController extends Controller
                 'mission' => $validated['mission'],
                 'registered_user_image' => $imagePath,
                 'registration_status' => $hasEditedIRS ? 'pending' : ($taxEvaluation['should_lock'] ? 'pending' : 'approved'),
+                'verification_source' => $verificationSource,
+                'claim_verification_metadata' => $claimVerificationMetadata,
                 'has_edited_irs_data' => $hasEditedIRS,
                 'original_irs_data' => $originalIRSData,
                 'tax_compliance_status' => $taxEvaluation['status'],

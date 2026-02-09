@@ -56,6 +56,9 @@ Route::middleware('guest')->group(function () {
     Route::post('/register/organization/lookup-ein', [OrganizationRegisterController::class, 'lookupEIN'])
         ->name('register.organization.lookup-ein');
 
+    Route::get('/register/organization/officers-for-ein', [OrganizationRegisterController::class, 'officersForEin'])
+        ->name('register.organization.officers-for-ein');
+
     // Route::get('register', [RegisteredUserController::class, 'create'])
     //     ->name('register');
 

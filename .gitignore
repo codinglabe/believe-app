@@ -17,6 +17,8 @@
 .phpactor.json
 .phpunit.result.cache
 COMMAND_IN_PRODUCTION.md
+# Full docs folder – do not push
+docs/
 Homestead.json
 Homestead.yaml
 npm-debug.log
