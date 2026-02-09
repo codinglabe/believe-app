@@ -53,6 +53,7 @@ import {
     Megaphone,
     Wallet,
     Gavel,
+    Handshake,
     UserPlus,
     Bell,
     Send,
@@ -82,6 +83,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Believe Points',
         href: '/believe-points',
         icon: Coins,
+    },
+
+    // Nonprofit Barter Network (organization only)
+    {
+        title: 'Nonprofit Barter Network',
+        href: '/barter',
+        icon: Handshake,
+        role: 'organization',
     },
 
     // Believe FundMe (organization campaigns)

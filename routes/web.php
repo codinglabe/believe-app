@@ -848,6 +848,24 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
 
+    // Nonprofit Barter Network (NNBN) – EIN + KYB + Board + Bridge + Admin approved only
+    Route::middleware('barter.access')->prefix('barter')->name('barter.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'index'])->name('index');
+        Route::get('/marketplace', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'marketplace'])->name('marketplace');
+        Route::get('/my-listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'myListings'])->name('my-listings');
+        Route::get('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'showListing'])->name('listings.show');
+        Route::post('/listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'storeListing'])->name('listings.store');
+        Route::put('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'updateListing'])->name('listings.update');
+        Route::post('/request-trade', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'requestTrade'])->name('request-trade');
+        Route::get('/incoming-requests', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'incomingRequests'])->name('incoming-requests');
+        Route::post('/transactions/{transaction}/accept', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'acceptRequest'])->name('transactions.accept');
+        Route::post('/transactions/{transaction}/reject', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'rejectRequest'])->name('transactions.reject');
+        Route::get('/active-trades', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'activeTrades'])->name('active-trades');
+        Route::get('/trade-history', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'tradeHistory'])->name('trade-history');
+        Route::get('/points-wallet', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'pointsWallet'])->name('points-wallet');
+        Route::get('/reputation', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'reputation'])->name('reputation');
+    });
+
     Route::middleware('permission:dashboard.read')->group(function () {
         Route::get('/dashboard/compliance/apply', [ComplianceApplicationController::class, 'show'])->name('compliance.apply.show');
         Route::post('/dashboard/compliance/apply', [ComplianceApplicationController::class, 'store'])->name('compliance.apply.store');
@@ -1364,6 +1382,10 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::post('/push-notifications/send-test', [App\Http\Controllers\Admin\PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
     Route::post('/push-notifications/request-reregister', [App\Http\Controllers\Admin\PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
     Route::post('/push-notifications/invalidate-token', [App\Http\Controllers\Admin\PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
+
+    // Barter Network audit (both nonprofits, listings, delta, ledger, status, dispute)
+    Route::get('/barter', [App\Http\Controllers\Admin\BarterAuditController::class, 'index'])->name('admin.barter.index');
+    Route::get('/barter/{transaction}', [App\Http\Controllers\Admin\BarterAuditController::class, 'show'])->name('admin.barter.show');
 
     // KYB Verification Routes
     Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {

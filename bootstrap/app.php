@@ -54,6 +54,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'check.role' => \App\Http\Middleware\CheckRole::class,
             'EnsureEmailIsVerified' => \App\Http\Middleware\EnsureEmailIsVerified::class,
             'api.email.verified' => \App\Http\Middleware\EnsureApiEmailVerified::class, // Secure API email verification guard
+            'barter.access' => \App\Http\Middleware\BarterNetworkAccess::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

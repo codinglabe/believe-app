@@ -275,4 +275,28 @@ class Organization extends Model
     {
         return $this->hasMany(FundMeDonation::class, 'organization_id');
     }
+
+    /**
+     * Barter network: listings this nonprofit offers.
+     */
+    public function barterListings()
+    {
+        return $this->hasMany(NonprofitBarterListing::class, 'nonprofit_id');
+    }
+
+    /**
+     * Barter: transactions where this org is the requester (A).
+     */
+    public function barterTransactionsRequested()
+    {
+        return $this->hasMany(NonprofitBarterTransaction::class, 'requesting_nonprofit_id');
+    }
+
+    /**
+     * Barter: transactions where this org is the responder (B).
+     */
+    public function barterTransactionsResponding()
+    {
+        return $this->hasMany(NonprofitBarterTransaction::class, 'responding_nonprofit_id');
+    }
 }
