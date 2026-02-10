@@ -6,6 +6,8 @@ use App\Models\Organization;
 use App\Models\Form990Filing;
 use App\Models\IrsBoardMember;
 use App\Models\BoardMember;
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\RequestOptions;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -23,8 +25,16 @@ class IRSForm990Service
     private const IRS_DATA_BASE_URL = 'https://www.irs.gov/pub/irs-soi/';
 
     /**
+     * Default tax year for IRS data lookups (previous year; current year bulk XML is not yet available).
+     */
+    public static function defaultTaxYearForIrsData(): string
+    {
+        return (string) (Carbon::now()->year - 1);
+    }
+
+    /**
      * Check Form 990 filing status for an organization by EIN
-     * 
+     *
      * @param string $ein
      * @param string|null $taxYear
      * @return array|null
@@ -32,12 +42,10 @@ class IRSForm990Service
     public function checkFilingStatus(string $ein, ?string $taxYear = null): ?array
     {
         try {
-            // Clean EIN (remove dashes)
             $cleanEIN = preg_replace('/[^0-9]/', '', $ein);
-            
-            // If no tax year specified, use current year
+
             if (!$taxYear) {
-                $taxYear = (string) Carbon::now()->year;
+                $taxYear = static::defaultTaxYearForIrsData();
             }
 
             // In a real implementation, you would:
@@ -65,15 +73,21 @@ class IRSForm990Service
      */
     private function fetchFromLocalCache(string $ein, string $taxYear): ?array
     {
-        // Check if we have cached XML files
         $xmlPath = storage_path("app/irs-data/{$taxYear}/form990.xml");
-        
+
         if (!file_exists($xmlPath)) {
-            Log::info("IRS XML file not found for year {$taxYear}. Please download from IRS.gov");
+            // Try previous year (IRS bulk data for current year is usually not available yet)
+            $prevYear = (string) (Carbon::now()->year - 1);
+            if ($taxYear !== $prevYear) {
+                $altPath = storage_path("app/irs-data/{$prevYear}/form990.xml");
+                if (file_exists($altPath)) {
+                    return $this->parseIRSXML($altPath, $ein);
+                }
+            }
+            Log::debug("IRS XML file not found for year {$taxYear}. Run: php artisan irs:sync-board-members --year=" . static::defaultTaxYearForIrsData());
             return null;
         }
 
-        // Parse XML file and search for EIN
         return $this->parseIRSXML($xmlPath, $ein);
     }
 
@@ -127,20 +141,135 @@ class IRSForm990Service
     }
 
     /**
-     * Download IRS Form 990 XML files from official IRS URLs
-     * Files are in ZIP format organized by year and month
-     * URL pattern: https://apps.irs.gov/pub/epostcard/990/xml/{year}/{year}_TEOS_XML_{month}A.zip
-     * 
+     * SSL options for IRS HTTP requests (fixes cURL 60 "unable to get local issuer certificate" on Windows/local).
+     */
+    private function getIrsHttpSslOptions(): array
+    {
+        $cafile = config('services.irs.cafile');
+        if ($cafile && is_file($cafile)) {
+            return ['verify' => $cafile];
+        }
+        $verify = config('services.irs.ssl_verify', true);
+        return ['verify' => $verify];
+    }
+
+    /**
+     * Stream-download an IRS file to disk (avoids loading large ZIP into memory).
+     */
+    private function downloadIrsFileToPath(string $url, string $path, int $timeout): bool
+    {
+        $retries = config('services.irs.download_retries', 3);
+        $options = array_merge($this->getIrsHttpSslOptions(), [
+            RequestOptions::SINK => $path,
+            RequestOptions::TIMEOUT => $timeout,
+            RequestOptions::CONNECT_TIMEOUT => 30,
+            RequestOptions::HEADERS => [
+                'User-Agent' => 'Mozilla/5.0 (compatible; IRS-990-Sync/1.0; +https://www.irs.gov/charities-non-profits/form-990-series-downloads)',
+                'Accept' => 'application/zip,*/*',
+            ],
+        ]);
+        $lastException = null;
+        for ($attempt = 1; $attempt <= $retries; $attempt++) {
+            try {
+                if (file_exists($path)) {
+                    @unlink($path);
+                }
+                $client = new GuzzleClient();
+                $response = $client->request('GET', $url, $options);
+                if ($response->getStatusCode() >= 200 && $response->getStatusCode() < 300
+                    && file_exists($path) && filesize($path) > 0) {
+                    return true;
+                }
+            } catch (\Throwable $e) {
+                $lastException = $e;
+                Log::debug("IRS download attempt {$attempt}/{$retries}: " . $e->getMessage());
+                if (file_exists($path)) {
+                    @unlink($path);
+                }
+                if ($attempt < $retries) {
+                    usleep(5000 * 1000); // 5s between retries
+                }
+            }
+        }
+        if ($lastException) {
+            Log::warning("IRS download failed after {$retries} attempts: " . $lastException->getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * Public wrapper for queue command: get list of ZIP filenames for a year.
+     */
+    public function getXmlZipFileNamesForYearPublic(string $taxYear): array
+    {
+        return $this->getXmlZipFileNamesForYear($taxYear);
+    }
+
+    /**
+     * Get list of Form 990 e-file XML ZIP filenames for a year (XML only; officers data is only in XML).
+     * Tries IRS index CSV first; falls back to known TEOS_XML naming.
+     */
+    private function getXmlZipFileNamesForYear(string $taxYear): array
+    {
+        $indexUrl = "https://apps.irs.gov/pub/epostcard/990/xml/{$taxYear}/index_{$taxYear}.csv";
+        try {
+            $response = Http::timeout(120)
+                ->retry(2, 2000, null, false)
+                ->withOptions($this->getIrsHttpSslOptions())
+                ->withHeaders(['User-Agent' => 'Mozilla/5.0 (compatible; IRS-990-Sync/1.0)'])
+                ->get($indexUrl);
+            if ($response->successful()) {
+                $names = [];
+                $content = $response->body();
+                foreach (preg_split('/\r?\n/', $content) as $line) {
+                    if (preg_match('/\b(' . preg_quote($taxYear, '/') . '_TEOS_XML_[^"\'\\s]+\\.zip)\b/i', $line, $m)) {
+                        $names[] = $m[1];
+                    }
+                }
+                if (!empty($names)) {
+                    return array_values(array_unique($names));
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::debug("IRS index CSV not used for {$taxYear}: " . $e->getMessage());
+        }
+
+        // Fallback: known TEOS XML ZIP naming (XML only, no PDF)
+        $zipFileNames = [];
+        for ($month = 1; $month <= 12; $month++) {
+            $monthStr = str_pad($month, 2, '0', STR_PAD_LEFT);
+            $zipFileNames[] = "{$taxYear}_TEOS_XML_{$monthStr}A.zip";
+        }
+        if (in_array($taxYear, ['2025', '2024'])) {
+            $zipFileNames[] = "{$taxYear}_TEOS_XML_11B.zip";
+            $zipFileNames[] = "{$taxYear}_TEOS_XML_11C.zip";
+            $zipFileNames[] = "{$taxYear}_TEOS_XML_11D.zip";
+        }
+        return $zipFileNames;
+    }
+
+    /**
+     * Download IRS Form 990 e-file XML only (officers/officer data exists only in XML per IRS).
+     * Source: https://www.irs.gov/charities-non-profits/form-990-series-downloads
+     * URL pattern: https://apps.irs.gov/pub/epostcard/990/xml/{year}/{year}_TEOS_XML_01A.zip etc.
+     *
      * @param string $taxYear
+     * @param callable|null $progressCallback Optional callback for progress (e.g. for CLI): function(string $message): void
      * @return bool
      */
-    public function downloadIRSData(string $taxYear): bool
+    public function downloadIRSData(string $taxYear, ?callable $progressCallback = null): bool
     {
+        $progress = function (string $message) use ($progressCallback): void {
+            Log::info($message);
+            if (is_callable($progressCallback)) {
+                $progressCallback($message);
+            }
+        };
+
         try {
-            // Create storage directories
             $storageDir = storage_path("app/irs-data/{$taxYear}");
             $zipDir = storage_path("app/irs-data/{$taxYear}/zips");
-            
+
             if (!is_dir($storageDir)) {
                 mkdir($storageDir, 0755, true);
             }
@@ -152,57 +281,54 @@ class IRSForm990Service
             $downloadedCount = 0;
             $extractedCount = 0;
 
-            // Process one ZIP at a time: download, extract, process, delete
-            // IRS organizes files by month, with format: {year}_TEOS_XML_{month}A.zip
-            for ($month = 1; $month <= 12; $month++) {
-                $monthStr = str_pad($month, 2, '0', STR_PAD_LEFT);
-                $zipFileName = "{$taxYear}_TEOS_XML_{$monthStr}A.zip";
+            $zipFileNames = $this->getXmlZipFileNamesForYear($taxYear);
+            $total = count($zipFileNames);
+            $httpTimeout = config('services.irs.download_timeout', 900);
+            $httpRetries = config('services.irs.download_retries', 3);
+
+            foreach ($zipFileNames as $index => $zipFileName) {
+                $num = $index + 1;
                 $zipUrl = "{$baseUrl}/{$zipFileName}";
                 $zipPath = "{$zipDir}/{$zipFileName}";
 
                 try {
-                    Log::info("=== Processing month {$monthStr} ===");
-                    Log::info("Downloading: {$zipUrl}");
-                    
-                    $response = Http::timeout(600) // 10 minutes for large files
-                        ->retry(2, 2000)
-                        ->withHeaders([
-                            'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                        ])
-                        ->get($zipUrl);
-                    
-                    if ($response->successful()) {
-                        // Save ZIP file
-                        file_put_contents($zipPath, $response->body());
-                        $fileSize = filesize($zipPath);
-                        Log::info("Downloaded {$zipFileName} ({$fileSize} bytes)");
-                        $downloadedCount++;
-
-                        // Extract and process ZIP file immediately
-                        if ($this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear)) {
-                            $extractedCount++;
-                            Log::info("✓ Processed and cleaned up {$zipFileName}");
-                            
-                            // Delete ZIP file after processing
-                            if (file_exists($zipPath) && unlink($zipPath)) {
-                                Log::info("  Deleted ZIP file: {$zipFileName}");
-                            }
-                        }
-                    } else {
-                        // File doesn't exist for this month (normal for future months)
-                        Log::debug("File not found: {$zipFileName} (HTTP {$response->status()})");
+                    $progress("Downloading ({$num}/{$total}): {$zipFileName} …");
+                    if (!$this->downloadIrsFileToPath($zipUrl, $zipPath, $httpTimeout)) {
+                        Log::debug("File not found or failed: {$zipFileName}");
+                        continue;
                     }
-                } catch (\Exception $e) {
+                    $fileSize = filesize($zipPath);
+                    if ($fileSize < 1000) {
+                        $head = file_get_contents($zipPath, false, null, 0, 500);
+                        if (stripos($head, '<!DOCTYPE') !== false || str_starts_with($head, '%PDF-')) {
+                            Log::debug("Skipping {$zipFileName}: not a ZIP (HTML/PDF)");
+                            @unlink($zipPath);
+                            continue;
+                        }
+                    } elseif (file_get_contents($zipPath, false, null, 0, 5) === '%PDF-') {
+                        Log::debug("Skipping {$zipFileName}: PDF not wanted (officers data is XML only)");
+                        @unlink($zipPath);
+                        continue;
+                    }
+                    $sizeMb = round($fileSize / 1024 / 1024, 1);
+                    $progress("Downloaded ({$num}/{$total}): {$zipFileName} ({$sizeMb} MB)");
+                    $downloadedCount++;
+                    if ($this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear)) {
+                        $extractedCount++;
+                        $progress("  → Processed and cleaned up {$zipFileName}");
+                    }
+                    if (file_exists($zipPath)) {
+                        unlink($zipPath);
+                    }
+                } catch (\Throwable $e) {
                     Log::warning("Error processing {$zipFileName}: " . $e->getMessage());
-                    // Try to clean up on error
                     if (file_exists($zipPath)) {
                         @unlink($zipPath);
                     }
-                    continue;
                 }
             }
 
-            // Also try alternative naming for older years (2020, 2019)
+            // Also try alternative naming for older years (XML only; officers data only in XML)
             if ($downloadedCount === 0 && in_array($taxYear, ['2020', '2019', '2021', '2022'])) {
                 $alternativeFiles = [
                     "{$taxYear}_TEOS_XML_CT1.zip",
@@ -222,26 +348,19 @@ class IRSForm990Service
 
                     try {
                         Log::info("Trying alternative file: {$zipUrl}");
-                        $response = Http::timeout(600)
-                            ->retry(2, 2000)
-                            ->withHeaders([
-                                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-                            ])
-                            ->get($zipUrl);
-                        
-                        if ($response->successful()) {
-                            file_put_contents($zipPath, $response->body());
+                        if ($this->downloadIrsFileToPath($zipUrl, $zipPath, 600)) {
                             $downloadedCount++;
                             if ($this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear)) {
                                 $extractedCount++;
-                                // Delete ZIP after processing
-                                if (file_exists($zipPath) && unlink($zipPath)) {
-                                    Log::info("  Deleted ZIP: {$fileName}");
-                                }
+                            }
+                            if (file_exists($zipPath)) {
+                                unlink($zipPath);
                             }
                         }
                     } catch (\Exception $e) {
-                        continue;
+                        if (file_exists($zipPath)) {
+                            @unlink($zipPath);
+                        }
                     }
                 }
             }
@@ -262,6 +381,65 @@ class IRSForm990Service
     }
 
     /**
+     * Process a single ZIP by filename (download + extract + DB). Used by queue jobs.
+     * Returns summary for logging.
+     */
+    public function processSingleZipByFilename(string $taxYear, string $zipFileName): array
+    {
+        $result = ['success' => false, 'downloaded' => false, 'processed' => false, 'message' => ''];
+        $storageDir = storage_path("app/irs-data/{$taxYear}");
+        $zipDir = storage_path("app/irs-data/{$taxYear}/zips");
+
+        if (!is_dir($storageDir)) {
+            mkdir($storageDir, 0755, true);
+        }
+        if (!is_dir($zipDir)) {
+            mkdir($zipDir, 0755, true);
+        }
+
+        $baseUrl = "https://apps.irs.gov/pub/epostcard/990/xml/{$taxYear}";
+        $zipUrl = "{$baseUrl}/{$zipFileName}";
+        $zipPath = "{$zipDir}/{$zipFileName}";
+        $httpTimeout = config('services.irs.download_timeout', 900);
+
+        try {
+            if (!file_exists($zipPath) && !$this->downloadIrsFileToPath($zipUrl, $zipPath, $httpTimeout)) {
+                $result['message'] = "Download failed: {$zipFileName}";
+                return $result;
+            }
+            $result['downloaded'] = true;
+
+            if (filesize($zipPath) < 1000) {
+                $head = file_get_contents($zipPath, false, null, 0, 500);
+                if (stripos($head, '<!DOCTYPE') !== false || str_starts_with($head, '%PDF-')) {
+                    @unlink($zipPath);
+                    $result['message'] = "Skipped (not ZIP): {$zipFileName}";
+                    return $result;
+                }
+            } elseif (file_get_contents($zipPath, false, null, 0, 5) === '%PDF-') {
+                @unlink($zipPath);
+                $result['message'] = "Skipped (PDF): {$zipFileName}";
+                return $result;
+            }
+
+            $result['processed'] = $this->extractAndProcessZipFile($zipPath, $storageDir, $taxYear);
+            if (file_exists($zipPath)) {
+                unlink($zipPath);
+            }
+            $result['success'] = true;
+            $result['message'] = $zipFileName . ($result['processed'] ? ' processed' : ' extracted (no data)');
+            return $result;
+        } catch (\Throwable $e) {
+            if (file_exists($zipPath)) {
+                @unlink($zipPath);
+            }
+            $result['message'] = $zipFileName . ': ' . $e->getMessage();
+            Log::error("ProcessIrsZipJob failed: " . $result['message']);
+            return $result;
+        }
+    }
+
+    /**
      * Extract ZIP file, process XML files immediately, then delete them
      * This processes one ZIP at a time to keep memory usage low
      * 
@@ -277,69 +455,68 @@ class IRSForm990Service
                 return false;
             }
 
+            Log::info("  Opening ZIP for extraction: " . basename($zipPath));
+
             $zip = new \ZipArchive();
             if ($zip->open($zipPath) !== true) {
                 Log::error("Failed to open ZIP file: {$zipPath}");
                 return false;
             }
 
-            $xmlFiles = [];
-            
-            // Extract all XML files from ZIP
-            for ($i = 0; $i < $zip->numFiles; $i++) {
+            $numFiles = $zip->numFiles;
+            Log::info("  ZIP has {$numFiles} entries, extracting XMLs one-by-one (stream to disk, low memory)");
+
+            $processedCount = 0;
+            $xmlCount = 0;
+            $zipBase = basename($zipPath, '.zip');
+
+            for ($i = 0; $i < $numFiles; $i++) {
                 $filename = $zip->getNameIndex($i);
-                
-                if (pathinfo($filename, PATHINFO_EXTENSION) === 'xml') {
-                    $content = $zip->getFromIndex($i);
-                    if ($content !== false) {
-                        $xmlFiles[] = $content;
-                    }
+                if (pathinfo($filename, PATHINFO_EXTENSION) !== 'xml') {
+                    continue;
+                }
+                // Stream ZIP entry to file (do not load entire XML into memory — critical for low-memory servers)
+                $stream = $zip->getStream($filename);
+                if ($stream === false) {
+                    continue;
+                }
+                $xmlFileName = "form990_{$zipBase}_{$i}.xml";
+                $xmlPath = "{$extractTo}/{$xmlFileName}";
+                $out = fopen($xmlPath, 'wb');
+                if ($out === false) {
+                    fclose($stream);
+                    continue;
+                }
+                while (!feof($stream)) {
+                    fwrite($out, fread($stream, 65536));
+                }
+                fclose($out);
+                fclose($stream);
+
+                $xmlCount++;
+                try {
+                    $fileResults = $this->processSingleXMLFile($xmlPath, $taxYear);
+                    $processedCount += $fileResults['organizations_processed'];
+                    Log::info("  Processed {$xmlFileName}: {$fileResults['organizations_processed']} orgs, {$fileResults['board_members_found']} board members");
+                } catch (\Throwable $e) {
+                    Log::error("  Error processing {$xmlFileName}: " . $e->getMessage());
+                }
+                if (file_exists($xmlPath)) {
+                    @unlink($xmlPath);
                 }
             }
-            
+
             $zip->close();
 
-            if (empty($xmlFiles)) {
+            if ($xmlCount === 0) {
                 Log::warning("No XML files found in ZIP: {$zipPath}");
                 return false;
             }
 
-            Log::info("  Extracted " . count($xmlFiles) . " XML file(s) from ZIP");
-
-            // Process each XML file immediately, then delete it
-            $processedCount = 0;
-            foreach ($xmlFiles as $index => $xmlContent) {
-                $xmlFileName = "form990_" . basename($zipPath, '.zip') . "_{$index}.xml";
-                $xmlPath = "{$extractTo}/{$xmlFileName}";
-                
-                try {
-                    // Save XML file temporarily
-                    file_put_contents($xmlPath, $xmlContent);
-                    
-                    // Process this XML file immediately
-                    $fileResults = $this->processSingleXMLFile($xmlPath, $taxYear);
-                    $processedCount += $fileResults['organizations_processed'];
-                    
-                    Log::info("  Processed {$xmlFileName}: {$fileResults['organizations_processed']} orgs, {$fileResults['board_members_found']} board members");
-                    
-                    // Delete XML file immediately after processing
-                    if (file_exists($xmlPath) && unlink($xmlPath)) {
-                        Log::debug("    Deleted: {$xmlFileName}");
-                    }
-                    
-                } catch (\Exception $e) {
-                    Log::error("  Error processing {$xmlFileName}: " . $e->getMessage());
-                    // Still try to delete on error
-                    if (file_exists($xmlPath)) {
-                        @unlink($xmlPath);
-                    }
-                }
-            }
-
-            Log::info("  ✓ Completed processing ZIP: {$processedCount} organizations processed");
+            Log::info("  ✓ Completed processing ZIP: {$xmlCount} XML file(s), {$processedCount} organizations processed");
             return true;
-            
-        } catch (\Exception $e) {
+
+        } catch (\Throwable $e) {
             Log::error("Error extracting/processing ZIP file {$zipPath}: " . $e->getMessage());
             return false;
         }
@@ -1200,10 +1377,9 @@ class IRSForm990Service
             }
 
             if (!$taxYear) {
-                $taxYear = (string) Carbon::now()->year;
+                $taxYear = static::defaultTaxYearForIrsData();
             }
 
-            // Clean EIN
             $cleanEIN = preg_replace('/[^0-9]/', '', $ein);
 
             // Get counts before sync
@@ -1318,7 +1494,7 @@ class IRSForm990Service
     {
         try {
             if (!$taxYear) {
-                $taxYear = (string) Carbon::now()->year;
+                $taxYear = static::defaultTaxYearForIrsData();
             }
 
             // Normalize EIN (remove dashes and spaces)
@@ -1489,7 +1665,7 @@ class IRSForm990Service
 
         try {
             if (!$taxYear) {
-                $taxYear = (string) Carbon::now()->year;
+                $taxYear = static::defaultTaxYearForIrsData();
             }
 
             // Get all organizations to verify

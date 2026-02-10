@@ -58,7 +58,8 @@ Schedule::command('irs:check-form990-filings --notify')
     ->runInBackground();
 
 // Sync IRS Form 990 board/officer members (for org claim matching). Monthly is enough — IRS data updates annually.
-Schedule::command('irs:sync-board-members')
+// Uses --queue so it only dispatches jobs; a queue worker (--queue=irs-import) must be running to process them.
+Schedule::command('irs:sync-board-members --queue')
     ->monthly()
     ->at('04:00')
     ->withoutOverlapping()

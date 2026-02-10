@@ -28,7 +28,7 @@ class LivestreamController extends Controller
             abort(404, 'Organization not found');
         }
 
-        return Inertia::render('Organization/Livestreams/Create', [
+        return Inertia::render('organization/Livestreams/Create', [
             'organization' => [
                 'id' => $organization->id,
                 'name' => $organization->name,
@@ -137,7 +137,7 @@ class LivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $password = $livestream->getDecryptedPassword();
 
-        return Inertia::render('Organization/Livestreams/Show', [
+        return Inertia::render('organization/Livestreams/Show', [
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -174,7 +174,7 @@ class LivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $password = $livestream->getDecryptedPassword();
 
-        return Inertia::render('Organization/Livestreams/GuestJoin', [
+        return Inertia::render('organization/Livestreams/GuestJoin', [
             'livestream' => [
                 'id' => $livestream->id,
                 'title' => $livestream->title,
@@ -280,7 +280,7 @@ class LivestreamController extends Controller
                 ];
             });
 
-        return Inertia::render('Organization/Livestreams/Index', [
+        return Inertia::render('organization/Livestreams/Index', [
             'livestreams' => $livestreams,
             'organization' => [
                 'id' => $organization->id,
