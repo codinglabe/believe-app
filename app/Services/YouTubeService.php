@@ -523,4 +523,266 @@ class YouTubeService
             return '0:00';
         }
     }
+
+    /**
+     * Create a YouTube live broadcast using OAuth token.
+     * Requires: youtube.force-ssl scope
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $title Broadcast title
+     * @param string|null $description Broadcast description
+     * @param \DateTime|null $scheduledStartTime When to start (null = start immediately)
+     * @return array{broadcast_id: string, stream_key: string, rtmp_url: string}|null
+     */
+    public function createLiveBroadcast(
+        string $accessToken,
+        string $title,
+        ?string $description = null,
+        ?\DateTime $scheduledStartTime = null
+    ): ?array {
+        try {
+            // Step 1: Create the broadcast
+            $broadcastData = [
+                'snippet' => [
+                    'title' => $title,
+                    'description' => $description ?? '',
+                    'scheduledStartTime' => $scheduledStartTime
+                        ? $scheduledStartTime->format('Y-m-d\TH:i:s\Z')
+                        : null,
+                ],
+                'status' => [
+                    'privacyStatus' => 'public', // or 'unlisted', 'private'
+                    'selfDeclaredMadeForKids' => false,
+                ],
+                'contentDetails' => [
+                    'enableAutoStart' => $scheduledStartTime === null,
+                    'enableAutoStop' => false,
+                ],
+            ];
+
+            $broadcastResponse = $this->http()
+                ->withToken($accessToken)
+                ->asJson()
+                ->post($this->baseUrl . '/liveBroadcasts?part=snippet,status,contentDetails&key=' . $this->apiKey, $broadcastData);
+
+            if (!$broadcastResponse->successful()) {
+                Log::error('YouTube broadcast creation failed', [
+                    'status' => $broadcastResponse->status(),
+                    'body' => $broadcastResponse->body(),
+                ]);
+                return null;
+            }
+
+            $broadcast = $broadcastResponse->json();
+            $broadcastId = $broadcast['id'] ?? null;
+
+            if (!$broadcastId) {
+                Log::error('YouTube broadcast ID missing in response', ['response' => $broadcast]);
+                return null;
+            }
+
+            // Step 2: Create the stream
+            $streamData = [
+                'snippet' => [
+                    'title' => $title . ' Stream',
+                ],
+                'cdn' => [
+                    'format' => '1080p',
+                    'ingestionType' => 'rtmp',
+                ],
+            ];
+
+            $streamResponse = $this->http()
+                ->withToken($accessToken)
+                ->asJson()
+                ->post($this->baseUrl . '/liveStreams?part=snippet,cdn&key=' . $this->apiKey, $streamData);
+
+            if (!$streamResponse->successful()) {
+                Log::error('YouTube stream creation failed', [
+                    'status' => $streamResponse->status(),
+                    'body' => $streamResponse->body(),
+                ]);
+                // Try to delete the broadcast we created
+                $this->http()
+                    ->withToken($accessToken)
+                    ->delete($this->baseUrl . '/liveBroadcasts', [
+                        'id' => $broadcastId,
+                        'key' => $this->apiKey,
+                    ]);
+                return null;
+            }
+
+            $stream = $streamResponse->json();
+            $streamId = $stream['id'] ?? null;
+            $streamKey = $stream['cdn']['ingestionInfo']['streamName'] ?? null;
+            $rtmpUrl = $stream['cdn']['ingestionInfo']['ingestionAddress'] ?? null;
+
+            if (!$streamId || !$streamKey || !$rtmpUrl) {
+                Log::error('YouTube stream data incomplete', ['response' => $stream]);
+                return null;
+            }
+
+            // Step 3: Bind the stream to the broadcast
+            $bindResponse = $this->http()
+                ->withToken($accessToken)
+                ->post($this->baseUrl . '/liveBroadcasts/bind', [
+                    'id' => $broadcastId,
+                    'streamId' => $streamId,
+                    'part' => 'id,snippet,contentDetails,status',
+                    'key' => $this->apiKey,
+                ]);
+
+            if (!$bindResponse->successful()) {
+                Log::error('YouTube broadcast bind failed', [
+                    'status' => $bindResponse->status(),
+                    'body' => $bindResponse->body(),
+                ]);
+                return null;
+            }
+
+            return [
+                'broadcast_id' => $broadcastId,
+                'stream_key' => $streamKey,
+                'rtmp_url' => $rtmpUrl,
+                'stream_id' => $streamId,
+            ];
+        } catch (\Exception $e) {
+            Log::error('YouTube broadcast creation exception', [
+                'message' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Get stream key for an existing broadcast.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $broadcastId YouTube broadcast ID
+     * @return array{stream_key: string, rtmp_url: string}|null
+     */
+    public function getBroadcastStreamKey(string $accessToken, string $broadcastId): ?array
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveBroadcasts', [
+                    'id' => $broadcastId,
+                    'part' => 'contentDetails',
+                    'key' => $this->apiKey,
+                ]);
+
+            if (!$response->successful()) {
+                Log::error('YouTube broadcast fetch failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+                return null;
+            }
+
+            $data = $response->json();
+            $items = $data['items'] ?? [];
+            if (empty($items)) {
+                return null;
+            }
+
+            $streamId = $items[0]['contentDetails']['boundStreamId'] ?? null;
+            if (!$streamId) {
+                return null;
+            }
+
+            // Get stream details
+            $streamResponse = $this->http()
+                ->withToken($accessToken)
+                ->get($this->baseUrl . '/liveStreams', [
+                    'id' => $streamId,
+                    'part' => 'cdn',
+                    'key' => $this->apiKey,
+                ]);
+
+            if (!$streamResponse->successful()) {
+                return null;
+            }
+
+            $streamData = $streamResponse->json();
+            $streams = $streamData['items'] ?? [];
+            if (empty($streams)) {
+                return null;
+            }
+
+            $cdn = $streams[0]['cdn']['ingestionInfo'] ?? [];
+            $streamKey = $cdn['streamName'] ?? null;
+            $rtmpUrl = $cdn['ingestionAddress'] ?? null;
+
+            if (!$streamKey || !$rtmpUrl) {
+                return null;
+            }
+
+            return [
+                'stream_key' => $streamKey,
+                'rtmp_url' => $rtmpUrl,
+            ];
+        } catch (\Exception $e) {
+            Log::error('YouTube stream key fetch exception', [
+                'message' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Update broadcast status (transition to live, end, etc.).
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $broadcastId YouTube broadcast ID
+     * @param string $broadcastStatus 'testing', 'live', 'complete'
+     * @return bool
+     */
+    public function updateBroadcastStatus(string $accessToken, string $broadcastId, string $broadcastStatus): bool
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->post($this->baseUrl . '/liveBroadcasts/transition', [
+                    'id' => $broadcastId,
+                    'broadcastStatus' => $broadcastStatus,
+                    'part' => 'id,snippet,contentDetails,status',
+                    'key' => $this->apiKey,
+                ]);
+
+            return $response->successful();
+        } catch (\Exception $e) {
+            Log::error('YouTube broadcast status update exception', [
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Delete a YouTube broadcast.
+     *
+     * @param string $accessToken OAuth access token
+     * @param string $broadcastId YouTube broadcast ID
+     * @return bool
+     */
+    public function deleteBroadcast(string $accessToken, string $broadcastId): bool
+    {
+        try {
+            $response = $this->http()
+                ->withToken($accessToken)
+                ->delete($this->baseUrl . '/liveBroadcasts', [
+                    'id' => $broadcastId,
+                    'key' => $this->apiKey,
+                ]);
+
+            return $response->successful();
+        } catch (\Exception $e) {
+            Log::error('YouTube broadcast deletion exception', [
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
 }

@@ -66,7 +66,7 @@ class IntegrationsController extends Controller
             'client_id' => $clientId,
             'redirect_uri' => $redirectUri,
             'response_type' => 'code',
-            'scope' => 'https://www.googleapis.com/auth/youtube.readonly',
+            'scope' => 'https://www.googleapis.com/auth/youtube.force-ssl',
             'state' => $state,
             'access_type' => 'offline',
             'prompt' => 'consent',
@@ -121,6 +121,9 @@ class IntegrationsController extends Controller
 
         $tokenData = $tokenResponse->json();
         $accessToken = $tokenData['access_token'] ?? null;
+        $refreshToken = $tokenData['refresh_token'] ?? null;
+        $expiresIn = $tokenData['expires_in'] ?? 3600;
+
         if (! $accessToken) {
             return redirect()->route('integrations.youtube')->with('error', 'No access token received.');
         }
@@ -149,8 +152,16 @@ class IntegrationsController extends Controller
 
         $channelUrl = 'https://www.youtube.com/channel/' . $channelId;
 
+        // Encrypt tokens before storing
+        $encryptedAccessToken = \Illuminate\Support\Facades\Crypt::encryptString($accessToken);
+        $encryptedRefreshToken = $refreshToken ? \Illuminate\Support\Facades\Crypt::encryptString($refreshToken) : null;
+        $expiresAt = now()->addSeconds($expiresIn);
+
         $user->organization->update([
             'youtube_channel_url' => $channelUrl,
+            'youtube_access_token' => $encryptedAccessToken,
+            'youtube_refresh_token' => $encryptedRefreshToken,
+            'youtube_token_expires_at' => $expiresAt,
         ]);
 
         return redirect()->route('integrations.youtube')->with('success', 'YouTube channel connected. Your videos will appear on Community Videos.');

@@ -478,6 +478,9 @@ Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impa
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 
+// Public livestream guest join (no auth required)
+Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])->name('livestreams.guest-join');
+
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
 Route::get('/organizations/{slug}/enrollments', [OrganizationController::class, 'enrollments'])->name('organizations.enrollments');
@@ -862,6 +865,17 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+
+    // Organization Livestreams
+    Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'index'])->name('index');
+        Route::get('/create', [\App\Http\Controllers\Organization\LivestreamController::class, 'create'])->name('create');
+        Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
+        Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
+        Route::patch('/{id}/status', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStatus'])->name('update-status');
+        Route::patch('/{id}/stream-key', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::delete('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'destroy'])->name('destroy');
+    });
 
     // Nonprofit Barter Network (NNBN) – EIN + KYB + Board + Bridge + Admin approved only
     Route::middleware('barter.access')->prefix('barter')->name('barter.')->group(function () {
