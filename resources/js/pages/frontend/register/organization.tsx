@@ -1,8 +1,9 @@
 "use client"
 import type React from "react"
+import { createPortal } from "react-dom"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useEffect, useState, useRef, useMemo } from "react"
-import { motion } from "framer-motion"
+import { motion, AnimatePresence } from "framer-motion"
 import {
   Building2,
   Mail,
@@ -19,6 +20,9 @@ import {
   Upload,
   ImageIcon,
   X,
+  Briefcase,
+  FileText,
+  File,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
@@ -38,11 +42,19 @@ interface EINLookupResponse {
   errors?: Record<string, string[]>
 }
 
+interface PossibleMatch {
+  id: number
+  name: string
+  position: string | null
+  tax_year: string | null
+}
+
 interface RegistrationResponse {
   success: boolean
   message?: string
   organization?: any
   errors?: Record<string, string[]>
+  possible_matches?: PossibleMatch[]
 }
 
 interface OrganizationRegisterPageProps {
@@ -51,14 +63,150 @@ interface OrganizationRegisterPageProps {
   ein?: string
   inviteToken?: string
   organizationName?: string
+  officers_for_ein_url?: string
 }
 
 interface PageProps extends OrganizationRegisterPageProps {
   csrf_token?: string
 }
 
-export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName }: OrganizationRegisterPageProps) {
-  const { csrf_token } = usePage<PageProps>().props
+function OfficerIdDropzone({
+  file,
+  onFileChange,
+  accept = ".pdf,.jpg,.jpeg,.png",
+  maxSizeMB = 5,
+  error,
+  emptyLabel = "Drag & drop your ID here",
+}: {
+  file: File | null
+  onFileChange: (file: File | null) => void
+  accept?: string
+  maxSizeMB?: number
+  error?: string
+  emptyLabel?: string
+}) {
+  const [isDragging, setIsDragging] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const validateAndSet = (f: File) => {
+    const validTypes = accept.split(",").map((t) => t.trim().toLowerCase())
+    const ext = "." + (f.name.split(".").pop()?.toLowerCase() ?? "")
+    const valid = validTypes.some((t) => ext === t || f.type.toLowerCase().includes(t.replace(".", "")))
+    if (!valid) return
+    if (f.size > maxSizeMB * 1024 * 1024) return
+    onFileChange(f)
+  }
+
+  const onDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(true)
+  }
+  const onDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    const f = e.dataTransfer.files?.[0]
+    if (f) validateAndSet(f)
+  }
+  const onInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]
+    if (f) validateAndSet(f)
+  }
+  const remove = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    onFileChange(null)
+    if (inputRef.current) inputRef.current.value = ""
+  }
+
+  const isUploaded = !!file
+  const isPdf = file?.type === "application/pdf"
+
+  return (
+    <div className="w-full">
+      <div
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        onClick={() => inputRef.current?.click()}
+        className={`
+          relative w-full border-2 border-dashed rounded-lg transition-all cursor-pointer min-h-[140px] flex items-center justify-center
+          ${error ? "border-red-500/60 bg-red-50/30 dark:bg-red-950/20" : ""}
+          ${!error && isDragging ? "border-primary bg-primary/10" : ""}
+          ${!error && !isDragging && isUploaded ? "border-green-500/50 bg-green-50/50 dark:bg-green-900/10 hover:border-green-500" : ""}
+          ${!error && !isDragging && !isUploaded ? "border-border hover:border-primary/50 bg-muted/30" : ""}
+        `}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={accept}
+          onChange={onInputChange}
+          className="hidden"
+        />
+        <AnimatePresence mode="wait">
+          {isUploaded ? (
+            <motion.div
+              key="uploaded"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="flex items-center gap-3 w-full p-4"
+            >
+              <div className="flex-shrink-0 p-2.5 rounded-lg bg-green-500/10 text-green-600 dark:text-green-400">
+                {isPdf ? <FileText className="h-8 w-8" /> : <File className="h-8 w-8" />}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
+                  <p className="text-sm font-medium text-foreground truncate">{file?.name ?? "Document uploaded"}</p>
+                </div>
+                <p className="text-xs text-muted-foreground mt-0.5">Click to change or drag a new file</p>
+              </div>
+              <button
+                type="button"
+                onClick={remove}
+                className="flex-shrink-0 p-1.5 rounded-full bg-red-500/10 hover:bg-red-500/20 text-red-500 transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex flex-col items-center justify-center p-6 py-8 space-y-3"
+            >
+              <div
+                className={`p-4 rounded-full transition-colors ${isDragging ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground"}`}
+              >
+                {isDragging ? <Upload className="h-8 w-8" /> : <FileText className="h-8 w-8" />}
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-sm font-medium text-foreground">
+                  {isDragging ? "Drop file here" : emptyLabel}
+                </p>
+                <p className="text-xs text-muted-foreground">or click to browse</p>
+                <p className="text-xs text-muted-foreground">PDF, JPG or PNG · Max {maxSizeMB}MB</p>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+    </div>
+  )
+}
+
+export default function OrganizationRegisterPage({ seo, referralCode = '', ein: prefilledEin, inviteToken, organizationName, officers_for_ein_url }: OrganizationRegisterPageProps) {
+  const { csrf_token, officers_for_ein_url: officersUrlFromPage } = usePage<PageProps>().props
+  const officersForEinUrl = officers_for_ein_url ?? officersUrlFromPage ?? '/register/organization/officers-for-ein'
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const [step, setStep] = useState(1)
@@ -71,9 +219,100 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
   const [successMessage, setSuccessMessage] = useState("")
   const [csrfToken, setCsrfToken] = useState(csrf_token || "")
   const [imagePreview, setImagePreview] = useState<string | null>(null)
-    const fileInputRef = useRef<HTMLInputElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
-    useEffect(() => {
+  // Form data state (must be before useEffects that use formData)
+  const [einData, setEinData] = useState({ ein: "" })
+  const [formData, setFormData] = useState({
+    ein: "",
+    name: "",
+    ico: "",
+    street: "",
+    city: "",
+    state: "",
+    zip: "",
+    classification: "",
+    ruling: "",
+    deductibility: "",
+    organization: "",
+    status: "",
+    tax_period: "",
+    filing_req: "",
+    ntee_code: "",
+    email: "",
+    phone: "",
+    contact_name: "",
+    contact_title: "",
+    password: "",
+    password_confirmation: "",
+    website: "",
+    description: "",
+    mission: "",
+    image: null as File | null,
+    officer_id: null as File | null,
+    legal_name_confirmation: "",
+    doc_501c3: null as File | null,
+    doc_articles: null as File | null,
+    doc_bylaws: null as File | null,
+    doc_state_registration: null as File | null,
+    doc_board_list: null as File | null,
+    doc_signer_resolution: null as File | null,
+    doc_bank_account: null as File | null,
+    agree_to_terms: false,
+    attestation_officer_on_990: false,
+    has_edited_irs_data: false,
+    selected_irs_board_member_id: null as number | null,
+    referralCode: referralCode,
+    invite_token: "",
+  })
+
+  const OFFICER_TITLES = ["President", "Treasurer", "Secretary", "Director", "Executive Director", "CEO", "Other"] as const
+  const VERIFICATION_DOC_KEYS = ["doc_501c3", "doc_articles", "doc_bylaws", "doc_state_registration", "doc_board_list", "doc_signer_resolution", "doc_bank_account"] as const
+  const VERIFICATION_DOC_OPTIONS: { key: typeof VERIFICATION_DOC_KEYS[number]; label: string }[] = [
+    { key: "doc_501c3", label: "IRS 501(c)(3) Determination Letter (CP-575 or equivalent)" },
+    { key: "doc_articles", label: "Articles of Incorporation (stamped/approved)" },
+    { key: "doc_bylaws", label: "Bylaws (current)" },
+    { key: "doc_state_registration", label: "State nonprofit registration / Certificate of Good Standing" },
+    { key: "doc_board_list", label: "Board of Directors list (names + titles)" },
+    { key: "doc_signer_resolution", label: "Authorized signer resolution (or board resolution)" },
+    { key: "doc_bank_account", label: "Proof of nonprofit bank account (voided check or bank letter)" },
+  ]
+  const [selectedDocType, setSelectedDocType] = useState<typeof VERIFICATION_DOC_KEYS[number] | "">("")
+
+  const [possibleOfficerMatches, setPossibleOfficerMatches] = useState<Array<PossibleMatch>>([])
+  const [showOfficerSelector, setShowOfficerSelector] = useState(false)
+  const [selectedOfficerId, setSelectedOfficerId] = useState<number | null>(null)
+  const [realtimeOfficers, setRealtimeOfficers] = useState<PossibleMatch[]>([])
+  const [realtimeOfficersLoading, setRealtimeOfficersLoading] = useState(false)
+  const [contactNameDropdownOpen, setContactNameDropdownOpen] = useState(false)
+  const [contactNameDropdownRect, setContactNameDropdownRect] = useState<{ top: number; left: number; width: number; maxHeight: number } | null>(null)
+  const contactNameDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Measure dropdown anchor when open so we can render in a portal and avoid clipping
+  useEffect(() => {
+    if (!contactNameDropdownOpen || !contactNameDropdownRef.current) {
+      setContactNameDropdownRect(null)
+      return
+    }
+    const update = () => {
+      const el = contactNameDropdownRef.current
+      if (!el) return
+      const r = el.getBoundingClientRect()
+      const gap = 4
+      const padding = 24
+      const maxHeight = Math.min(224, Math.max(120, window.innerHeight - r.bottom - gap - padding))
+      setContactNameDropdownRect({ top: r.bottom, left: r.left, width: r.width, maxHeight })
+    }
+    update()
+    window.addEventListener("scroll", update, true)
+    window.addEventListener("resize", update)
+    return () => {
+      window.removeEventListener("scroll", update, true)
+      window.removeEventListener("resize", update)
+    }
+  }, [contactNameDropdownOpen])
+
+  useEffect(() => {
     if (prefilledEin) {
         setEinData({ ein: prefilledEin.replace(/\D/g, '').slice(0, 9) })
         // formData.ein = prefilledEin.replace(/\D/g, '').slice(0, 9)
@@ -93,6 +332,27 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     }
   }, [referralCode])
 
+  // Real-time fetch officers for EIN when on step 3 or 4 (no submit needed)
+  useEffect(() => {
+    const ein = (formData.ein || "").replace(/\D/g, "")
+    if (ein.length !== 9 || (step !== 3 && step !== 4) || !officersForEinUrl) return
+    let cancelled = false
+    setRealtimeOfficersLoading(true)
+    const url = officersForEinUrl.includes("?") ? `${officersForEinUrl}&ein=${ein}` : `${officersForEinUrl}?ein=${ein}`
+    fetch(url, { headers: { Accept: "application/json" } })
+      .then((res) => res.json())
+      .then((data: { officers?: PossibleMatch[] }) => {
+        if (!cancelled && Array.isArray(data.officers)) setRealtimeOfficers(data.officers)
+      })
+      .catch(() => {
+        if (!cancelled) setRealtimeOfficers([])
+      })
+      .finally(() => {
+        if (!cancelled) setRealtimeOfficersLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [formData.ein, step, officersForEinUrl])
+
   // Capture invite token from URL if not provided in props
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -106,45 +366,6 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       }))
     }
   }, [inviteToken])
-
-  // Form data state
-  const [einData, setEinData] = useState({ ein: "" })
-  const [formData, setFormData] = useState({
-    // Step 1: EIN Lookup
-    ein: "",
-    // Step 2: IRS Data (auto-populated)
-    name: "",
-    ico: "",
-    street: "",
-    city: "",
-    state: "",
-    zip: "",
-    classification: "",
-    ruling: "",
-    deductibility: "",
-    organization: "",
-    status: "",
-    tax_period: "",
-    filing_req: "",
-    ntee_code: "",
-    // Step 3: Contact Information
-    email: "",
-    phone: "",
-    contact_name: "",
-    contact_title: "",
-    password: "",
-    password_confirmation: "",
-    // Step 4: Additional Information
-    website: "",
-    description: "",
-    mission: "",
-    image: null as File | null,
-    // Terms
-    agree_to_terms: false,
-    has_edited_irs_data: false,
-    referralCode: referralCode,
-    invite_token: "",
-  })
 
   const passwordRequirements = useMemo(() => {
     const password = formData.password || ""
@@ -482,8 +703,12 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
   }
 }
 
-  const handleFinalSubmit = async () => {
+  const handleFinalSubmit = async (selectedOfficerIdForSubmit?: number) => {
     if (!formData.agree_to_terms || !formData.description || !formData.mission) {
+      return
+    }
+    if (!formData.attestation_officer_on_990 && selectedOfficerIdForSubmit == null) {
+      setErrors((e) => ({ ...e, attestation_officer_on_990: "You must certify that you are a current officer of this organization." }))
       return
     }
 
@@ -505,13 +730,23 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       Object.keys(formData).forEach(key => {
         if (key === 'image' && formData.image) {
           formDataToSend.append('image', formData.image)
+        } else if (key === 'officer_id' && formData.officer_id) {
+          formDataToSend.append('officer_id', formData.officer_id)
         } else if (key === 'invite_token' && formData.invite_token) {
-          // Explicitly append invite_token
           formDataToSend.append('invite_token', formData.invite_token)
-        } else {
-          formDataToSend.append(key, formData[key as keyof typeof formData] as string | Blob)
+        } else if (key === 'attestation_officer_on_990') {
+          formDataToSend.append(key, formData.attestation_officer_on_990 ? '1' : '0')
+        } else if (key === 'selected_irs_board_member_id') {
+          const id = selectedOfficerIdForSubmit ?? formData.selected_irs_board_member_id
+          const numId = id != null && id !== '' && !Number.isNaN(Number(id)) ? Number(id) : null
+          if (numId != null) formDataToSend.append(key, String(numId))
+        } else if (key !== 'selected_irs_board_member_id' && key !== 'officer_id' && !VERIFICATION_DOC_KEYS.includes(key as typeof VERIFICATION_DOC_KEYS[number])) {
+          const val = formData[key as keyof typeof formData]
+          if (val != null && val !== '') formDataToSend.append(key, val as string | Blob)
         }
       })
+      if (formData.legal_name_confirmation) formDataToSend.append('legal_name_confirmation', formData.legal_name_confirmation)
+      VERIFICATION_DOC_KEYS.forEach((k) => { const f = formData[k]; if (f) formDataToSend.append(k, f) })
 
       const response = await fetch("/register/organization", {
         method: "POST",
@@ -531,7 +766,22 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
         setSuccessMessage(data.message || "Organization registered successfully!")
         setStep(5)
       } else {
-        // Handle validation errors
+        const res = data as RegistrationResponse
+        const possibleMatches = Array.isArray(res.possible_matches) ? res.possible_matches : []
+        const isMultipleMatchesResponse = response.status === 422 && (possibleMatches.length > 0 || res.message?.toLowerCase().includes('select your name') || res.errors?.selected_irs_board_member_id)
+
+        // Multiple 990 officer matches: show list so user can select one
+        if (isMultipleMatchesResponse) {
+          setPossibleOfficerMatches(possibleMatches)
+          setShowOfficerSelector(true)
+          setSelectedOfficerId(null)
+          setErrors((res.errors ? Object.fromEntries(
+            Object.entries(res.errors).map(([k, v]) => [k, Array.isArray(v) ? v[0] : v])
+          ) : {}) as Record<string, string>)
+          setIsLoading(false)
+          return
+        }
+        // Other validation errors
         if (data.errors) {
           const formattedErrors: Record<string, string> = {}
           Object.entries(data.errors).forEach(([key, value]) => {
@@ -566,8 +816,18 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
           formData.password &&
           formData.password_confirmation
         )
-      case 4:
-        return !!(formData.agree_to_terms && formData.description && formData.mission)
+      case 4: {
+        const docCount = VERIFICATION_DOC_KEYS.filter((k) => formData[k]).length
+        return !!(
+          formData.agree_to_terms &&
+          formData.attestation_officer_on_990 &&
+          formData.description &&
+          formData.mission &&
+          formData.legal_name_confirmation?.trim() &&
+          formData.officer_id &&
+          docCount >= 6
+        )
+      }
       default:
         return false
     }
@@ -1168,31 +1428,118 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         {errors.phone && <p className="text-red-600 text-sm mt-1">{errors.phone}</p>}
                       </div>
 
-                      <div>
+                      <div className="relative" ref={contactNameDropdownRef}>
                         <Label htmlFor="contact_name">Primary Contact Name *</Label>
                         <Input
                           id="contact_name"
                           type="text"
-                          placeholder="Contact person's full name"
+                          name="contact_name"
+                          autoComplete="nope"
+                          data-lpignore="true"
+                          data-form-type="other"
+                          placeholder="Type or select your name from IRS filing"
                           value={formData.contact_name}
                           onChange={(e) => handleInputChange("contact_name", e.target.value)}
+                          onFocus={() => setContactNameDropdownOpen(true)}
+                          onBlur={() => setTimeout(() => setContactNameDropdownOpen(false), 200)}
                           className="h-12"
                           required
                         />
+                        {/* Dropdown is rendered via portal so it is not clipped by Card overflow-hidden */}
+                        {contactNameDropdownOpen &&
+                          contactNameDropdownRect &&
+                          createPortal(
+                            realtimeOfficersLoading ? (
+                              <div
+                                className="fixed z-[100] rounded-md border bg-background shadow-lg p-2 flex items-center gap-2 text-sm text-muted-foreground"
+                                style={{ top: contactNameDropdownRect.top + 4, left: contactNameDropdownRect.left, width: contactNameDropdownRect.width }}
+                              >
+                                <div className="animate-spin rounded-full h-4 w-4 border-2 border-primary border-t-transparent" />
+                                Loading names from IRS filing…
+                              </div>
+                            ) : realtimeOfficers.length > 0 ? (
+                              <div
+                                className="contact-name-officers-dropdown fixed z-[100] rounded-md border bg-background shadow-lg overflow-y-auto"
+                                style={{
+                                  top: contactNameDropdownRect.top + 4,
+                                  left: contactNameDropdownRect.left,
+                                  width: contactNameDropdownRect.width,
+                                  maxHeight: contactNameDropdownRect.maxHeight,
+                                }}
+                              >
+                                <p className="text-xs text-muted-foreground px-3 py-2 border-b">
+                                  Select your name from this organization&apos;s IRS Form 990
+                                </p>
+                                <div className="p-1.5 space-y-1">
+                                  {realtimeOfficers
+                                    .filter((m) => !formData.contact_name || m.name.toLowerCase().includes(formData.contact_name.toLowerCase()))
+                                    .map((m, index) => (
+                                      <motion.button
+                                        key={m.id}
+                                        type="button"
+                                        initial={{ opacity: 0, y: 8 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ duration: 0.2, delay: index * 0.03 }}
+                                        whileHover={{ scale: 1.02, transition: { duration: 0.15 } }}
+                                        whileTap={{ scale: 0.98 }}
+                                        className="w-full text-left rounded-lg border border-border bg-card shadow-sm hover:shadow-md hover:border-primary/30 hover:bg-muted/50 focus:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-primary/20 px-3 py-1.5 flex flex-col gap-0 transition-colors cursor-pointer"
+                                        onMouseDown={(e) => {
+                                          e.preventDefault()
+                                          setFormData((prev) => ({
+                                            ...prev,
+                                            contact_name: m.name,
+                                            contact_title: m.position || prev.contact_title,
+                                            selected_irs_board_member_id: m.id,
+                                          }))
+                                          setSelectedOfficerId(m.id)
+                                          setContactNameDropdownOpen(false)
+                                        }}
+                                      >
+                                        <span className="font-medium text-foreground">{m.name}</span>
+                                        {m.position && (
+                                          <span className="inline-flex items-center gap-1 mt-0.5 text-[11px] text-muted-foreground bg-muted/80 dark:bg-muted/50 rounded px-1.5 py-0 w-fit">
+                                            <Briefcase className="h-2.5 w-2.5 shrink-0" />
+                                            <span>{m.position}</span>
+                                          </span>
+                                        )}
+                                      </motion.button>
+                                    ))}
+                                </div>
+                                {realtimeOfficers.filter((m) => !formData.contact_name || m.name.toLowerCase().includes(formData.contact_name.toLowerCase())).length === 0 && (
+                                  <p className="px-3 py-2 text-sm text-muted-foreground">No matching name. You can type your name above.</p>
+                                )}
+                              </div>
+                            ) : null,
+                            document.body
+                          )}
                         {errors.contact_name && <p className="text-red-600 text-sm mt-1">{errors.contact_name}</p>}
                       </div>
 
-                      <div>
-                        <Label htmlFor="contact_title">Contact Title *</Label>
-                        <Input
+                      <div className="space-y-2">
+                        <Label htmlFor="contact_title">Officer Title *</Label>
+                        <select
                           id="contact_title"
-                          type="text"
-                          placeholder="Executive Director, CEO, etc."
-                          value={formData.contact_title}
-                          onChange={(e) => handleInputChange("contact_title", e.target.value)}
-                          className="h-12"
+                          value={formData.contact_title === "" ? "" : (OFFICER_TITLES.includes(formData.contact_title as typeof OFFICER_TITLES[number]) ? formData.contact_title : "Other")}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            handleInputChange("contact_title", v === "Other" ? "" : v)
+                          }}
+                          className="flex h-12 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                           required
-                        />
+                        >
+                          <option value="">Select your role</option>
+                          {OFFICER_TITLES.map((t) => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                        {(formData.contact_title === "" || !OFFICER_TITLES.includes(formData.contact_title as typeof OFFICER_TITLES[number])) && (
+                          <Input
+                            placeholder="Enter your title"
+                            value={formData.contact_title}
+                            onChange={(e) => handleInputChange("contact_title", e.target.value)}
+                            className="h-12"
+                          />
+                        )}
                         {errors.contact_title && <p className="text-red-600 text-sm mt-1">{errors.contact_title}</p>}
                       </div>
 
@@ -1356,6 +1703,110 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         <div className="text-right text-sm text-gray-500 mt-1">{formData.mission.length}/2000</div>
                         {errors.mission && <p className="text-red-600 text-sm mt-1">{errors.mission}</p>}
                       </div>
+
+                      <div className="space-y-2">
+                        <Label>Legal organization name (from IRS filing)</Label>
+                        <p className="text-sm font-medium text-foreground rounded-md border bg-muted/50 px-3 py-2">{formData.name || "—"}</p>
+                        <Label htmlFor="legal_name_confirmation">Re-enter legal name to confirm *</Label>
+                        <Input
+                          id="legal_name_confirmation"
+                          type="text"
+                          placeholder="Type the exact legal name above"
+                          value={formData.legal_name_confirmation}
+                          onChange={(e) => handleInputChange("legal_name_confirmation", e.target.value)}
+                          className="h-12"
+                        />
+                        {errors.legal_name_confirmation && <p className="text-red-600 text-sm mt-1">{errors.legal_name_confirmation}</p>}
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label>Government-issued ID (officer verification) *</Label>
+                        <OfficerIdDropzone
+                          file={formData.officer_id}
+                          onFileChange={(file) => setFormData((prev) => ({ ...prev, officer_id: file }))}
+                          accept=".pdf,.jpg,.jpeg,.png"
+                          maxSizeMB={5}
+                          error={errors.officer_id}
+                        />
+                        <p className="text-xs text-muted-foreground">PDF, JPG or PNG. Max 5MB. Used to verify officer identity.</p>
+                        {errors.officer_id && <p className="text-red-600 text-sm mt-1">{errors.officer_id}</p>}
+                      </div>
+
+                      <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <ShieldCheck className="h-5 w-5 text-primary shrink-0" />
+                          <h4 className="font-medium text-foreground">Verification documents (6 of 7 required)</h4>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Select a document type, then attach the file. Form 990 is not needed — we have it on file.
+                        </p>
+                        {(() => {
+                          const docCount = VERIFICATION_DOC_KEYS.filter((k) => formData[k]).length
+                          return (
+                            <p className={`text-sm font-medium ${docCount >= 6 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                              {docCount} of 7 uploaded {docCount >= 6 ? "— you can proceed" : "— at least 6 required"}
+                            </p>
+                          )
+                        })()}
+                        {VERIFICATION_DOC_OPTIONS.filter((o) => formData[o.key]).length > 0 && (
+                          <div className="space-y-2">
+                            <Label className="text-sm">Attached documents</Label>
+                            <ul className="space-y-1.5">
+                              {VERIFICATION_DOC_OPTIONS.filter((o) => formData[o.key]).map((o) => (
+                                <li key={o.key} className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+                                  <span className="min-w-0 truncate text-foreground">{o.label}</span>
+                                  <span className="shrink-0 text-muted-foreground">{formData[o.key]?.name}</span>
+                                  <button
+                                    type="button"
+                                    onClick={() => setFormData((prev) => ({ ...prev, [o.key]: null }))}
+                                    className="shrink-0 rounded p-1 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30"
+                                    aria-label="Remove"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        <div className="space-y-2">
+                          <Label className="text-sm">Add a document</Label>
+                          <div className="flex flex-col gap-3">
+                            <div className="space-y-1">
+                              <select
+                                value={selectedDocType}
+                                onChange={(e) => setSelectedDocType(e.target.value as typeof VERIFICATION_DOC_KEYS[number] | "")}
+                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+                              >
+                                <option value="">Select document type…</option>
+                                {VERIFICATION_DOC_OPTIONS.filter((o) => !formData[o.key]).map((o) => (
+                                  <option key={o.key} value={o.key}>{o.label}</option>
+                                ))}
+                              </select>
+                            </div>
+                            {selectedDocType && (
+                              <>
+                                <p className="text-xs text-muted-foreground">Attach a file for: {VERIFICATION_DOC_OPTIONS.find((o) => o.key === selectedDocType)?.label}</p>
+                                <OfficerIdDropzone
+                                  file={null}
+                                  onFileChange={(file) => {
+                                    if (file && selectedDocType) {
+                                      setFormData((prev) => ({ ...prev, [selectedDocType]: file }))
+                                      setSelectedDocType("")
+                                    }
+                                  }}
+                                  accept=".pdf,.jpg,.jpeg,.png"
+                                  maxSizeMB={5}
+                                  emptyLabel="Drag & drop your document here"
+                                />
+                              </>
+                            )}
+                          </div>
+                        </div>
+                        {errors.verification_documents && (
+                          <p className="text-red-600 text-sm mt-1">{errors.verification_documents}</p>
+                        )}
+                      </div>
                     </div>
 
                     <div className="space-y-4">
@@ -1383,7 +1834,90 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         </Label>
                       </div>
                       {errors.agree_to_terms && <p className="text-red-600 text-sm">{errors.agree_to_terms}</p>}
+
+                      <div className="space-y-2">
+                        <div className="flex items-start space-x-2">
+                          <Checkbox
+                            id="attestation_990"
+                            checked={formData.attestation_officer_on_990 === true}
+                            onCheckedChange={(checked) => handleInputChange("attestation_officer_on_990", checked === true)}
+                          />
+                          <Label htmlFor="attestation_990" className="text-sm leading-relaxed cursor-pointer">
+                            I certify I am a current officer of this organization.
+                          </Label>
+                        </div>
+                        {formData.attestation_officer_on_990 && (
+                          <p className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                            <CheckCircle className="h-4 w-4 shrink-0" />
+                            Confirmed. You can proceed to complete registration.
+                          </p>
+                        )}
+                        {errors.attestation_officer_on_990 && <p className="text-red-600 text-sm">{errors.attestation_officer_on_990}</p>}
+                      </div>
                     </div>
+
+                    {showOfficerSelector && (
+                      <Alert className="border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800">
+                        <AlertCircle className="h-4 w-4 text-amber-600" />
+                        <AlertDescription asChild>
+                          <div>
+                            <p className="font-medium text-amber-800 dark:text-amber-200 mb-2">
+                              {possibleOfficerMatches.length > 0
+                                ? "We found multiple possible matches on your organization's IRS filing. Please select your name."
+                                : "Please select your name from your organization's IRS filing below, or contact support if you don't see it."}
+                            </p>
+                            {possibleOfficerMatches.length > 0 && (
+                            <div className="space-y-2 max-h-48 overflow-y-auto">
+                              {possibleOfficerMatches.map((m) => (
+                                <label
+                                  key={m.id}
+                                  className="flex items-center gap-2 p-2 rounded border border-amber-200 dark:border-amber-800 cursor-pointer hover:bg-amber-100/50 dark:hover:bg-amber-900/20"
+                                >
+                                  <input
+                                    type="radio"
+                                    name="selected_officer"
+                                    value={m.id}
+                                    checked={selectedOfficerId === m.id}
+                                    onChange={() => setSelectedOfficerId(m.id)}
+                                    className="text-green-600"
+                                  />
+                                  <span>
+                                    {m.name}
+                                    {m.position && <span className="text-muted-foreground"> — {m.position}</span>}
+                                    {m.tax_year && <span className="text-muted-foreground text-xs"> ({m.tax_year})</span>}
+                                  </span>
+                                </label>
+                              ))}
+                            </div>
+                            )}
+                            {errors.selected_irs_board_member_id && <p className="text-red-600 text-sm mt-1">{errors.selected_irs_board_member_id}</p>}
+                            <div className="flex gap-2 mt-3">
+                              {possibleOfficerMatches.length > 0 ? (
+                                <Button
+                                  type="button"
+                                  onClick={() => {
+                                    if (!selectedOfficerId) {
+                                      setErrors((e) => ({ ...e, selected_irs_board_member_id: "Please select your name from the list." }))
+                                      return
+                                    }
+                                    setShowOfficerSelector(false)
+                                    setErrors((e) => ({ ...e, selected_irs_board_member_id: undefined }))
+                                    handleFinalSubmit(selectedOfficerId)
+                                  }}
+                                  disabled={!selectedOfficerId}
+                                >
+                                  Confirm and submit
+                                </Button>
+                              ) : (
+                                <Button type="button" variant="outline" onClick={() => { setShowOfficerSelector(false); setErrors((e) => ({ ...e, selected_irs_board_member_id: undefined })) }}>
+                                  Close — I&apos;ll try again
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        </AlertDescription>
+                      </Alert>
+                    )}
 
                     <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
                       <Button

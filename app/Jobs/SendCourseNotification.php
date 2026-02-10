@@ -95,15 +95,18 @@ class SendCourseNotification implements ShouldQueue
                 'organization_id' => (string) $this->course->organization_id,
                 'url' => $courseUrl,
                 'click_action' => $courseUrl,
+                'source_type' => 'course',
+                'source_id' => (string) $this->course->id,
             ];
 
-            // Send Firebase notification
+            // Send Firebase notification (logs to push_notification_logs for admin overview)
             $result = $firebaseService->sendToUser($follower->id, $title, $body, $data);
 
             // Store in database notifications
             $this->storeDatabaseNotification($follower, $title, $body, $data);
 
-            if ($result) {
+            $successCount = is_array($result) ? count(array_filter($result, fn ($r) => ($r['success'] ?? false))) : 0;
+            if ($successCount > 0) {
                 Log::info('✅ Firebase Course notification sent successfully', [
                     'user_id' => $follower->id,
                     'course_id' => $this->course->id,

@@ -756,6 +756,7 @@ public function index(Request $request)
         $sidebarData = $this->getSidebarData($registeredOrg);
         $peopleYouMayKnow = $sidebarData['peopleYouMayKnow'];
         $trendingOrganizations = $sidebarData['trendingOrganizations'];
+        $eventsCount = $registeredOrg ? \App\Models\Event::where('organization_id', $registeredOrg->id)->count() : 0;
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $transformedOrganization,
@@ -763,6 +764,7 @@ public function index(Request $request)
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
+            'eventsCount' => $eventsCount,
             'supporters' => $supporters,
             'peopleYouMayKnow' => $peopleYouMayKnow,
             'trendingOrganizations' => $trendingOrganizations,
@@ -824,6 +826,30 @@ public function index(Request $request)
     public function toggleFavorite(Request $request, int $id)
     {
         $user = Auth::user();
+
+        // Only supporter (personal) accounts can follow organizations; org accounts cannot
+        if (in_array($user->role ?? '', ['organization', 'organization_pending'], true)) {
+            $message = 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations.';
+            // Inertia: redirect back so user stays on page and sees flash (no access-denied screen)
+            if ($request->header('X-Inertia')) {
+                $previous = $request->header('Referer', '');
+                $currentPath = $request->url();
+                // Avoid redirecting to this POST-only URL (would cause GET "Method Not Allowed")
+                if ($previous === $currentPath || str_contains($previous, '/organizations/') && str_contains($previous, '/toggle-favorite')) {
+                    return redirect()->route('organizations.show', $id)->with('error', $message);
+                }
+                return redirect()->back()->with('error', $message);
+            }
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json(['success' => false, 'message' => $message], 403);
+            }
+            $previous = $request->header('Referer', '');
+            $currentPath = $request->url();
+            if ($previous === $currentPath || (str_contains($previous, '/organizations/') && str_contains($previous, '/toggle-favorite'))) {
+                return redirect()->route('organizations.show', $id)->with('error', $message);
+            }
+            return redirect()->back()->with('error', $message);
+        }
 
         // Get the ExcelData organization
         $excelDataOrg = ExcelData::findOrFail($id);
@@ -1537,7 +1563,7 @@ public function index(Request $request)
             ->where('registration_status', 'approved')
             ->first();
 
-        $events = [];
+        $eventsPaginator = new \Illuminate\Pagination\LengthAwarePaginator([], 0, 12);
         $postsCount = 0;
         $supportersCount = 0;
         $jobsCount = 0;
@@ -1545,11 +1571,10 @@ public function index(Request $request)
         $excelDataId = (int) $organizationData['id'];
 
         if ($registeredOrg) {
-            $events = \App\Models\Event::where('organization_id', $registeredOrg->id)
+            $eventsPaginator = \App\Models\Event::where('organization_id', $registeredOrg->id)
                 ->with(['eventType', 'organization'])
                 ->latest()
-                ->paginate(12)
-                ->items();
+                ->paginate(12);
 
             // Get counts only - defer loading full data
             $postsCount = \App\Models\Post::where('user_id', $registeredOrg->user_id)->count() 
@@ -1568,7 +1593,7 @@ public function index(Request $request)
 
         return Inertia::render('frontend/organization/organization-show', [
             'organization' => $organizationData,
-            'events' => $events,
+            'events' => $eventsPaginator,
             'postsCount' => $postsCount,
             'supportersCount' => $supportersCount,
             'jobsCount' => $jobsCount,
@@ -1959,9 +1984,12 @@ public function index(Request $request)
             })->toArray();
         }
 
+        $eventsCount = $registeredOrg ? \App\Models\Event::where('organization_id', $registeredOrg->id)->count() : 0;
+
         return [
             'peopleYouMayKnow' => $peopleYouMayKnow,
             'trendingOrganizations' => $trendingOrganizations,
+            'eventsCount' => $eventsCount,
         ];
     }
 

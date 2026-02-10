@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 import { useFlashMessage } from '@/hooks/use-flash-message';
 import { usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
+import { CsrfTokenSync } from '@/components/CsrfTokenSync';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
 // import { PWAInstallPrompt } from '@/components/PWAInstallPrompt';
@@ -108,6 +109,7 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
 
     return (
             <NotificationProvider user={auth.user}>
+            <CsrfTokenSync />
             <AppLayoutTemplate breadcrumbs={breadcrumbs} {...props}>
                  {/* <PWAInstallPrompt /> */}
         {/* <PWAUpdatePrompt /> */}

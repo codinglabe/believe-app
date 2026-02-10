@@ -31,14 +31,18 @@ class Organization extends Model
         'filing_req',
         'ntee_code',
         'email',
+        'platform_email',
         'phone',
         'contact_name',
         'contact_title',
         'website',
+        'youtube_channel_url',
         'description',
         'mission',
         'registered_user_image',
         'registration_status',
+        'verification_source',
+        'claim_verification_metadata',
         'has_edited_irs_data',
         'original_irs_data',
         'social_accounts',
@@ -56,6 +60,7 @@ class Organization extends Model
         'social_accounts' => 'array',
         'tax_compliance_checked_at' => 'datetime',
         'tax_compliance_meta' => 'array',
+        'claim_verification_metadata' => 'array',
         'is_compliance_locked' => 'boolean',
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
@@ -274,5 +279,29 @@ class Organization extends Model
     public function fundmeDonations()
     {
         return $this->hasMany(FundMeDonation::class, 'organization_id');
+    }
+
+    /**
+     * Barter network: listings this nonprofit offers.
+     */
+    public function barterListings()
+    {
+        return $this->hasMany(NonprofitBarterListing::class, 'nonprofit_id');
+    }
+
+    /**
+     * Barter: transactions where this org is the requester (A).
+     */
+    public function barterTransactionsRequested()
+    {
+        return $this->hasMany(NonprofitBarterTransaction::class, 'requesting_nonprofit_id');
+    }
+
+    /**
+     * Barter: transactions where this org is the responder (B).
+     */
+    public function barterTransactionsResponding()
+    {
+        return $this->hasMany(NonprofitBarterTransaction::class, 'responding_nonprofit_id');
     }
 }

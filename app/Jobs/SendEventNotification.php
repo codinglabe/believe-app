@@ -111,13 +111,15 @@ class SendEventNotification implements ShouldQueue
                 'user_id' => $this->event->user_id ? (string) $this->event->user_id : null,
                 'url' => $eventUrl,
                 'click_action' => $eventUrl,
+                'source_type' => 'event',
+                'source_id' => (string) $this->event->id,
             ];
 
-            // Send Firebase notification
+            // Send Firebase notification (logs to push_notification_logs for admin overview)
             $result = $firebaseService->sendToUser($follower->id, $title, $body, $data);
 
-
-            if ($result) {
+            $successCount = is_array($result) ? count(array_filter($result, fn ($r) => ($r['success'] ?? false))) : 0;
+            if ($successCount > 0) {
                 Log::info('✅ Firebase Event notification sent successfully', [
                     'user_id' => $follower->id,
                     'event_id' => $this->event->id,

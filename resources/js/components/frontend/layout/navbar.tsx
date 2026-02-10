@@ -38,6 +38,7 @@ import {
   Coins,
   HeartHandshake,
   UserPlus,
+  Video,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -100,6 +101,7 @@ export default function Navbar() {
   // Community dropdown items
   const communityItems = [
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
+    { name: "Community Videos", href: "/community-videos", icon: Video },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
       { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },
@@ -119,9 +121,9 @@ export default function Navbar() {
     { name: "Event Calendar", href: "/all-events", icon: Calendar },
   ]
 
-  // More dropdown items
+  // More dropdown items (Fractional Ownership commented out)
   const moreItems = [
-    { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
+    // { name: "Fractional Ownership", href: "/fractional", icon: Building2 },
     { name: "Contact", href: "/contact", icon: Mail },
   ]
 
@@ -784,21 +786,15 @@ export default function Navbar() {
                                                   </Link>
                                               </>
                                           )}
-                                          <Button
-                                              variant="ghost"
-                                              className="w-full justify-start text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950"
+                                          <Link
+                                              method="post"
+                                              href={route('logout.main')}
                                               onClick={handleLogout}
+                                              className="flex w-full cursor-pointer items-center justify-start rounded-md px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 hover:text-red-600 dark:hover:bg-red-950 dark:hover:bg-opacity-50"
                                           >
-                                              <Link
-                                                  method="post"
-                                                  className="align-items-center flex w-full cursor-pointer justify-start"
-                                                  href={route('logout.main')}
-                                                  onClick={handleLogout}
-                                              >
-                                                  <LogOut className="d-flex align-items-center mt-0.5 mr-3 h-3 w-3 justify-center align-middle" />
-                                                  Log out
-                                              </Link>
-                                          </Button>
+                                              <LogOut className="mr-3 h-4 w-4 shrink-0" />
+                                              Log out
+                                          </Link>
                                       </div>
                                   ) : (
                                       <>

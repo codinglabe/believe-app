@@ -3,9 +3,11 @@ import type React from "react"
 import Navbar from "@/components/frontend/layout/navbar"
 import Footer from "@/components/frontend/layout/footer"
 import { NotificationProvider } from "@/components/frontend/notification-provider"
+import SupportWidget from "@/components/frontend/SupportWidget"
 import toast, { Toaster } from "react-hot-toast"
 import { use, useEffect } from "react"
 import { usePage } from "@inertiajs/react"
+import { CsrfTokenSync } from "@/components/CsrfTokenSync"
 // import { PWAInstallPrompt } from "@/components/PWAInstallPrompt"
 // import { PWAUpdatePrompt } from "@/components/PWAUpdatePrompt"
 import { initializeMessaging, requestNotificationPermission } from "@/lib/firebase"
@@ -61,36 +63,35 @@ export default function RootLayout({
 
     useEffect(() => {
         const saveFCMTokenAfterLogin = async () => {
-            if (auth?.user?.id) {
-                const fcmToken = await requestNotificationPermission();
-                const deviceInfo = getDeviceInfo();
-
+            if (!auth?.user?.id) return
+            try {
+                await initializeMessaging()
+                const fcmToken = await requestNotificationPermission()
+                const deviceInfo = getDeviceInfo()
                 if (fcmToken) {
-                await axios.post("/push-token", {
-                    token: fcmToken,
-                    device_info: deviceInfo
-                });
-                console.log("Token saved after login");
+                    await axios.post("/push-token", {
+                        token: fcmToken,
+                        device_info: deviceInfo,
+                    })
+                    console.log("Token saved after login")
+                }
+            } catch (err) {
+                console.error("[PushNotificationManager] FCM token save error:", err)
             }
         }
-    };
-
-    saveFCMTokenAfterLogin();
-    }, [auth?.user?.id]);
+        saveFCMTokenAfterLogin()
+    }, [auth?.user?.id])
 
 
-    const props = usePage();
+    const page = usePage<{ success?: string; error?: string }>();
     useEffect(() => {
-        console.log("RootLayout props:", props);
-        if(props.props?.success) {
-            toast.success(props.props?.success)
-        }
-        if(props.props?.error) {
-            toast.error(props.props?.error)
-        }
-    }, [props.props?.success, props.props?.error])
+        if (page.props?.success) toast.success(page.props.success)
+        if (page.props?.error) toast.error(page.props.error)
+    }, [page.props?.success, page.props?.error])
   return (
       <NotificationProvider>
+          {/* Keep CSRF meta in sync so 419 never happens on public/org pages */}
+          <CsrfTokenSync />
           {/* Toast Container */}
             <Toaster
                 position="top-right"
@@ -127,6 +128,7 @@ export default function RootLayout({
           {children}
         </main>
         <Footer />
+        <SupportWidget />
       </div>
     </NotificationProvider>
   )

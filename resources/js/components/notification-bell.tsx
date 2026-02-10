@@ -60,7 +60,7 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
 
   const fetchNotifications = async () => {
     if (!userId) return
-    
+
     // Don't fetch notifications if email is not verified
     if (!emailVerified) {
       return
@@ -216,9 +216,9 @@ export function NotificationBell({ userId, emailVerified = true, onNotificationC
         //   }
         })
 
-      if ("Notification" in window && Notification.permission === "default") {
-        Notification.requestPermission()
-      }
+      // Do NOT auto-request notification permission here — it runs on every mount and causes
+      // repeated "Allow notifications?" prompts (e.g. in Edge). Permission is requested once
+      // via PushNotificationManager / app layout after login.
 
       return () => {
         echo.leave(`user.${userId}`)

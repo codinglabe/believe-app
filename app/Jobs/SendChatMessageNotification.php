@@ -107,12 +107,15 @@ class SendChatMessageNotification implements ShouldQueue
                 'sender_id' => (string) $this->message->user_id,
                 'url' => $chatUrl,
                 'click_action' => $chatUrl,
+                'source_type' => 'chat',
+                'source_id' => (string) $this->message->id,
             ];
 
-            // Send Firebase notification
+            // Send Firebase notification (logs to push_notification_logs for admin overview)
             $result = $firebaseService->sendToUser($receiver->id, $title, $body, $data);
 
-            if ($result) {
+            $successCount = is_array($result) ? count(array_filter($result, fn ($r) => ($r['success'] ?? false))) : 0;
+            if ($successCount > 0) {
                 Log::info('✅ Firebase Chat notification sent successfully', [
                     'receiver_id' => $receiver->id,
                     'message_id' => $this->message->id,

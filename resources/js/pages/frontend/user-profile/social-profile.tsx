@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import toast from "react-hot-toast"
 import { usePage, router, Link } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -157,8 +158,6 @@ export default function SocialProfile() {
 
   const handleFollow = async (userId: number) => {
     try {
-      // For now, we'll use the organization favorite endpoint as a workaround
-      // You may need to create a proper user follow endpoint
       const response = await fetch(`/organizations/${userId}/toggle-favorite`, {
         method: "POST",
         headers: {
@@ -168,9 +167,13 @@ export default function SocialProfile() {
         },
         credentials: "include",
       })
-
       if (response.ok) {
-        router.reload()
+        const data = await response.json().catch(() => ({}))
+        if (data.success !== false) router.reload()
+      } else if (response.status === 403) {
+        const data = await response.json().catch(() => ({}))
+        const msg = data.message || "Following is for supporter accounts only. Please log in with your personal (supporter) account to follow organizations."
+        toast.error(msg)
       }
     } catch (error) {
       console.error("Error following user:", error)
@@ -576,7 +579,12 @@ export default function SocialProfile() {
                 {/* Organizations You May Know */}
                 <Card className="bg-slate-800/50 border-purple-700/30">
                   <CardContent className="p-4">
-                    <h3 className="text-white font-semibold mb-4">Organizations You May Know</h3>
+                    <div className="flex items-center justify-between mb-4">
+                      <h3 className="text-white font-semibold">Organizations You May Know</h3>
+                      <Link href="/organizations" className="text-purple-400 text-sm hover:text-purple-300">
+                        View All &gt;
+                      </Link>
+                    </div>
                     <div className="space-y-4">
                       {suggestedUsers.map((suggestedUser) => (
                         <div key={suggestedUser.id} className="flex items-center justify-between">
@@ -594,14 +602,6 @@ export default function SocialProfile() {
                               )}
                             </div>
                           </div>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => handleFollow(suggestedUser.id)}
-                            className="border-purple-600 text-purple-400 hover:bg-purple-600/20"
-                          >
-                            Follow
-                          </Button>
                         </div>
                       ))}
                     </div>

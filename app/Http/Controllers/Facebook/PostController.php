@@ -386,16 +386,17 @@ class PostController extends Controller
                 );
             }
 
-            // Update post with Facebook response
+            // Update post with Facebook response (use post_id for photo posts, id for others)
+            $facebookPostId = $response['post_id'] ?? $response['id'] ?? null;
             $post->update([
                 'status' => 'published',
                 'published_at' => now(),
-                'facebook_post_id' => $response['id'] ?? null,
+                'facebook_post_id' => $facebookPostId,
                 'response_data' => $response,
                 'error_message' => null,
             ]);
 
-            \Log::info('Post published successfully:', ['facebook_post_id' => $response['id'] ?? null]);
+            \Log::info('Post published successfully:', ['facebook_post_id' => $facebookPostId]);
 
             return $response;
 

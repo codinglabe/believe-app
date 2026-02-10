@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\Traits\HasRoles;
@@ -417,9 +418,12 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function organization()
     {
-        // Use hasOneThrough relationship but fix ambiguous column issue
-        // The problem is Laravel automatically selects 'id' without table prefix
-        // We use selectRaw to explicitly qualify all columns, keeping id as primary key
+        // Use hasOneThrough relationship but fix ambiguous column issue.
+        // Only include youtube_channel_url if the column exists (migration may not be run yet).
+        $base = 'organizations.id, organizations.name, organizations.user_id, organizations.ein, organizations.description, organizations.mission, organizations.website, organizations.email, organizations.phone, organizations.contact_name, organizations.contact_title, organizations.city, organizations.state, organizations.zip, organizations.registration_status, organizations.created_at, organizations.updated_at';
+        $youtube = Schema::hasColumn('organizations', 'youtube_channel_url') ? ', organizations.youtube_channel_url' : '';
+        $select = $base . $youtube . ', board_members.user_id as laravel_through_key';
+
         return $this->hasOneThrough(
             Organization::class,
             BoardMember::class,
@@ -427,26 +431,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'id', // Foreign key on organizations table
             'id', // Local key on users table
             'organization_id' // Local key on board_members table
-        )->selectRaw('
-            organizations.id,
-            organizations.name,
-            organizations.user_id,
-            organizations.ein,
-            organizations.description,
-            organizations.mission,
-            organizations.website,
-            organizations.email,
-            organizations.phone,
-            organizations.contact_name,
-            organizations.contact_title,
-            organizations.city,
-            organizations.state,
-            organizations.zip,
-            organizations.registration_status,
-            organizations.created_at,
-            organizations.updated_at,
-            board_members.user_id as laravel_through_key
-        ');
+        )->selectRaw($select);
     }
 
     public function isOrganizationAdmin()
@@ -803,7 +788,7 @@ class User extends Authenticatable implements MustVerifyEmail
         ?array $metadata = null
     ): void {
         $this->increment('reward_points', $points);
-        
+
         RewardPointLedger::createCredit(
             $this->id,
             $source,
@@ -834,9 +819,9 @@ class User extends Authenticatable implements MustVerifyEmail
         if ($this->reward_points < $points) {
             return false;
         }
-        
+
         $this->decrement('reward_points', $points);
-        
+
         RewardPointLedger::createDebit(
             $this->id,
             $source,
@@ -845,7 +830,7 @@ class User extends Authenticatable implements MustVerifyEmail
             $description,
             $metadata
         );
-        
+
         return true;
     }
 
@@ -875,7 +860,7 @@ class User extends Authenticatable implements MustVerifyEmail
             $port = request()->getPort();
             $domain = $scheme . '://' . $host . ($port && $port != 80 && $port != 443 ? ':' . $port : '');
         }
-        
+
         $this->notify(new \App\Notifications\VerifyEmailNotification($domain));
     }
 }

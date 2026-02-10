@@ -53,6 +53,7 @@ import {
     Megaphone,
     Wallet,
     Gavel,
+    Handshake,
     UserPlus,
     Bell,
     Send,
@@ -60,7 +61,8 @@ import {
     CreditCard,
     FolderOpen,
     ShoppingBag,
-    Search
+    Search,
+    Youtube
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -77,11 +79,20 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         permission: "dashboard.read"
     },
 
-    // Believe Points
+    // Believe Points (hidden for organization_pending until onboarding complete)
     {
         title: 'Believe Points',
         href: '/believe-points',
         icon: Coins,
+        role: ['organization', 'admin'],
+    },
+
+    // Nonprofit Barter Network (organization only)
+    {
+        title: 'Nonprofit Barter Network',
+        href: '/barter',
+        icon: Handshake,
+        role: 'organization',
     },
 
     // Believe FundMe (organization campaigns)
@@ -425,6 +436,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
             {
                 title: 'Gift Cards',
                 icon: Gift,
+                role: ['organization', 'admin'],
                 items: [
                     {
                         title: 'Purchased Cards',
@@ -741,6 +753,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         icon: Facebook,
                         role: "organization"
                     },
+                    {
+                        title: 'YouTube',
+                        href: route('integrations.youtube'),
+                        icon: Youtube,
+                        role: "organization"
+                    },
                 ],
                 permission: "email.invite.read"
             },
@@ -817,6 +835,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Contact Submissions',
                 href: '/admin/contact-submissions',
                 icon: Mail,
+                role: "admin"
+            },
+            {
+                title: 'Push Notifications (FCM)',
+                href: '/admin/push-notifications',
+                icon: Bell,
                 role: "admin"
             },
         ]

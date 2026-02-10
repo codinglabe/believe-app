@@ -88,15 +88,18 @@ class SendJobPostNotification implements ShouldQueue
                 'job_id' => (string) $this->jobPost->id,
                 'url' => $jobUrl,
                 'click_action' => $jobUrl,
+                'source_type' => 'job_post',
+                'source_id' => (string) $this->jobPost->id,
             ];
 
-            // Send Firebase notification
-            $result =  $firebaseService->sendToUser($follower->id, $title, $body, $data);
+            // Send Firebase notification (logs to push_notification_logs for admin overview)
+            $result = $firebaseService->sendToUser($follower->id, $title, $body, $data);
 
             // Store in database notifications
             // $this->storeDatabaseNotification($follower, $title, $body, $data);
 
-            if ($result) {
+            $successCount = is_array($result) ? count(array_filter($result, fn ($r) => ($r['success'] ?? false))) : 0;
+            if ($successCount > 0) {
                 Log::info('✅ Firebase Job notification sent successfully', [
                     'user_id' => $follower->id,
                     'job_post_id' => $this->jobPost->id,

@@ -1,6 +1,7 @@
 "use client"
 
 import React, { useState, useCallback, useMemo } from "react"
+import toast from "react-hot-toast"
 import { Link, router } from "@inertiajs/react"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { usePage } from "@inertiajs/react"
@@ -298,6 +299,14 @@ export default function FindSupportersPage() {
       preserveScroll: true,
       preserveState: false,
       onFinish: () => setLoadingFollow((prev) => ({ ...prev, [supporter.id]: false })),
+      onError: () => {
+        toast.error('Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people.')
+        setFollowingStates((prev) => ({ ...prev, [supporter.id]: !newState }))
+        setSupporters((prev) => ({
+          ...prev,
+          data: prev.data.map((s) => (s.id === supporter.id ? { ...s, is_following: !newState } : s)),
+        }))
+      },
     })
   }
 

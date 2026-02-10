@@ -57,6 +57,13 @@ Schedule::command('irs:check-form990-filings --notify')
     ->withoutOverlapping()
     ->runInBackground();
 
+// Sync IRS Form 990 board/officer members (for org claim matching). Monthly is enough — IRS data updates annually.
+Schedule::command('irs:sync-board-members')
+    ->monthly()
+    ->at('04:00')
+    ->withoutOverlapping()
+    ->runInBackground();
+
 // Clean Laravel log file when it exceeds 10MB (runs hourly)
 Schedule::command('log:clean --size=10')
     ->hourly()

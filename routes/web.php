@@ -77,6 +77,8 @@ use App\Http\Controllers\GoogleAuthController;
 use App\Http\Controllers\MeetingChatMessageController;
 use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
+use App\Http\Controllers\CommunityVideosController;
+use App\Http\Controllers\CommunityVideoEngagementController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -85,6 +87,7 @@ use App\Http\Controllers\PushTokenController;
 use App\Http\Controllers\RecordingController;
 use App\Http\Controllers\TopicController;
 use App\Http\Controllers\SocialMediaController;
+use App\Http\Controllers\IntegrationsController;
 use App\Http\Controllers\RaffleController;
 use App\Http\Controllers\CreditPurchaseController;
 use App\Http\Controllers\Facebook\AuthController;
@@ -147,8 +150,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
     Route::get('/find-supporters', [\App\Http\Controllers\FindSupportersController::class, 'index'])->name('find-supporters.index');
     Route::get('/search', [\App\Http\Controllers\PostController::class, 'searchPage'])->name('search.index');
     Route::get('/social-feed/search', [\App\Http\Controllers\PostController::class, 'search'])->name('social-feed.search');
-    // Toggle favorite organization from search page - use explicit name to override any group prefix
+    // Toggle favorite organization - allow any authenticated user (controller rejects org role with friendly message)
     Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite-search');
+    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('user.organizations.toggle-favorite');
+    Route::post('/organizations/{id}/toggle-favorite', [\App\Http\Controllers\OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+    // GET fallback: if user hits toggle-favorite with GET (e.g. refresh/back), redirect to organization page
+    Route::get('/organizations/{id}/toggle-favorite', function (string $id) {
+        return redirect()->route('organizations.show', $id);
+    })->name('organizations.toggle-favorite.get');
     Route::post('/posts', [\App\Http\Controllers\PostController::class, 'store'])->name('posts.store');
     Route::put('/posts/{post}', [\App\Http\Controllers\PostController::class, 'update'])->name('posts.update');
     Route::delete('/posts/{post}', [\App\Http\Controllers\PostController::class, 'destroy'])->name('posts.destroy');
@@ -193,6 +202,20 @@ Route::get('/nonprofit-news/saved', [SavedNewsController::class, 'index'])
 Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'toggle'])
     ->name('nonprofit.news.save.toggle')
     ->middleware('auth');
+
+Route::get('/community-videos', [CommunityVideosController::class, 'index'])->name('community-videos.index');
+Route::get('/community-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('community-videos.channel');
+Route::get('/community-videos/upload', [CommunityVideosController::class, 'upload'])->name('community-videos.upload')->middleware('auth');
+// More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
+Route::get('/community-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('community-videos.show-youtube');
+Route::get('/community-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('community-videos.show-short');
+Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
+
+Route::post('/community-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('community-videos.engagement.like')->middleware('auth');
+Route::post('/community-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('community-videos.engagement.view')->middleware('auth');
+Route::post('/community-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('community-videos.engagement.share');
+Route::get('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('community-videos.engagement.comments');
+Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('community-videos.engagement.comment')->middleware('auth');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
@@ -304,8 +327,8 @@ Route::prefix('service-hub')->middleware(['auth', 'EnsureEmailIsVerified'])->nam
 Route::get('/service-hub/chat/{chatId}', [App\Http\Controllers\ServiceHubController::class, 'serviceChat'])->name('service-hub.chat.show')->middleware(['auth', 'EnsureEmailIsVerified']);
 
 // Cart routes (protected)
-// Believe Points Routes
-Route::middleware(['auth', 'EnsureEmailIsVerified'])->prefix('believe-points')->name('believe-points.')->group(function () {
+// Believe Points Routes (organization_pending cannot access until onboarding complete)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|user'])->prefix('believe-points')->name('believe-points.')->group(function () {
     Route::get('/', [App\Http\Controllers\BelievePointController::class, 'index'])->name('index');
     Route::post('/purchase', [App\Http\Controllers\BelievePointController::class, 'purchase'])->name('purchase');
     Route::get('/success', [App\Http\Controllers\BelievePointController::class, 'success'])->name('success');
@@ -491,9 +514,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/api/impact-score', [\App\Http\Controllers\ImpactScoreController::class, 'index'])->name('api.impact-score');
     Route::get('/profile/fractional-ownership', [\App\Http\Controllers\FractionalOwnershipController::class, 'myPurchases'])->name('profile.fractional-ownership');
     Route::get('nodeboss/shares', [NodeShareController::class, 'index'])->name('nodeboss.sahres');
-    // Toggle favorite status
-    // Note: Route name is 'organizations.toggle-favorite' (explicit name overrides group prefix)
-    Route::post('/organizations/{id}/toggle-favorite', [OrganizationController::class, 'toggleFavorite'])->name('organizations.toggle-favorite');
+    // Toggle favorite moved to auth-only group so org users get friendly message instead of permission-denied
     Route::post('/organizations/{id}/toggle-notifications', [OrganizationController::class, 'toggleNotifications'])->name('organizations.toggle-notifications');
 
      Route::post('/organizations/{orgId}/save-positions-follow', [OrganizationController::class, 'savePositionsAndFollow'])
@@ -507,7 +528,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
-    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization']);
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:user|organization|organization_pending']);
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->get('/profile-old', function () {
     return Inertia::render('frontend/profile');
@@ -520,7 +541,7 @@ Route::resource('/chat-group-topics', ChatTopicController::class)->only(['index'
     'destroy' => 'permission:communication.delete'
 ]);
 
-Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin'])
+Route::get("group-topics/select", [UsersInterestedTopicsController::class, 'orgSelect'])->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending'])
     ->name('auth.topics.select');
 
 Route::prefix("chat")->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->name("chat.")->group(function () {
@@ -601,6 +622,9 @@ Route::prefix('wallet')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.se
         // Token Balance Route
         Route::get('/tokens/balance', [WalletController::class, 'getTokenBalance'])->name('tokens.balance');
     });
+
+    // AI Chat (Public) - Needs to be outside auth middleware
+    // Route::get('/ai-chat/context', [AiChatController::class, 'getContext'])->name('ai-chat.context');
 
 // KYC/KYB Callback Routes (after verification completion - no auth required for redirect)
 Route::get('/wallet/kyc-callback', [App\Http\Controllers\BridgeWalletController::class, 'kycCallback'])->name('bridge.kyc-callback');
@@ -743,7 +767,10 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
     Route::post('/fundme/{fundme_campaign}/submit', [FundMeCampaignController::class, 'submit'])->name('fundme.campaigns.submit');
     Route::delete('/fundme/{fundme_campaign}', [FundMeCampaignController::class, 'destroy'])->name('fundme.campaigns.destroy');
 
+
+
     // AI Chat
+    // AI Chat (Authenticated)
     Route::get('/ai-chat', [AiChatController::class, 'index'])->name('ai-chat.index');
     Route::post('/ai-chat/send', [AiChatController::class, 'sendMessage'])->name('ai-chat.send');
     Route::get('/ai-chat/conversations', [AiChatController::class, 'getConversations'])->name('ai-chat.conversations');
@@ -835,6 +862,24 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+
+    // Nonprofit Barter Network (NNBN) – EIN + KYB + Board + Bridge + Admin approved only
+    Route::middleware('barter.access')->prefix('barter')->name('barter.')->group(function () {
+        Route::get('/', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'index'])->name('index');
+        Route::get('/marketplace', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'marketplace'])->name('marketplace');
+        Route::get('/my-listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'myListings'])->name('my-listings');
+        Route::get('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'showListing'])->name('listings.show');
+        Route::post('/listings', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'storeListing'])->name('listings.store');
+        Route::put('/listings/{listing}', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'updateListing'])->name('listings.update');
+        Route::post('/request-trade', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'requestTrade'])->name('request-trade');
+        Route::get('/incoming-requests', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'incomingRequests'])->name('incoming-requests');
+        Route::post('/transactions/{transaction}/accept', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'acceptRequest'])->name('transactions.accept');
+        Route::post('/transactions/{transaction}/reject', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'rejectRequest'])->name('transactions.reject');
+        Route::get('/active-trades', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'activeTrades'])->name('active-trades');
+        Route::get('/trade-history', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'tradeHistory'])->name('trade-history');
+        Route::get('/points-wallet', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'pointsWallet'])->name('points-wallet');
+        Route::get('/reputation', [\App\Http\Controllers\Barter\BarterNetworkController::class, 'reputation'])->name('reputation');
+    });
 
     Route::middleware('permission:dashboard.read')->group(function () {
         Route::get('/dashboard/compliance/apply', [ComplianceApplicationController::class, 'show'])->name('compliance.apply.show');
@@ -1347,6 +1392,16 @@ Route::prefix('admin')->middleware(['auth', 'EnsureEmailIsVerified' , 'topics.se
     Route::get('/webhooks/printify', [WebhookManagementController::class, 'getWebhooks'])->name('admin.webhooks.get');
     Route::delete('/webhooks/printify/{webhookId}', [WebhookManagementController::class, 'deleteWebhook'])->name('admin.webhooks.delete');
 
+    // FCM / Push Notifications overview (admin only)
+    Route::get('/push-notifications', [App\Http\Controllers\Admin\PushNotificationsController::class, 'index'])->name('admin.push-notifications.index');
+    Route::post('/push-notifications/send-test', [App\Http\Controllers\Admin\PushNotificationsController::class, 'sendTest'])->name('admin.push-notifications.send-test');
+    Route::post('/push-notifications/request-reregister', [App\Http\Controllers\Admin\PushNotificationsController::class, 'requestReregister'])->name('admin.push-notifications.request-reregister');
+    Route::post('/push-notifications/invalidate-token', [App\Http\Controllers\Admin\PushNotificationsController::class, 'invalidateToken'])->name('admin.push-notifications.invalidate-token');
+
+    // Barter Network audit (both nonprofits, listings, delta, ledger, status, dispute)
+    Route::get('/barter', [App\Http\Controllers\Admin\BarterAuditController::class, 'index'])->name('admin.barter.index');
+    Route::get('/barter/{transaction}', [App\Http\Controllers\Admin\BarterAuditController::class, 'show'])->name('admin.barter.show');
+
     // KYB Verification Routes
     Route::prefix('kyb-verification')->name('admin.kyb-verification.')->middleware('permission:kyb.verification.read')->group(function () {
         Route::get('/', [App\Http\Controllers\Admin\AdminKybVerificationController::class, 'index'])->name('index');
@@ -1481,6 +1536,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
         Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
     });
+
+    // Integrations (organization only)
+    Route::prefix('integrations')->name('integrations.')->middleware('role:organization')->group(function () {
+        Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube');
+        Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
+        Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
+        Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
+    });
 });
 
 
@@ -1501,8 +1564,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization', 'topics
 Route::get('/gift-cards', [App\Http\Controllers\GiftCardController::class, 'index'])->name('gift-cards.index');
 Route::get('/gift-cards/brands', [App\Http\Controllers\GiftCardController::class, 'getBrands'])->name('gift-cards.brands');
 
-// Organization routes (view purchased cards) - MUST come before parameterized routes
-Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role.simple:organization,admin'])->group(function () {
+// Organization routes (view purchased cards) - organization_pending cannot access until onboarding complete
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'role:organization|admin'])->group(function () {
     Route::get('/gift-cards/purchased', [App\Http\Controllers\GiftCardController::class, 'createdCards'])->name('gift-cards.created');
 });
 

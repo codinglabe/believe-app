@@ -56,13 +56,13 @@ export default function PermissionDenied() {
     // Go Back button - always use role-specific URL to ensure it works
     const roleBackUrl = getRoleBackUrl()
     let finalBackUrl = roleBackUrl
-    
+
     if (backUrl) {
-      const isSafeBackUrl = backUrl && 
-        !backUrl.includes('/errors/') && 
+      const isSafeBackUrl = backUrl &&
+        !backUrl.includes('/errors/') &&
         !backUrl.includes('permission-denied') &&
         backUrl !== window.location.pathname
-      
+
       if (isSafeBackUrl) {
         if (currentRole === 'user') {
           if (backUrl.includes('/profile') || backUrl === '/') {
@@ -81,7 +81,7 @@ export default function PermissionDenied() {
         }
       }
     }
-    
+
     buttons.push({
       label: 'Go Back',
       icon: ArrowLeft,
@@ -176,9 +176,9 @@ export default function PermissionDenied() {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="flex items-center justify-center p-8 md:p-12 w-full"
         >
-          <img 
-            src="/images/permissin-denied.png" 
-            alt="Access Denied" 
+          <img
+            src="/images/permissin-denied.png"
+            alt="Access Denied"
             className="w-full max-w-2xl h-auto object-contain"
           />
         </motion.div>
@@ -208,6 +208,18 @@ export default function PermissionDenied() {
               )
             })}
           </motion.div>
+
+          {/* Reason (e.g. from barter middleware) */}
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 px-4 py-3 text-sm text-amber-800 dark:text-amber-200"
+            >
+              {errorMessage}
+            </motion.div>
+          )}
 
           {/* Help Text */}
           <motion.div

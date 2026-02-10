@@ -30,6 +30,8 @@
     "dependencies": {
         "@emoji-mart/data": "^1.2.1",
         "@emoji-mart/react": "^1.1.1",
+        "@google/genai": "^1.39.0",
+        "@google/generative-ai": "^0.24.1",
         "@headlessui/react": "^2.2.0",
         "@hookform/resolvers": "^5.1.1",
         "@iconify/react": "^6.0.0",

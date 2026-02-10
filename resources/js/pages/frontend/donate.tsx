@@ -273,24 +273,10 @@ export default function DonatePage({
               <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
                 Make a Difference Today
               </h1>
-              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto mb-8">
+              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
                 Your donation, no matter the size, creates real impact in communities worldwide. Join thousands of
                 supporters making positive change happen.
               </p>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 sm:gap-8 max-w-3xl mx-auto mt-8">
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">$2.5M+</div>
-                  <div className="text-sm sm:text-base text-white/90">Total Donated</div>
-                </div>
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">15,000+</div>
-                  <div className="text-sm sm:text-base text-white/90">Active Donors</div>
-                </div>
-                <div className="text-center p-4 sm:p-5 bg-white/10 backdrop-blur-sm rounded-xl">
-                  <div className="text-2xl sm:text-3xl md:text-4xl font-bold mb-2 text-white">500+</div>
-                  <div className="text-sm sm:text-base text-white/90">Projects Funded</div>
-                </div>
-              </div>
             </motion.div>
           </div>
         </section>

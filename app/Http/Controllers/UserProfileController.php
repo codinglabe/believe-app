@@ -2090,6 +2090,15 @@ class UserProfileController extends Controller
         $user = Auth::user();
         $targetUser = User::findOrFail($id);
 
+        // Only supporter (personal) accounts can follow; organization accounts cannot
+        if (in_array($user->role ?? '', ['organization', 'organization_pending'], true)) {
+            $message = 'Following is for supporter accounts only. Please log in with your personal (supporter) account to follow people and organizations.';
+            if ($request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest') {
+                return response()->json(['success' => false, 'message' => $message], 403);
+            }
+            return redirect()->back()->with('error', $message);
+        }
+
         // Prevent users from following themselves
         if ($user->id === $targetUser->id) {
             return response()->json(['error' => 'You cannot follow yourself'], 400);

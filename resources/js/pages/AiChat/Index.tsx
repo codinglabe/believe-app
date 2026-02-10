@@ -302,7 +302,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
 
     setLoadingConversations(true)
     try {
-      const response = await fetch(`${route('ai-chat.conversations') as string}?page=${conversationsPage + 1}`)
+      const response = await fetch(`${route('ai-chat.conversations') as string}?page=${conversationsPage + 1}`, {
+        credentials: 'same-origin',
+      })
       const data = await response.json()
 
       setConversations(prev => [...prev, ...data.conversations])
@@ -323,7 +325,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
     
     try {
       setIsLoading(true)
-      const response = await fetch(route('ai-chat.conversation', conversationId) as string)
+      const response = await fetch(route('ai-chat.conversation', conversationId) as string, {
+        credentials: 'same-origin',
+      })
       
       if (!response.ok) {
         throw new Error('Failed to load conversation')
@@ -405,7 +409,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
         method: 'DELETE',
         headers: {
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'Accept': 'application/json',
         },
+        credentials: 'same-origin',
       })
 
       setConversations(prev => prev.filter(conv => conv.id !== conversationToDelete))
@@ -497,7 +503,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
         headers: {
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+          'Accept': 'application/json',
         },
+        credentials: 'same-origin',
         body: JSON.stringify({
           message: userMessage.content,
           conversation_id: currentConversationId,
@@ -535,7 +543,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
         
         // Fetch the new conversation and add it to the list
         try {
-          const convResponse = await fetch(route('ai-chat.conversation', data.conversation_id) as string)
+          const convResponse = await fetch(route('ai-chat.conversation', data.conversation_id) as string, {
+            credentials: 'same-origin',
+          })
           if (convResponse.ok) {
             const convData = await convResponse.json()
             const newConversation = convData.conversation
@@ -1292,7 +1302,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                       // Update conversation in the list
                                       const convIdToUpdate = currentConversationId
                                       if (convIdToUpdate) {
-                                        fetch(route('ai-chat.conversation', convIdToUpdate) as string)
+                                        fetch(route('ai-chat.conversation', convIdToUpdate) as string, {
+                                          credentials: 'same-origin',
+                                        })
                                           .then(res => res.ok && res.json())
                                           .then(convData => {
                                             if (convData?.conversation) {
@@ -1347,7 +1359,9 @@ const AiChatIndex: React.FC<AiChatIndexProps> = ({
                                               headers: {
                                                 'Content-Type': 'application/json',
                                                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '',
+                                                'Accept': 'application/json',
                                               },
+                                              credentials: 'same-origin',
                                               body: JSON.stringify({
                                                 message: createMessage,
                                                 conversation_id: currentConversationId,

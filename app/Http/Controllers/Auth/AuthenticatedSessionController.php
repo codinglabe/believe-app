@@ -56,13 +56,16 @@ class AuthenticatedSessionController extends Controller
             return redirect()->intended(route($route));
         }
 
-        // Redirect users and organizations to their public view pages
+        // Redirect users and organizations
         if ($user->role === 'user') {
             // Redirect user to their public profile page
             $slug = $user->slug ?? $user->id;
             return redirect()->intended(route('users.show', $slug));
-        } elseif (in_array($user->role, ['organization', 'organization_pending'])) {
-            // Redirect organization to their public view page
+        } elseif ($user->role === 'organization_pending') {
+            // Pending org: send to dashboard so they can complete Form 1023 / onboarding
+            return redirect()->intended(route('dashboard'));
+        } elseif ($user->role === 'organization') {
+            // Approved organization: redirect to their public view page
             $slug = $user->slug ?? $user->id;
             return redirect()->intended(route('organizations.show', $slug));
         }
