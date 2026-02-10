@@ -37,6 +37,9 @@ class Organization extends Model
         'contact_title',
         'website',
         'youtube_channel_url',
+        'youtube_access_token',
+        'youtube_refresh_token',
+        'youtube_token_expires_at',
         'description',
         'mission',
         'registered_user_image',
@@ -64,6 +67,7 @@ class Organization extends Model
         'is_compliance_locked' => 'boolean',
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
+        'youtube_token_expires_at' => 'datetime',
     ];
 
     public function user()
@@ -303,5 +307,21 @@ class Organization extends Model
     public function barterTransactionsResponding()
     {
         return $this->hasMany(NonprofitBarterTransaction::class, 'responding_nonprofit_id');
+    }
+
+    /**
+     * Get all livestreams for this organization.
+     */
+    public function livestreams()
+    {
+        return $this->hasMany(OrganizationLivestream::class);
+    }
+
+    /**
+     * Get active/live livestreams for this organization.
+     */
+    public function activeLivestreams()
+    {
+        return $this->livestreams()->where('status', 'live');
     }
 }
