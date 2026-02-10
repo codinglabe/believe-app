@@ -62,7 +62,8 @@ import {
     FolderOpen,
     ShoppingBag,
     Search,
-    Youtube
+    Youtube,
+    Video
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -100,6 +101,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         title: 'Believe FundMe',
         href: '/fundme',
         icon: HandCoins,
+        role: "organization",
+    },
+
+    // Livestreams (organization only)
+    {
+        title: 'Livestreams',
+        href: '/livestreams',
+        icon: Video,
         role: "organization",
     },
 

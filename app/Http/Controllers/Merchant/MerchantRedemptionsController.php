@@ -119,14 +119,14 @@ class MerchantRedemptionsController extends Controller
                 $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
                 $regularPrice = (float) $redemption->offer->cash_required;
                 $discountAmount = ($regularPrice * $discountPercentage) / 100;
-                
+
                 // Apply discount cap if set
                 if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
                     $discountAmount = (float) $redemption->offer->discount_cap;
                 }
-                
+
                 $discountPrice = $regularPrice - $discountAmount;
-                
+
                 $pricingBreakdown = [
                     'regularPrice' => round($regularPrice, 2),
                     'discountPercentage' => round($discountPercentage, 2),
@@ -134,7 +134,7 @@ class MerchantRedemptionsController extends Controller
                     'discountPrice' => round($discountPrice, 2),
                 ];
             }
-            
+
             return [
                 'id' => (string) $redemption->id,
                 'offerTitle' => $redemption->offer->title ?? 'N/A',
@@ -203,14 +203,14 @@ class MerchantRedemptionsController extends Controller
             $discountPercentage = $redemption->offer->discount_percentage ?? 10.0;
             $regularPrice = (float) $redemption->offer->cash_required;
             $discountAmount = ($regularPrice * $discountPercentage) / 100;
-            
+
             // Apply discount cap if set
             if ($redemption->offer->discount_cap && $discountAmount > $redemption->offer->discount_cap) {
                 $discountAmount = (float) $redemption->offer->discount_cap;
             }
-            
+
             $discountPrice = $regularPrice - $discountAmount;
-            
+
             $pricingBreakdown = [
                 'regularPrice' => round($regularPrice, 2),
                 'discountPercentage' => round($discountPercentage, 2),
@@ -218,7 +218,7 @@ class MerchantRedemptionsController extends Controller
                 'discountPrice' => round($discountPrice, 2),
             ];
         }
-        
+
         $redemptionData = [
             'id' => (string) $redemption->id,
             'code' => $redemption->receipt_code,
