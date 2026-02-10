@@ -11,6 +11,7 @@ use App\Models\TempOrder;
 use App\Models\Transaction;
 use App\Models\StateSalesTax;
 use App\Services\PrintifyService;
+use App\Services\StripeConfigService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -71,7 +72,8 @@ class CheckoutController extends Controller
             'platform_fee' => 0, // Platform fee removed from customer payment
             // 'donation_percentage' => config('printify.optional_donation_percentage', 10), // Commented out - removed donation for Printify products
             'donation_percentage' => 0, // Set to 0 to disable donation
-            'stripePublishableKey' => config('services.stripe.key'),
+            // Prefer Stripe publishable key from database (payment_methods), fall back to .env
+            'stripePublishableKey' => StripeConfigService::getPublishableKey() ?? config('services.stripe.key') ?? '',
         ]);
     }
 

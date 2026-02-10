@@ -79,7 +79,7 @@ class DonationController extends Controller
     {
         return Inertia::render('Donations/Create', [
             'organization' => $organization,
-            'stripeKey' => config('cashier.key'),
+            'stripeKey' => \App\Services\StripeConfigService::getPublishableKey() ?? config('cashier.key'),
             'user' => $request->user() ? [
                 'name' => $request->user()->name,
                 'email' => $request->user()->email,
@@ -295,7 +295,7 @@ class DonationController extends Controller
             $donation = Donation::with(['organization', 'user'])->findOrFail($session->metadata->donation_id);
 
             $user = $donation->user;
-            
+
             // Check payment status from Stripe session
             if ($session->payment_status === 'paid') {
                 if ($session->payment_intent) {
@@ -338,21 +338,21 @@ class DonationController extends Controller
                         // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
                         if (!$subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
-                            
+
                             // Get the price ID from the subscription
                             $priceId = $stripeSubscription->items->data[0]->price->id ?? null;
-                            
+
                             // Use Cashier's subscription model properties
                             $subscription->type = 'donation';
                             $subscription->stripe_id = $stripeSubscription->id;
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $priceId;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                            
+
                             $subscription->save();
 
                             Log::info('Donation subscription stored using Cashier', [
@@ -368,9 +368,9 @@ class DonationController extends Controller
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $priceId;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                             $subscription->save();
 

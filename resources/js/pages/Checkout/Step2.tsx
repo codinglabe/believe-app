@@ -4,25 +4,10 @@ import type React from "react"
 import { loadStripe } from "@stripe/stripe-js"
 import { Elements, CardElement, useStripe, useElements } from "@stripe/react-stripe-js"
 import axios from "axios"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { usePage } from "@inertiajs/react"
 import { showErrorToast, showInfoToast, showSuccessToast } from "../../lib/toast"
 import { Coins, CreditCard } from "lucide-react"
-
-// Add this function to check if Stripe.js loaded
-const stripePromise = (() => {
-  try {
-    const key = import.meta.env.VITE_STRIPE_PUBLIC_KEY || ''
-    if (!key) {
-      console.error('Stripe public key is missing')
-      return null
-    }
-    return loadStripe(key)
-  } catch (error) {
-    console.error('Failed to load Stripe:', error)
-    return null
-  }
-})()
 
 interface CartItem {
   id: number
@@ -853,17 +838,14 @@ function StripeFallback() {
 }
 
 export default function Step2(props: Step2Props) {
-  const [stripeError, setStripeError] = useState(false)
+  // Use key from backend (database) first, then fall back to .env
+  const stripeKey = (props.stripePublishableKey || import.meta.env.VITE_STRIPE_PUBLIC_KEY || '').trim()
+  const stripePromise = useMemo(
+    () => (stripeKey ? loadStripe(stripeKey) : null),
+    [stripeKey]
+  )
 
-  // Check if Stripe key exists
-  useEffect(() => {
-    if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
-      console.error('Stripe public key is missing in environment variables')
-      setStripeError(true)
-    }
-  }, [])
-
-  if (stripeError) {
+  if (!stripeKey) {
     return (
       <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl p-6">
         <h3 className="text-lg font-bold text-red-800 dark:text-red-400 mb-2">Payment Configuration Error</h3>

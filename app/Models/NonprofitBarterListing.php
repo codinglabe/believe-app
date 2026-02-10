@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class NonprofitBarterListing extends Model
@@ -15,6 +16,8 @@ class NonprofitBarterListing extends Model
         'title',
         'description',
         'image',
+        'barter_category_id',
+        'barter_subcategory_id',
         'points_value',
         'barter_allowed',
         'requested_services',
@@ -43,6 +46,26 @@ class NonprofitBarterListing extends Model
     public function nonprofit(): BelongsTo
     {
         return $this->belongsTo(Organization::class, 'nonprofit_id');
+    }
+
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(BarterCategory::class, 'barter_category_id');
+    }
+
+    public function subcategory(): BelongsTo
+    {
+        return $this->belongsTo(BarterSubcategory::class, 'barter_subcategory_id');
+    }
+
+    public function benefitGroups(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            BarterBenefitGroup::class,
+            'barter_listing_benefit_groups',
+            'nonprofit_barter_listing_id',
+            'barter_benefit_group_id'
+        );
     }
 
     public function requestedInTransactions(): HasMany

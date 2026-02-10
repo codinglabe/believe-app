@@ -75,7 +75,7 @@ class StripeConfigServiceProvider extends ServiceProvider
             // Use the service but with better error handling
             // Don't access encrypted fields during boot - let it fail gracefully
             $environment = StripeConfigService::getEnvironment();
-            
+
             if (!$environment) {
                 return;
             }
@@ -87,15 +87,15 @@ class StripeConfigServiceProvider extends ServiceProvider
                 // Cashier reads from config('cashier.secret') and config('cashier.key')
                 Config::set('cashier.secret', $credentials['secret_key']);
                 Config::set('cashier.key', $credentials['publishable_key']);
-                
+                // Also set services.stripe so controllers using config('services.stripe.key'|'secret') get DB values
+                Config::set('services.stripe.key', $credentials['publishable_key']);
+                Config::set('services.stripe.secret', $credentials['secret_key']);
                 // Override webhook secret if available
                 if (!empty($credentials['webhook_secret'])) {
                     Config::set('cashier.webhook.secret', $credentials['webhook_secret']);
                 }
 
                 // Note: Cashier automatically uses config('cashier.secret') when calling Cashier::stripe()
-                // The Stripe::setApiKey() call is kept for backward compatibility with direct Stripe SDK usage
-                // but Cashier should be used via Cashier::stripe() instead
                 Stripe::setApiKey($credentials['secret_key']);
             }
         } catch (\Illuminate\Database\QueryException $e) {
