@@ -39,6 +39,7 @@ import {
   HeartHandshake,
   UserPlus,
   Video,
+  Handshake,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -109,8 +110,10 @@ export default function Navbar() {
     ] : []),
   ]
 
-  // Services dropdown items
+  // Services dropdown items (Nonprofit Barter only when organization is logged in)
+  const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const servicesItems = [
+    ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },
     { name: "Marketplace", href: "/marketplace", icon: Store },
@@ -436,7 +439,7 @@ export default function Navbar() {
                                                       </div>
                                                   </div>
                                               )}
-                                              
+
                                               {/* Believe Points */}
                                               {auth?.user?.believe_points !== undefined && (
                                                   <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
@@ -660,7 +663,7 @@ export default function Navbar() {
                                                   <p className="text-muted-foreground text-xs">{auth?.user?.email ?? 'john@example.com'}</p>
                                               </div>
                                           </div>
-                                          
+
                                           {/* Points Display for Mobile - Shows Reward Points and Believe Points (hidden for admin) */}
                                           {auth?.user?.role !== 'admin' && (auth?.user?.reward_points !== undefined || auth?.user?.believe_points !== undefined) && (
                                               <div className="px-3 py-2 space-y-2">
@@ -680,7 +683,7 @@ export default function Navbar() {
                                                           </div>
                                                       </div>
                                                   )}
-                                                  
+
                                                   {/* Believe Points */}
                                                   {auth?.user?.believe_points !== undefined && (
                                                       <div className="flex items-center justify-between p-2 rounded-lg bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/20 dark:to-pink-950/20 border border-purple-200 dark:border-purple-800">
@@ -699,7 +702,7 @@ export default function Navbar() {
                                                   )}
                                               </div>
                                           )}
-                                          
+
                                           {/* Wallet section for mobile - Hide for admin users */}
                                           {isLoggedIn && auth?.user?.role !== 'admin' && (
                                               <Button
