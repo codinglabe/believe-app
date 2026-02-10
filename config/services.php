@@ -109,4 +109,14 @@ return [
         // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
     ],
 
+    'irs' => [
+        'download_timeout' => (int) env('IRS_DOWNLOAD_TIMEOUT', 900), // seconds per ZIP (15 min default)
+        'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),
+        // Job timeout: large ZIPs may need 2–4 hours. Set IRS_JOB_TIMEOUT=14400 for 4 hours.
+        'job_timeout' => (int) env('IRS_JOB_TIMEOUT', 7200), // seconds per ProcessIrsZipJob (2 hours default)
+        // SSL: set IRS_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
+        'ssl_verify' => env('IRS_SSL_VERIFY', true),
+        'cafile' => env('IRS_CAFILE', null), // optional: path to cacert.pem (e.g. from https://curl.se/ca/cacert.pem)
+    ],
+
 ];
