@@ -107,7 +107,8 @@ class RegisteredUserController extends Controller
             ]);
         }
 
-        return to_route('user.profile.index');
+        // Supporter: redirect to public profile view
+        return redirect()->route('users.show', $user->slug ?? $user->id);
     }
 
     /**

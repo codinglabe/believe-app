@@ -31,7 +31,7 @@ import { Label } from "@/components/frontend/ui/label"
 import { Textarea } from "@/components/frontend/ui/textarea"
 import { Checkbox } from "@/components/frontend/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/frontend/ui/alert"
-import { Link, usePage } from "@inertiajs/react"
+import { Link, router, usePage } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
 
 // Types
@@ -358,7 +358,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
     const params = new URLSearchParams(window.location.search)
     const urlInviteToken = params.get('invite')
     const tokenToUse = inviteToken || urlInviteToken
-    
+
     if (tokenToUse) {
       setFormData((prev) => ({
         ...prev,
@@ -765,6 +765,8 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
         setRegistrationSuccess(true)
         setSuccessMessage(data.message || "Organization registered successfully!")
         setStep(5)
+        // Organization registration: redirect to dashboard (user is already logged in)
+        router.visit(route("dashboard"))
       } else {
         const res = data as RegistrationResponse
         const possibleMatches = Array.isArray(res.possible_matches) ? res.possible_matches : []
@@ -847,7 +849,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
         <PageHead title={seo?.title ?? "Register Your Nonprofit"} description={seo?.description} />
         <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
           {/* Background Image Overlay */}
-          <div 
+          <div
             className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
             style={{
               backgroundImage: 'url(/images/believe-hero.png)'
@@ -913,7 +915,7 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
       <PageHead title={seo?.title ?? "Register Your Nonprofit"} description={seo?.description} />
       <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
         {/* Background Image Overlay */}
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
           style={{
             backgroundImage: 'url(/images/believe-hero.png)'

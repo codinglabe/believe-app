@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
+use App\Http\Helpers\AuthRedirectHelper;
 use App\Http\Requests\Auth\LoginRequest;
 use App\Models\UserPushToken;
 use Illuminate\Http\RedirectResponse;
@@ -56,22 +57,9 @@ class AuthenticatedSessionController extends Controller
             return redirect()->intended(route($route));
         }
 
-        // Redirect users and organizations
-        if ($user->role === 'user') {
-            // Redirect user to their public profile page
-            $slug = $user->slug ?? $user->id;
-            return redirect()->intended(route('users.show', $slug));
-        } elseif ($user->role === 'organization_pending') {
-            // Pending org: send to dashboard so they can complete Form 1023 / onboarding
-            return redirect()->intended(route('dashboard'));
-        } elseif ($user->role === 'organization') {
-            // Approved organization: redirect to their public view page
-            $slug = $user->slug ?? $user->id;
-            return redirect()->intended(route('organizations.show', $slug));
-        }
-
-        // Default redirect for other roles (e.g., admin)
-        return redirect()->intended(route('dashboard'));
+        // Single redirect rule: supporter → public view, organization (and pending) → public view, admin → dashboard
+        $defaultUrl = AuthRedirectHelper::defaultRedirectForUser($user);
+        return redirect()->intended($defaultUrl);
     }
 
     /**
