@@ -20,15 +20,16 @@ interface Organization {
 
 interface Props {
   organization: Organization
+  hasYoutubeIntegrated: boolean
 }
 
-export default function CreateLivestream({ organization }: Props) {
+export default function CreateLivestream({ organization, hasYoutubeIntegrated }: Props) {
   const { data, setData, post, processing, errors } = useForm({
     title: "",
     description: "",
     scheduled_at: "",
     youtube_stream_key: "",
-    auto_create_youtube: false,
+    auto_create_youtube: hasYoutubeIntegrated,
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -118,70 +119,91 @@ export default function CreateLivestream({ organization }: Props) {
                 YouTube Integration (Optional)
               </CardTitle>
               <CardDescription>
-                Automatically create YouTube broadcast or manually enter stream key
+                {hasYoutubeIntegrated
+                  ? "Automatically create YouTube broadcast or manually enter stream key"
+                  : "Connect YouTube to auto-create live broadcasts"}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                <div className="flex-1">
-                  <div className="flex items-center gap-2 mb-1">
-                    <CheckCircle2 className="w-4 h-4 text-green-400" />
-                    <Label htmlFor="auto_create_youtube" className="font-semibold cursor-pointer">
-                      Auto-create YouTube Broadcast
-                    </Label>
-                  </div>
-                  <p className="text-sm text-gray-400">
-                    Automatically create a YouTube live broadcast and get the stream key
-                  </p>
-                </div>
-                <Switch
-                  id="auto_create_youtube"
-                  checked={data.auto_create_youtube}
-                  onCheckedChange={(checked) => setData("auto_create_youtube", checked)}
-                />
-              </div>
-
-              {!data.auto_create_youtube && (
+              {hasYoutubeIntegrated ? (
                 <>
-                  <Alert>
-                    <Info className="w-4 h-4" />
-                    <AlertDescription>
-                      <strong>How to get your YouTube Stream Key:</strong>
-                      <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-                        <li>Go to YouTube Studio → Go Live</li>
-                        <li>Create a new stream or use an existing one</li>
-                        <li>Copy the "Stream Key" (starts with "rtmp://" or similar)</li>
-                        <li>Paste it here to enable OBS → YouTube streaming</li>
-                      </ol>
-                    </AlertDescription>
-                  </Alert>
-
-                  <div>
-                    <Label htmlFor="youtube_stream_key">YouTube Stream Key</Label>
-                    <Input
-                      id="youtube_stream_key"
-                      type="password"
-                      value={data.youtube_stream_key}
-                      onChange={(e) => setData("youtube_stream_key", e.target.value)}
-                      placeholder="Paste your YouTube stream key here"
-                      className="mt-1 font-mono text-sm"
+                  <div className="flex items-center justify-between p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1">
+                        <CheckCircle2 className="w-4 h-4 text-green-400" />
+                        <Label htmlFor="auto_create_youtube" className="font-semibold cursor-pointer">
+                          Auto-create YouTube Broadcast
+                        </Label>
+                      </div>
+                      <p className="text-sm text-gray-400">
+                        Automatically create a YouTube live broadcast and get the stream key
+                      </p>
+                    </div>
+                    <Switch
+                      id="auto_create_youtube"
+                      checked={data.auto_create_youtube}
+                      onCheckedChange={(checked) => setData("auto_create_youtube", checked)}
                     />
-                    {errors.youtube_stream_key && (
-                      <p className="text-red-500 text-sm mt-1">{errors.youtube_stream_key}</p>
-                    )}
-                    <p className="text-sm text-gray-400 mt-1">
-                      You can add this later from the host dashboard
-                    </p>
                   </div>
-                </>
-              )}
 
-              {data.auto_create_youtube && (
-                <Alert className="bg-green-500/10 border-green-500/30">
-                  <CheckCircle2 className="w-4 h-4 text-green-400" />
+                  {!data.auto_create_youtube && (
+                    <>
+                      <Alert>
+                        <Info className="w-4 h-4" />
+                        <AlertDescription>
+                          <strong>How to get your YouTube Stream Key:</strong>
+                          <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
+                            <li>Go to YouTube Studio → Go Live</li>
+                            <li>Create a new stream or use an existing one</li>
+                            <li>Copy the "Stream Key" (starts with "rtmp://" or similar)</li>
+                            <li>Paste it here to enable OBS → YouTube streaming</li>
+                          </ol>
+                        </AlertDescription>
+                      </Alert>
+
+                      <div>
+                        <Label htmlFor="youtube_stream_key">YouTube Stream Key</Label>
+                        <Input
+                          id="youtube_stream_key"
+                          type="password"
+                          value={data.youtube_stream_key}
+                          onChange={(e) => setData("youtube_stream_key", e.target.value)}
+                          placeholder="Paste your YouTube stream key here"
+                          className="mt-1 font-mono text-sm"
+                        />
+                        {errors.youtube_stream_key && (
+                          <p className="text-red-500 text-sm mt-1">{errors.youtube_stream_key}</p>
+                        )}
+                        <p className="text-sm text-gray-400 mt-1">
+                          You can add this later from the host dashboard
+                        </p>
+                      </div>
+                    </>
+                  )}
+
+                  {data.auto_create_youtube && (
+                    <Alert className="bg-green-500/10 border-green-500/30">
+                      <CheckCircle2 className="w-4 h-4 text-green-400" />
+                      <AlertDescription>
+                        <strong>Auto-create enabled!</strong> A YouTube live broadcast will be automatically created when you save this livestream.
+                        You can use the YouTube Live tab with VDO.Ninja + OBS to go live.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </>
+              ) : (
+                <Alert className="bg-amber-500/10 border-amber-500/30">
+                  <Info className="w-4 h-4" />
                   <AlertDescription>
-                    <strong>Auto-create enabled!</strong> A YouTube live broadcast will be automatically created when you save this livestream.
-                    Make sure you've connected your YouTube account in <a href="/integrations/youtube" className="text-[#FF1493] hover:underline">Integrations</a>.
+                    <strong>Connect YouTube to enable auto-create.</strong> Link your YouTube account in Integrations to automatically create live broadcasts and get stream keys for this livestream.
+                    <div className="mt-3">
+                      <Link
+                        href="/integrations/youtube"
+                        className="inline-flex items-center gap-2 text-sm font-medium text-[#FF1493] hover:underline"
+                      >
+                        Connect YouTube in Integrations
+                      </Link>
+                    </div>
                   </AlertDescription>
                 </Alert>
               )}

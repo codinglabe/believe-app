@@ -2,7 +2,9 @@
 
 namespace App\Services;
 
+use App\Models\Organization;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -525,6 +527,89 @@ class YouTubeService
     }
 
     /**
+     * Return a valid YouTube OAuth access token for the organization.
+     * Uses existing token if not expired (with 5 min buffer); otherwise refreshes using refresh_token and saves.
+     *
+     * @return string|null Access token or null if missing/expired and refresh failed
+     */
+    public function getValidAccessToken(Organization $organization): ?string
+    {
+        $expiresAt = $organization->youtube_token_expires_at;
+        $bufferMinutes = 5;
+        if ($expiresAt && $expiresAt->copy()->subMinutes($bufferMinutes)->isFuture()) {
+            try {
+                return Crypt::decryptString($organization->youtube_access_token);
+            } catch (\Exception $e) {
+                Log::warning('YouTube access token decrypt failed, will try refresh', ['org_id' => $organization->id]);
+            }
+        }
+
+        return $this->refreshYoutubeToken($organization);
+    }
+
+    /**
+     * Refresh YouTube OAuth access token using the organization's refresh_token and persist to DB.
+     *
+     * @return string|null New access token or null on failure
+     */
+    public function refreshYoutubeToken(Organization $organization): ?string
+    {
+        $refreshToken = $organization->youtube_refresh_token;
+        if (empty($refreshToken)) {
+            Log::warning('YouTube refresh token missing', ['organization_id' => $organization->id]);
+
+            return null;
+        }
+
+        try {
+            $decryptedRefresh = Crypt::decryptString($refreshToken);
+        } catch (\Exception $e) {
+            Log::warning('YouTube refresh token decrypt failed', ['organization_id' => $organization->id]);
+
+            return null;
+        }
+
+        $clientId = config('services.youtube.client_id');
+        $clientSecret = config('services.youtube.client_secret');
+        if (empty($clientId) || empty($clientSecret)) {
+            Log::warning('YouTube OAuth client not configured');
+
+            return null;
+        }
+
+        $response = $this->http()->asForm()->post('https://oauth2.googleapis.com/token', [
+            'client_id' => $clientId,
+            'client_secret' => $clientSecret,
+            'refresh_token' => $decryptedRefresh,
+            'grant_type' => 'refresh_token',
+        ]);
+
+        if (! $response->successful()) {
+            Log::error('YouTube token refresh failed', [
+                'organization_id' => $organization->id,
+                'status' => $response->status(),
+                'body' => $response->body(),
+            ]);
+
+            return null;
+        }
+
+        $data = $response->json();
+        $accessToken = $data['access_token'] ?? null;
+        $expiresIn = (int) ($data['expires_in'] ?? 3600);
+        if (! $accessToken) {
+            return null;
+        }
+
+        $organization->update([
+            'youtube_access_token' => Crypt::encryptString($accessToken),
+            'youtube_token_expires_at' => now()->addSeconds($expiresIn),
+        ]);
+
+        return $accessToken;
+    }
+
+    /**
      * Create a YouTube live broadcast using OAuth token.
      * Requires: youtube.force-ssl scope
      *
@@ -541,14 +626,16 @@ class YouTubeService
         ?\DateTime $scheduledStartTime = null
     ): ?array {
         try {
+            // YouTube API requires scheduledStartTime for every broadcast. Use "now" when starting immediately.
+            $startTime = $scheduledStartTime ?? new \DateTime('now', new \DateTimeZone('UTC'));
+            $scheduledStartTimeIso = $startTime->format('Y-m-d\TH:i:s\Z');
+
             // Step 1: Create the broadcast
             $broadcastData = [
                 'snippet' => [
                     'title' => $title,
                     'description' => $description ?? '',
-                    'scheduledStartTime' => $scheduledStartTime
-                        ? $scheduledStartTime->format('Y-m-d\TH:i:s\Z')
-                        : null,
+                    'scheduledStartTime' => $scheduledStartTimeIso,
                 ],
                 'status' => [
                     'privacyStatus' => 'public', // or 'unlisted', 'private'
@@ -581,14 +668,15 @@ class YouTubeService
                 return null;
             }
 
-            // Step 2: Create the stream
+            // Step 2: Create the stream (API requires cdn.resolution and cdn.frameRate; cdn.format is deprecated)
             $streamData = [
                 'snippet' => [
                     'title' => $title . ' Stream',
                 ],
                 'cdn' => [
-                    'format' => '1080p',
                     'ingestionType' => 'rtmp',
+                    'resolution' => '1080p',
+                    'frameRate' => '30fps',
                 ],
             ];
 
@@ -622,15 +710,16 @@ class YouTubeService
                 return null;
             }
 
-            // Step 3: Bind the stream to the broadcast
+            // Step 3: Bind the stream to the broadcast (id, streamId, part, key are query params; no body)
+            $bindUrl = $this->baseUrl . '/liveBroadcasts/bind?' . http_build_query([
+                'id' => $broadcastId,
+                'streamId' => $streamId,
+                'part' => 'id,snippet,contentDetails,status',
+                'key' => $this->apiKey,
+            ]);
             $bindResponse = $this->http()
                 ->withToken($accessToken)
-                ->post($this->baseUrl . '/liveBroadcasts/bind', [
-                    'id' => $broadcastId,
-                    'streamId' => $streamId,
-                    'part' => 'id,snippet,contentDetails,status',
-                    'key' => $this->apiKey,
-                ]);
+                ->post($bindUrl);
 
             if (!$bindResponse->successful()) {
                 Log::error('YouTube broadcast bind failed', [
@@ -732,6 +821,60 @@ class YouTubeService
     }
 
     /**
+     * Check if the stream bound to this broadcast is active (YouTube is receiving RTMP data).
+     * Transition to "live" only succeeds when stream status is "active".
+     *
+     * @return array{stream_active: bool, stream_status: string|null, life_cycle_status: string|null}
+     */
+    public function getBroadcastStreamStatus(string $accessToken, string $broadcastId): array
+    {
+        $out = ['stream_active' => false, 'stream_status' => null, 'life_cycle_status' => null];
+        try {
+            $br = $this->http()
+                ->withHeaders(['Authorization' => 'Bearer ' . $accessToken])
+                ->get($this->baseUrl . '/liveBroadcasts', [
+                    'id' => $broadcastId,
+                    'part' => 'contentDetails,status',
+                    'key' => $this->apiKey,
+                ]);
+            if (! $br->successful()) {
+                return $out;
+            }
+            $data = $br->json();
+            $items = $data['items'] ?? [];
+            if (empty($items)) {
+                return $out;
+            }
+            $out['life_cycle_status'] = $items[0]['status']['lifeCycleStatus'] ?? null;
+            $streamId = $items[0]['contentDetails']['boundStreamId'] ?? null;
+            if (! $streamId) {
+                return $out;
+            }
+            $sr = $this->http()
+                ->withHeaders(['Authorization' => 'Bearer ' . $accessToken])
+                ->get($this->baseUrl . '/liveStreams', [
+                    'id' => $streamId,
+                    'part' => 'status',
+                    'key' => $this->apiKey,
+                ]);
+            if (! $sr->successful()) {
+                return $out;
+            }
+            $streamData = $sr->json();
+            $streams = $streamData['items'] ?? [];
+            if (empty($streams)) {
+                return $out;
+            }
+            $out['stream_status'] = $streams[0]['status']['streamStatus'] ?? null;
+            $out['stream_active'] = ($out['stream_status'] === 'active');
+            return $out;
+        } catch (\Exception $e) {
+            Log::warning('YouTube broadcast/stream status check failed', ['message' => $e->getMessage()]);
+            return $out;
+        }
+    }
+
+    /**
      * Update broadcast status (transition to live, end, etc.).
      *
      * @param string $accessToken OAuth access token
@@ -742,14 +885,30 @@ class YouTubeService
     public function updateBroadcastStatus(string $accessToken, string $broadcastId, string $broadcastStatus): bool
     {
         try {
+            if (empty($accessToken)) {
+                Log::warning('YouTube transition skipped: empty access token');
+                return false;
+            }
+
+            // YouTube API requires transition params as query string; no request body. Auth via Bearer token.
+            $query = http_build_query([
+                'id' => $broadcastId,
+                'broadcastStatus' => $broadcastStatus,
+                'part' => 'id,snippet,contentDetails,status',
+                'key' => $this->apiKey,
+            ]);
+            $url = $this->baseUrl . '/liveBroadcasts/transition?' . $query;
+
             $response = $this->http()
-                ->withToken($accessToken)
-                ->post($this->baseUrl . '/liveBroadcasts/transition', [
-                    'id' => $broadcastId,
-                    'broadcastStatus' => $broadcastStatus,
-                    'part' => 'id,snippet,contentDetails,status',
-                    'key' => $this->apiKey,
+                ->withHeaders(['Authorization' => 'Bearer ' . $accessToken])
+                ->post($url);
+
+            if (! $response->successful()) {
+                Log::warning('YouTube transition failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
                 ]);
+            }
 
             return $response->successful();
         } catch (\Exception $e) {

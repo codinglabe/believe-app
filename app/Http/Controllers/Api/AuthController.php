@@ -10,6 +10,7 @@ use App\Models\User;
 use App\Services\BridgeService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Validator;
@@ -25,6 +26,30 @@ class AuthController extends Controller
     }
 
     /**
+     * Resolve ISO 3166-1 alpha-2 country code from client IP (e.g. for session display).
+     * Uses a free geo API; fails closed (returns null on error or invalid IP).
+     */
+    private function getCountryCodeFromIp(?string $ip): ?string
+    {
+        if (!$ip || $ip === '127.0.0.1' || $ip === '::1') {
+            return null;
+        }
+        try {
+            $response = Http::timeout(2)->get("https://ip-api.com/json/{$ip}", [
+                'fields' => 'countryCode',
+            ]);
+            if (!$response->successful()) {
+                return null;
+            }
+            $code = $response->json('countryCode');
+            return is_string($code) && strlen($code) === 2 ? strtoupper($code) : null;
+        } catch (\Throwable $e) {
+            Log::debug('GeoIP lookup failed', ['ip' => $ip, 'error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    /**
      * Register a new user
      */
     public function register(Request $request)
@@ -34,6 +59,8 @@ class AuthController extends Controller
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
             'role' => 'sometimes|string|in:user,organization',
+            'device_name' => 'sometimes|string|max:255',
+            'device_country' => 'sometimes|string|size:2',
         ]);
 
         if ($validator->fails()) {
@@ -82,7 +109,15 @@ class AuthController extends Controller
             ]);
         }
 
-        $token = $user->createToken('auth_token')->accessToken;
+        $deviceName = $request->input('device_name', 'Web Device');
+        $tokenResult = $user->createToken($deviceName);
+        $country = $request->filled('device_country')
+            ? strtoupper(substr($request->device_country, 0, 2))
+            : $this->getCountryCodeFromIp($request->ip());
+        if ($country) {
+            $tokenResult->token->forceFill(['device_country' => $country])->save();
+        }
+        $token = $tokenResult->accessToken;
 
         return response()->json([
             'success' => true,
@@ -107,6 +142,8 @@ class AuthController extends Controller
         $validator = Validator::make($request->all(), [
             'email' => 'required|email',
             'password' => 'required|string',
+            'device_name' => 'sometimes|string|max:255',
+            'device_country' => 'sometimes|string|size:2',
         ]);
 
         if ($validator->fails()) {
@@ -126,7 +163,15 @@ class AuthController extends Controller
             ], 401);
         }
 
-        $token = $user->createToken('auth_token')->accessToken;
+        $deviceName = $request->input('device_name', 'Web Device');
+        $tokenResult = $user->createToken($deviceName);
+        $country = $request->filled('device_country')
+            ? strtoupper(substr($request->device_country, 0, 2))
+            : $this->getCountryCodeFromIp($request->ip());
+        if ($country) {
+            $tokenResult->token->forceFill(['device_country' => $country])->save();
+        }
+        $token = $tokenResult->accessToken;
 
         return response()->json([
             'success' => true,
@@ -135,6 +180,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'email_verified_at' => $user->email_verified_at ? $user->email_verified_at->toIso8601String() : null,
             ],
             'access_token' => $token,
             'token_type' => 'Bearer',
@@ -174,6 +220,7 @@ class AuthController extends Controller
                 'id' => $user->id,
                 'name' => $user->name,
                 'email' => $user->email,
+                'image' => $user->image,
                 'balance' => $user->balance ?? 0,
                 'reward_points' => $user->reward_points ?? 0,
                 'believe_points' => $user->believe_points ?? 0,

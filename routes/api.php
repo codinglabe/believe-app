@@ -39,6 +39,13 @@ Route::middleware('auth:api')->group(function () {
         Route::prefix('user')->group(function () {
             Route::get('/profile', [UserController::class, 'getProfile']);
             Route::put('/profile', [UserController::class, 'updateProfile']);
+            Route::post('/profile', [UserController::class, 'updateProfile']); // POST for multipart (profile photo)
+            Route::put('/password', [UserController::class, 'changePassword']);
+            Route::get('/security-prefs', [UserController::class, 'getSecurityPrefs']);
+            Route::put('/security-prefs', [UserController::class, 'updateSecurityPrefs']);
+            Route::get('/sessions', [UserController::class, 'getSessions']);
+            Route::post('/sessions/revoke-others', [UserController::class, 'revokeOtherSessions']);
+            Route::delete('/sessions/{id}', [UserController::class, 'revokeSession']);
             Route::get('/balance', [UserController::class, 'getBalance']);
             Route::get('/points', [UserController::class, 'getPoints']);
             Route::get('/profile/posts', [UserController::class, 'getProfilePosts']);

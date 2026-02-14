@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
+use App\Services\StreamBridgeService;
 use App\Services\YouTubeService;
 
 class LivestreamController extends Controller
@@ -28,12 +29,19 @@ class LivestreamController extends Controller
             abort(404, 'Organization not found');
         }
 
+        // Check YouTube integration directly from DB (relationship may omit token columns)
+        $orgTokens = Organization::where('id', $organization->id)
+            ->first(['youtube_access_token', 'youtube_refresh_token']);
+        $hasYoutubeIntegrated = $orgTokens
+            && (!empty($orgTokens->youtube_access_token) || !empty($orgTokens->youtube_refresh_token));
+
         return Inertia::render('organization/Livestreams/Create', [
             'organization' => [
                 'id' => $organization->id,
                 'name' => $organization->name,
                 'slug' => Str::slug($organization->name),
             ],
+            'hasYoutubeIntegrated' => $hasYoutubeIntegrated,
         ]);
     }
 
@@ -67,13 +75,19 @@ class LivestreamController extends Controller
         // Handle YouTube integration
         $encryptedStreamKey = null;
         $youtubeBroadcastId = null;
+        $settings = null;
         $scheduledAt = $request->scheduled_at ? \Carbon\Carbon::parse($request->scheduled_at) : null;
 
         // If auto-create YouTube broadcast is requested and organization has OAuth token
-        if ($request->boolean('auto_create_youtube') && $organization->youtube_access_token) {
+        if ($request->boolean('auto_create_youtube') && ($organization->youtube_access_token || $organization->youtube_refresh_token)) {
             try {
-                $accessToken = Crypt::decryptString($organization->youtube_access_token);
                 $youtubeService = app(YouTubeService::class);
+                $accessToken = $youtubeService->getValidAccessToken($organization);
+                if (! $accessToken) {
+                    return redirect()->back()->withErrors([
+                        'auto_create_youtube' => 'YouTube token expired or invalid. Please reconnect YouTube in Integrations.',
+                    ])->withInput();
+                }
 
                 $broadcastData = $youtubeService->createLiveBroadcast(
                     $accessToken,
@@ -85,6 +99,11 @@ class LivestreamController extends Controller
                 if ($broadcastData) {
                     $encryptedStreamKey = Crypt::encryptString($broadcastData['stream_key']);
                     $youtubeBroadcastId = $broadcastData['broadcast_id'];
+                    $vdoRoomId = $roomName; // Use room name as VDO.Ninja room for push/view links
+                    $settings = [
+                        'vdo_room_id' => $vdoRoomId,
+                        'rtmp_url' => $broadcastData['rtmp_url'] ?? null,
+                    ];
                 } else {
                     Log::warning('Failed to create YouTube broadcast for livestream', [
                         'organization_id' => $organization->id,
@@ -111,6 +130,7 @@ class LivestreamController extends Controller
             'title' => $request->title,
             'description' => $request->description,
             'scheduled_at' => $scheduledAt,
+            'settings' => $settings ?? null,
         ]);
 
         return redirect()->route('organization.livestreams.show', $livestream->id)
@@ -137,6 +157,21 @@ class LivestreamController extends Controller
         $participantUrl = $livestream->getParticipantUrl();
         $password = $livestream->getDecryptedPassword();
 
+        // VDO.Ninja + YouTube Live (OBS) flow: push/view links and stream key for dashboard
+        $settings = $livestream->settings ?? [];
+        $vdoRoomId = $settings['vdo_room_id'] ?? $livestream->room_name;
+        $rtmpUrl = $settings['rtmp_url'] ?? null;
+        $youtubeGoLiveEnabled = !empty($livestream->youtube_broadcast_id) && !empty($livestream->youtube_stream_key);
+        $passwordParam = !empty($password) ? '&password=' . rawurlencode($password) : '';
+        $pushLink = $youtubeGoLiveEnabled
+            ? "https://vdo.ninja/?push={$vdoRoomId}&cleanoutput{$passwordParam}"
+            : null;
+        $viewLink = $youtubeGoLiveEnabled
+            ? "https://vdo.ninja/?view={$vdoRoomId}&cleanoutput{$passwordParam}"
+            : null;
+        $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
+        $mediamtxEnabled = !empty(config('services.mediamtx.publish_url'));
+
         return Inertia::render('organization/Livestreams/Show', [
             'livestream' => [
                 'id' => $livestream->id,
@@ -152,7 +187,13 @@ class LivestreamController extends Controller
                 'endedAt' => $livestream->ended_at?->toIso8601String(),
                 'hasStreamKey' => !empty($livestream->youtube_stream_key),
                 'youtubeBroadcastId' => $livestream->youtube_broadcast_id,
+                'youtubeGoLiveEnabled' => $youtubeGoLiveEnabled,
+                'pushLink' => $pushLink,
+                'viewLink' => $viewLink,
+                'streamKeyDisplay' => $streamKeyDisplay,
+                'rtmpUrl' => $rtmpUrl,
             ],
+            'mediamtxEnabled' => $mediamtxEnabled,
             'organization' => [
                 'id' => $organization->id,
                 'name' => $organization->name,
@@ -222,6 +263,117 @@ class LivestreamController extends Controller
         $livestream->update($updates);
 
         return back()->with('success', 'Livestream status updated successfully!');
+    }
+
+    /**
+     * Transition YouTube broadcast to "live" (make stream public).
+     * Host must have started OBS streaming first so YouTube receives the RTMP signal.
+     */
+    public function goLive(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (!$organization) {
+            return redirect()->back()->withErrors(['go_live' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        if (! $livestream->youtube_broadcast_id) {
+            return redirect()->back()->withErrors(['go_live' => 'YouTube broadcast not configured']);
+        }
+
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+        if (! $accessToken) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'YouTube token expired or invalid. Please reconnect YouTube in Integrations.',
+            ]);
+        }
+
+        try {
+            // Transition to "live" only works when YouTube is already receiving the stream (stream status = active).
+            $status = $youtubeService->getBroadcastStreamStatus($accessToken, $livestream->youtube_broadcast_id);
+            if (! $status['stream_active']) {
+                $hint = $status['stream_status'] === 'inactive'
+                    ? 'Start OBS and start streaming to YouTube (use the RTMP URL and stream key from this page). Wait until the stream is receiving data, then click Go Live again.'
+                    : 'Start streaming from OBS to YouTube first. Wait until the stream shows as receiving data, then click Go Live again.';
+                return redirect()->back()->withErrors(['go_live' => $hint]);
+            }
+
+            $ok = $youtubeService->updateBroadcastStatus(
+                $accessToken,
+                $livestream->youtube_broadcast_id,
+                'live'
+            );
+
+            if (! $ok) {
+                return redirect()->back()->withErrors([
+                    'go_live' => 'YouTube could not go live. Please try again in a moment.',
+                ]);
+            }
+
+            $livestream->update([
+                'status' => 'live',
+                'started_at' => $livestream->started_at ?? now(),
+            ]);
+
+            return redirect()->back()->with('success', 'You are now live on YouTube.');
+        } catch (\Exception $e) {
+            Log::error('Go live failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
+            return redirect()->back()->withErrors(['go_live' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * Go live from browser only (no OBS): start server bridge, transition YouTube, return publish URL.
+     * Requires MediaMTX + FFmpeg on server and MEDIAMTX_PUBLISH_URL set.
+     */
+    public function goLiveBrowser(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (!$organization) {
+            return redirect()->back()->withErrors(['go_live' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        if (! $livestream->youtube_broadcast_id) {
+            return redirect()->back()->withErrors(['go_live' => 'YouTube broadcast not configured']);
+        }
+
+        $bridge = app(StreamBridgeService::class)->startBridge($livestream);
+        if (! $bridge) {
+            return redirect()->back()->withErrors([
+                'go_live' => 'Server stream bridge is not configured. Set MEDIAMTX_PUBLISH_URL and run MediaMTX + FFmpeg, or use OBS.',
+            ]);
+        }
+
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+        if ($accessToken) {
+            try {
+                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'live');
+            } catch (\Exception $e) {
+                Log::warning('Go live browser: YouTube transition failed', ['error' => $e->getMessage()]);
+            }
+        } else {
+            Log::warning('Go live browser: YouTube token invalid, stream not transitioned on YouTube', ['livestream_id' => $id]);
+        }
+
+        $livestream->update([
+            'status' => 'live',
+            'started_at' => $livestream->started_at ?? now(),
+        ]);
+
+        return redirect()->back()
+            ->with('success', 'A new window will open—allow camera/screen there to start streaming.')
+            ->with('browser_publish_url', $bridge['publish_url']);
     }
 
     /**

@@ -872,6 +872,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/create', [\App\Http\Controllers\Organization\LivestreamController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
         Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
+        Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
+        Route::post('/{id}/go-live-browser', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
         Route::patch('/{id}/status', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStatus'])->name('update-status');
         Route::patch('/{id}/stream-key', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
         Route::delete('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'destroy'])->name('destroy');

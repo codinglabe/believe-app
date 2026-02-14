@@ -109,6 +109,13 @@ return [
         // No need to set PHAZE_WEBHOOK_API_KEY in .env anymore
     ],
 
+    'mediamtx' => [
+        // Public URL where users open the browser publish page (e.g. https://stream.yourapp.com). Required for "Go Live from browser" (no OBS).
+        'publish_url' => env('MEDIAMTX_PUBLISH_URL', ''),
+        // Internal RTMP URL for FFmpeg to pull from (e.g. rtmp://127.0.0.1:1935). Same server as MediaMTX.
+        'rtmp_internal' => env('MEDIAMTX_RTMP_INTERNAL', 'rtmp://127.0.0.1:1935'),
+    ],
+
     'irs' => [
         'download_timeout' => (int) env('IRS_DOWNLOAD_TIMEOUT', 900), // seconds per ZIP (15 min default)
         'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),

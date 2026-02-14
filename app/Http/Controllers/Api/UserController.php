@@ -7,8 +7,12 @@ use App\Models\Post;
 use App\Models\Organization;
 use App\Models\User;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rules\Password;
 
 class UserController extends Controller
 {
@@ -61,17 +65,28 @@ class UserController extends Controller
 
         $updateData = $request->only(['name', 'contact_number', 'dob']);
 
-        // Handle image upload
+        // Handle image upload: store new image first, then delete old one from storage
         if ($request->hasFile('image')) {
-            // Delete old image if exists
-            if ($user->image) {
-                \Illuminate\Support\Facades\Storage::disk('public')->delete($user->image);
-            }
-
-            // Store new image
             $filename = 'profile-' . $user->id . '-' . time() . '.' . $request->file('image')->extension();
             $path = $request->file('image')->storeAs('profile-photos', $filename, 'public');
             $updateData['image'] = $path;
+
+            // Delete existing image from storage (after new one is stored so we never leave user without an image)
+            $oldImage = $user->image;
+            if ($oldImage) {
+                try {
+                    if (Storage::disk('public')->exists($oldImage)) {
+                        Storage::disk('public')->delete($oldImage);
+                    }
+                } catch (\Throwable $e) {
+                    // Log but don't fail the request; new image is already stored
+                    Log::warning('Failed to delete old profile image from storage', [
+                        'user_id' => $user->id,
+                        'path' => $oldImage,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
         }
 
         $user->update($updateData);
@@ -87,6 +102,170 @@ class UserController extends Controller
                 'dob' => $user->dob,
                 'image' => $user->image,
             ]
+        ]);
+    }
+
+    /**
+     * Change user password
+     */
+    public function changePassword(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'current_password' => ['required', 'string', function ($attr, $value, $fail) use ($request) {
+                if (!Hash::check($value, $request->user()->password)) {
+                    $fail('The current password is incorrect.');
+                }
+            }],
+            'password' => ['required', 'string', 'confirmed', Password::defaults()],
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $request->user()->update([
+            'password' => Hash::make($request->password),
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Password updated successfully.',
+        ]);
+    }
+
+    /**
+     * Get security preferences (2FA, biometric)
+     */
+    public function getSecurityPrefs(Request $request)
+    {
+        $user = $request->user();
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'two_fa_enabled' => (bool) ($user->two_fa_enabled ?? false),
+                'biometric_enabled' => (bool) ($user->biometric_enabled ?? false),
+            ],
+        ]);
+    }
+
+    /**
+     * Update security preferences
+     */
+    public function updateSecurityPrefs(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'two_fa_enabled' => 'sometimes|boolean',
+            'biometric_enabled' => 'sometimes|boolean',
+        ]);
+        if ($validator->fails()) {
+            return response()->json(['success' => false, 'message' => 'Validation error', 'errors' => $validator->errors()], 422);
+        }
+        $user = $request->user();
+        if ($request->has('two_fa_enabled')) {
+            $user->two_fa_enabled = $request->boolean('two_fa_enabled');
+        }
+        if ($request->has('biometric_enabled')) {
+            $user->biometric_enabled = $request->boolean('biometric_enabled');
+        }
+        $user->save();
+        return response()->json([
+            'success' => true,
+            'message' => 'Preferences updated.',
+            'data' => [
+                'two_fa_enabled' => (bool) $user->two_fa_enabled,
+                'biometric_enabled' => (bool) $user->biometric_enabled,
+            ],
+        ]);
+    }
+
+    /**
+     * List active sessions (tokens) for the user
+     */
+    public function getSessions(Request $request)
+    {
+        $user = $request->user();
+        $currentTokenId = null;
+        try {
+            $token = $request->user()->token();
+            if ($token) {
+                $currentTokenId = $token->id;
+            }
+        } catch (\Throwable $e) {
+            // token() may not exist on user in some setups
+        }
+        $tokens = $user->tokens()
+            ->where('revoked', false)
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->orderByDesc('created_at')
+            ->get()
+            ->map(function ($token) use ($currentTokenId) {
+                $name = $token->name && $token->name !== 'auth_token' ? $token->name : 'Web Device';
+                return [
+                    'id' => $token->id,
+                    'device_name' => $name,
+                    'name' => $name,
+                    'device_country' => $token->device_country ?? null,
+                    'created_at' => $token->created_at->toIso8601String(),
+                    'is_current' => $token->id === $currentTokenId,
+                ];
+            });
+        return response()->json([
+            'success' => true,
+            'data' => ['sessions' => $tokens],
+        ]);
+    }
+
+    /**
+     * Revoke all other sessions (keep current token)
+     */
+    public function revokeOtherSessions(Request $request)
+    {
+        $user = $request->user();
+        $currentId = null;
+        try {
+            $token = $request->user()->token();
+            if ($token) {
+                $currentId = $token->id;
+            }
+        } catch (\Throwable $e) {
+        }
+        $revoked = 0;
+        $user->tokens()->where('revoked', false)->each(function ($token) use ($currentId, &$revoked) {
+            if ($token->id !== $currentId) {
+                $token->revoke();
+                $revoked++;
+            }
+        });
+        return response()->json([
+            'success' => true,
+            'message' => $revoked > 0 ? "Signed out {$revoked} other device(s)." : 'No other sessions to sign out.',
+            'data' => ['revoked' => $revoked],
+        ]);
+    }
+
+    /**
+     * Revoke a single session (token) by id
+     */
+    public function revokeSession(Request $request, string $id)
+    {
+        $user = $request->user();
+        $token = $user->tokens()->where('id', $id)->where('revoked', false)->first();
+        if (!$token) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Session not found or already signed out.',
+            ], 404);
+        }
+        $token->revoke();
+        return response()->json([
+            'success' => true,
+            'message' => 'Session signed out.',
         ]);
     }
 
