@@ -929,12 +929,13 @@ class YouTubeService
     public function deleteBroadcast(string $accessToken, string $broadcastId): bool
     {
         try {
+            $url = $this->baseUrl . '/liveBroadcasts?' . http_build_query([
+                'id' => $broadcastId,
+                'key' => $this->apiKey,
+            ]);
             $response = $this->http()
                 ->withToken($accessToken)
-                ->delete($this->baseUrl . '/liveBroadcasts', [
-                    'id' => $broadcastId,
-                    'key' => $this->apiKey,
-                ]);
+                ->delete($url);
 
             return $response->successful();
         } catch (\Exception $e) {

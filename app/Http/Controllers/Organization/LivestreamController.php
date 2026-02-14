@@ -158,16 +158,17 @@ class LivestreamController extends Controller
         $password = $livestream->getDecryptedPassword();
 
         // VDO.Ninja + YouTube Live (OBS) flow: push/view links and stream key for dashboard
+        // Use VDO-safe room name (alphanumeric + underscore) so "Only AlphaNumeric characters" warning is avoided
+        $vdoRoom = $livestream->getVdoRoomName();
         $settings = $livestream->settings ?? [];
-        $vdoRoomId = $settings['vdo_room_id'] ?? $livestream->room_name;
         $rtmpUrl = $settings['rtmp_url'] ?? null;
         $youtubeGoLiveEnabled = !empty($livestream->youtube_broadcast_id) && !empty($livestream->youtube_stream_key);
         $passwordParam = !empty($password) ? '&password=' . rawurlencode($password) : '';
         $pushLink = $youtubeGoLiveEnabled
-            ? "https://vdo.ninja/?push={$vdoRoomId}&cleanoutput{$passwordParam}"
+            ? "https://vdo.ninja/?push={$vdoRoom}&cleanoutput{$passwordParam}"
             : null;
         $viewLink = $youtubeGoLiveEnabled
-            ? "https://vdo.ninja/?view={$vdoRoomId}&cleanoutput{$passwordParam}"
+            ? "https://vdo.ninja/?view={$vdoRoom}&cleanoutput{$passwordParam}"
             : null;
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
         $mediamtxEnabled = !empty(config('services.mediamtx.publish_url'));
@@ -377,6 +378,89 @@ class LivestreamController extends Controller
     }
 
     /**
+     * Go live via "Go Live with OBS (auto)": update DB to live and started_at, then try YouTube transition (best effort).
+     * This ensures the database status is always updated when the user uses the auto OBS flow.
+     */
+    public function goLiveOBSAuto(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return redirect()->back()->withErrors(['go_live' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        // Always update our database to "live" when user clicks Go Live with OBS (auto)
+        $livestream->update([
+            'status' => 'live',
+            'started_at' => $livestream->started_at ?? now(),
+        ]);
+
+        // Try to transition YouTube to "live" (best effort; may fail if stream not active yet)
+        if ($livestream->youtube_broadcast_id) {
+            $youtubeService = app(YouTubeService::class);
+            $accessToken = $youtubeService->getValidAccessToken($organization);
+            if ($accessToken) {
+                try {
+                    $status = $youtubeService->getBroadcastStreamStatus($accessToken, $livestream->youtube_broadcast_id);
+                    if ($status['stream_active']) {
+                        $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'live');
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Go live OBS auto: YouTube transition failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        return redirect()->back()->with('success', 'You are now live. If YouTube did not go public yet, wait a few seconds for the stream to connect and click Go Live again if needed.');
+    }
+
+    /**
+     * End stream: transition YouTube broadcast to "complete", update DB to ended and ended_at.
+     * Frontend should also call stopOBSStream() to stop OBS.
+     */
+    public function endStream(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return redirect()->back()->withErrors(['error' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        if ($livestream->status !== 'live') {
+            return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
+        }
+
+        // Transition YouTube broadcast to "complete" (end the stream on YouTube)
+        if (! empty($livestream->youtube_broadcast_id)) {
+            $youtubeService = app(YouTubeService::class);
+            $accessToken = $youtubeService->getValidAccessToken($organization);
+            if ($accessToken) {
+                try {
+                    $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+                } catch (\Exception $e) {
+                    Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
+                    // Still update our DB
+                }
+            }
+        }
+
+        $livestream->update([
+            'status' => 'ended',
+            'ended_at' => $livestream->ended_at ?? now(),
+        ]);
+
+        return redirect()->back()->with('success', 'Stream ended. YouTube and OBS have been stopped.');
+    }
+
+    /**
      * Update YouTube stream key.
      */
     public function updateStreamKey(Request $request, $id)
@@ -459,6 +543,24 @@ class LivestreamController extends Controller
         // Only allow deletion if stream is not live
         if ($livestream->status === 'live') {
             return back()->withErrors(['error' => 'Cannot delete a live stream. Please end it first.']);
+        }
+
+        // Delete the YouTube broadcast if this livestream had one
+        if (! empty($livestream->youtube_broadcast_id)) {
+            try {
+                $youtubeService = app(YouTubeService::class);
+                $accessToken = $youtubeService->getValidAccessToken($organization);
+                if ($accessToken) {
+                    $youtubeService->deleteBroadcast($accessToken, $livestream->youtube_broadcast_id);
+                }
+            } catch (\Exception $e) {
+                Log::warning('YouTube broadcast deletion failed during livestream delete', [
+                    'livestream_id' => $id,
+                    'broadcast_id' => $livestream->youtube_broadcast_id,
+                    'error' => $e->getMessage(),
+                ]);
+                // Continue to delete the livestream locally
+            }
         }
 
         $livestream->delete();

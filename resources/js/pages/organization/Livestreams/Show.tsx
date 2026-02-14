@@ -23,9 +23,6 @@ import {
   Info,
   CheckCircle2,
   AlertCircle,
-  Monitor,
-  Code,
-  FileText,
   ArrowLeft,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
@@ -153,13 +150,13 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
         streamKey: livestream.streamKeyDisplay,
         viewUrl: livestream.viewLink,
       })
-      router.post(`/livestreams/${livestream.id}/go-live`, {}, { preserveScroll: true })
+      router.post(`/livestreams/${livestream.id}/go-live-obs-auto`, {}, { preserveScroll: true })
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg && typeof msg === "string" && (msg.includes("authentication") || msg.includes("missing"))) {
-        setObsError("OBS WebSocket requires a password. Enter it in the OBS Setup tab and try again.")
+        setObsError("OBS is asking for a password. In OBS go to Tools → WebSocket Server Settings and uncheck \"Enable Authentication\", then try again. No password needed.")
       } else {
-        setObsError(msg || "Could not connect to OBS. Is OBS open with WebSocket server enabled?")
+        setObsError(msg || "Could not connect to OBS. Is OBS open? In OBS: Tools → WebSocket Server Settings → enable the server and uncheck \"Enable Authentication\".")
       }
     } finally {
       setIsGoingLiveOBS(false)
@@ -167,39 +164,48 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   }
 
   const handleEndStream = () => {
+    setIsUpdatingStatus(true)
     stopOBSStream(true).catch(() => {})
-    updateStatus("ended")
+    router.post(`/livestreams/${livestream.id}/end-stream`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsUpdatingStatus(false),
+    })
   }
 
   const getStatusBadge = () => {
     const statusConfig = {
-      draft: { label: "Draft", className: "bg-gray-500/20 text-gray-400" },
-      scheduled: { label: "Scheduled", className: "bg-blue-500/20 text-blue-400" },
-      live: { label: "Live", className: "bg-red-500/20 text-red-400 animate-pulse" },
-      ended: { label: "Ended", className: "bg-gray-500/20 text-gray-400" },
-      cancelled: { label: "Cancelled", className: "bg-red-500/20 text-red-400" },
+      draft: { label: "Draft", className: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30" },
+      scheduled: { label: "Scheduled", className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
+      live: { label: "Live", className: "bg-red-100 text-red-600 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 animate-pulse" },
+      ended: { label: "Ended", className: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30" },
+      cancelled: { label: "Cancelled", className: "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
     }
     const config = statusConfig[livestream.status] || statusConfig.draft
-    return <Badge className={config.className}>{config.label}</Badge>
+    return <Badge variant="outline" className={config.className}>{config.label}</Badge>
   }
 
   return (
     <AppLayout>
       <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
-      <div className="container mx-auto py-8 px-4 max-w-6xl">
-        <Link href="/livestreams" className="inline-flex items-center text-gray-400 hover:text-white mb-4">
-          <ArrowLeft className="w-4 h-4 mr-2" />
-          Back to Livestreams
-        </Link>
-        <div className="mb-8 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold mb-2">
-              {livestream.title || "Untitled Livestream"}
-            </h1>
-            <p className="text-gray-400">{organization.name}</p>
+      <div className="w-full px-4 py-8 md:px-6 lg:px-8">
+        <header className="mb-6 flex flex-col gap-4 border-b border-border pb-6">
+          <Link
+            href="/livestreams"
+            className="inline-flex w-fit items-center text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Livestreams
+          </Link>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
+                {livestream.title || "Untitled Livestream"}
+              </h1>
+              <p className="mt-1 text-muted-foreground">{organization.name}</p>
+            </div>
+            {getStatusBadge()}
           </div>
-          {getStatusBadge()}
-        </div>
+        </header>
 
         <Tabs defaultValue={livestream.youtubeGoLiveEnabled ? "youtube-live" : "dashboard"} className="space-y-6">
           <TabsList>
@@ -207,37 +213,32 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
             {livestream.youtubeGoLiveEnabled && (
               <TabsTrigger value="youtube-live">YouTube Live</TabsTrigger>
             )}
-            <TabsTrigger value="obs">OBS Setup</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
           </TabsList>
 
           <TabsContent value="dashboard" className="space-y-6">
             {livestream.youtubeGoLiveEnabled && (
-              <Card className="bg-blue-500/5 border-blue-500/20">
+              <Card className="border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/5">
                 <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <Info className="w-4 h-4" />
-                    How to go live (do this once, then one-click)
+                  <CardTitle className="flex items-center gap-2 text-base text-foreground">
+                    <Info className="h-4 w-4" />
+                    Go live in one click (after one-time OBS setup)
                   </CardTitle>
-                  <CardDescription>Follow these steps in order. OBS setup is one-time.</CardDescription>
+                  <CardDescription>Set up OBS once with WebSocket and no password; then just click &quot;Go Live with OBS (auto)&quot; — the app configures OBS and starts the stream.</CardDescription>
                 </CardHeader>
-                <CardContent className="space-y-3 text-sm text-gray-300">
-                  <p className="font-medium text-gray-200">1. Install OBS on your computer</p>
-                  <p className="pl-4 text-gray-400">Download from obsproject.com and install. Use the same computer where you open this app.</p>
-                  <p className="font-medium text-gray-200">2. Turn on OBS WebSocket (one-time)</p>
-                  <ul className="pl-6 list-disc space-y-1 text-gray-400">
-                    <li>Open OBS → top menu <strong className="text-gray-300">Tools</strong> → <strong className="text-gray-300">WebSocket Server Settings</strong></li>
-                    <li>Enable the WebSocket server</li>
-                    <li>Leave port as <strong className="text-gray-300">4455</strong> (or set it in the OBS tab below if you change it)</li>
-                    <li>Click OK and keep OBS open (you can minimize it)</li>
-                  </ul>
-                  <p className="font-medium text-gray-200">3. When you want to go live</p>
-                  <ul className="pl-6 list-disc space-y-1 text-gray-400">
-                    <li>Open OBS on your computer</li>
-                    <li>Open this livestream page in your browser (same computer)</li>
-                    <li><strong className="text-gray-200">So the stream shows video:</strong> open <strong className="text-gray-300">Director Mode</strong> or the <strong className="text-gray-300">Push (Host)</strong> link and allow camera — then the feed appears in OBS</li>
-                    <li>Click <strong className="text-red-400">Go Live with OBS (auto)</strong> — the app adds <strong className="text-gray-300">&quot;My Screen&quot;</strong> (your meeting/desktop) so video and sound both go to the stream</li>
-                    <li>Click <strong className="text-gray-300">End Stream</strong> when you are done</li>
+                <CardContent className="space-y-3 text-sm text-muted-foreground">
+                  <p className="font-medium text-foreground">One-time setup (do once)</p>
+                  <ol className="list-decimal space-y-2 pl-6">
+                    <li>Install OBS from obsproject.com on the same computer where you open this app.</li>
+                    <li>In OBS: <strong className="text-foreground">Tools</strong> → <strong className="text-foreground">WebSocket Server Settings</strong> → enable the server, leave port <strong className="text-foreground">4455</strong>, and <strong className="text-foreground">uncheck &quot;Enable Authentication&quot;</strong> so you never need a password. Click OK.</li>
+                  </ol>
+                  <p className="font-medium text-foreground">Every time you go live</p>
+                  <ul className="list-disc space-y-1 pl-6">
+                    <li>Open OBS (you can minimize it) and this livestream page on the same computer.</li>
+                    <li>For video in the stream: open <strong className="text-foreground">Director Mode</strong> or the <strong className="text-foreground">Push (Host)</strong> link and allow camera.</li>
+                    <li>Click <strong className="text-red-600 dark:text-red-400">Go Live with OBS (auto)</strong>. The app will set up the scene, add your screen, and start streaming — no other steps.</li>
+                    <li><strong className="text-foreground">Monitor:</strong> If the wrong screen is captured, in OBS double-click the <strong className="text-foreground">&quot;My Screen&quot;</strong> source → <strong className="text-foreground">Display</strong> dropdown → select the monitor you want (e.g. the one that says &quot;Primary Monitor&quot;).</li>
+                    <li>Click <strong className="text-foreground">End Stream</strong> when done.</li>
                   </ul>
                 </CardContent>
               </Card>
@@ -319,118 +320,122 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
               </CardContent>
             </Card>
 
-            {/* Director Link */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Video className="w-5 h-5" />
-                  Director Link (For You)
-                </CardTitle>
-                <CardDescription>
-                  Use this link to control the stream and appear on screen
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    value={livestream.directorUrl}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(livestream.directorUrl, "director")}
-                  >
-                    <Copy className={`w-4 h-4 ${copied === "director" ? "text-green-400" : ""}`} />
-                  </Button>
-                </div>
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    Click "Enter the room's Control Center in the director's role" when the page opens.
-                    This allows you to control the stream and appear on screen with guests.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {/* Guest Link */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="w-5 h-5" />
-                  Guest Join Link
-                </CardTitle>
-                <CardDescription>
-                  Share this link with your guests - no accounts needed!
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="flex gap-2">
-                  <Input
-                    value={livestream.participantUrl}
-                    readOnly
-                    className="font-mono text-sm"
-                  />
-                  <Button
-                    variant="outline"
-                    size="icon"
-                    onClick={() => copyToClipboard(livestream.participantUrl, "participant")}
-                  >
-                    <Copy className={`w-4 h-4 ${copied === "participant" ? "text-green-400" : ""}`} />
-                  </Button>
-                </div>
-                <p className="text-sm text-gray-400">
-                  Or use the public join page:{" "}
-                  <a
-                    href={`/livestreams/join/${livestream.roomName}`}
-                    target="_blank"
-                    className="text-[#FF1493] hover:underline"
-                  >
-                    /livestreams/join/{livestream.roomName}
-                  </a>
-                </p>
-              </CardContent>
-            </Card>
-
-            {/* Room Details */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Room Details</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Room Name</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input value={livestream.roomName} readOnly className="font-mono" />
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Director Link */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Video className="h-5 w-5" />
+                    Director Link (For You)
+                  </CardTitle>
+                  <CardDescription>
+                    Use this link to control the stream and appear on screen
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      value={livestream.directorUrl}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => copyToClipboard(livestream.roomName, "room")}
+                      onClick={() => copyToClipboard(livestream.directorUrl, "director")}
                     >
-                      <Copy className={`w-4 h-4 ${copied === "room" ? "text-green-400" : ""}`} />
+                      <Copy className={`h-4 w-4 ${copied === "director" ? "text-green-600 dark:text-green-400" : ""}`} />
                     </Button>
                   </div>
-                </div>
-                <div>
-                  <Label>Room Password</Label>
-                  <div className="flex gap-2 mt-1">
-                    <Input value={livestream.roomPassword} readOnly className="font-mono" />
+                  <Alert>
+                    <Info className="h-4 w-4" />
+                    <AlertDescription>
+                      Click &quot;Enter the room&apos;s Control Center in the director&apos;s role&quot; when the page opens.
+                      This allows you to control the stream and appear on screen with guests.
+                    </AlertDescription>
+                  </Alert>
+                </CardContent>
+              </Card>
+
+              {/* Guest Link */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Guest Join Link
+                  </CardTitle>
+                  <CardDescription>
+                    Share this link with your guests - no accounts needed!
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex gap-2">
+                    <Input
+                      value={livestream.participantUrl}
+                      readOnly
+                      className="font-mono text-sm"
+                    />
                     <Button
                       variant="outline"
                       size="icon"
-                      onClick={() => copyToClipboard(livestream.roomPassword, "password")}
+                      onClick={() => copyToClipboard(livestream.participantUrl, "participant")}
                     >
-                      <Copy className={`w-4 h-4 ${copied === "password" ? "text-green-400" : ""}`} />
+                      <Copy className={`h-4 w-4 ${copied === "participant" ? "text-green-600 dark:text-green-400" : ""}`} />
                     </Button>
                   </div>
-                </div>
-              </CardContent>
-            </Card>
+                  <p className="text-sm text-muted-foreground">
+                    Or use the public join page:{" "}
+                    <a
+                      href={`/livestreams/join/${livestream.roomName}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-primary hover:underline"
+                    >
+                      /livestreams/join/{livestream.roomName}
+                    </a>
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
 
-            {/* YouTube Status */}
-            <Card>
+            <div className="grid gap-6 lg:grid-cols-2">
+              {/* Room Details */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Room Details</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label>Room Name</Label>
+                    <div className="mt-1 flex gap-2">
+                      <Input value={livestream.roomName} readOnly className="font-mono" />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(livestream.roomName, "room")}
+                      >
+                        <Copy className={`h-4 w-4 ${copied === "room" ? "text-green-600 dark:text-green-400" : ""}`} />
+                      </Button>
+                    </div>
+                  </div>
+                  <div>
+                    <Label>Room Password</Label>
+                    <div className="mt-1 flex gap-2">
+                      <Input value={livestream.roomPassword} readOnly className="font-mono" />
+                      <Button
+                        variant="outline"
+                        size="icon"
+                        onClick={() => copyToClipboard(livestream.roomPassword, "password")}
+                      >
+                        <Copy className={`h-4 w-4 ${copied === "password" ? "text-green-600 dark:text-green-400" : ""}`} />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* YouTube Status */}
+              <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <Youtube className="w-5 h-5" />
@@ -439,7 +444,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
               </CardHeader>
               <CardContent>
                 {livestream.hasStreamKey ? (
-                  <div className="flex items-center gap-2 text-green-400">
+                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
                     <CheckCircle2 className="w-5 h-5" />
                     <span>Stream key configured - Ready to broadcast</span>
                   </div>
@@ -452,12 +457,12 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                       </AlertDescription>
                     </Alert>
                     {organization.youtubeChannelUrl && (
-                      <p className="text-sm text-gray-400">
+                      <p className="text-sm text-muted-foreground">
                         Your YouTube Channel:{" "}
                         <a
                           href={organization.youtubeChannelUrl}
                           target="_blank"
-                          className="text-[#FF1493] hover:underline"
+                          className="text-primary hover:underline"
                         >
                           {organization.youtubeChannelUrl}
                         </a>
@@ -466,16 +471,17 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   </div>
                 )}
               </CardContent>
-            </Card>
+              </Card>
+            </div>
           </TabsContent>
 
-          {livestream.youtubeGoLiveEnabled && livestream.pushLink && livestream.viewLink && livestream.streamKeyDisplay && (
+          {livestream.youtubeGoLiveEnabled && livestream.directorUrl && livestream.viewLink && livestream.streamKeyDisplay && (
             <TabsContent value="youtube-live" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-12rem)] min-h-[500px]">
-                <div className="lg:col-span-8 bg-black border border-gray-700 rounded-lg overflow-hidden relative">
+                <div className="lg:col-span-8 bg-black border border-border rounded-lg overflow-hidden relative">
                   <iframe
-                    src={livestream.pushLink}
-                    title="VDO.Ninja Push (Host)"
+                    src={livestream.directorUrl}
+                    title="VDO.Ninja Director (Meeting Preview)"
                     className="w-full h-full"
                     allow="camera; microphone; display-capture; autoplay"
                   />
@@ -486,34 +492,34 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   )}
                 </div>
                 <div className="lg:col-span-4 flex flex-col gap-6">
-                  <Card className={youtubeStep === 1 ? "border-yellow-500 bg-yellow-500/5" : ""}>
+                  <Card className={youtubeStep === 1 ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-500/5 dark:border-yellow-500" : ""}>
                     <CardHeader>
                       <CardTitle className="text-base">Step 1: Setup OBS</CardTitle>
                       <CardDescription>Open OBS on your computer.</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-3">
                       <div>
-                        <Label className="text-xs text-gray-400">OBS Browser Source URL</Label>
+                        <Label className="text-xs text-muted-foreground">OBS Browser Source URL</Label>
                         <div className="flex gap-2 mt-1">
                           <Input value={livestream.viewLink} readOnly className="font-mono text-xs bg-muted" />
                           <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.viewLink!, "view")}>
-                            <Copy className={`w-4 h-4 ${copied === "view" ? "text-green-400" : ""}`} />
+                            <Copy className={`w-4 h-4 ${copied === "view" ? "text-green-600 dark:text-green-400" : ""}`} />
                           </Button>
                         </div>
                       </div>
                       <div>
-                        <Label className="text-xs text-gray-400">OBS Stream Key</Label>
+                        <Label className="text-xs text-muted-foreground">OBS Stream Key</Label>
                         <div className="flex gap-2 mt-1">
                           <Input value={livestream.streamKeyDisplay!} readOnly type="password" className="font-mono text-xs bg-muted" />
                           <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.streamKeyDisplay!, "streamkey")}>
-                            <Copy className={`w-4 h-4 ${copied === "streamkey" ? "text-green-400" : ""}`} />
+                            <Copy className={`w-4 h-4 ${copied === "streamkey" ? "text-green-600 dark:text-green-400" : ""}`} />
                           </Button>
                         </div>
                       </div>
-                      <p className="text-xs text-gray-500">In OBS: Settings → Stream → Service: YouTube. Paste server (RTMP) and key.</p>
+                      <p className="text-xs text-muted-foreground">In OBS: Settings → Stream → Service: YouTube. Paste server (RTMP) and key.</p>
                     </CardContent>
                   </Card>
-                  <Card className={youtubeStep === 2 ? "border-yellow-500 bg-yellow-500/5" : ""}>
+                  <Card className={youtubeStep === 2 ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-500/5 dark:border-yellow-500" : ""}>
                     <CardHeader>
                       <CardTitle className="text-base">Step 2: Start engine</CardTitle>
                       <CardDescription>Click &quot;Start Streaming&quot; inside OBS.</CardDescription>
@@ -524,7 +530,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                       </Button>
                     </CardContent>
                   </Card>
-                  <Card className={youtubeStep === 3 ? "border-red-500/50 bg-red-500/5" : ""}>
+                  <Card className={youtubeStep === 3 ? "border-red-400 bg-red-50 dark:border-red-500/50 dark:bg-red-500/5" : ""}>
                     <CardHeader>
                       <CardTitle className="text-base">Step 3: Go live</CardTitle>
                       <CardDescription>Wait ~10 seconds for YouTube to receive signal, then click below.</CardDescription>
@@ -557,8 +563,8 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                       )}
                       {livestream.status === "live" ? (
                         <div className="space-y-3 text-center">
-                          <div className="text-green-400 font-bold">STREAM IS PUBLIC!</div>
-                          <p className="text-sm text-gray-400">View and share your live stream on YouTube:</p>
+                          <div className="text-green-600 font-bold dark:text-green-400">STREAM IS PUBLIC!</div>
+                          <p className="text-sm text-muted-foreground">View and share your live stream on YouTube:</p>
                           <Button
                             asChild
                             className="w-full bg-red-600 hover:bg-red-700"
@@ -572,6 +578,15 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                               Watch on YouTube
                             </a>
                           </Button>
+                          <Button
+                            variant="destructive"
+                            className="w-full"
+                            onClick={handleEndStream}
+                            disabled={isUpdatingStatus}
+                          >
+                            <Square className="w-4 h-4 mr-2" />
+                            {isUpdatingStatus ? "Ending…" : "End Stream"}
+                          </Button>
                         </div>
                       ) : (
                         <>
@@ -582,7 +597,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                           >
                             {isGoingLive ? "Please wait…" : "GO LIVE NOW (manual)"}
                           </Button>
-                          <p className="text-xs text-gray-500 text-center">Use this only if you started OBS yourself and want to flip YouTube to public.</p>
+                          <p className="text-xs text-muted-foreground text-center">Use this only if you started OBS yourself and want to flip YouTube to public.</p>
                         </>
                       )}
                     </CardContent>
@@ -591,151 +606,6 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
               </div>
             </TabsContent>
           )}
-
-          <TabsContent value="obs" className="space-y-6">
-            {livestream.youtubeGoLiveEnabled && (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-base">OBS WebSocket (for &quot;Go Live with OBS auto&quot;)</CardTitle>
-                  <CardDescription>
-                    OBS must be open with WebSocket server enabled (Tools → WebSocket Server Settings). Default: port 4455.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div>
-                    <Label className="text-xs text-gray-400">WebSocket URL</Label>
-                    <Input
-                      value={obsUrl}
-                      onChange={(e) => setObsUrl(e.target.value)}
-                      placeholder="ws://127.0.0.1:4455"
-                      className="font-mono text-sm mt-1"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-400">Password (if set in OBS)</Label>
-                    <Input
-                      type="password"
-                      value={obsPassword}
-                      onChange={(e) => setObsPassword(e.target.value)}
-                      placeholder="Leave empty if no password"
-                      className="font-mono text-sm mt-1"
-                    />
-                    <p className="text-xs text-gray-500 mt-1">If you set a password in OBS → Tools → WebSocket Server Settings, enter it here or &quot;Go Live with OBS (auto)&quot; will fail.</p>
-                  </div>
-                  <p className="text-xs text-gray-500">Screen capture uses your <strong>primary display</strong>. Two monitors? Put your meeting on the main screen, or in OBS right‑click &quot;My Screen&quot; → Properties → choose the display.</p>
-                </CardContent>
-              </Card>
-            )}
-
-            {livestream.youtubeGoLiveEnabled && (
-              <Card className="bg-amber-500/10 border-amber-500/30">
-                <CardHeader>
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" />
-                    Stream is live but screen is black?
-                  </CardTitle>
-                  <CardDescription>Try these in order. The #1 fix is turning off browser hardware acceleration in OBS.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm">
-                  <div>
-                    <p className="font-medium text-amber-200">1. Turn off Browser Source Hardware Acceleration (most common fix)</p>
-                    <ul className="list-disc list-inside pl-2 text-gray-300 space-y-1 mt-1">
-                      <li>In OBS: <strong>Settings</strong> → <strong>Advanced</strong></li>
-                      <li>Uncheck <strong>&quot;Enable Browser Source Hardware Acceleration&quot;</strong></li>
-                      <li>Click OK, then <strong>restart OBS</strong> and try Go Live again</li>
-                    </ul>
-                  </div>
-                  <div>
-                    <p className="font-medium text-amber-200">2. Send video into the room first</p>
-                    <p className="text-gray-300 mt-1">Open <strong>Director Mode</strong> or the <strong>Push (Host)</strong> link from this page and allow camera. The &quot;VDO Ninja View&quot; in OBS only shows what’s being sent to the room.</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-amber-200">3. Refresh the browser source in OBS</p>
-                    <p className="text-gray-300 mt-1">In OBS: right‑click the source <strong>&quot;VDO Ninja View&quot;</strong> → <strong>Properties</strong> → click <strong>&quot;Refresh cache of current page&quot;</strong>. Uncheck &quot;Shutdown source when not visible&quot;.</p>
-                  </div>
-                  <div>
-                    <p className="font-medium text-amber-200">4. Use Window Capture instead (if browser source never works)</p>
-                    <p className="text-gray-300 mt-1">Open the <strong>View</strong> link from this page in Chrome. In OBS add <strong>Sources → Window Capture</strong>, choose that Chrome window. Put that in your scene instead of the browser source.</p>
-                  </div>
-                  <p className="text-xs text-gray-500 pt-2">We use your <strong>primary display</strong>. Two monitors? Put your meeting on the main screen, or in OBS right‑click &quot;My Screen&quot; → Properties → choose the display. Use step 4 only if you prefer a browser window instead.</p>
-                </CardContent>
-              </Card>
-            )}
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Monitor className="w-5 h-5" />
-                  OBS Studio Setup Guide
-                </CardTitle>
-                <CardDescription>
-                  Connect guest feeds to OBS and stream to YouTube
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-6">
-                <div>
-                  <h3 className="font-semibold mb-2">Step 1: Add Guest Feeds</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Open OBS Studio</li>
-                    <li>For each guest, click <strong>Sources → Add → Browser Source</strong></li>
-                    <li>Paste the guest's VDO.Ninja participant URL</li>
-                    <li>Set width: <code className="bg-gray-800 px-1 rounded">1920</code>, height: <code className="bg-gray-800 px-1 rounded">1080</code></li>
-                    <li>Check "Shutdown source when not visible" and "Refresh browser when scene becomes active"</li>
-                    <li>Repeat for each guest</li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 2: Configure YouTube Stream</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>In OBS, go to <strong>Settings → Stream</strong></li>
-                    <li>Service: <strong>YouTube</strong></li>
-                    <li>Paste your YouTube Stream Key (get it from Settings tab if not set)</li>
-                    <li>Click <strong>OK</strong></li>
-                  </ol>
-                </div>
-
-                <div>
-                  <h3 className="font-semibold mb-2">Step 3: Start Streaming</h3>
-                  <ol className="list-decimal list-inside space-y-2 text-sm text-gray-300">
-                    <li>Arrange your guest feeds in OBS (resize, position, add graphics)</li>
-                    <li>Click <strong>Start Streaming</strong> in OBS</li>
-                    <li>Your stream will appear on YouTube Live</li>
-                  </ol>
-                </div>
-
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    <strong>Pro Tip:</strong> Create different OBS scenes for different layouts (2-person, panel, spotlight).
-                    Switch between scenes during your stream for variety.
-                  </AlertDescription>
-                </Alert>
-              </CardContent>
-            </Card>
-
-            {!livestream.hasStreamKey && (
-              <Card className="bg-yellow-500/10 border-yellow-500/30">
-                <CardHeader>
-                  <CardTitle className="text-sm">⚠️ Stream Key Required</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <p className="text-sm text-gray-300 mb-4">
-                    You need to add your YouTube stream key before you can broadcast. Go to the Settings tab to add it.
-                  </p>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      const settingsTab = document.querySelector('[value="settings"]') as HTMLElement
-                      settingsTab?.click()
-                    }}
-                  >
-                    Go to Settings
-                  </Button>
-                </CardContent>
-              </Card>
-            )}
-          </TabsContent>
 
           <TabsContent value="settings" className="space-y-6">
             <Card>
@@ -754,7 +624,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   <AlertDescription>
                     <strong>How to get your Stream Key:</strong>
                     <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-                      <li>Go to <a href="https://studio.youtube.com" target="_blank" className="text-[#FF1493] hover:underline">YouTube Studio</a> → Go Live</li>
+                      <li>Go to <a href="https://studio.youtube.com" target="_blank" rel="noreferrer" className="text-primary hover:underline">YouTube Studio</a> → Go Live</li>
                       <li>Create a new stream or select an existing one</li>
                       <li>Copy the "Stream Key" (usually starts with characters like "rtmp://" or a long alphanumeric string)</li>
                       <li>Paste it below</li>
@@ -779,7 +649,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                     <Button
                       type="submit"
                       disabled={isUpdatingStreamKey || !streamKey}
-                      className="bg-gradient-to-r from-[#FF1493] to-[#DC143C]"
+                      className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500"
                     >
                       {isUpdatingStreamKey ? "Updating..." : livestream.hasStreamKey ? "Update Stream Key" : "Add Stream Key"}
                     </Button>

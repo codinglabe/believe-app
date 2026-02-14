@@ -44,21 +44,28 @@ class OrganizationLivestream extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    /** VDO.Ninja room name max length (they allow &lt; 31). */
+    private const VDO_ROOM_NAME_MAX_LENGTH = 30;
+
     /**
      * Generate a unique room name for an organization.
+     * Every new livestream gets a new room name (random suffix). Never reuse a name.
+     * VDO.Ninja: alphanumeric only, max 31 chars — we keep to 30.
      */
     public static function generateRoomName(Organization $organization): string
     {
-        // Use organization slug or name, sanitized
-        $slug = Str::slug($organization->name);
-        $baseName = "believe-{$slug}";
+        $slug = Str::slug($organization->name, '_');
+        $clean = preg_replace('/[^a-zA-Z0-9_]/', '_', $slug);
+        $clean = trim($clean, '_') ?: 'room';
+        // believe_ (8) + _ (1) + random(8) = 17, so base part max 30 - 17 = 13
+        $base = 'believe_' . substr($clean, 0, 13);
+        $base = trim($base, '_') ?: 'believe_room';
 
-        // Check if room name already exists, append number if needed
-        $counter = 1;
-        $roomName = $baseName;
+        $roomName = $base . '_' . Str::random(8);
+        $roomName = substr($roomName, 0, self::VDO_ROOM_NAME_MAX_LENGTH);
         while (self::where('room_name', $roomName)->exists()) {
-            $roomName = "{$baseName}-{$counter}";
-            $counter++;
+            $roomName = $base . '_' . Str::random(8);
+            $roomName = substr($roomName, 0, self::VDO_ROOM_NAME_MAX_LENGTH);
         }
 
         return $roomName;
@@ -119,21 +126,38 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Room name safe for VDO.Ninja (alphanumeric + underscore only, max 31 chars).
+     */
+    public function getVdoRoomName(): string
+    {
+        $safe = preg_replace('/[^a-zA-Z0-9_]/', '_', $this->room_name);
+        $safe = trim($safe, '_') ?: 'room';
+        return substr($safe, 0, self::VDO_ROOM_NAME_MAX_LENGTH);
+    }
+
+    /**
      * Get the VDO.Ninja director URL.
+     * Use only &director= (not &room=); VDO.Ninja says "there should be only &director OR &room".
+     * &clearstorage clears any saved session so the "load previous session?" prompt won't offer the old bad URL.
      */
     public function getDirectorUrl(): string
     {
         $password = $this->getDecryptedPassword();
-        return "https://vdo.ninja/?room={$this->room_name}&password={$password}&director=true";
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $password);
+        return "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage";
     }
 
     /**
      * Get the VDO.Ninja participant/guest URL.
+     * Room and password are URL-encoded so special characters don't break the link.
      */
     public function getParticipantUrl(): string
     {
         $password = $this->getDecryptedPassword();
-        return "https://vdo.ninja/?room={$this->room_name}&password={$password}";
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $password);
+        return "https://vdo.ninja/?room={$room}&password={$pass}";
     }
 
     /**

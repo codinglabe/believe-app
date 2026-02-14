@@ -173,6 +173,85 @@ export async function startOBSStream(config: OBSLivestreamConfig): Promise<void>
         // Wrong kind or other error; try next
       }
     }
+    // Ensure primary monitor is selected. Try every possible property name; apply twice with delay.
+    if (screenSceneItemId != null) {
+      await delay(200)
+      const applyPrimaryMonitor = async (): Promise<boolean> => {
+        try {
+          const getSettings = await client.call("GetInputSettings", { inputName: SCREEN_CAPTURE_NAME }) as {
+            inputSettings?: Record<string, unknown>
+          }
+          const current = getSettings?.inputSettings ?? {}
+          const settingsToApply: Record<string, unknown> = { ...current, capture_cursor: true }
+
+          const propertyNames = ["monitor_id", "display", "monitor"] as const
+          for (const propName of propertyNames) {
+            try {
+              const propResp = await client.call("GetInputPropertyItems", {
+                inputName: SCREEN_CAPTURE_NAME,
+                propertyName: propName,
+              }) as { propertyItems?: Array<Record<string, unknown>> }
+              const rawItems =
+                (propResp?.propertyItems ?? propResp?.property_items ?? []) as Array<Record<string, unknown>>
+              const getVal = (i: Record<string, unknown>) =>
+                i.itemValue ?? i.value ?? i.item_value
+              const getLabel = (i: Record<string, unknown>) =>
+                String(i.itemLabel ?? i.label ?? i.item_label ?? "")
+              const isPlaceholder = (i: Record<string, unknown>) => {
+                const v = getVal(i)
+                const lbl = getLabel(i)
+                return (
+                  v === "DUMMY" ||
+                  /select a display/i.test(lbl) ||
+                  lbl.trim() === ""
+                )
+              }
+              const primaryItem = rawItems.find((i) => /primary/i.test(getLabel(i)))
+              const fallback = rawItems.find((i) => getVal(i) != null && !isPlaceholder(i))
+              const chosen = primaryItem ?? fallback
+              const value = chosen ? getVal(chosen) : undefined
+              if (value !== undefined && value !== null) {
+                if (propName === "monitor") {
+                  settingsToApply.monitor = typeof value === "number" ? value : Number(value) || 0
+                } else {
+                  settingsToApply.monitor_id = value
+                  settingsToApply[propName] = value
+                }
+                await client.call("SetInputSettings", {
+                  inputName: SCREEN_CAPTURE_NAME,
+                  inputSettings: settingsToApply,
+                })
+                return true
+              }
+            } catch {
+              continue
+            }
+          }
+          // GDI fallback: set monitor index 0
+          settingsToApply.monitor = 0
+          await client.call("SetInputSettings", {
+            inputName: SCREEN_CAPTURE_NAME,
+            inputSettings: settingsToApply,
+          })
+          return true
+        } catch {
+          return false
+        }
+      }
+      const ok = await applyPrimaryMonitor()
+      await delay(400)
+      await applyPrimaryMonitor()
+      if (!ok) {
+        try {
+          await client.call("SetInputSettings", {
+            inputName: SCREEN_CAPTURE_NAME,
+            inputSettings: { capture_cursor: true, monitor: 0 },
+          })
+        } catch {
+          // ignore
+        }
+      }
+    }
     if (screenSceneItemId != null) {
       try {
         await client.call("SetSceneItemTransform", {
