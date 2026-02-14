@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import AppLayout from "@/layouts/app-layout";
 import type { BreadcrumbItem } from "@/types";
-import { Edit, Plus, Send, Trash2, Image as ImageIcon } from "lucide-react";
+import { Edit, Plus, Trash2, Image as ImageIcon } from "lucide-react";
 import { showErrorToast } from "@/lib/toast";
 import {
   Dialog,
@@ -86,13 +86,6 @@ export default function FundMeCampaignsIndex({ campaigns, totalDonations, filter
       setDeleteOpen(false);
       setCampaignToDelete(null);
     }
-  };
-
-  const handleSubmitForReview = (c: CampaignItem) => {
-    if (c.status !== "draft") return;
-    router.post(route("fundme.campaigns.submit", c.id), {}, {
-      onError: () => showErrorToast("Failed to submit campaign"),
-    });
   };
 
   const handleStatusFilter = (value: string) => {
@@ -202,14 +195,6 @@ export default function FundMeCampaignsIndex({ campaigns, totalDonations, filter
                                 <Edit className="h-3.5 w-3.5" /> Edit
                               </Button>
                             </Link>
-                            <Button
-                              variant="default"
-                              size="sm"
-                              className="gap-1"
-                              onClick={() => handleSubmitForReview(c)}
-                            >
-                              <Send className="h-3.5 w-3.5" /> Submit for review
-                            </Button>
                             <Button
                               variant="destructive"
                               size="sm"

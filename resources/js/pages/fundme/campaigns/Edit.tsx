@@ -72,8 +72,6 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | undefined;
@@ -125,7 +123,7 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
               <div>
                 <CardTitle className="text-2xl font-bold">Edit Believe FundMe Campaign</CardTitle>
                 <p className="text-muted-foreground">
-                  Update your campaign. Each narrative needs at least {narrativeMinWords} words.
+                  Update your campaign. Each narrative needs at least {narrativeMinLength} characters.
                 </p>
                 {campaign.rejection_reason && (
                   <p className="text-sm text-amber-600 dark:text-amber-400 mt-2">
@@ -208,7 +206,7 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
                   onChange={(e) => set("helps_who", e.target.value)}
                   className={errors.helps_who ? "border-destructive" : ""}
                 />
-                <p className="text-xs text-muted-foreground">{wordCount(formData.helps_who)} words (min {narrativeMinWords})</p>
+                <p className="text-xs text-muted-foreground">{formData.helps_who.length} characters (min {narrativeMinLength})</p>
                 {errors.helps_who && <p className="text-sm text-destructive">{errors.helps_who}</p>}
               </div>
 
@@ -222,7 +220,7 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
                   onChange={(e) => set("fund_usage", e.target.value)}
                   className={errors.fund_usage ? "border-destructive" : ""}
                 />
-                <p className="text-xs text-muted-foreground">{wordCount(formData.fund_usage)} words (min {narrativeMinWords})</p>
+                <p className="text-xs text-muted-foreground">{formData.fund_usage.length} characters (min {narrativeMinLength})</p>
                 {errors.fund_usage && <p className="text-sm text-destructive">{errors.fund_usage}</p>}
               </div>
 
@@ -236,7 +234,7 @@ export default function FundMeCampaignEdit({ campaign, categories, narrativeMinL
                   onChange={(e) => set("expected_impact", e.target.value)}
                   className={errors.expected_impact ? "border-destructive" : ""}
                 />
-                <p className="text-xs text-muted-foreground">{wordCount(formData.expected_impact)} words (min {narrativeMinWords})</p>
+                <p className="text-xs text-muted-foreground">{formData.expected_impact.length} characters (min {narrativeMinLength})</p>
                 {errors.expected_impact && <p className="text-sm text-destructive">{errors.expected_impact}</p>}
               </div>
 

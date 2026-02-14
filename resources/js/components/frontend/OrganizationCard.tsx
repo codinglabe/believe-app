@@ -57,6 +57,8 @@ export default function OrganizationCard({
 
   // Check if user is authenticated
   const isAuthenticated = auth?.user !== null && auth?.user !== undefined
+  // Do not show follow for own organization (org user viewing their org card)
+  const isOwnOrganization = !!(auth?.user?.organization?.ein && organization.ein && auth.user.organization.ein === organization.ein)
 
   // Handle Learn More button click
   const handleLearnMore = (e: React.MouseEvent) => {
@@ -157,7 +159,7 @@ export default function OrganizationCard({
                 </div>
               </div>
 
-              {showFavorite && organization.is_registered && (
+              {showFavorite && organization.is_registered && !isOwnOrganization && (
                 <div className="cursor-pointer">
                   <button
                     onClick={handleToggleFavorite}

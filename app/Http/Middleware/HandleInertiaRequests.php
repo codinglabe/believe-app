@@ -108,30 +108,30 @@ class HandleInertiaRequests extends Middleware
                     ->first();
 
                 $hasActiveSubscription = false;
-                
+
                 if ($subscription) {
                     // Real-time check: Refresh subscription status from Stripe
                     try {
                         if ($subscription->stripe_id) {
                             $stripe = \Laravel\Cashier\Cashier::stripe();
                             $stripeSubscription = $stripe->subscriptions->retrieve($subscription->stripe_id);
-                            
+
                             // Update local subscription with latest data from Stripe
                             $subscription->stripe_status = $stripeSubscription->status;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            
+
                             // If cancel_at is set, mark as canceled even if status is still 'active'
                             if ($stripeSubscription->cancel_at) {
                                 $subscription->stripe_status = 'canceled';
                             }
-                            
+
                             $subscription->save();
-                            
+
                             // Check if subscription is truly active (not canceled)
-                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing']) 
+                            $hasActiveSubscription = in_array($stripeSubscription->status, ['active', 'trialing'])
                                 && $stripeSubscription->cancel_at === null;
                         }
                     } catch (\Exception $e) {
@@ -140,9 +140,9 @@ class HandleInertiaRequests extends Middleware
                             'subscription_id' => $subscription->id,
                             'error' => $e->getMessage(),
                         ]);
-                        
+
                         // Fallback: check local status
-                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing']) 
+                        $hasActiveSubscription = in_array($subscription->stripe_status, ['active', 'trialing'])
                             && $subscription->ends_at === null;
                     }
                 }
@@ -220,6 +220,7 @@ class HandleInertiaRequests extends Middleware
                         'timezone' => $user->timezone ?? 'UTC',
                         "organization" => $user->organization ? [
                             'id' => $user->organization->id,
+                            'ein' => $user->organization->ein ?? null,
                             'name' => $user->organization->name,
                             "registered_user_image" => $user->organization->registered_user_image ? '/storage/' . $user->organization->registered_user_image : null,
                             'contact_title' => $user->organization->contact_title,

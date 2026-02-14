@@ -571,6 +571,18 @@ export default function UserPage({
                   <MessageCircle className="w-4 h-4 mr-2" />
                   Message
                 </Button>
+                {auth?.user && !user?.is_own_profile && (
+                  <Link href={
+                    (auth.user as any)?.role === 'organization' || (auth.user as any)?.role === 'organization_pending'
+                      ? route('organizations.show', (auth.user as any)?.organization?.public_view_slug ?? (auth.user as any)?.slug ?? auth.user.id)
+                      : route('users.show', (auth.user as any)?.slug ?? auth.user.id)
+                  }>
+                    <Button variant="outline" className="bg-gray-100 dark:bg-white/10 border-gray-300 dark:border-white/20">
+                      <Globe className="w-4 h-4 mr-2" />
+                      My public view
+                    </Button>
+                  </Link>
+                )}
               </div>
             </div>
 

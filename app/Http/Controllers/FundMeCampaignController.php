@@ -116,7 +116,7 @@ class FundMeCampaignController extends BaseController
             abort(403, 'No organization associated with your account.');
         }
 
-        $validated = $request->validate([
+        $rules = [
             'title' => 'required|string|max:120',
             'fundme_category_id' => 'required|exists:fundme_categories,id',
             'goal_amount' => 'required|numeric|min:1',
@@ -126,7 +126,13 @@ class FundMeCampaignController extends BaseController
             'expected_impact' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
             'use_of_funds_confirmation' => 'required|accepted',
             'status' => 'nullable|in:draft,in_review',
-        ]);
+        ];
+        $messages = [
+            'helps_who.min' => 'Who this helps must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'fund_usage.min' => 'What funds will be used for must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'expected_impact.min' => 'Expected impact must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+        ];
+        $validated = $request->validate($rules, $messages);
 
         $goalAmount = (int) round((float) $validated['goal_amount'] * 100);
         $coverPath = $request->file('cover_image')->store('fundme-covers', 'public');
@@ -217,7 +223,7 @@ class FundMeCampaignController extends BaseController
             array_unshift($coverRules, 'nullable');
         }
 
-        $validated = $request->validate([
+        $rules = [
             'title' => 'required|string|max:120',
             'fundme_category_id' => 'required|exists:fundme_categories,id',
             'goal_amount' => 'required|numeric|min:1',
@@ -227,7 +233,13 @@ class FundMeCampaignController extends BaseController
             'expected_impact' => 'required|string|min:' . self::NARRATIVE_MIN_LENGTH,
             'use_of_funds_confirmation' => 'required|accepted',
             'status' => 'nullable|in:draft,in_review',
-        ]);
+        ];
+        $messages = [
+            'helps_who.min' => 'Who this helps must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'fund_usage.min' => 'What funds will be used for must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+            'expected_impact.min' => 'Expected impact must be at least ' . self::NARRATIVE_MIN_LENGTH . ' characters.',
+        ];
+        $validated = $request->validate($rules, $messages);
 
         $goalAmount = (int) round((float) $validated['goal_amount'] * 100);
         $coverPath = $fundme_campaign->cover_image;

@@ -131,8 +131,15 @@ class DonationController extends Controller
         $user = $request->user();
         $amountInCents = (int) ($validated['amount'] * 100);
         $organizationName = $organization->name;
-        if ($user->hasRole(['organization', 'admin'])) {
-            return redirect()->back()->with('warning', 'Please log in with a supporter account to make a donation.');
+        // Supporters and organization users can donate; block admin
+        if ($user->hasRole('admin')) {
+            return redirect()->back()->with('warning', 'Please use a supporter or organization account to make a donation.');
+        }
+
+        // Prevent organization from donating to itself
+        $donorOrg = $user->organization ?? null;
+        if ($donorOrg && (int) $donorOrg->id === (int) $organization->id) {
+            return redirect()->back()->with('warning', 'You cannot donate to your own organization.');
         }
 
         $paymentMethod = $validated['payment_method'] ?? 'stripe';

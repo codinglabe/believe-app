@@ -40,6 +40,7 @@ import {
   UserPlus,
   Video,
   Handshake,
+  Globe,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -497,6 +498,16 @@ export default function Navbar() {
                                               <span>Profile</span>
                                           </Link>
                                       </DropdownMenuItem>
+                                      <DropdownMenuItem asChild>
+                                          <Link href={
+                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
+                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
+                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
+                                          }>
+                                              <Globe className="mr-2 h-4 w-4" />
+                                              <span>Public View</span>
+                                          </Link>
+                                      </DropdownMenuItem>
                                       {auth?.user?.role === 'user' && (
                                           <DropdownMenuItem asChild>
                                               <Link href={route('chat.index')}>
@@ -752,6 +763,16 @@ export default function Navbar() {
                                               <Button variant="ghost" className="w-full justify-start">
                                                   <User className="mr-2 h-4 w-4" />
                                                   Profile
+                                              </Button>
+                                          </Link>
+                                          <Link href={
+                                              (auth?.user?.role === 'organization' || auth?.user?.role === 'organization_pending')
+                                                  ? route('organizations.show', (auth?.user as any)?.organization?.public_view_slug ?? (auth?.user as any)?.slug ?? auth?.user?.id)
+                                                  : route('users.show', (auth?.user as any)?.slug ?? auth?.user?.id)
+                                          }>
+                                              <Button variant="ghost" className="w-full justify-start">
+                                                  <Globe className="mr-2 h-4 w-4" />
+                                                  Public View
                                               </Button>
                                           </Link>
 

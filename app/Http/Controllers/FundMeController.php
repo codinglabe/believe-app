@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\FundMeCampaign;
 use App\Models\FundMeCategory;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -92,8 +93,15 @@ class FundMeController extends Controller
             abort(404, 'Campaign not found.');
         }
 
+        $canEdit = false;
+        if (Auth::check() && Auth::user()->organization) {
+            $canEdit = (int) Auth::user()->organization->id === (int) $campaign->organization_id;
+        }
+
         $payload = [
             'id' => $campaign->id,
+            'organization_id' => $campaign->organization_id,
+            'can_edit' => $canEdit,
             'title' => $campaign->title,
             'slug' => $campaign->slug,
             'goal_amount' => $campaign->goal_amount,

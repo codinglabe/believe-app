@@ -58,8 +58,6 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const wordCount = (s: string) => s.trim().split(/\s+/).filter(Boolean).length;
-
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | undefined;
@@ -112,7 +110,7 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
               <div>
                 <CardTitle className="text-2xl font-bold">New Believe FundMe Campaign</CardTitle>
                 <p className="text-muted-foreground">
-                  Complete all sections. Each narrative needs at least {narrativeMinWords} words (plain language, no jargon).
+                  Complete all sections. Each narrative needs at least {narrativeMinLength} characters (plain language, no jargon).
                 </p>
               </div>
             </div>
@@ -193,7 +191,7 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
                   className={errors.helps_who ? "border-destructive" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {wordCount(formData.helps_who)} words (min {narrativeMinWords})
+                  {formData.helps_who.length} characters (min {narrativeMinLength})
                 </p>
                 {errors.helps_who && <p className="text-sm text-destructive">{errors.helps_who}</p>}
               </div>
@@ -210,7 +208,7 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
                   className={errors.fund_usage ? "border-destructive" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {wordCount(formData.fund_usage)} words (min {narrativeMinWords})
+                  {formData.fund_usage.length} characters (min {narrativeMinLength})
                 </p>
                 {errors.fund_usage && <p className="text-sm text-destructive">{errors.fund_usage}</p>}
               </div>
@@ -227,7 +225,7 @@ export default function FundMeCampaignCreate({ categories, narrativeMinLength, n
                   className={errors.expected_impact ? "border-destructive" : ""}
                 />
                 <p className="text-xs text-muted-foreground">
-                  {wordCount(formData.expected_impact)} words (min {narrativeMinWords})
+                  {formData.expected_impact.length} characters (min {narrativeMinLength})
                 </p>
                 {errors.expected_impact && <p className="text-sm text-destructive">{errors.expected_impact}</p>}
               </div>

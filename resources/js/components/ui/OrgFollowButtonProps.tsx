@@ -18,14 +18,18 @@ interface OrgFollowButtonProps {
   auth: any
   initialIsFollowing?: boolean
   initialNotifications?: boolean
+  /** When true, do not render (e.g. viewing own organization) */
+  isOwnOrganization?: boolean
 }
 
 export default function OrgFollowButton({
   organization,
   auth,
   initialIsFollowing = false,
-  initialNotifications = false
+  initialNotifications = false,
+  isOwnOrganization = false
 }: OrgFollowButtonProps) {
+  if (isOwnOrganization) return null
   // Use props directly as source of truth, only maintain local state for optimistic updates
   const [localIsFollowing, setLocalIsFollowing] = useState<boolean | null>(null)
   const [localNotifications, setLocalNotifications] = useState<boolean | null>(null)
@@ -33,14 +37,14 @@ export default function OrgFollowButton({
 
   // Track if we're in the middle of an update to prevent loops
   const updateInProgressRef = useRef(false)
-  
+
   // Memoize organization ID to prevent unnecessary re-renders (define first!)
   const organizationId = useMemo(() => organization?.id, [organization?.id])
-  
+
   // Derive current state: use local if set, otherwise use props
   const isFollowing = localIsFollowing !== null ? localIsFollowing : initialIsFollowing
   const notifications = localNotifications !== null ? localNotifications : initialNotifications
-  
+
   // Reset local state when props change (after page reload)
   // When the page reloads after follow/unfollow, the prop will have the correct value from backend
   useEffect(() => {
@@ -60,7 +64,7 @@ export default function OrgFollowButton({
 
     updateInProgressRef.current = true
     setIsLoading(true)
-    
+
     // Optimistically update state - show following immediately when clicking follow
     const newFollowingState = true // When clicking follow, we're always following
     setLocalIsFollowing(newFollowingState)
@@ -88,7 +92,7 @@ export default function OrgFollowButton({
 
     updateInProgressRef.current = true
     setIsLoading(true)
-    
+
     // Don't update optimistically - wait for API response to prevent ref conflicts
     const newNotificationsState = !notifications
 
@@ -115,7 +119,7 @@ export default function OrgFollowButton({
 
     updateInProgressRef.current = true
     setIsLoading(true)
-    
+
     // Optimistically update state - show not following immediately
     setLocalIsFollowing(false)
 
