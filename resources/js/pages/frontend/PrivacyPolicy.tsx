@@ -171,7 +171,7 @@ const PrivacyPolicy = () => {
                                         To exercise any of these rights, please contact us at:
                                     </p>
                                     <p className="text-lg font-semibold text-gray-900 dark:text-white mt-2">
-                                        privacy@501c3ers.com
+                                        wendhi@stuttiegroup.com
                                     </p>
                                 </div>
                             </div>
@@ -189,7 +189,7 @@ const PrivacyPolicy = () => {
                                             Privacy Team
                                         </h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            Email: privacy@501c3ers.com
+                                            Email: wendhi@stuttiegroup.com
                                         </p>
                                     </div>
                                     <div>
@@ -197,7 +197,7 @@ const PrivacyPolicy = () => {
                                             General Support
                                         </h3>
                                         <p className="text-gray-600 dark:text-gray-300">
-                                            Email: support@501c3ers.com
+                                            Email: wendhi@stuttiegroup.com
                                         </p>
                                     </div>
                                     <div>

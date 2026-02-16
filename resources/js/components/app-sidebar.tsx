@@ -90,7 +90,7 @@ const mainNavItems: (NavItem | NavGroup)[] = [
 
     // Nonprofit Barter Network (organization only)
     {
-        title: 'Nonprofit Barter Network',
+        title: 'Barter Network',
         href: '/barter',
         icon: Handshake,
         role: 'organization',

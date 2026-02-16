@@ -41,6 +41,7 @@ import {
   Video,
   Handshake,
   Globe,
+  Heart,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -96,7 +97,7 @@ export default function Navbar() {
   const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
-    { name: "Believe FundMe", href: "/believe-fundme" },
+    { name: "Pricing", href: "/pricing" },
     { name: "Donate", href: "/donate" },
   ]
 
@@ -114,6 +115,7 @@ export default function Navbar() {
   // Services dropdown items (Nonprofit Barter only when organization is logged in)
   const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const servicesItems = [
+    { name: "FundMe", href: "/believe-fundme", icon: Heart },
     ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },

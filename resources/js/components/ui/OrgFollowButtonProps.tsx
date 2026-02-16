@@ -142,13 +142,13 @@ export default function OrgFollowButton({
   }, [auth?.user, organizationId, isFollowing, isLoading])
 
   if (!isFollowing) {
-    // Subscribe Button (Not Following)
+    // Subscribe Button (Not Following) - visible in both light and dark mode
     return (
       <Button
         onClick={handleToggleFollow}
         variant="outline"
         size="lg"
-        className="bg-white/10 border-white/20 text-white hover:bg-white/20 min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4"
+        className="min-w-[40px] sm:min-w-0 h-9 sm:h-10 md:h-11 flex-shrink-0 justify-center sm:justify-start px-2 sm:px-3 md:px-4 border-2 bg-primary text-primary-foreground border-primary hover:bg-primary/90 hover:text-primary-foreground dark:bg-primary dark:text-primary-foreground dark:border-primary dark:hover:bg-primary/90"
         title="Follow"
       >
         <UserPlus className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />
@@ -164,7 +164,7 @@ export default function OrgFollowButton({
         <Button
           disabled={isLoading}
           variant="outline"
-          className="bg-gray-200 hover:bg-gray-300 text-gray-800 px-2 sm:px-3 md:px-4 py-2 font-medium text-xs sm:text-sm md:text-base border-gray-300 h-9 sm:h-10 md:h-11 min-w-[40px] sm:min-w-0 flex-shrink-0 justify-center sm:justify-start"
+          className="bg-gray-200 hover:bg-gray-300 text-gray-800 dark:bg-white/15 dark:hover:bg-white/25 dark:text-white dark:border-white/30 px-2 sm:px-3 md:px-4 py-2 font-medium text-xs sm:text-sm md:text-base border-gray-300 dark:border-white/30 h-9 sm:h-10 md:h-11 min-w-[40px] sm:min-w-0 flex-shrink-0 justify-center sm:justify-start"
           title="Following"
         >
           <UserCheck className="h-4 w-4 sm:h-4 sm:w-4 md:h-4 md:w-4 flex-shrink-0 sm:mr-1.5 md:mr-2" />

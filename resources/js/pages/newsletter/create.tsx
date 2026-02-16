@@ -43,14 +43,14 @@ interface NewsletterCreateProps {
 }
 
 // Variable Item Component
-function VariableItem({ variable, description, sampleValue, onCopy }: { 
+function VariableItem({ variable, description, sampleValue, onCopy }: {
     variable: string
     description: string
     sampleValue: string
     onCopy: () => void
 }) {
     const [copied, setCopied] = useState(false)
-    
+
     const handleCopy = (e: React.MouseEvent) => {
         e.preventDefault()
         e.stopPropagation()
@@ -58,7 +58,7 @@ function VariableItem({ variable, description, sampleValue, onCopy }: {
         setCopied(true)
         setTimeout(() => setCopied(false), 2000)
     }
-    
+
     return (
         <div className="group flex items-start justify-between gap-2 p-1.5 hover:bg-white dark:hover:bg-gray-700 rounded transition-colors w-full">
             <div className="flex-1 min-w-0 flex-grow">
@@ -120,7 +120,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
     // Ensure all properties have fallback values to prevent undefined errors
     const sampleData: PreviewData = {
         organization_name: previewData?.organization_name || 'Your Organization',
-        organization_email: previewData?.organization_email || 'contact@example.com',
+        organization_email: previewData?.organization_email || 'wendhi@stuttiegroup.com',
         organization_phone: previewData?.organization_phone || '+1 (555) 000-0000',
         organization_address: previewData?.organization_address || 'Your Organization Address',
         recipient_name: previewData?.recipient_name || 'Recipient Name',
@@ -134,13 +134,13 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
     // Function to replace variables with real data
     const replaceVariables = (text: string): string => {
         if (!text) return ''
-        
+
         let result = text
         Object.entries(sampleData).forEach(([key, value]) => {
             const regex = new RegExp(`\\{${key}\\}`, 'g')
             result = result.replace(regex, value)
         })
-        
+
         return result
     }
 
@@ -165,7 +165,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault()
-        
+
         // Prepare submit data
         const submitData: any = {
             ...data,
@@ -199,7 +199,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
     return (
         <AppSidebarLayout>
             <Head title="Create Newsletter" />
-            
+
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
                 <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
@@ -456,81 +456,81 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                                 <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
                                                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Organization</p>
                                                     <div className="space-y-1.5">
-                                                        <VariableItem 
-                                                            variable="{organization_name}" 
+                                                        <VariableItem
+                                                            variable="{organization_name}"
                                                             description="Organization name"
                                                             sampleValue={sampleData.organization_name}
                                                             onCopy={() => navigator.clipboard.writeText('{organization_name}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{organization_email}" 
+                                                        <VariableItem
+                                                            variable="{organization_email}"
                                                             description="Organization email"
                                                             sampleValue={sampleData.organization_email}
                                                             onCopy={() => navigator.clipboard.writeText('{organization_email}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{organization_phone}" 
+                                                        <VariableItem
+                                                            variable="{organization_phone}"
                                                             description="Organization phone"
                                                             sampleValue={sampleData.organization_phone}
                                                             onCopy={() => navigator.clipboard.writeText('{organization_phone}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{organization_address}" 
+                                                        <VariableItem
+                                                            variable="{organization_address}"
                                                             description="Organization address"
                                                             sampleValue={sampleData.organization_address}
                                                             onCopy={() => navigator.clipboard.writeText('{organization_address}')}
                                                         />
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
                                                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">Recipient</p>
                                                     <div className="space-y-1.5">
-                                                        <VariableItem 
-                                                            variable="{recipient_name}" 
+                                                        <VariableItem
+                                                            variable="{recipient_name}"
                                                             description="Recipient name"
                                                             sampleValue={sampleData.recipient_name}
                                                             onCopy={() => navigator.clipboard.writeText('{recipient_name}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{recipient_email}" 
+                                                        <VariableItem
+                                                            variable="{recipient_email}"
                                                             description="Recipient email"
                                                             sampleValue={sampleData.recipient_email}
                                                             onCopy={() => navigator.clipboard.writeText('{recipient_email}')}
                                                         />
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
                                                     <p className="text-xs font-semibold text-gray-700 dark:text-gray-300 mb-2">System</p>
                                                     <div className="space-y-1.5">
-                                                        <VariableItem 
-                                                            variable="{current_date}" 
+                                                        <VariableItem
+                                                            variable="{current_date}"
                                                             description="Current date"
                                                             sampleValue={sampleData.current_date}
                                                             onCopy={() => navigator.clipboard.writeText('{current_date}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{current_year}" 
+                                                        <VariableItem
+                                                            variable="{current_year}"
                                                             description="Current year"
                                                             sampleValue={sampleData.current_year}
                                                             onCopy={() => navigator.clipboard.writeText('{current_year}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{unsubscribe_link}" 
+                                                        <VariableItem
+                                                            variable="{unsubscribe_link}"
                                                             description="Unsubscribe link"
                                                             sampleValue={sampleData.unsubscribe_link}
                                                             onCopy={() => navigator.clipboard.writeText('{unsubscribe_link}')}
                                                         />
-                                                        <VariableItem 
-                                                            variable="{public_view_link}" 
+                                                        <VariableItem
+                                                            variable="{public_view_link}"
                                                             description="Public view link"
                                                             sampleValue={sampleData.public_view_link}
                                                             onCopy={() => navigator.clipboard.writeText('{public_view_link}')}
                                                         />
                                                     </div>
                                                 </div>
-                                                
+
                                                 <div className="mt-3 p-2 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-200 dark:border-blue-800">
                                                     <p className="text-xs text-blue-800 dark:text-blue-300">
                                                         💡 <strong>Tip:</strong> Variables are automatically replaced in the Preview with your actual organization and recipient data
@@ -595,7 +595,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                         </h3>
                                     </div>
                                     {previewHtmlContent ? (
-                                        <div 
+                                        <div
                                             className="prose prose-sm max-w-none dark:prose-invert"
                                             dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
                                         />
@@ -605,7 +605,7 @@ export default function NewsletterCreate({ templates, previewData }: NewsletterC
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 {/* Variable Replacement Info */}
                                 <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
                                     <p className="text-xs text-blue-800 dark:text-blue-300 font-medium mb-1">

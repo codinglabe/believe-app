@@ -122,6 +122,76 @@ class PlansController extends Controller
     }
 
     /**
+     * Public pricing page (no login required). Same plans as dashboard for nonprofit organizations.
+     */
+    public function pricing(Request $request)
+    {
+        $user = $request->user();
+        $currentPlan = null;
+        if ($user && $user->current_plan_id) {
+            $currentPlan = Plan::with('features')->find($user->current_plan_id);
+        }
+
+        $walletPlanPriceIds = WalletPlan::whereNotNull('stripe_price_id')
+            ->pluck('stripe_price_id')
+            ->toArray();
+
+        $plans = Plan::with('features')
+            ->active()
+            ->ordered()
+            ->when(!empty($walletPlanPriceIds), function ($query) use ($walletPlanPriceIds) {
+                $query->whereNotIn('stripe_price_id', $walletPlanPriceIds);
+            })
+            ->get()
+            ->map(function ($plan) {
+                return [
+                    'id' => $plan->id,
+                    'name' => $plan->name,
+                    'price' => (float) $plan->price,
+                    'frequency' => $plan->frequency,
+                    'is_popular' => $plan->is_popular,
+                    'description' => $plan->description,
+                    'trial_days' => (int) ($plan->trial_days ?? 0),
+                    'custom_fields' => $plan->custom_fields ?? [],
+                    'features' => $plan->features->map(function ($feature) {
+                        return [
+                            'id' => $feature->id,
+                            'name' => $feature->name,
+                            'description' => $feature->description,
+                            'icon' => $feature->icon,
+                            'is_unlimited' => $feature->is_unlimited,
+                        ];
+                    }),
+                ];
+            });
+
+        $addOns = [
+            ['name' => 'Email Re-Ups', 'price' => '$1 per 1,000 emails', 'description' => 'Perfect for growth and newsletters'],
+            ['name' => 'AI Packs', 'price' => '$5 per 50,000 tokens', 'description' => 'High margin; encourages use'],
+            ['name' => 'SMS', 'price' => '$0.015 per text', 'description' => 'Opt-in only'],
+            ['name' => 'Extra Storage', 'price' => '$0.20/GB', 'description' => 'For big media orgs'],
+            ['name' => 'Raffles Platform Fee', 'price' => '4% of raised funds', 'description' => 'Direct revenue'],
+            ['name' => 'Volunteer Background Checks', 'price' => '$6 each', 'description' => 'Optional'],
+        ];
+
+        $currentPlanData = null;
+        if ($currentPlan) {
+            $currentPlanData = [
+                'id' => $currentPlan->id,
+                'name' => $currentPlan->name,
+                'price' => (float) $currentPlan->price,
+                'frequency' => $currentPlan->frequency,
+            ];
+        }
+
+        return Inertia::render('frontend/Pricing', [
+            'plans' => $plans,
+            'addOns' => $addOns,
+            'currentPlan' => $currentPlanData,
+        ]);
+    }
+
+    /**
      * Handle plan subscription
      */
     public function subscribe(Request $request, Plan $plan)
@@ -468,7 +538,7 @@ class PlansController extends Controller
         } catch (\Exception $e) {
             $errorMessage = $e->getMessage();
             $errorClass = get_class($e);
-            
+
             Log::error('Wallet subscription error', [
                 'error' => $errorMessage,
                 'error_class' => $errorClass,
@@ -481,7 +551,7 @@ class PlansController extends Controller
 
             // Provide more specific error messages based on exception type
             $userFriendlyMessage = 'Failed to create checkout session. Please try again.';
-            
+
             // Check for Stripe-specific errors
             if (str_contains($errorClass, 'Stripe') || str_contains($errorMessage, 'Stripe')) {
                 if (str_contains($errorMessage, 'No such price')) {
@@ -579,18 +649,18 @@ class PlansController extends Controller
                         // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
                         if (!$subscription->exists) {
                             $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
-                            
+
                             // Use Cashier's subscription model properties
                             $subscription->type = 'wallet_access';
                             $subscription->stripe_id = $stripeSubscription->id;
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $walletPlan->stripe_price_id;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                            
+
                             $subscription->save();
                         } else {
                             // Update existing subscription using Cashier's subscription model
@@ -598,9 +668,9 @@ class PlansController extends Controller
                             $subscription->stripe_status = $stripeSubscription->status;
                             $subscription->stripe_price = $walletPlan->stripe_price_id;
                             $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                            $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                            $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                            $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                            $subscription->ends_at = $stripeSubscription->cancel_at ?
                                 \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                             $subscription->save();
                         }
@@ -714,7 +784,7 @@ class PlansController extends Controller
             if ($plan->frequency !== 'one-time' && $session->subscription) {
                 try {
                     $stripe = Cashier::stripe();
-                    
+
                     // Ensure user has stripe_id (required for Cashier)
                     if (!$user->stripe_id && $session->customer) {
                         $user->stripe_id = $session->customer;
@@ -729,18 +799,18 @@ class PlansController extends Controller
                     // If subscription doesn't exist, retrieve from Stripe and sync using Cashier
                     if (!$subscription->exists) {
                         $stripeSubscription = Cashier::stripe()->subscriptions->retrieve($session->subscription);
-                        
+
                         // Use Cashier's subscription model properties
                         $subscription->type = 'default';
                         $subscription->stripe_id = $stripeSubscription->id;
                         $subscription->stripe_status = $stripeSubscription->status;
                         $subscription->stripe_price = $plan->stripe_price_id;
                         $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                        $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                        $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                             \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                        $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                        $subscription->ends_at = $stripeSubscription->cancel_at ?
                             \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
-                        
+
                         $subscription->save();
                     } else {
                         // Update existing subscription using Cashier's subscription model
@@ -748,9 +818,9 @@ class PlansController extends Controller
                         $subscription->stripe_status = $stripeSubscription->status;
                         $subscription->stripe_price = $plan->stripe_price_id;
                         $subscription->quantity = $stripeSubscription->items->data[0]->quantity ?? 1;
-                        $subscription->trial_ends_at = $stripeSubscription->trial_end ? 
+                        $subscription->trial_ends_at = $stripeSubscription->trial_end ?
                             \Carbon\Carbon::createFromTimestamp($stripeSubscription->trial_end) : null;
-                        $subscription->ends_at = $stripeSubscription->cancel_at ? 
+                        $subscription->ends_at = $stripeSubscription->cancel_at ?
                             \Carbon\Carbon::createFromTimestamp($stripeSubscription->cancel_at) : null;
                         $subscription->save();
                     }

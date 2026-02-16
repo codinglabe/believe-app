@@ -3605,7 +3605,7 @@ private function notifyAdminAboutRefundFailure(ServiceOrder $order, string $erro
 {
     try {
         // Send email to admin
-        $adminEmail = config('mail.admin_email', 'admin@example.com');
+        $adminEmail = config('mail.admin_email', 'wendhi@stuttiegroup.com');
 
         Mail::to($adminEmail)->send(new \App\Mail\RefundFailedNotification(
             $order,

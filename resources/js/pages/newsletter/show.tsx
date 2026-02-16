@@ -13,11 +13,11 @@ import { ConfirmationModal } from "@/components/confirmation-modal"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { useState } from "react"
 import { getBrowserTimezone, formatDateInTimezone, convertUserTimezoneToUTC } from "@/lib/timezone-detection"
-import { 
-    Mail, 
-    Users, 
-    Eye, 
-    MousePointer, 
+import {
+    Mail,
+    Users,
+    Eye,
+    MousePointer,
     Calendar,
     ArrowLeft,
     Send,
@@ -144,16 +144,16 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
 
     // Dates are already formatted in backend with user's timezone - just use them directly
 
-    const openRate = newsletter.total_recipients > 0 ? 
+    const openRate = newsletter.total_recipients > 0 ?
         ((newsletter.opened_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'
-    
-    const clickRate = newsletter.total_recipients > 0 ? 
+
+    const clickRate = newsletter.total_recipients > 0 ?
         ((newsletter.clicked_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'
 
     // Use real data from backend, fallback to demo data if not available
     const sampleData: PreviewData = previewData || {
         organization_name: 'Your Organization',
-        organization_email: 'contact@example.com',
+        organization_email: 'wendhi@stuttiegroup.com',
         organization_phone: '+1 (555) 000-0000',
         organization_address: 'Your Organization Address',
         recipient_name: 'Recipient Name',
@@ -167,13 +167,13 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
     // Function to replace variables with real data
     const replaceVariables = (text: string): string => {
         if (!text) return ''
-        
+
         let result = text
         Object.entries(sampleData).forEach(([key, value]) => {
             const regex = new RegExp(`\\{${key}\\}`, 'g')
             result = result.replace(regex, value)
         })
-        
+
         return result
     }
 
@@ -185,7 +185,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
     return (
         <AppSidebarLayout>
             <Head title={`Newsletter: ${newsletter.subject}`} />
-            
+
             <div className="space-y-6 sm:space-y-8 animate-in fade-in duration-500 m-10">
                 {/* Header */}
                 <div className="flex flex-col space-y-4 sm:space-y-0 sm:flex-row sm:items-center sm:justify-between">
@@ -231,7 +231,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             <span className="sm:hidden">Edit</span>
                                         </Button>
                                     </Link>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsResumeModalOpen(true)}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
@@ -239,9 +239,9 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Send Now</span>
                                         <span className="sm:hidden">Send</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -260,7 +260,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             <span className="sm:hidden">Edit</span>
                                         </Button>
                                     </Link>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsResumeModalOpen(true)}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
@@ -268,9 +268,9 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Resume</span>
                                         <span className="sm:hidden">Resume</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -282,7 +282,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             {/* Scheduled Status Actions */}
                             {newsletter.status === 'scheduled' && (
                                 <>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsUpdatingSchedule(!isUpdatingSchedule)}
                                         variant="outline"
                                     >
@@ -290,7 +290,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Update Schedule</span>
                                         <span className="sm:hidden">Schedule</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsManualSendModalOpen(true)}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
@@ -298,17 +298,17 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Send Now</span>
                                         <span className="sm:hidden">Send</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsPauseModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-orange-600 hover:text-orange-700 hover:border-orange-300"
                                     >
                                         <Pause className="mr-2 h-4 w-4" />
                                         <span className="hidden sm:inline">Pause</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -320,7 +320,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             {/* Sending Status Actions */}
                             {newsletter.status === 'sending' && (
                                 <>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsUpdatingSchedule(!isUpdatingSchedule)}
                                         variant="outline"
                                     >
@@ -328,7 +328,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Update Schedule</span>
                                         <span className="sm:hidden">Schedule</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsManualSendModalOpen(true)}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
@@ -336,17 +336,17 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             <span className="hidden sm:inline">Send Now</span>
                                             <span className="sm:hidden">Send</span>
                                         </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsPauseModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-orange-600 hover:text-orange-700 hover:border-orange-300"
                                     >
                                         <Pause className="mr-2 h-4 w-4" />
                                         <span className="hidden sm:inline">Pause</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -358,7 +358,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             {/* Sent Status Actions */}
                             {newsletter.status === 'sent' && (
                                 <>
-                                    <Button 
+                                    <Button
                                         onClick={() => {
                                             console.log('Send Again button clicked for newsletter:', newsletter.id);
                                             setIsManualSendModalOpen(true);
@@ -369,9 +369,9 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Send Again</span>
                                         <span className="sm:hidden">Send</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -383,7 +383,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             {/* Failed Status Actions */}
                             {newsletter.status === 'failed' && (
                                 <>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsManualSendModalOpen(true)}
                                         className="bg-green-600 hover:bg-green-700"
                                     >
@@ -391,9 +391,9 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <span className="hidden sm:inline">Retry Send</span>
                                         <span className="sm:hidden">Retry</span>
                                     </Button>
-                                    <Button 
+                                    <Button
                                         onClick={() => setIsDeleteModalOpen(true)}
-                                        variant="outline" 
+                                        variant="outline"
                                         className="text-red-600 hover:text-red-700 hover:border-red-300"
                                     >
                                         <Trash2 className="mr-2 h-4 w-4" />
@@ -418,14 +418,14 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             </CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <form 
-                                method="POST" 
+                            <form
+                                method="POST"
                                 action={route('newsletter.update-schedule', newsletter.id)}
                                 className="space-y-4"
                             >
                                 <input type="hidden" name="_token" value={document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''} />
                                 <input type="hidden" name="_method" value="PUT" />
-                                
+
                                 <div className="space-y-2">
                                     <Label htmlFor="scheduled_at" className="text-sm font-medium">
                                         New Schedule Time
@@ -446,18 +446,18 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         )}
                                     </p>
                                 </div>
-                                
+
                                 <div className="flex gap-2">
-                                    <Button 
-                                        type="submit" 
+                                    <Button
+                                        type="submit"
                                         className="bg-blue-600 hover:bg-blue-700"
                                     >
                                         <Save className="mr-2 h-4 w-4" />
                                         Update Schedule
                                     </Button>
-                                    <Button 
-                                        type="button" 
-                                        variant="outline" 
+                                    <Button
+                                        type="button"
+                                        variant="outline"
                                         onClick={() => setIsUpdatingSchedule(false)}
                                     >
                                         Cancel
@@ -496,7 +496,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 <p className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-1">Delivered</p>
                                 <p className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-white">{newsletter.delivered_count}</p>
                                 <p className="text-xs text-gray-500 dark:text-gray-400">
-                                    {newsletter.total_recipients > 0 ? 
+                                    {newsletter.total_recipients > 0 ?
                                         ((newsletter.delivered_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'}% rate
                                 </p>
                             </div>
@@ -553,7 +553,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Subject</h3>
                                     <p className="text-gray-700 dark:text-gray-300">{newsletter.subject}</p>
                                 </div>
-                                
+
                                 <div>
                                     <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Template</h3>
                                     <Badge variant="outline">{newsletter.template.name}</Badge>
@@ -577,7 +577,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         {showVariablePreview ? (
                                             // Show with variables replaced
                                             previewHtmlContent ? (
-                                                <div 
+                                                <div
                                                     dangerouslySetInnerHTML={{ __html: previewHtmlContent }}
                                                     className="prose prose-sm max-w-none dark:prose-invert"
                                                 />
@@ -589,7 +589,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         ) : (
                                             // Show original
                                             newsletter.html_content ? (
-                                                <div 
+                                                <div
                                                     dangerouslySetInnerHTML={{ __html: newsletter.html_content }}
                                                     className="prose prose-sm max-w-none dark:prose-invert"
                                                 />
@@ -606,7 +606,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         </div>
                                     )}
                                 </div>
-                                
+
                                 {showVariablePreview && (
                                     <div>
                                         <h3 className="font-semibold text-gray-900 dark:text-white mb-2">Subject Preview (with variables)</h3>
@@ -652,16 +652,16 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         <div className="flex justify-between items-center mb-1">
                                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Delivery Rate</span>
                                             <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                                                {newsletter.total_recipients > 0 ? 
+                                                {newsletter.total_recipients > 0 ?
                                                     ((newsletter.delivered_count / newsletter.total_recipients) * 100).toFixed(1) : '0.0'}%
                                             </span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                            <div 
+                                            <div
                                                 className="bg-green-600 h-2 rounded-full transition-all"
-                                                style={{ 
-                                                    width: `${newsletter.total_recipients > 0 ? 
-                                                        ((newsletter.delivered_count / newsletter.total_recipients) * 100) : 0}%` 
+                                                style={{
+                                                    width: `${newsletter.total_recipients > 0 ?
+                                                        ((newsletter.delivered_count / newsletter.total_recipients) * 100) : 0}%`
                                                 }}
                                             />
                                         </div>
@@ -674,10 +674,10 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             <span className="text-sm font-semibold text-purple-600 dark:text-purple-400">{openRate}%</span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                            <div 
+                                            <div
                                                 className="bg-purple-600 h-2 rounded-full transition-all"
-                                                style={{ 
-                                                    width: `${openRate}%` 
+                                                style={{
+                                                    width: `${openRate}%`
                                                 }}
                                             />
                                         </div>
@@ -689,10 +689,10 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             <span className="text-sm font-semibold text-orange-600 dark:text-orange-400">{clickRate}%</span>
                                         </div>
                                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
-                                            <div 
+                                            <div
                                                 className="bg-orange-600 h-2 rounded-full transition-all"
-                                                style={{ 
-                                                    width: `${clickRate}%` 
+                                                style={{
+                                                    width: `${clickRate}%`
                                                 }}
                                             />
                                         </div>
@@ -746,7 +746,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2">
-                                            <Badge 
+                                            <Badge
                                                 variant={email.status === 'delivered' ? 'default' : 'secondary'}
                                                 className={email.status === 'delivered' ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-800'}
                                             >
@@ -774,7 +774,7 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                 {newsletter.status === 'draft' ? 'Send Newsletter' : 'Resume Newsletter'}
                             </DialogTitle>
                             <DialogDescription>
-                                {newsletter.status === 'draft' 
+                                {newsletter.status === 'draft'
                                     ? 'Are you sure you want to send this newsletter now?'
                                     : 'Choose how to resume this newsletter:'}
                             </DialogDescription>
@@ -808,21 +808,21 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                             <Button
                                 onClick={() => {
                                     // For draft newsletters, use send route. For paused, use resume route.
-                                    const routeToUse = newsletter.status === 'draft' 
+                                    const routeToUse = newsletter.status === 'draft'
                                         ? route('newsletter.send', newsletter.id)
                                         : route('newsletter.resume', newsletter.id);
-                                    
+
                                     const form = document.createElement('form');
                                     form.method = 'POST';
                                     form.action = routeToUse;
-                                    
+
                                     const token = document.createElement('input');
                                     token.type = 'hidden';
                                     token.name = '_token';
                                     token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                                    
+
                                     form.appendChild(token);
-                                    
+
                                     // Only add scheduled_at if it's a resume action and time is provided
                                     if (newsletter.status === 'paused' && resumeScheduleTime) {
                                         const scheduleInput = document.createElement('input');
@@ -831,15 +831,15 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                                         scheduleInput.value = resumeScheduleTime;
                                         form.appendChild(scheduleInput);
                                     }
-                                    
+
                                     document.body.appendChild(form);
                                     form.submit();
                                     setIsResumeModalOpen(false);
                                 }}
                                 className="bg-green-600 hover:bg-green-700"
                             >
-                                {newsletter.status === 'draft' 
-                                    ? 'Send Now' 
+                                {newsletter.status === 'draft'
+                                    ? 'Send Now'
                                     : (resumeScheduleTime ? 'Schedule' : 'Send Now')}
                             </Button>
                         </DialogFooter>
@@ -858,12 +858,12 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                         const form = document.createElement('form');
                         form.method = 'POST';
                         form.action = route('newsletter.pause', newsletter.id);
-                        
+
                         const token = document.createElement('input');
                         token.type = 'hidden';
                         token.name = '_token';
                         token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                        
+
                         form.appendChild(token);
                         document.body.appendChild(form);
                         form.submit();
@@ -885,24 +885,24 @@ export default function NewsletterShow({ newsletter, previewData }: NewsletterSh
                         try {
                             console.log('Manual send confirmed for newsletter:', newsletter.id);
                             console.log('Route URL:', route('newsletter.manual-send', newsletter.id));
-                            
+
                             const form = document.createElement('form');
                             form.method = 'POST';
                             form.action = route('newsletter.manual-send', newsletter.id);
                             form.style.display = 'none';
-                            
+
                             const token = document.createElement('input');
                             token.type = 'hidden';
                             token.name = '_token';
                             token.value = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                            
+
                             form.appendChild(token);
                             document.body.appendChild(form);
-                            
+
                             console.log('Form created and submitted for newsletter:', newsletter.id);
                             console.log('Form action:', form.action);
                             console.log('CSRF token:', token.value);
-                            
+
                             form.submit();
                         } catch (error) {
                             console.error('Error submitting manual send form:', error);

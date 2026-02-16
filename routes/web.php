@@ -231,6 +231,8 @@ Route::get('/nodeboss/{id}/buy', [NodeBossController::class, 'frontendShow'])->n
 
 Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
+Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
+
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
 // Thank-you route must come before {slug} to avoid route conflict
