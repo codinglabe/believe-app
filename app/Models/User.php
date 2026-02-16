@@ -64,6 +64,8 @@ class User extends Authenticatable implements MustVerifyEmail
         'referred_by',
         "is_verified",
         "email_verified_at",
+        "two_fa_enabled",
+        "biometric_enabled",
         "ownership_verified_at",
         "verification_status",
         'primary_bank_account_id',
@@ -419,10 +421,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function organization()
     {
         // Use hasOneThrough relationship but fix ambiguous column issue.
-        // Only include youtube_channel_url if the column exists (migration may not be run yet).
+        // Only include youtube columns if they exist (migrations may not be run yet).
         $base = 'organizations.id, organizations.name, organizations.user_id, organizations.ein, organizations.description, organizations.mission, organizations.website, organizations.email, organizations.phone, organizations.contact_name, organizations.contact_title, organizations.city, organizations.state, organizations.zip, organizations.registration_status, organizations.created_at, organizations.updated_at';
         $youtube = Schema::hasColumn('organizations', 'youtube_channel_url') ? ', organizations.youtube_channel_url' : '';
-        $select = $base . $youtube . ', board_members.user_id as laravel_through_key';
+        $youtubeOAuth = '';
+        if (Schema::hasColumn('organizations', 'youtube_access_token')) {
+            $youtubeOAuth .= ', organizations.youtube_access_token, organizations.youtube_refresh_token, organizations.youtube_token_expires_at';
+        }
+        $select = $base . $youtube . $youtubeOAuth . ', board_members.user_id as laravel_through_key';
 
         return $this->hasOneThrough(
             Organization::class,
