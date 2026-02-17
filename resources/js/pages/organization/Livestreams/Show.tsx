@@ -10,6 +10,25 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import AppLayout from "@/layouts/app-layout"
 import {
   Video,
@@ -18,12 +37,17 @@ import {
   Play,
   Square,
   Youtube,
-  Users,
   Key,
   Info,
   CheckCircle2,
   AlertCircle,
   ArrowLeft,
+  Download,
+  MoreVertical,
+  Maximize2,
+  HelpCircle,
+  Settings,
+  Radio,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 
@@ -74,6 +98,9 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   const [obsError, setObsError] = useState<string | null>(null)
   const [obsUrl, setObsUrl] = useState(DEFAULT_OBS_WS)
   const [obsPassword, setObsPassword] = useState("")
+  const [goLiveOpen, setGoLiveOpen] = useState(false)
+  const [goLiveTab, setGoLiveTab] = useState("streaming")
+  const [infoOpen, setInfoOpen] = useState(false)
   const { props } = usePage<{ errors?: { go_live?: string }; browser_publish_url?: string | null }>()
   const goLiveError = props.errors?.go_live ?? null
 
@@ -83,6 +110,20 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
       window.open(url, "_blank", "noopener,noreferrer,width=800,height=600")
     }
   }, [props.browser_publish_url])
+
+  // Prevent page scroll — livestream view is fixed to viewport, no body scroll
+  useEffect(() => {
+    const html = document.documentElement
+    const body = document.body
+    const prevHtml = html.style.overflow
+    const prevBody = body.style.overflow
+    html.style.overflow = "hidden"
+    body.style.overflow = "hidden"
+    return () => {
+      html.style.overflow = prevHtml
+      body.style.overflow = prevBody
+    }
+  }, [])
 
   const copyToClipboard = (text: string, key: string) => {
     navigator.clipboard.writeText(text)
@@ -154,9 +195,9 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e)
       if (msg && typeof msg === "string" && (msg.includes("authentication") || msg.includes("missing"))) {
-        setObsError("OBS is asking for a password. In OBS go to Tools → WebSocket Server Settings and uncheck \"Enable Authentication\", then try again. No password needed.")
+        setObsError("OBS is asking for a password. In OBS go to Tools â†’ WebSocket Server Settings and uncheck \"Enable Authentication\", then try again. No password needed.")
       } else {
-        setObsError(msg || "Could not connect to OBS. Is OBS open? In OBS: Tools → WebSocket Server Settings → enable the server and uncheck \"Enable Authentication\".")
+        setObsError(msg || "Could not connect to OBS. Is OBS open? In OBS: Tools â†’ WebSocket Server Settings â†’ enable the server and uncheck \"Enable Authentication\".")
       }
     } finally {
       setIsGoingLiveOBS(false)
@@ -172,6 +213,16 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     })
   }
 
+  // When OBS is ready (stream key + view link), Go Live opens OBS and goes live directly. Otherwise open modal to add stream key etc.
+  const canGoLiveWithOBS = !!(livestream.youtubeGoLiveEnabled && livestream.viewLink && livestream.streamKeyDisplay)
+  const handleGoLiveClick = () => {
+    if (canGoLiveWithOBS) {
+      handleGoLiveWithOBS()
+    } else {
+      setGoLiveOpen(true)
+    }
+  }
+
   const getStatusBadge = () => {
     const statusConfig = {
       draft: { label: "Draft", className: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30" },
@@ -184,481 +235,369 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     return <Badge variant="outline" className={config.className}>{config.label}</Badge>
   }
 
+  const joinUrl = typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : ""
+
+  const meetingInfoContent = (
+    <div className="w-full min-w-0 space-y-4">
+      <div className="w-full min-w-0 rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <Key className="h-3.5 w-3.5 text-primary" />
+          Meeting ID
+        </div>
+        <Input value={livestream.roomName} readOnly className="font-mono text-sm h-9 w-full bg-background/80" />
+        <Button variant="outline" size="sm" className="w-full h-9 gap-2" onClick={() => copyToClipboard(livestream.roomName, "room")}>
+          {copied === "room" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+          Copy
+        </Button>
+      </div>
+      <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+        <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+          <Key className="h-3.5 w-3.5 text-primary" />
+          Passcode
+        </div>
+        <Input value={livestream.roomPassword} readOnly className="font-mono text-sm h-9 w-full bg-background/80" />
+        <Button variant="outline" size="sm" className="w-full h-9 gap-2" onClick={() => copyToClipboard(livestream.roomPassword, "password")}>
+          {copied === "password" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+          Copy
+        </Button>
+      </div>
+      <Button
+        variant="secondary"
+        size="sm"
+        className="w-full h-10 gap-2 rounded-lg font-medium shadow-sm border border-border bg-primary/5 hover:bg-primary/10 text-foreground"
+        onClick={() => copyToClipboard(joinUrl, "invite")}
+      >
+        {copied === "invite" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+        Copy invite link
+      </Button>
+    </div>
+  )
+
   return (
     <AppLayout>
-      <Head title={`Livestream: ${livestream.title || "Untitled"}`} />
-      <div className="w-full px-4 py-8 md:px-6 lg:px-8">
-        <header className="mb-6 flex flex-col gap-4 border-b border-border pb-6">
-          <Link
-            href="/livestreams"
-            className="inline-flex w-fit items-center text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Livestreams
-          </Link>
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                {livestream.title || "Untitled Livestream"}
-              </h1>
-              <p className="mt-1 text-muted-foreground">{organization.name}</p>
+      <Head title={livestream.title || "Meeting"} />
+      {/* Full-bleed on mobile; no scroll — fixed height to fit viewport below header */}
+      <div className="w-screen max-w-[100vw] relative left-1/2 -translate-x-1/2 overflow-hidden md:w-full md:max-w-none md:left-auto md:translate-x-0 md:overflow-visible">
+        <div className="flex h-[calc(100dvh-4rem)] sm:h-[calc(100vh-4rem)] flex-col w-full min-w-0 overflow-hidden">
+          {/* Top bar: title left; actions + meeting new tab icon right */}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border px-3 py-2 sm:px-4 sm:py-3">
+            <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-4">
+              <Link href="/livestreams" className="shrink-0 text-muted-foreground hover:text-foreground p-1.5 -m-1.5 rounded touch-manipulation" aria-label="Back">
+                <ArrowLeft className="h-4 w-4 sm:h-5 sm:w-5" />
+              </Link>
+              <h1 className="truncate text-sm font-semibold text-foreground sm:text-lg">{livestream.title || "Meeting"}</h1>
+              <span className="shrink-0">{getStatusBadge()}</span>
             </div>
-            {getStatusBadge()}
-          </div>
-        </header>
-
-        <Tabs defaultValue={livestream.youtubeGoLiveEnabled ? "youtube-live" : "dashboard"} className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="dashboard">Host Dashboard</TabsTrigger>
-            {livestream.youtubeGoLiveEnabled && (
-              <TabsTrigger value="youtube-live">YouTube Live</TabsTrigger>
-            )}
-            <TabsTrigger value="settings">Settings</TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="dashboard" className="space-y-6">
-            {livestream.youtubeGoLiveEnabled && (
-              <Card className="border-blue-200 bg-blue-50 dark:border-blue-500/20 dark:bg-blue-500/5">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-base text-foreground">
-                    <Info className="h-4 w-4" />
-                    Go live in one click (after one-time OBS setup)
-                  </CardTitle>
-                  <CardDescription>Set up OBS once with WebSocket and no password; then just click &quot;Go Live with OBS (auto)&quot; — the app configures OBS and starts the stream.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-sm text-muted-foreground">
-                  <p className="font-medium text-foreground">One-time setup (do once)</p>
-                  <ol className="list-decimal space-y-2 pl-6">
-                    <li>Install OBS from obsproject.com on the same computer where you open this app.</li>
-                    <li>In OBS: <strong className="text-foreground">Tools</strong> → <strong className="text-foreground">WebSocket Server Settings</strong> → enable the server, leave port <strong className="text-foreground">4455</strong>, and <strong className="text-foreground">uncheck &quot;Enable Authentication&quot;</strong> so you never need a password. Click OK.</li>
-                  </ol>
-                  <p className="font-medium text-foreground">Every time you go live</p>
-                  <ul className="list-disc space-y-1 pl-6">
-                    <li>Open OBS (you can minimize it) and this livestream page on the same computer.</li>
-                    <li>For video in the stream: open <strong className="text-foreground">Director Mode</strong> or the <strong className="text-foreground">Push (Host)</strong> link and allow camera.</li>
-                    <li>Click <strong className="text-red-600 dark:text-red-400">Go Live with OBS (auto)</strong>. The app will set up the scene, add your screen, and start streaming — no other steps.</li>
-                    <li><strong className="text-foreground">Monitor:</strong> If the wrong screen is captured, in OBS double-click the <strong className="text-foreground">&quot;My Screen&quot;</strong> source → <strong className="text-foreground">Display</strong> dropdown → select the monitor you want (e.g. the one that says &quot;Primary Monitor&quot;).</li>
-                    <li>Click <strong className="text-foreground">End Stream</strong> when done.</li>
-                  </ul>
-                </CardContent>
-              </Card>
-            )}
-            {/* Quick Actions */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4">
-                {(goLiveError || obsError) && (
-                  <Alert variant="destructive">
-                    <AlertDescription>{goLiveError || obsError}</AlertDescription>
-                  </Alert>
-                )}
-                <div className="flex flex-wrap gap-4">
-                {livestream.status !== "live" && livestream.status !== "ended" && (
-                  <>
-                    {livestream.youtubeGoLiveEnabled && (
-                      <Button
-                        onClick={handleGoLiveWithOBS}
-                        disabled={isGoingLiveOBS || !livestream.viewLink || !livestream.streamKeyDisplay}
-                        className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        {isGoingLiveOBS ? "Starting OBS…" : "Go Live with OBS (auto)"}
-                      </Button>
-                    )}
-                    {mediamtxEnabled && livestream.youtubeGoLiveEnabled && (
-                      <Button
-                        onClick={handleGoLiveBrowser}
-                        disabled={isGoingLiveBrowser}
-                        variant="outline"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        {isGoingLiveBrowser ? "Opening…" : "Go Live from browser (no OBS)"}
-                      </Button>
-                    )}
-                    {livestream.youtubeGoLiveEnabled && (
-                      <Button
-                        onClick={handleYoutubeGoLive}
-                        disabled={isUpdatingStatus || isGoingLive}
-                        variant="outline"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        Go Live (manual OBS)
-                      </Button>
-                    )}
-                    {!livestream.youtubeGoLiveEnabled && (
-                      <Button
-                        onClick={() => updateStatus("live")}
-                        disabled={isUpdatingStatus}
-                        className="bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800"
-                      >
-                        <Play className="w-4 h-4 mr-2" />
-                        Go Live
-                      </Button>
-                    )}
-                  </>
-                )}
-                {livestream.status === "live" && (
+            {/* Right: actions (mobile compact, desktop with labels) + meeting new tab icon */}
+            <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+              {/* Mobile: Info + Go Live + More */}
+              <div className="flex items-center gap-0.5 md:hidden">
+                <Sheet open={infoOpen} onOpenChange={setInfoOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation" aria-label="Meeting info">
+                      <Info className="h-4 w-4" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="left" className="w-[90vw] max-w-sm overflow-y-auto">
+                    <SheetHeader className="pb-4 border-b border-border">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
+                          <Info className="h-5 w-5 text-primary" />
+                        </div>
+                        <div>
+                          <SheetTitle className="text-lg">Meeting info</SheetTitle>
+                          <p className="text-sm text-muted-foreground mt-0.5">Share these details to invite others</p>
+                        </div>
+                      </div>
+                    </SheetHeader>
+                    <div className="mt-5">{meetingInfoContent}</div>
+                  </SheetContent>
+                </Sheet>
+                {livestream.status !== "live" && (
                   <Button
-                    onClick={handleEndStream}
-                    disabled={isUpdatingStatus}
-                    variant="destructive"
+                    variant="default"
+                    size="icon"
+                    className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
+                    onClick={handleGoLiveClick}
+                    aria-label="Go Live"
                   >
-                    <Square className="w-4 h-4 mr-2" />
-                    End Stream
+                    <Play className="h-4 w-4" />
                   </Button>
                 )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 touch-manipulation" aria-label="More actions">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" side="bottom" className="w-48">
+                    {livestream.status !== "live" && (
+                      <DropdownMenuItem onClick={handleGoLiveClick}>
+                        <Play className="h-4 w-4 mr-2" />
+                        Go Live
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
+                      Stream options
+                    </DropdownMenuItem>
+                    {livestream.status === "live" && (
+                      <DropdownMenuItem variant="destructive" onClick={handleEndStream} disabled={isUpdatingStatus}>
+                        <Square className="h-4 w-4 mr-2" />
+                        End stream
+                      </DropdownMenuItem>
+                    )}
+                    <DropdownMenuItem onClick={() => window.open(livestream.directorUrl, "_blank")}>
+                      <Maximize2 className="h-4 w-4 mr-2" />
+                      Open meeting in new tab
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              {/* Desktop: Go Live + Stream options + End stream (when live) in header */}
+              <div className="hidden md:flex items-center gap-1.5">
+                {livestream.status !== "live" && (
+                  <Button
+                    size="sm"
+                    className="bg-red-600 hover:bg-red-700 h-8 px-3"
+                    onClick={handleGoLiveClick}
+                  >
+                    <Play className="h-4 w-4 mr-1.5" />
+                    Go Live
+                  </Button>
+                )}
+                <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
+                  Stream options
+                </Button>
+                {livestream.status === "live" && (
+                  <Button variant="destructive" size="sm" className="h-8 px-3" onClick={handleEndStream} disabled={isUpdatingStatus}>
+                    <Square className="h-4 w-4 mr-1.5" />
+                    End stream
+                  </Button>
+                )}
+              </div>
+              {/* Meeting new tab icon — visible for both mobile and desktop */}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 sm:h-9 sm:w-9 touch-manipulation"
+                onClick={() => window.open(livestream.directorUrl, "_blank")}
+                aria-label="Open meeting in new tab"
+                title="Open meeting in new tab"
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+        {/* Main: left sidebar (desktop only) + meeting area — min-h-0 prevents flex overflow */}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* Left: Meeting Info — desktop only */}
+          <aside className="hidden md:flex w-64 lg:w-72 shrink-0 flex-col border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
+            <Card className="rounded-none border-0 border-b border-border shadow-none bg-transparent p-0">
+              <CardHeader className="p-0 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                    <Info className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-semibold">Meeting info</CardTitle>
+                    <CardDescription className="text-xs mt-0.5">Share these details to invite others</CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="p-0 pb-3">
+                {meetingInfoContent}
+              </CardContent>
+            </Card>
+          </aside>
+
+          {/* Center: meeting area — on mobile full width; min-h-0 so iframe doesn't cause scroll */}
+          <div className="flex flex-1 flex-col min-w-0 min-h-0 w-0 overflow-hidden">
+            {/* VDO.Ninja meeting iframe — flex-1 min-h-0 so it fills without causing page scroll */}
+            <div className="flex-1 min-h-0 min-w-0 bg-black relative overflow-hidden">
+              {livestream.directorUrl ? (
+                <iframe
+                  src={livestream.directorUrl}
+                  title="Meeting"
+                  className="absolute inset-0 w-full h-full"
+                  allow="camera; microphone; display-capture; autoplay"
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
+              )}
+              {livestream.status === "live" && (
+                <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-red-600 text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded text-xs sm:text-sm font-semibold animate-pulse">
+                  ● LIVE
+                </div>
+              )}
+              {/* Mobile: floating "Open in new tab" for full-screen meeting */}
+              <div className="absolute bottom-2 left-2 md:hidden">
                 <Button
-                  variant="outline"
+                  variant="secondary"
+                  size="sm"
+                  className="h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
                   onClick={() => window.open(livestream.directorUrl, "_blank")}
                 >
-                  <ExternalLink className="w-4 h-4 mr-2" />
-                  Open Director Mode
+                  <Maximize2 className="h-3.5 w-3.5" />
+                  <span className="text-xs">Full screen</span>
                 </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-            <div className="grid gap-6 lg:grid-cols-2">
-              {/* Director Link */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Video className="h-5 w-5" />
-                    Director Link (For You)
-                  </CardTitle>
-                  <CardDescription>
-                    Use this link to control the stream and appear on screen
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      value={livestream.directorUrl}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => copyToClipboard(livestream.directorUrl, "director")}
-                    >
-                      <Copy className={`h-4 w-4 ${copied === "director" ? "text-green-600 dark:text-green-400" : ""}`} />
-                    </Button>
-                  </div>
-                  <Alert>
-                    <Info className="h-4 w-4" />
-                    <AlertDescription>
-                      Click &quot;Enter the room&apos;s Control Center in the director&apos;s role&quot; when the page opens.
-                      This allows you to control the stream and appear on screen with guests.
-                    </AlertDescription>
-                  </Alert>
-                </CardContent>
-              </Card>
-
-              {/* Guest Link */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Users className="h-5 w-5" />
-                    Guest Join Link
-                  </CardTitle>
-                  <CardDescription>
-                    Share this link with your guests - no accounts needed!
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex gap-2">
-                    <Input
-                      value={livestream.participantUrl}
-                      readOnly
-                      className="font-mono text-sm"
-                    />
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={() => copyToClipboard(livestream.participantUrl, "participant")}
-                    >
-                      <Copy className={`h-4 w-4 ${copied === "participant" ? "text-green-600 dark:text-green-400" : ""}`} />
-                    </Button>
-                  </div>
-                  <p className="text-sm text-muted-foreground">
-                    Or use the public join page:{" "}
-                    <a
-                      href={`/livestreams/join/${livestream.roomName}`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-primary hover:underline"
-                    >
-                      /livestreams/join/{livestream.roomName}
-                    </a>
-                  </p>
-                </CardContent>
-              </Card>
+              </div>
             </div>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              {/* Room Details */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Room Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>Room Name</Label>
-                    <div className="mt-1 flex gap-2">
-                      <Input value={livestream.roomName} readOnly className="font-mono" />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => copyToClipboard(livestream.roomName, "room")}
-                      >
-                        <Copy className={`h-4 w-4 ${copied === "room" ? "text-green-600 dark:text-green-400" : ""}`} />
-                      </Button>
-                    </div>
-                  </div>
-                  <div>
-                    <Label>Room Password</Label>
-                    <div className="mt-1 flex gap-2">
-                      <Input value={livestream.roomPassword} readOnly className="font-mono" />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => copyToClipboard(livestream.roomPassword, "password")}
-                      >
-                        <Copy className={`h-4 w-4 ${copied === "password" ? "text-green-600 dark:text-green-400" : ""}`} />
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+          </div>
+        </div>
+      </div>
 
-              {/* YouTube Status */}
-              <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Youtube className="w-5 h-5" />
-                  YouTube Integration
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {livestream.hasStreamKey ? (
-                  <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
-                    <CheckCircle2 className="w-5 h-5" />
-                    <span>Stream key configured - Ready to broadcast</span>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <Alert>
-                      <AlertCircle className="w-4 h-4" />
-                      <AlertDescription>
-                        No YouTube stream key configured. Add one in the Settings tab to enable OBS → YouTube streaming.
-                      </AlertDescription>
-                    </Alert>
-                    {organization.youtubeChannelUrl && (
-                      <p className="text-sm text-muted-foreground">
-                        Your YouTube Channel:{" "}
-                        <a
-                          href={organization.youtubeChannelUrl}
-                          target="_blank"
-                          className="text-primary hover:underline"
-                        >
-                          {organization.youtubeChannelUrl}
-                        </a>
-                      </p>
+      {/* Go Live modal (Pane 4) */}
+      <Dialog open={goLiveOpen} onOpenChange={setGoLiveOpen}>
+          <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-lg max-h-[90dvh] sm:max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+            <DialogHeader>
+              <DialogTitle>Go Live</DialogTitle>
+            </DialogHeader>
+            <Tabs value={goLiveTab} onValueChange={setGoLiveTab} className="w-full">
+              <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-1">
+                <TabsTrigger value="streaming" className="text-xs sm:text-sm">Streaming</TabsTrigger>
+                <TabsTrigger value="platforms" className="text-xs sm:text-sm">Platforms</TabsTrigger>
+                <TabsTrigger value="settings" className="text-xs sm:text-sm">Settings</TabsTrigger>
+                <TabsTrigger value="help" className="text-xs sm:text-sm">Help</TabsTrigger>
+              </TabsList>
+              <TabsContent value="streaming" className="space-y-4 mt-4">
+                <p className="text-sm text-muted-foreground">Start stream</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Button variant="outline" className="h-auto py-4 flex flex-col gap-1" disabled={!livestream.youtubeGoLiveEnabled}>
+                    <Youtube className="h-6 w-6 text-red-600" />
+                    <span>YouTube</span>
+                  </Button>
+                  <Button variant="outline" className="h-auto py-4 flex flex-col gap-1" disabled><span className="text-muted-foreground">Facebook</span></Button>
+                  <Button variant="outline" className="h-auto py-4 flex flex-col gap-1" disabled><span className="text-muted-foreground">Custom RTMP</span></Button>
+                </div>
+                {(goLiveError || obsError) && (
+                  <Alert variant="destructive"><AlertDescription>{goLiveError || obsError}</AlertDescription></Alert>
+                )}
+                {livestream.youtubeGoLiveEnabled && livestream.viewLink && livestream.streamKeyDisplay && (
+                  <div className="space-y-2">
+                    <Button className="w-full bg-red-600 hover:bg-red-700" onClick={handleGoLiveWithOBS} disabled={isGoingLiveOBS}>
+                      {isGoingLiveOBS ? "Startingâ€¦" : "Go Live with OBS (auto)"}
+                    </Button>
+                    {mediamtxEnabled && (
+                      <Button variant="outline" className="w-full" onClick={handleGoLiveBrowser} disabled={isGoingLiveBrowser}>
+                        {isGoingLiveBrowser ? "Openingâ€¦" : "Go Live from browser (no OBS)"}
+                      </Button>
                     )}
+                    <Button variant="outline" className="w-full" onClick={handleYoutubeGoLive} disabled={isGoingLive}>
+                      {isGoingLive ? "Please waitâ€¦" : "Go Live (manual OBS)"}
+                    </Button>
                   </div>
                 )}
-              </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-
-          {livestream.youtubeGoLiveEnabled && livestream.directorUrl && livestream.viewLink && livestream.streamKeyDisplay && (
-            <TabsContent value="youtube-live" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-[calc(100vh-12rem)] min-h-[500px]">
-                <div className="lg:col-span-8 bg-black border border-border rounded-lg overflow-hidden relative">
-                  <iframe
-                    src={livestream.directorUrl}
-                    title="VDO.Ninja Director (Meeting Preview)"
-                    className="w-full h-full"
-                    allow="camera; microphone; display-capture; autoplay"
+                {livestream.status === "live" && (
+                  <Button variant="destructive" className="w-full" onClick={handleEndStream} disabled={isUpdatingStatus}>
+                    <Square className="h-4 w-4 mr-2" /> End stream
+                  </Button>
+                )}
+                <Card>
+                  <CardHeader className="py-3">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Video className="h-4 w-4" /> OBS Studio
+                    </CardTitle>
+                    <CardDescription className="text-xs">
+                      {canGoLiveWithOBS ? "OBS is set up. Use the Go Live button to start streaming." : "Professional streaming software"}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {!canGoLiveWithOBS && (
+                      <a href="https://obsproject.com/download" target="_blank" rel="noopener noreferrer">
+                        <Button variant="outline" size="sm" className="w-full"><Download className="h-4 w-4 mr-2" /> Download OBS</Button>
+                      </a>
+                    )}
+                    {livestream.viewLink && (
+                      <div className="flex gap-1">
+                        <Input value={livestream.viewLink} readOnly className="font-mono text-xs flex-1" />
+                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.viewLink!, "view")}><Copy className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
+                    {livestream.streamKeyDisplay && (
+                      <div className="flex gap-1">
+                        <Input type="password" value={livestream.streamKeyDisplay} readOnly className="font-mono text-xs flex-1" />
+                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.streamKeyDisplay!, "key")}><Copy className="h-3.5 w-3.5" /></Button>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </TabsContent>
+              <TabsContent value="platforms" className="mt-4 space-y-4">
+                <p className="text-sm text-muted-foreground">Choose where to stream. Add a stream key in Settings to enable YouTube.</p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <Button variant="outline" className="h-auto py-4 flex flex-col gap-1" disabled={!livestream.youtubeGoLiveEnabled}>
+                    <Youtube className="h-6 w-6 text-red-600" /> YouTube
+                  </Button>
+                  <Button variant="outline" className="h-auto py-4" disabled>Facebook</Button>
+                  <Button variant="outline" className="h-auto py-4" disabled>Custom RTMP</Button>
+                </div>
+              </TabsContent>
+              <TabsContent value="settings" className="mt-4 space-y-4">
+                <CardTitle className="text-sm flex items-center gap-2"><Key className="h-4 w-4" /> YouTube Stream Key</CardTitle>
+                <p className="text-sm text-muted-foreground">Add or update your stream key for OBS â†’ YouTube.</p>
+                <form onSubmit={updateStreamKey} className="space-y-3">
+                  <Input
+                    type="password"
+                    value={streamKey}
+                    onChange={(e) => setStreamKey(e.target.value)}
+                    placeholder="Paste your YouTube stream key"
+                    className="font-mono text-sm"
                   />
-                  {livestream.status === "live" && (
-                    <div className="absolute top-4 right-4 bg-red-600 text-white px-4 py-1 rounded font-bold animate-pulse">
-                      ● LIVE ON YOUTUBE
-                    </div>
-                  )}
-                </div>
-                <div className="lg:col-span-4 flex flex-col gap-6">
-                  <Card className={youtubeStep === 1 ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-500/5 dark:border-yellow-500" : ""}>
-                    <CardHeader>
-                      <CardTitle className="text-base">Step 1: Setup OBS</CardTitle>
-                      <CardDescription>Open OBS on your computer.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">OBS Browser Source URL</Label>
-                        <div className="flex gap-2 mt-1">
-                          <Input value={livestream.viewLink} readOnly className="font-mono text-xs bg-muted" />
-                          <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.viewLink!, "view")}>
-                            <Copy className={`w-4 h-4 ${copied === "view" ? "text-green-600 dark:text-green-400" : ""}`} />
-                          </Button>
-                        </div>
-                      </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">OBS Stream Key</Label>
-                        <div className="flex gap-2 mt-1">
-                          <Input value={livestream.streamKeyDisplay!} readOnly type="password" className="font-mono text-xs bg-muted" />
-                          <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.streamKeyDisplay!, "streamkey")}>
-                            <Copy className={`w-4 h-4 ${copied === "streamkey" ? "text-green-600 dark:text-green-400" : ""}`} />
-                          </Button>
-                        </div>
-                      </div>
-                      <p className="text-xs text-muted-foreground">In OBS: Settings → Stream → Service: YouTube. Paste server (RTMP) and key.</p>
-                    </CardContent>
-                  </Card>
-                  <Card className={youtubeStep === 2 ? "border-yellow-500 bg-yellow-50 dark:bg-yellow-500/5 dark:border-yellow-500" : ""}>
-                    <CardHeader>
-                      <CardTitle className="text-base">Step 2: Start engine</CardTitle>
-                      <CardDescription>Click &quot;Start Streaming&quot; inside OBS.</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <Button variant="secondary" className="w-full" onClick={() => setYoutubeStep(3)}>
-                        I have started OBS
-                      </Button>
-                    </CardContent>
-                  </Card>
-                  <Card className={youtubeStep === 3 ? "border-red-400 bg-red-50 dark:border-red-500/50 dark:bg-red-500/5" : ""}>
-                    <CardHeader>
-                      <CardTitle className="text-base">Step 3: Go live</CardTitle>
-                      <CardDescription>Wait ~10 seconds for YouTube to receive signal, then click below.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {(goLiveError || obsError) && (
-                        <Alert variant="destructive">
-                          <AlertDescription>{goLiveError || obsError}</AlertDescription>
-                        </Alert>
-                      )}
-                      {livestream.status !== "live" && (
-                        <>
-                          <Button
-                            className="w-full bg-red-600 hover:bg-red-700 mb-2"
-                            onClick={handleGoLiveWithOBS}
-                            disabled={isGoingLiveOBS || !livestream.viewLink || !livestream.streamKeyDisplay}
-                          >
-                            {isGoingLiveOBS ? "Starting OBS…" : "Go Live with OBS (auto)"}
-                          </Button>
-                          {mediamtxEnabled && (
-                            <Button
-                              className="w-full bg-green-600 hover:bg-green-700 mb-2"
-                              onClick={handleGoLiveBrowser}
-                              disabled={isGoingLiveBrowser}
-                            >
-                              {isGoingLiveBrowser ? "Opening…" : "Go Live from browser (no OBS)"}
-                            </Button>
-                          )}
-                        </>
-                      )}
-                      {livestream.status === "live" ? (
-                        <div className="space-y-3 text-center">
-                          <div className="text-green-600 font-bold dark:text-green-400">STREAM IS PUBLIC!</div>
-                          <p className="text-sm text-muted-foreground">View and share your live stream on YouTube:</p>
-                          <Button
-                            asChild
-                            className="w-full bg-red-600 hover:bg-red-700"
-                          >
-                            <a
-                              href={livestream.youtubeBroadcastId ? `https://www.youtube.com/watch?v=${livestream.youtubeBroadcastId}` : "https://www.youtube.com/live"}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <Youtube className="w-4 h-4 mr-2" />
-                              Watch on YouTube
-                            </a>
-                          </Button>
-                          <Button
-                            variant="destructive"
-                            className="w-full"
-                            onClick={handleEndStream}
-                            disabled={isUpdatingStatus}
-                          >
-                            <Square className="w-4 h-4 mr-2" />
-                            {isUpdatingStatus ? "Ending…" : "End Stream"}
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <Button
-                            className="w-full bg-gray-600 hover:bg-gray-700 text-lg font-bold py-6"
-                            onClick={handleYoutubeGoLive}
-                            disabled={isGoingLive || youtubeStep < 3}
-                          >
-                            {isGoingLive ? "Please wait…" : "GO LIVE NOW (manual)"}
-                          </Button>
-                          <p className="text-xs text-muted-foreground text-center">Use this only if you started OBS yourself and want to flip YouTube to public.</p>
-                        </>
-                      )}
-                    </CardContent>
-                  </Card>
-                </div>
-              </div>
-            </TabsContent>
-          )}
-
-          <TabsContent value="settings" className="space-y-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Key className="w-5 h-5" />
-                  YouTube Stream Key
-                </CardTitle>
-                <CardDescription>
-                  Add or update your YouTube stream key for OBS broadcasting
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <Alert>
-                  <Info className="w-4 h-4" />
-                  <AlertDescription>
-                    <strong>How to get your Stream Key:</strong>
-                    <ol className="list-decimal list-inside mt-2 space-y-1 text-sm">
-                      <li>Go to <a href="https://studio.youtube.com" target="_blank" rel="noreferrer" className="text-primary hover:underline">YouTube Studio</a> → Go Live</li>
-                      <li>Create a new stream or select an existing one</li>
-                      <li>Copy the "Stream Key" (usually starts with characters like "rtmp://" or a long alphanumeric string)</li>
-                      <li>Paste it below</li>
-                    </ol>
-                  </AlertDescription>
-                </Alert>
-
-                <form onSubmit={updateStreamKey}>
-                  <div className="space-y-4">
-                    <div>
-                      <Label htmlFor="stream_key">Stream Key</Label>
-                      <Input
-                        id="stream_key"
-                        type="password"
-                        value={streamKey}
-                        onChange={(e) => setStreamKey(e.target.value)}
-                        placeholder="Paste your YouTube stream key here"
-                        className="mt-1 font-mono text-sm"
-                        required
-                      />
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={isUpdatingStreamKey || !streamKey}
-                      className="bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:from-purple-500 hover:to-blue-500"
-                    >
-                      {isUpdatingStreamKey ? "Updating..." : livestream.hasStreamKey ? "Update Stream Key" : "Add Stream Key"}
-                    </Button>
-                  </div>
+                  <Button type="submit" disabled={isUpdatingStreamKey || !streamKey}>
+                    {isUpdatingStreamKey ? "Updatingâ€¦" : livestream.hasStreamKey ? "Update Stream Key" : "Add Stream Key"}
+                  </Button>
                 </form>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+              </TabsContent>
+              <TabsContent value="help" className="mt-4 space-y-4">
+                <div className="flex items-center gap-2 text-foreground font-semibold">
+                  <HelpCircle className="h-5 w-5 text-primary" />
+                  How to go live with OBS
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  One-time setup in OBS, then use the Go Live button to start streaming.
+                </p>
+
+                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Settings className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">1. One-time OBS setup</h4>
+                      <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                        <li>In OBS: <strong className="text-foreground">Tools</strong> → <strong className="text-foreground">WebSocket Server Settings</strong></li>
+                        <li>Enable the server and set port to <strong className="text-foreground">4455</strong></li>
+                        <li>Uncheck <strong className="text-foreground">Enable Authentication</strong></li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-3">
+                  <div className="flex items-start gap-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                      <Radio className="h-4 w-4 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-semibold text-foreground">2. Go live</h4>
+                      <ul className="mt-1.5 list-inside list-disc space-y-1 text-sm text-muted-foreground">
+                        <li>Open OBS and add your sources (camera, screen, etc.)</li>
+                        <li>Add your YouTube stream key in the <strong className="text-foreground">Settings</strong> tab if you haven’t already</li>
+                        <li>Click the red <strong className="text-foreground">Go Live</strong> button on this page — we’ll connect OBS and start the stream</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <p className="text-xs text-muted-foreground border-t border-border pt-3">
+                  Need a stream key? Get it from YouTube Studio → Create → Go live → Stream key. Paste it in the Settings tab.
+                </p>
+              </TabsContent>
+            </Tabs>
+          </DialogContent>
+        </Dialog>
       </div>
     </AppLayout>
   )

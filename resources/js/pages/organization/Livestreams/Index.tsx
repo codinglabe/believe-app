@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import AppLayout from "@/layouts/app-layout"
-import { Video, Plus, Calendar, Play, Square, Eye, Trash2, Radio } from "lucide-react"
+import { Video, Plus, Calendar, Play, Square, Eye, Trash2, Radio, ExternalLink } from "lucide-react"
 import { router } from "@inertiajs/react"
 import {
   AlertDialog,
@@ -36,6 +36,7 @@ interface Livestream {
   startedAt: string | null
   endedAt: string | null
   createdAt: string
+  directorUrl: string
 }
 
 interface Organization {
@@ -75,7 +76,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
 
   return (
     <AppLayout>
-      <Head title="My Livestreams" />
+      <Head title="Unity Meet" />
       <div className="min-h-screen bg-background">
         {/* Hero header - project color */}
         <div
@@ -97,7 +98,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                   </div>
                   <div>
                     <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
-                      My Livestreams
+                      Unity Meet
                     </h1>
                     <p className="text-sm text-muted-foreground">{organization.name}</p>
                   </div>
@@ -112,7 +113,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                   }}
                 >
                   <Plus className="mr-2 h-4 w-4" />
-                  Create New Livestream
+                  Start a New Meeting
                 </Button>
               </Link>
             </div>
@@ -132,9 +133,9 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                 >
                   <Video className="h-12 w-12 text-purple-600 dark:text-purple-400" />
                 </div>
-                <h3 className="mb-2 text-xl font-semibold text-foreground">No livestreams yet</h3>
+                <h3 className="mb-2 text-xl font-semibold text-foreground">No meetings yet</h3>
                 <p className="mb-8 max-w-sm text-muted-foreground">
-                  Create your first livestream to host virtual events with VDO.Ninja and YouTube.
+                  Create your first meeting to host virtual events with VDO.Ninja and YouTube.
                 </p>
                 <Link href="/livestreams/create">
                   <Button
@@ -145,7 +146,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                     }}
                   >
                     <Plus className="mr-2 h-4 w-4" />
-                    Create Your First Livestream
+                    Create Your First Meeting
                   </Button>
                 </Link>
               </CardContent>
@@ -155,7 +156,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
               <div className="mb-6 flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   <span className="font-medium text-foreground">{livestreams.total}</span>{" "}
-                  {livestreams.total === 1 ? "livestream" : "livestreams"}
+                  {livestreams.total === 1 ? "meeting" : "meetings"}
                 </p>
               </div>
 
@@ -168,7 +169,7 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                     <CardHeader className="pb-3">
                       <div className="flex items-start justify-between gap-3">
                         <CardTitle className="line-clamp-2 text-lg font-semibold text-foreground">
-                          {livestream.title || "Untitled Livestream"}
+                          {livestream.title || "Untitled Meeting"}
                         </CardTitle>
                         {getStatusBadge(livestream.status)}
                       </div>
@@ -199,17 +200,11 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                         )}
                       </div>
 
-                      <div className="flex gap-2 pt-2">
-                        <Link href={`/livestreams/${livestream.id}`} className="flex-1">
-                          <Button
-                            variant="outline"
-                            className="w-full border-border bg-muted/30 hover:border-purple-400 hover:bg-purple-500/10 dark:hover:border-purple-500/40 dark:hover:bg-purple-500/10 dark:hover:text-white"
-                          >
-                            <Eye className="mr-2 h-4 w-4" />
-                            View Dashboard
-                          </Button>
-                        </Link>
-                        {livestream.status !== "live" && (
+                      {livestream.status === "ended" ? (
+                        <div className="flex items-center justify-between gap-2 pt-2">
+                          <p className="text-sm text-muted-foreground">
+                            Stream ended. No dashboard or room link available.
+                          </p>
                           <AlertDialog>
                             <AlertDialogTrigger asChild>
                               <Button
@@ -223,13 +218,13 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                             <AlertDialogContent>
                               <AlertDialogHeader>
                                 <AlertDialogTitle>
-                                  Delete Livestream
+                                  Delete Meeting
                                 </AlertDialogTitle>
                                 <AlertDialogDescription>
                                   Are you sure you want to delete &quot;
-                                  {livestream.title || "Untitled Livestream"}&quot;?{" "}
+                                  {livestream.title || "Untitled Meeting"}&quot;?{" "}
                                   <span className="font-semibold text-amber-600 dark:text-amber-400">
-                                    This will also delete the livestream from YouTube if it was linked.
+                                    This will also delete the meeting from YouTube if it was linked.
                                   </span>{" "}
                                   This action cannot be undone.
                                 </AlertDialogDescription>
@@ -245,8 +240,67 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                               </AlertDialogFooter>
                             </AlertDialogContent>
                           </AlertDialog>
-                        )}
-                      </div>
+                        </div>
+                      ) : (
+                        <div className="flex gap-2 pt-2">
+                          <Link href={`/livestreams/${livestream.id}`} className="flex-1">
+                            <Button
+                              variant="outline"
+                              className="w-full border-border bg-muted/30 hover:border-purple-400 hover:bg-purple-500/10 dark:hover:border-purple-500/40 dark:hover:bg-purple-500/10 dark:hover:text-white"
+                            >
+                              <Eye className="mr-2 h-4 w-4" />
+                              View Dashboard
+                            </Button>
+                          </Link>
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            className="shrink-0 border-border hover:border-purple-400 hover:bg-purple-500/10 dark:hover:border-purple-500/40 dark:hover:bg-purple-500/10"
+                            onClick={() => window.open(livestream.directorUrl, "_blank")}
+                            aria-label="Open meeting room in new tab"
+                            title="Open room in new tab"
+                          >
+                            <ExternalLink className="h-4 w-4" />
+                          </Button>
+                          {livestream.status !== "live" && (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  variant="outline"
+                                  size="icon"
+                                  className="shrink-0 border-red-200 text-red-600 hover:border-red-400 hover:bg-red-50 hover:text-red-700 dark:border-red-500/30 dark:text-red-400 dark:hover:border-red-500/50 dark:hover:bg-red-500/10 dark:hover:text-red-300"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>
+                                    Delete Meeting
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete &quot;
+                                    {livestream.title || "Untitled Meeting"}&quot;?{" "}
+                                    <span className="font-semibold text-amber-600 dark:text-amber-400">
+                                      This will also delete the meeting from YouTube if it was linked.
+                                    </span>{" "}
+                                    This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(livestream.id)}
+                                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          )}
+                        </div>
+                      )}
                     </CardContent>
                   </Card>
                 ))}

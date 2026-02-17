@@ -56,6 +56,7 @@ class LivestreamController extends Controller
             'scheduled_at' => 'nullable|date|after:now',
             'youtube_stream_key' => 'nullable|string',
             'auto_create_youtube' => 'nullable|boolean',
+            'display_name' => 'nullable|string|max:255',
         ]);
 
         $user = Auth::user();
@@ -91,7 +92,7 @@ class LivestreamController extends Controller
 
                 $broadcastData = $youtubeService->createLiveBroadcast(
                     $accessToken,
-                    $request->title ?: 'Livestream - ' . $organization->name,
+                    $request->title ?: 'Unity Meet - ' . $organization->name,
                     $request->description,
                     $scheduledAt
                 );
@@ -120,6 +121,11 @@ class LivestreamController extends Controller
             $encryptedStreamKey = Crypt::encryptString($request->youtube_stream_key);
         }
 
+        $baseSettings = $settings ?? [];
+        if ($request->filled('display_name')) {
+            $baseSettings['display_name'] = $request->display_name;
+        }
+
         $livestream = OrganizationLivestream::create([
             'organization_id' => $organization->id,
             'room_name' => $roomName,
@@ -130,11 +136,51 @@ class LivestreamController extends Controller
             'title' => $request->title,
             'description' => $request->description,
             'scheduled_at' => $scheduledAt,
-            'settings' => $settings ?? null,
+            'settings' => !empty($baseSettings) ? $baseSettings : null,
         ]);
 
+        // Action-first flow: if minimal create (no YouTube, no schedule), go to Meeting Ready
+        $minimalCreate = !$request->boolean('auto_create_youtube') && !$request->scheduled_at && !$request->youtube_stream_key;
+        if ($minimalCreate) {
+            return redirect()->route('organization.livestreams.ready', $livestream->id)
+                ->with('success', 'Meeting ready!');
+        }
+
         return redirect()->route('organization.livestreams.show', $livestream->id)
-            ->with('success', 'Livestream created successfully!');
+            ->with('success', 'Meeting created successfully!');
+    }
+
+    /**
+     * Meeting Ready (Pane 2) — show meeting ID, passcode, invite link; Start Meeting goes to show.
+     */
+    public function ready($id): Response
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (!$organization) {
+            abort(404, 'Organization not found');
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        $password = $livestream->getDecryptedPassword();
+        $joinUrl = url('/livestreams/join/' . $livestream->room_name);
+
+        return Inertia::render('organization/Livestreams/Ready', [
+            'livestream' => [
+                'id' => $livestream->id,
+                'title' => $livestream->title,
+                'roomName' => $livestream->room_name,
+                'roomPassword' => $password,
+                'joinUrl' => $joinUrl,
+            ],
+            'organization' => [
+                'id' => $organization->id,
+                'name' => $organization->name,
+            ],
+        ]);
     }
 
     /**
@@ -164,11 +210,13 @@ class LivestreamController extends Controller
         $rtmpUrl = $settings['rtmp_url'] ?? null;
         $youtubeGoLiveEnabled = !empty($livestream->youtube_broadcast_id) && !empty($livestream->youtube_stream_key);
         $passwordParam = !empty($password) ? '&password=' . rawurlencode($password) : '';
+        $directorLabel = '&label=' . rawurlencode($organization->name ?? 'Host'); // Director/host name = organization name
         $pushLink = $youtubeGoLiveEnabled
-            ? "https://vdo.ninja/?push={$vdoRoom}&cleanoutput{$passwordParam}"
+            ? "https://vdo.ninja/?push={$vdoRoom}&cleanoutput{$passwordParam}{$directorLabel}"
             : null;
+        // OBS Browser Source: director URL with output, autostart, cleanoutput (e.g. ?director=ROOM&password=PASS&output&autostart&cleanoutput)
         $viewLink = $youtubeGoLiveEnabled
-            ? "https://vdo.ninja/?view={$vdoRoom}&cleanoutput{$passwordParam}"
+            ? "https://vdo.ninja/?director=" . rawurlencode($vdoRoom) . $passwordParam . "&output&autostart&cleanoutput"
             : null;
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
         $mediamtxEnabled = !empty(config('services.mediamtx.publish_url'));
@@ -205,11 +253,12 @@ class LivestreamController extends Controller
 
     /**
      * Show the guest join page (public, no auth required).
+     * Include 'ended' so invite links for past meetings show "Meeting ended" instead of 404.
      */
-    public function guestJoin($roomName): Response
+    public function guestJoin(string $roomName): Response
     {
         $livestream = OrganizationLivestream::where('room_name', $roomName)
-            ->whereIn('status', ['draft', 'scheduled', 'live'])
+            ->whereIn('status', ['draft', 'scheduled', 'live', 'ended'])
             ->with('organization')
             ->firstOrFail();
 
@@ -263,7 +312,7 @@ class LivestreamController extends Controller
 
         $livestream->update($updates);
 
-        return back()->with('success', 'Livestream status updated successfully!');
+        return back()->with('success', 'Meeting status updated successfully!');
     }
 
     /**
@@ -419,8 +468,8 @@ class LivestreamController extends Controller
     }
 
     /**
-     * End stream: transition YouTube broadcast to "complete", update DB to ended and ended_at.
-     * Frontend should also call stopOBSStream() to stop OBS.
+     * End stream: stop the broadcast on YouTube (and OBS on frontend) only.
+     * Do NOT set meeting to "ended" — set back to "draft" so the same link can be used for more streams.
      */
     public function endStream(Request $request, $id)
     {
@@ -438,26 +487,41 @@ class LivestreamController extends Controller
             return redirect()->back()->withErrors(['error' => 'Stream is not live.']);
         }
 
-        // Transition YouTube broadcast to "complete" (end the stream on YouTube)
-        if (! empty($livestream->youtube_broadcast_id)) {
-            $youtubeService = app(YouTubeService::class);
-            $accessToken = $youtubeService->getValidAccessToken($organization);
-            if ($accessToken) {
-                try {
-                    $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
-                } catch (\Exception $e) {
-                    Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
-                    // Still update our DB
-                }
+        $youtubeService = app(YouTubeService::class);
+        $accessToken = $youtubeService->getValidAccessToken($organization);
+
+        // Stop the current broadcast on YouTube (OBS is stopped on frontend via stopOBSStream)
+        if (! empty($livestream->youtube_broadcast_id) && $accessToken) {
+            try {
+                $youtubeService->updateBroadcastStatus($accessToken, $livestream->youtube_broadcast_id, 'complete');
+            } catch (\Exception $e) {
+                Log::warning('End stream: YouTube complete failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
             }
         }
 
-        $livestream->update([
-            'status' => 'ended',
-            'ended_at' => $livestream->ended_at ?? now(),
-        ]);
+        // Create a new YouTube broadcast so the same meeting can go live again (completed broadcasts cannot be reused)
+        $updatePayload = ['status' => 'draft'];
+        if ($accessToken) {
+            try {
+                $title = $livestream->title ?: 'Unity Meet - ' . ($organization->name ?? 'Live');
+                $broadcastData = $youtubeService->createLiveBroadcast(
+                    $accessToken,
+                    $title,
+                    $livestream->description,
+                    null
+                );
+                if ($broadcastData) {
+                    $updatePayload['youtube_broadcast_id'] = $broadcastData['broadcast_id'];
+                    $updatePayload['youtube_stream_key'] = Crypt::encryptString($broadcastData['stream_key']);
+                }
+            } catch (\Exception $e) {
+                Log::warning('End stream: create new YouTube broadcast failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
+            }
+        }
 
-        return redirect()->back()->with('success', 'Stream ended. YouTube and OBS have been stopped.');
+        $livestream->update($updatePayload);
+
+        return redirect()->back()->with('success', 'Stream stopped. You can go live again from the same link when ready.');
     }
 
     /**
@@ -513,6 +577,7 @@ class LivestreamController extends Controller
                     'startedAt' => $livestream->started_at?->toIso8601String(),
                     'endedAt' => $livestream->ended_at?->toIso8601String(),
                     'createdAt' => $livestream->created_at->toIso8601String(),
+                    'directorUrl' => $livestream->getDirectorUrl(),
                 ];
             });
 
@@ -566,6 +631,6 @@ class LivestreamController extends Controller
         $livestream->delete();
 
         return redirect()->route('organization.livestreams.index')
-            ->with('success', 'Livestream deleted successfully!');
+            ->with('success', 'Meeting deleted successfully!');
     }
 }

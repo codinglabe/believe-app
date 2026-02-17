@@ -139,25 +139,77 @@ class OrganizationLivestream extends Model
      * Get the VDO.Ninja director URL.
      * Use only &director= (not &room=); VDO.Ninja says "there should be only &director OR &room".
      * &clearstorage clears any saved session so the "load previous session?" prompt won't offer the old bad URL.
+     * &label= set to organization name so the director does not need to enter a name manually.
+     * &cleandirector = cleaner control center; &slotmode + &layouts = guest grid layouts (2x2, 2x3, 3x3).
      */
     public function getDirectorUrl(): string
     {
+        $this->loadMissing('organization');
+        $settings = $this->settings ?? [];
+        $displayName = $settings['display_name'] ?? null;
+        $orgName = $displayName ?: ($this->organization?->name ?? 'Host');
+        $label = rawurlencode($orgName);
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
-        return "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage";
+
+        $layouts = $this->getVdoGridLayouts();
+        $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
+
+        return "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels&activespeaker=1&cleandirector{$layoutsParam}";
+    }
+
+    /**
+     * Default grid layouts for VDO.Ninja director: 2x2, 2x3, 3x3 guest grids.
+     * Each layout is an array of slot objects: x,y,w,h (percent), c (cover), slot (guest index).
+     *
+     * @return array<int, array<int, array<string, mixed>>>
+     */
+    protected function getVdoGridLayouts(): array
+    {
+        return [
+            // Layout 0: 2x2 grid (4 guests)
+            [
+                ['x' => 0, 'y' => 0, 'w' => 50, 'h' => 50, 'c' => true, 'slot' => 0],
+                ['x' => 50, 'y' => 0, 'w' => 50, 'h' => 50, 'c' => true, 'slot' => 1],
+                ['x' => 0, 'y' => 50, 'w' => 50, 'h' => 50, 'c' => true, 'slot' => 2],
+                ['x' => 50, 'y' => 50, 'w' => 50, 'h' => 50, 'c' => true, 'slot' => 3],
+            ],
+            // Layout 1: 2x3 grid (6 guests)
+            [
+                ['x' => 0, 'y' => 0, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 0],
+                ['x' => 50, 'y' => 0, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 1],
+                ['x' => 0, 'y' => 33.333, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 2],
+                ['x' => 50, 'y' => 33.333, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 3],
+                ['x' => 0, 'y' => 66.667, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 4],
+                ['x' => 50, 'y' => 66.667, 'w' => 50, 'h' => 33.333, 'c' => true, 'slot' => 5],
+            ],
+            // Layout 2: 3x3 grid (9 guests)
+            [
+                ['x' => 0, 'y' => 0, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 0],
+                ['x' => 33.333, 'y' => 0, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 1],
+                ['x' => 66.667, 'y' => 0, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 2],
+                ['x' => 0, 'y' => 33.333, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 3],
+                ['x' => 33.333, 'y' => 33.333, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 4],
+                ['x' => 66.667, 'y' => 33.333, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 5],
+                ['x' => 0, 'y' => 66.667, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 6],
+                ['x' => 33.333, 'y' => 66.667, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 7],
+                ['x' => 66.667, 'y' => 66.667, 'w' => 33.333, 'h' => 33.333, 'c' => true, 'slot' => 8],
+            ],
+        ];
     }
 
     /**
      * Get the VDO.Ninja participant/guest URL.
      * Room and password are URL-encoded so special characters don't break the link.
+     * &label= (empty) prompts the user for a display name on load; the name is shown in Video Ninja after join.
      */
     public function getParticipantUrl(): string
     {
         $password = $this->getDecryptedPassword();
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
-        return "https://vdo.ninja/?room={$room}&password={$pass}";
+        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&showlabels&activespeaker=1";
     }
 
     /**

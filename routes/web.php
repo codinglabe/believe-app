@@ -480,8 +480,10 @@ Route::get('/organizations/{slug}/impact', [OrganizationController::class, 'impa
 Route::get('/organizations/{slug}/details', [OrganizationController::class, 'details'])->name('organizations.details');
 Route::get('/organizations/{slug}/contact', [OrganizationController::class, 'contact'])->name('organizations.contact');
 
-// Public livestream guest join (no auth required)
-Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])->name('livestreams.guest-join');
+// Public livestream guest join (no auth) — registered first so /livestreams/join/{roomName} is not matched by /livestreams/{id}
+Route::get('/livestreams/join/{roomName}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoin'])
+    ->where('roomName', '[a-zA-Z0-9_]+')
+    ->name('livestreams.guest-join');
 
 // API route for inviting unregistered organizations (requires auth)
 Route::middleware(['auth', 'web'])->post('/api/organizations/invite', [OrganizationController::class, 'inviteOrganization'])->name('api.organizations.invite');
@@ -873,6 +875,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'index'])->name('index');
         Route::get('/create', [\App\Http\Controllers\Organization\LivestreamController::class, 'create'])->name('create');
         Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
+        Route::get('/{id}/ready', [\App\Http\Controllers\Organization\LivestreamController::class, 'ready'])->name('ready');
         Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
         Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
         Route::post('/{id}/go-live-obs-auto', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
