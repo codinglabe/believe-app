@@ -323,6 +323,7 @@ class EventController extends BaseController
             ->when($search, function ($query, $search) {
                 $query->where(function ($q) use ($search) {
                     $q->where('name', 'like', '%' . $search . '%')
+                        ->orWhere('description', 'like', '%' . $search . '%')
                         ->orWhere('location', 'like', '%' . $search . '%')
                         ->orWhere('city', 'like', '%' . $search . '%')
                         ->orWhere('state', 'like', '%' . $search . '%');
