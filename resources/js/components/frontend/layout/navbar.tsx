@@ -42,6 +42,7 @@ import {
   Handshake,
   Globe,
   Heart,
+  TrendingUp,
 } from "lucide-react"
 import { motion, AnimatePresence } from "framer-motion"
 import { ThemeToggle } from "@/components/frontend/theme-toggle"
@@ -116,6 +117,8 @@ export default function Navbar() {
   const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const servicesItems = [
     { name: "FundMe", href: "/believe-fundme", icon: Heart },
+    { name: "Fundraise", href: "/fundraise", icon: TrendingUp },
+    ...(isOrgUser ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
     ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
     { name: "Merchant Hub", href: "/merchant-hub", icon: ShoppingBag },

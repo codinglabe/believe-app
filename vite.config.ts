@@ -5,6 +5,14 @@ import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 
 export default defineConfig({
+    optimizeDeps: {
+        include: ['obs-websocket-js'],
+    },
+    build: {
+        commonjsOptions: {
+            include: [/obs-websocket-js/, /node_modules/],
+        },
+    },
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.tsx'],

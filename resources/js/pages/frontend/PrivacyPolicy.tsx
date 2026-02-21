@@ -44,6 +44,7 @@ const PrivacyPolicy = () => {
                                     <li>Email addresses for communication</li>
                                     <li>Name and contact information</li>
                                     <li>Organization details (if applicable)</li>
+                                    <li>Facebook Page connection and related data (only if you connect a page—e.g. page list, post and schedule actions, engagement metrics)</li>
                                     <li>IP addresses and browser information</li>
                                     <li>Usage data and analytics</li>
                                 </ul>
@@ -101,6 +102,45 @@ const PrivacyPolicy = () => {
                                     </div>
                                 </div>
                             </div>
+                        </section>
+
+                        {/* Facebook Page Connection */}
+                        <section className="mb-8">
+                            <h2 className="text-2xl font-semibold text-gray-900 dark:text-white mb-4">
+                                Connecting Your Facebook Page
+                            </h2>
+                            <p className="text-gray-600 dark:text-gray-300 leading-relaxed mb-4">
+                                If you connect a Facebook Page to our app, we request certain permissions from Meta (Facebook) to provide page management and insights. We use these only as described below. We do not post to your page without your explicit permission.
+                            </p>
+                            <div className="space-y-4">
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Pages list (pages_show_list)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We request access to list the Facebook Pages you manage so you can choose which page to connect to our service. We use this only to display your pages and let you select one to connect. We do not access or use your page list for any other purpose.
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Managing posts (pages_manage_posts)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We use this permission to create and schedule posts on your connected Facebook Page only when you explicitly take action in our app (for example, when you write a post and tap &quot;Publish&quot; or &quot;Schedule&quot;). We do not post to your page without your permission. Every post is created or scheduled only after you confirm it. You remain in full control of what is published and when.
+                                    </p>
+                                </div>
+                                <div className="bg-gray-50 dark:bg-gray-700 rounded-lg p-4">
+                                    <h3 className="font-semibold text-gray-900 dark:text-white mb-2">
+                                        Reading engagement (pages_read_engagement)
+                                    </h3>
+                                    <p className="text-gray-600 dark:text-gray-300 text-sm">
+                                        We request access to read engagement data (such as likes, comments, and shares) for pages you have connected. We use this to show you insights and performance of your posts within our app. This data is used only to display analytics to you and is not shared with third parties for advertising or other purposes beyond providing our service.
+                                    </p>
+                                </div>
+                            </div>
+                            <p className="text-gray-600 dark:text-gray-300 text-sm mt-4">
+                                You can disconnect your Facebook Page at any time from your account or integration settings. After disconnection, we stop accessing that page and do not post or read engagement on your behalf.
+                            </p>
                         </section>
 
                         {/* Data Storage & Protection */}

@@ -123,7 +123,7 @@ export default function UserRegisterPage({ seo, referralCode = '', positions }: 
       <PageHead title={seo?.title ?? "Register as Supporter"} description={seo?.description} />
     <div className="min-h-screen relative overflow-hidden bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900">
       {/* Background Image Overlay */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-20"
         style={{
           backgroundImage: 'url(/images/believe-hero.png)'
@@ -303,11 +303,11 @@ export default function UserRegisterPage({ seo, referralCode = '', positions }: 
                       />
                       <Label htmlFor="terms" className="text-sm text-gray-900 dark:text-white">
                         I agree to the{" "}
-                        <Link href="/terms" className="text-blue-600 hover:underline">
+                        <Link href="/terms-of-service" className="text-blue-600 hover:underline">
                           Terms of Service
                         </Link>{" "}
                         and{" "}
-                        <Link href="/privacy" className="text-blue-600 hover:underline">
+                        <Link href="/privacy-policy" className="text-blue-600 hover:underline">
                           Privacy Policy
                         </Link>
                       </Label>

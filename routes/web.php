@@ -233,6 +233,13 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
 
+// Public branded funnel: explain → qualify form → redirect to Wefunder (lead capture)
+Route::get('/fundraise', [App\Http\Controllers\FundraiseController::class, 'index'])->name('fundraise');
+Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'store'])->name('fundraise.store');
+// Org-only: Support Community Projects (Donation vs Investment / Wefunder)
+Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
+
 // Believe FundMe – public listing and campaign pages
 Route::get('/believe-fundme', [FundMeController::class, 'index'])->name('fundme.index');
 // Thank-you route must come before {slug} to avoid route conflict
@@ -1755,6 +1762,14 @@ Route::prefix('admin/contact-submissions')
         Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
         Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
 });
+
+// Admin Fundraise Leads (qualified leads from /fundraise funnel → Wefunder)
+Route::prefix('admin/fundraise-leads')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.fundraise-leads.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\FundraiseLeadController::class, 'index'])->name('index');
+    });
 
 // Admin Plans Management
 Route::prefix('admin/plans')

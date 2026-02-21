@@ -24,6 +24,7 @@ class SitemapController extends Controller
             ['loc' => "{$baseUrl}/privacy-policy", 'lastmod' => $now, 'changefreq' => 'yearly', 'priority' => '0.3'],
             ['loc' => "{$baseUrl}/terms-of-service", 'lastmod' => $now, 'changefreq' => 'yearly', 'priority' => '0.3'],
             ['loc' => "{$baseUrl}/contact", 'lastmod' => $now, 'changefreq' => 'monthly', 'priority' => '0.7'],
+            ['loc' => "{$baseUrl}/fundraise", 'lastmod' => $now, 'changefreq' => 'monthly', 'priority' => '0.8'],
             ['loc' => "{$baseUrl}/nonprofit-news", 'lastmod' => $now, 'changefreq' => 'weekly', 'priority' => '0.7'],
             ['loc' => "{$baseUrl}/jobs", 'lastmod' => $now, 'changefreq' => 'weekly', 'priority' => '0.8'],
             ['loc' => "{$baseUrl}/volunteer-opportunities", 'lastmod' => $now, 'changefreq' => 'weekly', 'priority' => '0.8'],

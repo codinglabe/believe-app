@@ -63,7 +63,8 @@ import {
     ShoppingBag,
     Search,
     Youtube,
-    Video
+    Video,
+    TrendingUp
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -844,6 +845,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Contact Submissions',
                 href: '/admin/contact-submissions',
                 icon: Mail,
+                role: "admin"
+            },
+            {
+                title: 'Fundraise Leads',
+                href: '/admin/fundraise-leads',
+                icon: TrendingUp,
                 role: "admin"
             },
             {

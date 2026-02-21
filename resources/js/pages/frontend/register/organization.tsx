@@ -1820,11 +1820,11 @@ export default function OrganizationRegisterPage({ seo, referralCode = '', ein: 
                         />
                         <Label htmlFor="terms" className="text-sm leading-relaxed">
                           I agree to the{" "}
-                          <Link href="/terms" className="text-green-600 hover:underline">
+                          <Link href="/terms-of-service" className="text-green-600 hover:underline">
                             Terms of Service
                           </Link>
                           ,{" "}
-                          <Link href="/privacy" className="text-green-600 hover:underline">
+                          <Link href="/privacy-policy" className="text-green-600 hover:underline">
                             Privacy Policy
                           </Link>
                           , and{" "}
