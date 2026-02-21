@@ -105,9 +105,9 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         role: "organization",
     },
 
-    // Livestreams (organization only)
+    // Unity Meet (organization only)
     {
-        title: 'Livestreams',
+        title: 'Unity Meet',
         href: '/livestreams',
         icon: Video,
         role: "organization",

@@ -93,7 +93,7 @@ const merchantTasks = [
   { id: '65', category: 'Event & Campaign Amplification', subcategory: 'RSVP to digital event' },
   { id: '66', category: 'Event & Campaign Amplification', subcategory: 'Invite friends to events' },
   { id: '67', category: 'Event & Campaign Amplification', subcategory: 'Share countdown post' },
-  { id: '68', category: 'Event & Campaign Amplification', subcategory: 'Promote livestream' },
+  { id: '68', category: 'Event & Campaign Amplification', subcategory: 'Promote Unity Meet' },
   { id: '69', category: 'Event & Campaign Amplification', subcategory: 'Share replay link' },
   { id: '70', category: 'Event & Campaign Amplification', subcategory: 'Participate in launch day' },
   { id: '71', category: 'Event & Campaign Amplification', subcategory: 'Boost giveaway post' },
