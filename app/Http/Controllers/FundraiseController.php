@@ -26,6 +26,19 @@ class FundraiseController extends Controller
     }
 
     /**
+     * Public: Support a Project — Choose how to participate: Give (Donation / FundMe) or Grow (Investment / Wefunder).
+     */
+    public function supportAProject()
+    {
+        return Inertia::render('frontend/SupportAProject', [
+            'seo' => array_merge(SeoService::forPage('fundraise'), ['title' => 'Support a Project']),
+            'fundMeUrl' => route('fundme.index'),
+            'investUrl' => route('fundraise'),
+            'wefunderUrl' => self::WEFUNDER_URL,
+        ]);
+    }
+
+    /**
      * Org-only: Support Community Projects (Donation vs Investment cards, Wefunder).
      */
     public function communityProjects(Request $request)

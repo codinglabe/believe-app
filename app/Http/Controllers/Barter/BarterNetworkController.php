@@ -241,7 +241,8 @@ class BarterNetworkController extends Controller
     }
 
     /**
-     * Request Trade: A selects B's listing and one of A's listings (optional extra points).
+     * Request Trade: A either (1) offers one of A's listings in trade (+ optional extra points)
+     * or (2) offers points only (pay listing's points_value) when they have nothing to trade.
      */
     public function requestTrade(Request $request)
     {
@@ -249,26 +250,52 @@ class BarterNetworkController extends Controller
 
         $validated = $request->validate([
             'requested_listing_id' => 'required|exists:nonprofit_barter_listings,id',
-            'return_listing_id' => 'required|exists:nonprofit_barter_listings,id',
+            'return_listing_id' => 'nullable|exists:nonprofit_barter_listings,id',
             'extra_points' => 'nullable|integer|min:0',
+            'points_offer' => 'nullable|integer|min:0',
         ]);
 
         $requestedListing = NonprofitBarterListing::findOrFail($validated['requested_listing_id']);
-        $returnListing = NonprofitBarterListing::findOrFail($validated['return_listing_id']);
-
-        if ($requestedListing->nonprofit_id === $org->id || $returnListing->nonprofit_id !== $org->id) {
-            abort(403, 'Invalid listing selection.');
+        if ($requestedListing->nonprofit_id === $org->id) {
+            abort(403, 'You cannot request your own listing.');
         }
 
-        $delta = $this->settlementService->computeDelta($requestedListing, $returnListing);
-        $extra = (int) ($validated['extra_points'] ?? 0);
-        $pointsDelta = $delta + $extra;
+        $returnListingId = null;
+        $pointsDelta = 0;
+
+        if (! empty($validated['return_listing_id'])) {
+            // Trade: offer one of your listings (optional extra points)
+            $returnListing = NonprofitBarterListing::findOrFail($validated['return_listing_id']);
+            if ($returnListing->nonprofit_id !== $org->id) {
+                abort(403, 'Return listing must be one of your listings.');
+            }
+            $returnListingId = $returnListing->id;
+            $delta = $this->settlementService->computeDelta($requestedListing, $returnListing);
+            $extra = (int) ($validated['extra_points'] ?? 0);
+            $pointsDelta = $delta + $extra;
+        } else {
+            // Points only: pay the listing's points value (no trade)
+            $pointsOffer = (int) ($validated['points_offer'] ?? 0);
+            $required = (int) $requestedListing->points_value;
+            if ($pointsOffer < $required) {
+                return redirect()->back()->withErrors([
+                    'points_offer' => "This listing requires {$required} Believe Points. Enter at least {$required} to pay with points only.",
+                ]);
+            }
+            $pointsDelta = $required;
+            $user = $org->user;
+            if (! $user || $user->currentBelievePoints() < $pointsDelta) {
+                return redirect()->back()->withErrors([
+                    'points_offer' => 'Insufficient Believe Points balance to complete this request.',
+                ]);
+            }
+        }
 
         NonprofitBarterTransaction::create([
             'requesting_nonprofit_id' => $org->id,
             'responding_nonprofit_id' => $requestedListing->nonprofit_id,
             'requested_listing_id' => $requestedListing->id,
-            'return_listing_id' => $returnListing->id,
+            'return_listing_id' => $returnListingId,
             'points_delta' => $pointsDelta,
             'status' => NonprofitBarterTransaction::STATUS_PENDING,
         ]);

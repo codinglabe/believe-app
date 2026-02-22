@@ -233,6 +233,9 @@ Route::get('/donate', [DonationController::class, 'index'])->name('donate');
 
 Route::get('/pricing', [App\Http\Controllers\PlansController::class, 'pricing'])->name('pricing');
 
+// Support a Project — public landing: Give (FundMe) or Grow (Invest / Wefunder)
+Route::get('/support-a-project', [App\Http\Controllers\FundraiseController::class, 'supportAProject'])->name('support-a-project');
+
 // Public branded funnel: explain → qualify form → redirect to Wefunder (lead capture)
 Route::get('/fundraise', [App\Http\Controllers\FundraiseController::class, 'index'])->name('fundraise');
 Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'store'])->name('fundraise.store');

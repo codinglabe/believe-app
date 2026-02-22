@@ -116,8 +116,7 @@ export default function Navbar() {
   // Services dropdown items (Nonprofit Barter only when organization is logged in)
   const isOrgUser = auth?.user?.role === "organization" || auth?.user?.role === "organization_pending"
   const servicesItems = [
-    { name: "FundMe", href: "/believe-fundme", icon: Heart },
-    { name: "Fundraise", href: "/fundraise", icon: TrendingUp },
+    { name: "Support a Project", href: route("support-a-project"), icon: Heart },
     ...(isOrgUser ? [{ name: "Community Projects", href: "/fundraise/community-projects", icon: Building2 }] : []),
     ...(isOrgUser ? [{ name: "Nonprofit Barter", href: route("barter.index"), icon: Handshake }] : []),
     { name: "Service Hub", href: "/service-hub", icon: Sparkles },
