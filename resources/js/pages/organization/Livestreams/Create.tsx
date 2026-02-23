@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Switch } from "@/components/admin/ui/switch"
 import { Video, ArrowLeft, Mic, Camera, Download } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
 
@@ -32,6 +33,7 @@ export default function CreateLivestream({ organization, hasYoutubeIntegrated }:
     title: "",
     display_name: organization.name ?? "",
     auto_create_youtube: hasYoutubeIntegrated,
+    is_public: true,
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -98,6 +100,21 @@ export default function CreateLivestream({ organization, hasYoutubeIntegrated }:
                   {errors.display_name && (
                     <p className="text-sm text-destructive">{errors.display_name}</p>
                   )}
+                </div>
+                <div className="flex items-center justify-between gap-4 rounded-lg border border-border p-3">
+                  <div className="space-y-0.5 min-w-0">
+                    <Label htmlFor="is_public" className="text-sm font-medium">
+                      Public meeting
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      When live, show on Unity Live page. Off = private (only people with your viewer link can watch).
+                    </p>
+                  </div>
+                  <Switch
+                    id="is_public"
+                    checked={data.is_public}
+                    onCheckedChange={(checked) => setData("is_public", checked)}
+                  />
                 </div>
               </CardContent>
             </Card>

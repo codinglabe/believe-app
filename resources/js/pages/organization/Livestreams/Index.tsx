@@ -32,6 +32,7 @@ interface Livestream {
   title: string | null
   roomName: string
   status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
+  isPublic: boolean
   scheduledAt: string | null
   startedAt: string | null
   endedAt: string | null
@@ -173,7 +174,19 @@ export default function LivestreamsIndex({ livestreams, organization }: Props) {
                         </CardTitle>
                         {getStatusBadge(livestream.status)}
                       </div>
-                      <p className="mt-1 font-mono text-xs text-muted-foreground">{livestream.roomName}</p>
+                      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                        <p className="font-mono text-xs text-muted-foreground">{livestream.roomName}</p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            livestream.isPublic
+                              ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-400 dark:border-emerald-500/30 text-xs"
+                              : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30 text-xs"
+                          }
+                        >
+                          {livestream.isPublic ? "Public" : "Private"}
+                        </Badge>
+                      </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2 text-sm">
