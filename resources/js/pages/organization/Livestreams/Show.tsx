@@ -29,6 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Switch } from "@/components/admin/ui/switch"
 import AppLayout from "@/layouts/app-layout"
 import {
   Video,
@@ -59,6 +60,8 @@ interface Livestream {
   roomPassword: string
   directorUrl: string
   participantUrl: string
+  hostPushUrl?: string
+  watchUrl?: string | null
   status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
@@ -70,6 +73,8 @@ interface Livestream {
   viewLink?: string | null
   streamKeyDisplay?: string | null
   rtmpUrl?: string | null
+  unityLiveUrl?: string
+  isPublic?: boolean
 }
 
 const DEFAULT_OBS_WS = "ws://127.0.0.1:4455"
@@ -101,6 +106,8 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLiveTab, setGoLiveTab] = useState("streaming")
   const [infoOpen, setInfoOpen] = useState(false)
+  const [iframeTab, setIframeTab] = useState<"director" | "host">("director")
+  const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
   const { props } = usePage<{ errors?: { go_live?: string }; browser_publish_url?: string | null }>()
   const goLiveError = props.errors?.go_live ?? null
 
@@ -213,15 +220,17 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     })
   }
 
-  // When OBS is ready (stream key + view link), Go Live opens OBS and goes live directly. Otherwise open modal to add stream key etc.
   const canGoLiveWithOBS = !!(livestream.youtubeGoLiveEnabled && livestream.viewLink && livestream.streamKeyDisplay)
+  // Go Live: only set database status to "live" (stream appears on Unity Live page)
   const handleGoLiveClick = () => {
-    if (canGoLiveWithOBS) {
-      handleGoLiveWithOBS()
-    } else {
-      setGoLiveOpen(true)
-    }
+    setIsUpdatingStatus(true)
+    router.post(`/livestreams/${livestream.id}/set-live`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsUpdatingStatus(false),
+    })
   }
+  // OBS Live: open modal (stream options, help, stream key, browser/OBS choices)
+  const handleOBSLiveClick = () => setGoLiveOpen(true)
 
   const getStatusBadge = () => {
     const statusConfig = {
@@ -236,9 +245,61 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   }
 
   const joinUrl = typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : ""
+  const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
+
+  const toggleVisibility = (publicVal: boolean) => {
+    setIsUpdatingVisibility(true)
+    router.patch(
+      `/livestreams/${livestream.id}/visibility`,
+      { is_public: publicVal },
+      { preserveScroll: true, onFinish: () => setIsUpdatingVisibility(false) }
+    )
+  }
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
+      {/* Public / Private — only when live so the choice is clear for viewers */}
+      <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <Radio className="h-3.5 w-3.5 text-primary" />
+            Visibility
+          </div>
+          <Switch
+            checked={livestream.isPublic ?? true}
+            onCheckedChange={toggleVisibility}
+            disabled={isUpdatingVisibility}
+          />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {livestream.isPublic
+            ? "Public — listed on Unity Live when live."
+            : "Private — only people with the viewer link can watch."}
+        </p>
+      </div>
+      {/* Viewer link (Unity Live big screen) — when live */}
+      {livestream.status === "live" && unityLiveUrl && (
+        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+            <ExternalLink className="h-3.5 w-3.5 text-primary" />
+            {livestream.isPublic ? "Watch on Unity Live" : "Viewer link (private)"}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {livestream.isPublic
+              ? "Stream appears on the Unity Live page. Share this link for the big-screen view."
+              : "Share this link so viewers can watch. Not listed on Unity Live."}
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full h-9 gap-2"
+            onClick={() => copyToClipboard(unityLiveUrl, "unity")}
+          >
+            {copied === "unity" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            Copy viewer link
+          </Button>
+        </div>
+      )}
       <div className="w-full min-w-0 rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
         <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
           <Key className="h-3.5 w-3.5 text-primary" />
@@ -314,15 +375,30 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   </SheetContent>
                 </Sheet>
                 {livestream.status !== "live" && (
-                  <Button
+                  <>
+                    <Button
                     variant="default"
                     size="icon"
                     className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
                     onClick={handleGoLiveClick}
+                    disabled={isUpdatingStatus}
                     aria-label="Go Live"
                   >
                     <Play className="h-4 w-4" />
                   </Button>
+                    {canGoLiveWithOBS && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-2.5 rounded-md border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10 touch-manipulation text-xs font-medium"
+                        onClick={handleOBSLiveClick}
+                        disabled={isGoingLiveOBS}
+                        aria-label="Start with OBS to YouTube"
+                      >
+                        {isGoingLiveOBS ? "…" : "OBS Live"}
+                      </Button>
+                    )}
+                  </>
                 )}
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
@@ -332,10 +408,18 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" side="bottom" className="w-48">
                     {livestream.status !== "live" && (
-                      <DropdownMenuItem onClick={handleGoLiveClick}>
-                        <Play className="h-4 w-4 mr-2" />
-                        Go Live
-                      </DropdownMenuItem>
+                      <>
+                        <DropdownMenuItem onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
+                          <Play className="h-4 w-4 mr-2" />
+                          Go Live
+                        </DropdownMenuItem>
+                        {canGoLiveWithOBS && (
+                          <DropdownMenuItem onClick={handleOBSLiveClick} disabled={isGoingLiveOBS}>
+                            <Radio className="h-4 w-4 mr-2" />
+                            {isGoingLiveOBS ? "Starting…" : "OBS Live"}
+                          </DropdownMenuItem>
+                        )}
+                      </>
                     )}
                     <DropdownMenuItem onClick={() => setGoLiveOpen(true)}>
                       Stream options
@@ -346,24 +430,39 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                         End stream
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => window.open(livestream.directorUrl, "_blank")}>
+                    <DropdownMenuItem onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}>
                       <Maximize2 className="h-4 w-4 mr-2" />
                       Open meeting in new tab
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              {/* Desktop: Go Live + Stream options + End stream (when live) in header */}
+              {/* Desktop: Go Live + OBS Live (when ready) + Stream options + End stream (when live) in header */}
               <div className="hidden md:flex items-center gap-1.5">
                 {livestream.status !== "live" && (
-                  <Button
-                    size="sm"
-                    className="bg-red-600 hover:bg-red-700 h-8 px-3"
-                    onClick={handleGoLiveClick}
-                  >
-                    <Play className="h-4 w-4 mr-1.5" />
-                    Go Live
-                  </Button>
+                  <>
+                    <Button
+                      size="sm"
+                      className="bg-red-600 hover:bg-red-700 h-8 px-3"
+                      onClick={handleGoLiveClick}
+                      disabled={isUpdatingStatus}
+                    >
+                      <Play className="h-4 w-4 mr-1.5" />
+                      Go Live
+                    </Button>
+                    {canGoLiveWithOBS && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-8 px-3 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-500/40 dark:text-red-400 dark:hover:bg-red-500/10"
+                        onClick={handleOBSLiveClick}
+                        disabled={isGoingLiveOBS}
+                      >
+                        <Radio className="h-4 w-4 mr-1.5" />
+                        {isGoingLiveOBS ? "Starting…" : "OBS Live"}
+                      </Button>
+                    )}
+                  </>
                 )}
                 <Button variant="outline" size="sm" className="h-8 px-3" onClick={() => setGoLiveOpen(true)}>
                   Stream options
@@ -375,12 +474,12 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   </Button>
                 )}
               </div>
-              {/* Meeting new tab icon — visible for both mobile and desktop */}
+              {/* Meeting new tab icon — opens current iframe tab (Director or Host) in new tab */}
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 sm:h-9 sm:w-9 touch-manipulation"
-                onClick={() => window.open(livestream.directorUrl, "_blank")}
+                onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}
                 aria-label="Open meeting in new tab"
                 title="Open meeting in new tab"
               >
@@ -413,18 +512,46 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
 
           {/* Center: meeting area — on mobile full width; min-h-0 so iframe doesn't cause scroll */}
           <div className="flex flex-1 flex-col min-w-0 min-h-0 w-0 overflow-hidden">
-            {/* VDO.Ninja meeting iframe — flex-1 min-h-0 so it fills without causing page scroll */}
+            {/* Director tab = Director URL; Host tab = Push URL (host joins and pushes stream) */}
+            <div className="flex shrink-0 border-b border-border bg-muted/30">
+              <button
+                type="button"
+                onClick={() => setIframeTab("director")}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${iframeTab === "director" ? "border-b-2 border-primary text-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Director
+              </button>
+              <button
+                type="button"
+                onClick={() => setIframeTab("host")}
+                className={`px-4 py-2.5 text-sm font-medium transition-colors ${iframeTab === "host" ? "border-b-2 border-primary text-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                Host
+              </button>
+            </div>
+            {/* Both iframes stay mounted so switching tabs does not reload. Director = director URL; Host = push URL. */}
             <div className="flex-1 min-h-0 min-w-0 bg-black relative overflow-hidden">
               {livestream.directorUrl ? (
                 <iframe
+                  key="director"
                   src={livestream.directorUrl}
-                  title="Meeting"
-                  className="absolute inset-0 w-full h-full"
-                  allow="camera; microphone; display-capture; autoplay"
+                  title="Director"
+                  className={`absolute inset-0 w-full h-full ${iframeTab !== "director" ? "invisible pointer-events-none -z-10" : "z-0"}`}
+                  allow="camera; microphone; fullscreen; display-capture *; autoplay; clipboard-write"
                 />
-              ) : (
+              ) : null}
+              {(livestream.hostPushUrl ?? livestream.directorUrl) ? (
+                <iframe
+                  key="host"
+                  src={livestream.hostPushUrl ?? livestream.directorUrl}
+                  title="Host"
+                  className={`absolute inset-0 w-full h-full ${iframeTab !== "host" ? "invisible pointer-events-none -z-10" : "z-0"}`}
+                  allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
+                />
+              ) : null}
+              {!livestream.directorUrl && !livestream.hostPushUrl ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
-              )}
+              ) : null}
               {livestream.status === "live" && (
                 <div className="absolute top-2 right-2 sm:top-3 sm:right-3 bg-red-600 text-white px-2 py-0.5 sm:px-3 sm:py-1 rounded text-xs sm:text-sm font-semibold animate-pulse">
                   ● LIVE
@@ -436,7 +563,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   variant="secondary"
                   size="sm"
                   className="h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
-                  onClick={() => window.open(livestream.directorUrl, "_blank")}
+                  onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
                   <span className="text-xs">Full screen</span>
@@ -494,35 +621,6 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                     <Square className="h-4 w-4 mr-2" /> End stream
                   </Button>
                 )}
-                <Card>
-                  <CardHeader className="py-3">
-                    <CardTitle className="text-sm flex items-center gap-2">
-                      <Video className="h-4 w-4" /> OBS Studio
-                    </CardTitle>
-                    <CardDescription className="text-xs">
-                      {canGoLiveWithOBS ? "OBS is set up. Use the Go Live button to start streaming." : "Professional streaming software"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-2">
-                    {!canGoLiveWithOBS && (
-                      <a href="https://obsproject.com/download" target="_blank" rel="noopener noreferrer">
-                        <Button variant="outline" size="sm" className="w-full"><Download className="h-4 w-4 mr-2" /> Download OBS</Button>
-                      </a>
-                    )}
-                    {livestream.viewLink && (
-                      <div className="flex gap-1">
-                        <Input value={livestream.viewLink} readOnly className="font-mono text-xs flex-1" />
-                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.viewLink!, "view")}><Copy className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    )}
-                    {livestream.streamKeyDisplay && (
-                      <div className="flex gap-1">
-                        <Input type="password" value={livestream.streamKeyDisplay} readOnly className="font-mono text-xs flex-1" />
-                        <Button variant="outline" size="icon" onClick={() => copyToClipboard(livestream.streamKeyDisplay!, "key")}><Copy className="h-3.5 w-3.5" /></Button>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
               </TabsContent>
               <TabsContent value="platforms" className="mt-4 space-y-4">
                 <p className="text-sm text-muted-foreground">Choose where to stream. Add a stream key in Settings to enable YouTube.</p>

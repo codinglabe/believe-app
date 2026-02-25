@@ -114,10 +114,26 @@ class PlansController extends Controller
             ];
         }
 
+        // One-time fee for display (e.g. verified identification registration) from first plan's currency custom field
+        $oneTimeFee = null;
+        foreach ($plans as $plan) {
+            $fields = $plan['custom_fields'] ?? [];
+            foreach ($fields as $field) {
+                if (isset($field['type']) && $field['type'] === 'currency' && isset($field['label'], $field['value'])) {
+                    $oneTimeFee = [
+                        'label' => $field['label'],
+                        'amount' => $field['value'],
+                    ];
+                    break 2;
+                }
+            }
+        }
+
         return Inertia::render('Plans/Index', [
             'plans' => $plans,
             'addOns' => $addOns,
             'currentPlan' => $currentPlanData,
+            'oneTimeFee' => $oneTimeFee,
         ]);
     }
 

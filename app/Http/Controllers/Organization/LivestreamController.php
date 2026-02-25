@@ -57,6 +57,7 @@ class LivestreamController extends Controller
             'youtube_stream_key' => 'nullable|string',
             'auto_create_youtube' => 'nullable|boolean',
             'display_name' => 'nullable|string|max:255',
+            'is_public' => 'nullable|boolean',
         ]);
 
         $user = Auth::user();
@@ -133,6 +134,7 @@ class LivestreamController extends Controller
             'youtube_stream_key' => $encryptedStreamKey,
             'youtube_broadcast_id' => $youtubeBroadcastId,
             'status' => $request->scheduled_at ? 'scheduled' : 'draft',
+            'is_public' => $request->boolean('is_public', true),
             'title' => $request->title,
             'description' => $request->description,
             'scheduled_at' => $scheduledAt,
@@ -201,25 +203,29 @@ class LivestreamController extends Controller
         // Get decrypted values for display (but don't expose in API)
         $directorUrl = $livestream->getDirectorUrl();
         $participantUrl = $livestream->getParticipantUrl();
+        $hostPushUrl = $livestream->getHostPushUrl();
+        $watchUrl = $livestream->getPublicViewUrl(); // Viewer link (no director) — for Unity Live / share with audience
         $password = $livestream->getDecryptedPassword();
 
-        // VDO.Ninja + YouTube Live (OBS) flow: push/view links and stream key for dashboard
-        // Use VDO-safe room name (alphanumeric + underscore) so "Only AlphaNumeric characters" warning is avoided
+        // VDO.Ninja: viewer embed uses ?view=room (no OBS); Unity Live uses getPublicViewUrl() which uses same format
+        // OBS flow: push link + director view link + stream key when YouTube is connected
         $vdoRoom = $livestream->getVdoRoomName();
         $settings = $livestream->settings ?? [];
         $rtmpUrl = $settings['rtmp_url'] ?? null;
         $youtubeGoLiveEnabled = !empty($livestream->youtube_broadcast_id) && !empty($livestream->youtube_stream_key);
         $passwordParam = !empty($password) ? '&password=' . rawurlencode($password) : '';
-        $directorLabel = '&label=' . rawurlencode($organization->name ?? 'Host'); // Director/host name = organization name
+        $directorLabel = '&label=' . rawurlencode($organization->name ?? 'Host');
         $pushLink = $youtubeGoLiveEnabled
             ? "https://vdo.ninja/?push={$vdoRoom}&cleanoutput{$passwordParam}{$directorLabel}"
             : null;
-        // OBS Browser Source: director URL with output, autostart, cleanoutput (e.g. ?director=ROOM&password=PASS&output&autostart&cleanoutput)
+        // OBS Browser Source (when using OBS): director + output for capture
         $viewLink = $youtubeGoLiveEnabled
             ? "https://vdo.ninja/?director=" . rawurlencode($vdoRoom) . $passwordParam . "&output&autostart&cleanoutput"
             : null;
         $streamKeyDisplay = $youtubeGoLiveEnabled ? $livestream->getDecryptedStreamKey() : null;
         $mediamtxEnabled = !empty(config('services.mediamtx.publish_url'));
+
+        $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
 
         return Inertia::render('organization/Livestreams/Show', [
             'livestream' => [
@@ -230,6 +236,10 @@ class LivestreamController extends Controller
                 'roomPassword' => $password,
                 'directorUrl' => $directorUrl,
                 'participantUrl' => $participantUrl,
+                'hostPushUrl' => $hostPushUrl,
+                'watchUrl' => $watchUrl,
+                'unityLiveUrl' => $unityLiveUrl,
+                'isPublic' => (bool) $livestream->is_public,
                 'status' => $livestream->status,
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
                 'startedAt' => $livestream->started_at?->toIso8601String(),
@@ -375,6 +385,37 @@ class LivestreamController extends Controller
             Log::error('Go live failed', ['livestream_id' => $id, 'error' => $e->getMessage()]);
             return redirect()->back()->withErrors(['go_live' => $e->getMessage()]);
         }
+    }
+
+    /**
+     * Set livestream status to "live" in the database only (no OBS, no YouTube).
+     * Stream will then appear on the Unity Live page.
+     */
+    public function setLive(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return redirect()->back()->withErrors(['error' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        if (! in_array($livestream->status, ['draft', 'scheduled'], true)) {
+            return redirect()->back()->withErrors(['error' => 'Stream is not in draft or scheduled state.']);
+        }
+
+        $livestream->update([
+            'status' => 'live',
+            'started_at' => $livestream->started_at ?? now(),
+        ]);
+
+        $message = $livestream->is_public
+            ? 'Stream is now live. It will appear on the Unity Live page.'
+            : 'Stream is now live (private). Share the viewer link so people can watch.';
+        return redirect()->back()->with('success', $message);
     }
 
     /**
@@ -553,6 +594,32 @@ class LivestreamController extends Controller
     }
 
     /**
+     * Update livestream visibility (public = listed on Unity Live; private = only via direct link).
+     */
+    public function updateVisibility(Request $request, $id)
+    {
+        $request->validate([
+            'is_public' => 'required|boolean',
+        ]);
+
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return back()->withErrors(['error' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        $livestream->update(['is_public' => $request->boolean('is_public')]);
+
+        return back()->with('success', $livestream->is_public
+            ? 'Stream is now public. It will appear on the Unity Live page when live.'
+            : 'Stream is now private. Only people with the viewer link can watch.');
+    }
+
+    /**
      * List all livestreams for the organization.
      */
     public function index(): Response
@@ -573,6 +640,7 @@ class LivestreamController extends Controller
                     'title' => $livestream->title,
                     'roomName' => $livestream->room_name,
                     'status' => $livestream->status,
+                    'isPublic' => (bool) $livestream->is_public,
                     'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
                     'startedAt' => $livestream->started_at?->toIso8601String(),
                     'endedAt' => $livestream->ended_at?->toIso8601String(),

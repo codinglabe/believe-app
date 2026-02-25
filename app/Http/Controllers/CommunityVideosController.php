@@ -50,7 +50,14 @@ class CommunityVideosController extends Controller
         $userId = Auth::id();
         $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
 
-        $videosList = $youtubeVideos->all();
+        // Only full-length videos on this page (exclude Shorts: duration 0:XX or 1:00)
+        $isShort = function (array $v): bool {
+            $d = $v['duration'] ?? '';
+            return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+        };
+        $fullLengthOnly = $youtubeVideos->reject($isShort)->values();
+
+        $videosList = $fullLengthOnly->all();
         $featured = null;
         $videos = $videosList;
         if (count($videosList) > 0) {
@@ -58,11 +65,8 @@ class CommunityVideosController extends Controller
             $videos = array_slice($videosList, 1);
         }
 
-        // Shorts: videos 60 seconds or less (duration "0:XX" or "1:00")
-        $shorts = $youtubeVideos->filter(function ($v) {
-            $d = $v['duration'] ?? '';
-            return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
-        })->take(15)->values()->all();
+        // Shorts are not shown on this page (only real videos)
+        $shorts = [];
 
         $channelBanners = $this->getChannelBannersForIndex();
 

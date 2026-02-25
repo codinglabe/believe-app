@@ -39,6 +39,7 @@ import {
   HeartHandshake,
   UserPlus,
   Video,
+  Radio,
   Handshake,
   Globe,
   Heart,
@@ -104,6 +105,7 @@ export default function Navbar() {
 
   // Community dropdown items
   const communityItems = [
+    { name: "Unity Live", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Community Videos", href: "/community-videos", icon: Video },
     ...(isLoggedIn ? [

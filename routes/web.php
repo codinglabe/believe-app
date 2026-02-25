@@ -79,6 +79,7 @@ use App\Http\Controllers\MeetingController;
 use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\CommunityVideosController;
 use App\Http\Controllers\CommunityVideoEngagementController;
+use App\Http\Controllers\UnityLiveController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -216,6 +217,9 @@ Route::post('/community-videos/engagement/view', [CommunityVideoEngagementContro
 Route::post('/community-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('community-videos.engagement.share');
 Route::get('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('community-videos.engagement.comments');
 Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('community-videos.engagement.comment')->middleware('auth');
+
+Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
+Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
@@ -892,11 +896,13 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::get('/{id}/ready', [\App\Http\Controllers\Organization\LivestreamController::class, 'ready'])->name('ready');
         Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
         Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
+                Route::post('/{id}/set-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'setLive'])->name('set-live');
         Route::post('/{id}/go-live-obs-auto', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
         Route::post('/{id}/go-live-browser', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
         Route::post('/{id}/end-stream', [\App\Http\Controllers\Organization\LivestreamController::class, 'endStream'])->name('end-stream');
         Route::patch('/{id}/status', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStatus'])->name('update-status');
         Route::patch('/{id}/stream-key', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateStreamKey'])->name('update-stream-key');
+        Route::patch('/{id}/visibility', [\App\Http\Controllers\Organization\LivestreamController::class, 'updateVisibility'])->name('update-visibility');
         Route::delete('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'destroy'])->name('destroy');
     });
 
