@@ -239,6 +239,9 @@ Route::get('/support-a-project', [App\Http\Controllers\FundraiseController::clas
 // Public branded funnel: explain → qualify form → redirect to Wefunder (lead capture)
 Route::get('/fundraise', [App\Http\Controllers\FundraiseController::class, 'index'])->name('fundraise');
 Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'store'])->name('fundraise.store');
+// Project applications requested (authenticated supporters can view)
+Route::get('/fundraise/applications', [App\Http\Controllers\FundraiseController::class, 'projectApplications'])->name('fundraise.applications')
+    ->middleware(['auth']);
 // Org-only: Support Community Projects (Donation vs Investment / Wefunder)
 Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
@@ -514,6 +517,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get('/profile/following', [UserProfileController::class, 'favorites'])->name('profile.favorites');
     Route::delete("/profile/following/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
+    Route::get('/profile/project-applications', [UserProfileController::class, 'profileProjectApplications'])->name('profile.project-applications');
 
     Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');

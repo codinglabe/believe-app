@@ -102,6 +102,13 @@ const navigationItems = [
     color: "from-red-500 to-pink-600",
   },
   {
+    name: "Project Applications",
+    href: "/profile/project-applications",
+    icon: TrendingUp,
+    description: "Project applications requested",
+    color: "from-violet-500 to-purple-600",
+  },
+  {
     name: "Donations",
     href: "/profile/donations",
     icon: CreditCard,

@@ -12,6 +12,7 @@ use App\Models\RaffleTicket;
 use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
+use App\Models\FundraiseLead;
 use App\Models\RewardPointLedger;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\User;
@@ -258,6 +259,31 @@ class UserProfileController extends Controller
 
         return Inertia::render('frontend/user-profile/favorites', [
             'favoriteOrganizations' => $favoriteOrganizations,
+        ]);
+    }
+
+    /**
+     * Project applications requested (fundraise leads) — profile dashboard only.
+     */
+    public function profileProjectApplications(Request $request)
+    {
+        $leads = FundraiseLead::query()
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->withQueryString();
+
+        $leads->getCollection()->transform(fn (FundraiseLead $lead) => [
+            'id' => $lead->id,
+            'name' => $lead->name,
+            'company' => $lead->company,
+            'email' => $lead->email,
+            'project_summary' => $lead->project_summary,
+            'created_at' => $lead->created_at->toIso8601String(),
+        ]);
+
+        return Inertia::render('frontend/user-profile/project-applications', [
+            'projectApplicationsLeads' => $leads,
+            'projectApplicationsTotal' => FundraiseLead::count(),
         ]);
     }
 

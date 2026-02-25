@@ -92,4 +92,17 @@ class FundraiseController extends Controller
 
         return Inertia::location(self::WEFUNDER_URL);
     }
+
+    /**
+     * Redirect to the profile dashboard Project Applications page.
+     */
+    public function projectApplications(Request $request)
+    {
+        $user = $request->user();
+        if (! $user) {
+            return redirect()->route('login', ['redirect' => $request->fullUrl()]);
+        }
+
+        return redirect()->route('user.profile.project-applications');
+    }
 }

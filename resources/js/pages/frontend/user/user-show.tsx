@@ -23,6 +23,7 @@ import {
   Calendar,
   MessageCircle,
   Building2,
+  Plus,
   Globe,
   ShieldCheck,
   BadgeCheck,
@@ -1182,11 +1183,20 @@ export default function UserPage({
                   {/* Following Tab */}
                   {activeTab === "Following" && (
                     <div className="bg-white dark:bg-[#111827] rounded-xl p-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                      <div className="flex items-center justify-between mb-6">
+                      <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                         <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Following</h2>
-                        <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
-                          {followingCount} Organizations
-                        </Badge>
+                        <div className="flex items-center gap-3">
+                          <Badge className="bg-gradient-to-r from-purple-600 to-blue-600 text-white">
+                            {followingCount} Organizations
+                          </Badge>
+                          <Link
+                            href="/organizations"
+                            className="inline-flex items-center gap-2 rounded-lg border-2 border-dashed border-purple-500/50 dark:border-purple-400/50 bg-purple-50/50 dark:bg-purple-900/20 px-4 py-2 text-sm font-medium text-purple-700 dark:text-purple-300 hover:bg-purple-100 dark:hover:bg-purple-900/40 hover:border-purple-500 dark:hover:border-purple-400 transition-colors"
+                          >
+                            <Plus className="w-4 h-4" />
+                            Add more
+                          </Link>
+                        </div>
                       </div>
                       {favoriteOrganizations.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1212,12 +1222,32 @@ export default function UserPage({
                               </Link>
                             )
                           })}
+                          {/* Add more card - same grid */}
+                          <Link
+                            href="/organizations"
+                            className="flex items-center justify-center gap-3 p-4 rounded-lg border-2 border-dashed border-gray-300 dark:border-white/20 bg-gray-50/50 dark:bg-white/5 hover:border-purple-500/50 hover:bg-purple-50/30 dark:hover:bg-purple-900/20 transition-all min-h-[88px]"
+                          >
+                            <div className="flex items-center justify-center w-14 h-14 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400">
+                              <Plus className="w-7 h-7" />
+                            </div>
+                            <div className="text-left">
+                              <p className="font-semibold text-gray-900 dark:text-white">Add more</p>
+                              <p className="text-sm text-gray-600 dark:text-gray-400">Browse organizations</p>
+                            </div>
+                          </Link>
                         </div>
                       ) : (
                         <div className="text-center py-12">
-                          <UserPlus className="w-16 h-16 text-gray-600 mx-auto mb-4" />
+                          <UserPlus className="w-16 h-16 text-gray-600 dark:text-gray-500 mx-auto mb-4" />
                           <p className="text-gray-600 dark:text-gray-400">Not following any organizations yet</p>
-                          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2">Start following organizations to see them here</p>
+                          <p className="text-sm text-gray-500 dark:text-gray-500 mt-2 mb-6">Start following organizations to see them here</p>
+                          <Link
+                            href="/organizations"
+                            className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-blue-600 px-5 py-2.5 text-sm font-medium text-white hover:from-purple-700 hover:to-blue-700 transition-colors"
+                          >
+                            <Building2 className="w-4 h-4" />
+                            Browse organizations
+                          </Link>
                         </div>
                       )}
                     </div>

@@ -366,10 +366,10 @@ public function index(Request $request)
         //     $request->all()
         // );
         $state = $request->get('state');
-        $cacheKey = 'cities_filter_' . md5($state ?? 'all');
+        $cacheKey = 'cities_filter_v2_' . md5($state ?? 'all');
 
         $cities = cache()->remember($cacheKey, 3600, function () use ($state) {
-            return ExcelData::where('status', 'complete')
+            $query = ExcelData::where('status', 'complete')
                 ->where('ein', '!=', 'EIN')
                 ->whereNotNull('ein')
                 ->whereNotNull('city_virtual')
@@ -377,10 +377,12 @@ public function index(Request $request)
                     return $q->where('state_virtual', $state);
                 })
                 ->distinct('city_virtual')
-                ->orderBy('city_virtual')
-                ->limit(200)
-                ->pluck('city_virtual')
-                ->prepend('All Cities');
+                ->orderBy('city_virtual');
+            // When a specific state is selected, return all cities. When "All States", cap at 5000.
+            if (! $state || $state === 'All States') {
+                $query->limit(5000);
+            }
+            return $query->pluck('city_virtual')->prepend('All Cities');
         });
 
         return response()->json($cities);
