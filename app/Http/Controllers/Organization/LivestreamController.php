@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Organization;
 
 use App\Http\Controllers\Controller;
+use App\Models\LivestreamInviteToken;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
 use Illuminate\Http\Request;
@@ -200,6 +201,9 @@ class LivestreamController extends Controller
         $livestream = OrganizationLivestream::where('organization_id', $organization->id)
             ->findOrFail($id);
 
+        $latestInviteToken = $livestream->inviteTokens()->latest('id')->first();
+        $latestInviteUrl = $latestInviteToken ? url('/join/' . $latestInviteToken->token) : null;
+
         // Get decrypted values for display (but don't expose in API)
         $directorUrl = $livestream->getDirectorUrl();
         $participantUrl = $livestream->getParticipantUrl();
@@ -226,6 +230,7 @@ class LivestreamController extends Controller
         $mediamtxEnabled = !empty(config('services.mediamtx.publish_url'));
 
         $unityLiveUrl = url('/unity-live/' . $livestream->room_name);
+        $liveViewerUrl = url('/live/' . $livestream->room_name);
 
         return Inertia::render('organization/Livestreams/Show', [
             'livestream' => [
@@ -239,6 +244,7 @@ class LivestreamController extends Controller
                 'hostPushUrl' => $hostPushUrl,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
+                'liveViewerUrl' => $liveViewerUrl,
                 'isPublic' => (bool) $livestream->is_public,
                 'status' => $livestream->status,
                 'scheduledAt' => $livestream->scheduled_at?->toIso8601String(),
@@ -251,6 +257,9 @@ class LivestreamController extends Controller
                 'viewLink' => $viewLink,
                 'streamKeyDisplay' => $streamKeyDisplay,
                 'rtmpUrl' => $rtmpUrl,
+                'canStartMeeting' => $livestream->canStartMeeting(),
+                'canGoLive' => $livestream->canGoLive(),
+                'latestInviteUrl' => $latestInviteUrl,
             ],
             'mediamtxEnabled' => $mediamtxEnabled,
             'organization' => [
@@ -262,13 +271,12 @@ class LivestreamController extends Controller
     }
 
     /**
-     * Show the guest join page (public, no auth required).
-     * Include 'ended' so invite links for past meetings show "Meeting ended" instead of 404.
+     * Show the guest join page (public, by room name). Legacy; prefer /join/{token}.
      */
     public function guestJoin(string $roomName): Response
     {
         $livestream = OrganizationLivestream::where('room_name', $roomName)
-            ->whereIn('status', ['draft', 'scheduled', 'live', 'ended'])
+            ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
             ->with('organization')
             ->firstOrFail();
 
@@ -293,12 +301,98 @@ class LivestreamController extends Controller
     }
 
     /**
+     * Generate a secure invite token and return the guest join URL (/join/{token}).
+     */
+    public function generateInviteToken(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return redirect()->back()->withErrors(['error' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        $token = LivestreamInviteToken::createForLivestream($livestream);
+        $inviteUrl = url('/join/' . $token);
+
+        if ($request->wantsJson()) {
+            return response()->json(['inviteUrl' => $inviteUrl, 'token' => $token]);
+        }
+
+        return redirect()->back()->with('inviteUrl', $inviteUrl)->with('success', 'Invite link copied.');
+    }
+
+    /**
+     * Guest join by secure token (public). Renders page with embedded VDO push iframe.
+     */
+    public function guestJoinByToken(string $token): Response
+    {
+        $invite = LivestreamInviteToken::where('token', $token)
+            ->with('organizationLivestream.organization')
+            ->firstOrFail();
+
+        $livestream = $invite->organizationLivestream;
+
+        if (! in_array($livestream->status, ['draft', 'scheduled', 'meeting_live', 'live'], true)) {
+            return Inertia::render('organization/Livestreams/GuestJoinExpired', [
+                'title' => $livestream->title,
+                'organizationName' => $livestream->organization?->name,
+            ]);
+        }
+
+        $participantUrl = $livestream->getParticipantUrl();
+        $hasPasscode = ! empty($livestream->getDecryptedPassword());
+
+        return Inertia::render('organization/Livestreams/GuestJoinByToken', [
+            'livestream' => [
+                'id' => $livestream->id,
+                'title' => $livestream->title,
+                'roomName' => $livestream->room_name,
+                'participantUrl' => $participantUrl,
+                'status' => $livestream->status,
+                'hasPasscode' => $hasPasscode,
+            ],
+            'organization' => [
+                'id' => $livestream->organization->id,
+                'name' => $livestream->organization->name,
+            ],
+        ]);
+    }
+
+    /**
+     * Start the meeting (status → meeting_live). Host and guests can join; stream not yet public.
+     */
+    public function startMeeting(Request $request, $id)
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? Organization::where('user_id', $user->id)->first();
+
+        if (! $organization) {
+            return redirect()->back()->withErrors(['error' => 'Organization not found']);
+        }
+
+        $livestream = OrganizationLivestream::where('organization_id', $organization->id)
+            ->findOrFail($id);
+
+        if (! $livestream->canStartMeeting()) {
+            return redirect()->back()->withErrors(['error' => 'Meeting cannot be started in current state.']);
+        }
+
+        $livestream->update(['status' => 'meeting_live']);
+
+        return redirect()->back()->with('success', 'Meeting started. Invite guests, then click Go Live when ready to stream to viewers.');
+    }
+
+    /**
      * Update livestream status (start, end, etc.).
      */
     public function updateStatus(Request $request, $id)
     {
         $request->validate([
-            'status' => 'required|in:draft,scheduled,live,ended,cancelled',
+            'status' => 'required|in:draft,scheduled,meeting_live,live,ended,cancelled',
         ]);
 
         $user = Auth::user();
@@ -403,8 +497,8 @@ class LivestreamController extends Controller
         $livestream = OrganizationLivestream::where('organization_id', $organization->id)
             ->findOrFail($id);
 
-        if (! in_array($livestream->status, ['draft', 'scheduled'], true)) {
-            return redirect()->back()->withErrors(['error' => 'Stream is not in draft or scheduled state.']);
+        if (! $livestream->canGoLive()) {
+            return redirect()->back()->withErrors(['error' => 'Stream is not in a state that can go live. Start the meeting first if needed.']);
         }
 
         $livestream->update([

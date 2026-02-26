@@ -64,15 +64,7 @@ export default function Settings({ billingData: initialBillingData }: SettingsPr
   
   const billingData = initialBillingData || null
 
-  // Handle flash messages
-  useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-    if (flash?.error) {
-      showErrorToast(flash.error)
-    }
-  }, [flash])
+  // Flash toasts shown by app-layout; do not duplicate here.
 
   const handleCancelSubscription = () => {
     if (!billingData?.subscription) return

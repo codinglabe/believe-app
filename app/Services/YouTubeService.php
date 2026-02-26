@@ -275,7 +275,9 @@ class YouTubeService
                 return null;
             }
 
-            $bannerUrl = $item['brandingSettings']['image']['bannerExternalUrl'] ?? null;
+            $branding = $item['brandingSettings'] ?? [];
+            $image = $branding['image'] ?? [];
+            $bannerUrl = $image['bannerExternalUrl'] ?? null;
             $stats = $item['statistics'] ?? [];
             $videoCount = (int) ($stats['videoCount'] ?? 0);
             $viewCount = (int) ($stats['viewCount'] ?? 0);

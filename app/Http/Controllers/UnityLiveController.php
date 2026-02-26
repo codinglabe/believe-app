@@ -26,6 +26,7 @@ class UnityLiveController extends Controller
             'title' => $ls->title ?: 'Live Stream',
             'organizationName' => $ls->organization?->name ?? 'Organization',
             'viewUrl' => $viewUrl,
+            'viewUrlMuted' => $ls->getPublicViewUrlMuted(),
             'viewUrlFallback' => $ls->getPublicViewUrlFallback(),
             'startedAt' => $ls->started_at?->toIso8601String(),
         ];

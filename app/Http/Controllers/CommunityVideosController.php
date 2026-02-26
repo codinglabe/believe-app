@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -27,48 +28,60 @@ class CommunityVideosController extends Controller
         $category = $request->input('category', 'all');
         $tab = $request->input('tab', 'latest');
 
-        // Only YouTube videos from connected channels (no database/uploaded videos)
-        $youtubeVideos = $this->fetchAllYouTubeVideos();
+        try {
+            // Only YouTube videos from connected channels (no database/uploaded videos)
+            $youtubeVideos = $this->fetchAllYouTubeVideos();
 
-        if ($search !== '') {
-            $searchLower = strtolower($search);
-            $youtubeVideos = $youtubeVideos->filter(function ($v) use ($searchLower) {
-                return str_contains(strtolower($v['title']), $searchLower)
-                    || str_contains(strtolower($v['creator'] ?? ''), $searchLower);
-            })->values();
+            if ($search !== '') {
+                $searchLower = strtolower($search);
+                $youtubeVideos = $youtubeVideos->filter(function ($v) use ($searchLower) {
+                    return str_contains(strtolower($v['title']), $searchLower)
+                        || str_contains(strtolower($v['creator'] ?? ''), $searchLower);
+                })->values();
+            }
+            if ($category !== 'all' && in_array($category, ['events', 'stories', 'impact'], true)) {
+                $youtubeVideos = collect();
+            }
+            if ($tab === 'latest') {
+                $youtubeVideos = $youtubeVideos->sortByDesc('sort_at')->values();
+            }
+            if ($tab === 'trending') {
+                $youtubeVideos = $youtubeVideos->sortByDesc('views')->values();
+            }
+
+            $userId = Auth::id();
+            $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
+
+            // Only full-length videos on this page (exclude Shorts: duration 0:XX or 1:00)
+            $isShort = function (array $v): bool {
+                $d = $v['duration'] ?? '';
+                return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+            };
+            $fullLengthOnly = $youtubeVideos->reject($isShort)->values();
+
+            $videosList = $fullLengthOnly->all();
+            $featured = null;
+            $videos = $videosList;
+            if (count($videosList) > 0) {
+                $featured = $videosList[0];
+                $videos = array_slice($videosList, 1);
+            }
+
+            // Shorts are not shown on this page (only real videos)
+            $shorts = [];
+
+            $channelBanners = $this->getChannelBannersForIndex();
+        } catch (\Throwable $e) {
+            Log::error('Community Videos index failed', [
+                'message' => $e->getMessage(),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
+            $featured = null;
+            $videos = [];
+            $shorts = [];
+            $channelBanners = [];
         }
-        if ($category !== 'all' && in_array($category, ['events', 'stories', 'impact'], true)) {
-            $youtubeVideos = collect();
-        }
-        if ($tab === 'latest') {
-            $youtubeVideos = $youtubeVideos->sortByDesc('sort_at')->values();
-        }
-        if ($tab === 'trending') {
-            $youtubeVideos = $youtubeVideos->sortByDesc('views')->values();
-        }
-
-        $userId = Auth::id();
-        $youtubeVideos = $this->attachEngagementAndRank($youtubeVideos, $userId, $tab);
-
-        // Only full-length videos on this page (exclude Shorts: duration 0:XX or 1:00)
-        $isShort = function (array $v): bool {
-            $d = $v['duration'] ?? '';
-            return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
-        };
-        $fullLengthOnly = $youtubeVideos->reject($isShort)->values();
-
-        $videosList = $fullLengthOnly->all();
-        $featured = null;
-        $videos = $videosList;
-        if (count($videosList) > 0) {
-            $featured = $videosList[0];
-            $videos = array_slice($videosList, 1);
-        }
-
-        // Shorts are not shown on this page (only real videos)
-        $shorts = [];
-
-        $channelBanners = $this->getChannelBannersForIndex();
 
         return Inertia::render('frontend/community-videos/Index', [
             'seo' => [
@@ -110,8 +123,8 @@ class CommunityVideosController extends Controller
                 continue;
             }
             $details = $youtubeService->getChannelDetails($org->youtube_channel_url);
-            $bannerUrl = $details['banner_url'] ?? null;
-            if ($bannerUrl && is_string($bannerUrl)) {
+            $bannerUrl = ($details !== null && isset($details['banner_url'])) ? $details['banner_url'] : null;
+            if (is_string($bannerUrl) && $bannerUrl !== '') {
                 $banners[] = [
                     'slug' => $channelSlug,
                     'name' => $org->name,

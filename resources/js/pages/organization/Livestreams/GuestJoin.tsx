@@ -26,7 +26,7 @@ interface Livestream {
   roomName: string
   roomPassword: string
   participantUrl: string
-  status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
+  status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
 }
 
 interface Organization {
@@ -74,7 +74,7 @@ export default function GuestJoin({ livestream, organization }: Props) {
     }
   }
 
-  const canJoin = livestream.status === "live" || livestream.status === "scheduled" || livestream.status === "draft"
+  const canJoin = ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
 
   const handleJoin = () => {
     if (!canJoin) return

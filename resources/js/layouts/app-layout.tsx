@@ -2,7 +2,6 @@ import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 import { type BreadcrumbItem, PageProps } from '@/types';
 import { type ReactNode } from 'react';
 import { Toaster } from 'react-hot-toast';
-import { useFlashMessage } from '@/hooks/use-flash-message';
 import { usePage } from '@inertiajs/react';
 import { useEffect } from 'react';
 import { CsrfTokenSync } from '@/components/CsrfTokenSync';
@@ -81,30 +80,17 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
     saveFCMTokenAfterLogin();
     }, [auth?.user?.id]);
 
-    // Handle flash messages
-    useFlashMessage();
-
-    // Handle Laravel session flash messages
+    // Single place for Laravel session flash toasts (do not duplicate in pages or useFlashMessage)
     const { props: pageProps } = usePage();
-        useEffect(() => {        // Handle success messages from Laravel session
-        if (pageProps.success && typeof pageProps.success === 'string') {
-            showSuccessToast(pageProps.success);
-        }
-
-        // Handle error messages from Laravel session
-        if (pageProps.error && typeof pageProps.error === 'string') {
-            showErrorToast(pageProps.error);
-        }
-
-        // Handle info messages from Laravel session
-        if (pageProps.info && typeof pageProps.info === 'string') {
-            showSuccessToast(pageProps.info);
-        }
-
-        // Handle warning messages from Laravel session
-        if (pageProps.warning && typeof pageProps.warning === 'string') {
-            showErrorToast(pageProps.warning);
-        }
+    useEffect(() => {
+        const success = pageProps.success;
+        const error = pageProps.error;
+        const info = pageProps.info;
+        const warning = pageProps.warning;
+        if (typeof success === 'string' && success.trim() !== '') showSuccessToast(success);
+        if (typeof error === 'string' && error.trim() !== '') showErrorToast(error);
+        if (typeof info === 'string' && info.trim() !== '') showSuccessToast(info);
+        if (typeof warning === 'string' && warning.trim() !== '') showErrorToast(warning);
     }, [pageProps.success, pageProps.error, pageProps.info, pageProps.warning]);
 
     return (

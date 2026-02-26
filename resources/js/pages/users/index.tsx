@@ -114,15 +114,7 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
     password_confirmation: '',
   })
 
-  // Show flash messages
-  React.useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-    if (flash?.error) {
-      showErrorToast(flash.error)
-    }
-  }, [flash])
+  // Flash toasts are shown by app-layout from page props; do not duplicate here.
 
   // Debounce search
   React.useEffect(() => {
