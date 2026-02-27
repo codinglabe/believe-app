@@ -228,7 +228,12 @@ class HandleInertiaRequests extends Middleware
                             'youtube_channel_url' => $user->organization->youtube_channel_url ?? null,
                             'description' => $user->organization->description,
                             'mission' => $user->organization->mission,
-                            'address' => $user->organization->street . ', ' . $user->organization->city .  ', ' .  $user->organization->state . ', ' .  $user->organization->zip,
+                            'address' => implode(', ', array_filter([
+                                $user->organization->street,
+                                $user->organization->city,
+                                $user->organization->state,
+                                $user->organization->zip,
+                            ])),
                             'joined' => $user->created_at->format('F Y'),
                             'gift_card_terms_approved' => $user->organization->gift_card_terms_approved ?? false,
                             'gift_card_terms_approved_at' => $user->organization->gift_card_terms_approved_at ? $user->organization->gift_card_terms_approved_at->toISOString() : null,
@@ -256,6 +261,12 @@ class HandleInertiaRequests extends Middleware
         $seoCanonical = (!$isLivestockDomain && !$isMerchantDomain) ? $request->url() : null;
         $seoDefaultImage = (!$isLivestockDomain && !$isMerchantDomain) ? \App\Services\SeoService::getDefaultShareImage() : null;
 
+        // Consume flash messages so they are only sent once (not on every reload/page switch)
+        $success = $request->session()->pull('success');
+        $error = $request->session()->pull('error');
+        $info = $request->session()->pull('info');
+        $warning = $request->session()->pull('warning');
+
         return [
             ...parent::share($request),
             'name' => config('app.name'),
@@ -274,12 +285,21 @@ class HandleInertiaRequests extends Middleware
             ],
             'csrf_token' => csrf_token(),
             'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
-            'flash' => fn() => $request->session()->get('flash') ?? null,
+            'flash' => fn() => array_merge(
+                is_array($request->session()->get('flash')) ? $request->session()->get('flash') : [],
+                array_filter([
+                    'inviteUrl' => $request->session()->get('inviteUrl'),
+                    'success' => $success,
+                    'error' => $error,
+                    'info' => $info,
+                    'warning' => $warning,
+                ])
+            ),
             'browser_publish_url' => fn() => $request->session()->pull('browser_publish_url'),
-            'success' => fn() => $request->session()->get('success'),
-            'error' => fn() => $request->session()->get('error'),
-            'info' => fn() => $request->session()->get('info'),
-            'warning' => fn() => $request->session()->get('warning'),
+            'success' => fn() => $success,
+            'error' => fn() => $error,
+            'info' => fn() => $info,
+            'warning' => fn() => $warning,
             'isImpersonating' => $request->session()->has('impersonate_user_id'),
             'originalUserId' => $request->session()->get('impersonate_user_id'),
             'livestockDomain' => config('livestock.domain'),

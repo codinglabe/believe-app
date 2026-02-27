@@ -80,6 +80,7 @@ use App\Http\Controllers\NonprofitNewsController;
 use App\Http\Controllers\CommunityVideosController;
 use App\Http\Controllers\CommunityVideoEngagementController;
 use App\Http\Controllers\UnityLiveController;
+use App\Http\Controllers\LiveViewController;
 use App\Http\Controllers\SavedNewsController;
 use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\OwnershipVerificationController;
@@ -220,6 +221,11 @@ Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementCo
 
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
+
+// VDO.Ninja meeting: guest join by secure token (public)
+Route::get('/join/{token}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
+// Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
+Route::get('/live/{slug}', [LiveViewController::class, 'show'])->name('live.show')->where('slug', '[a-zA-Z0-9_]+');
 
 Route::get("/jobs", [JobsController::class, 'index'])->name('jobs.index');
 Route::get("/volunteer-opportunities", [JobsController::class, 'volunteerOpportunities'])->name('volunteer-opportunities.index');
@@ -895,8 +901,10 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         Route::post('/', [\App\Http\Controllers\Organization\LivestreamController::class, 'store'])->name('store');
         Route::get('/{id}/ready', [\App\Http\Controllers\Organization\LivestreamController::class, 'ready'])->name('ready');
         Route::get('/{id}', [\App\Http\Controllers\Organization\LivestreamController::class, 'show'])->name('show');
+        Route::post('/{id}/start-meeting', [\App\Http\Controllers\Organization\LivestreamController::class, 'startMeeting'])->name('start-meeting');
+        Route::post('/{id}/generate-invite', [\App\Http\Controllers\Organization\LivestreamController::class, 'generateInviteToken'])->name('generate-invite');
         Route::post('/{id}/go-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLive'])->name('go-live');
-                Route::post('/{id}/set-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'setLive'])->name('set-live');
+        Route::post('/{id}/set-live', [\App\Http\Controllers\Organization\LivestreamController::class, 'setLive'])->name('set-live');
         Route::post('/{id}/go-live-obs-auto', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveOBSAuto'])->name('go-live-obs-auto');
         Route::post('/{id}/go-live-browser', [\App\Http\Controllers\Organization\LivestreamController::class, 'goLiveBrowser'])->name('go-live-browser');
         Route::post('/{id}/end-stream', [\App\Http\Controllers\Organization\LivestreamController::class, 'endStream'])->name('end-stream');

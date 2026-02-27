@@ -75,10 +75,7 @@ interface Props {
 export default function IntegrationsYouTube({ youtube_channel_url, youtube_redirect_uri, channel_page }: Props) {
   const { flash } = usePage().props as { flash?: { success?: string; error?: string } }
 
-  useEffect(() => {
-    if (flash?.success) toast.success(flash.success)
-    if (flash?.error) toast.error(flash.error)
-  }, [flash?.success, flash?.error])
+  // Flash toasts shown by app-layout; do not duplicate here.
 
   const isConnected = !!youtube_channel_url
   const showChannelFull = isConnected && channel_page

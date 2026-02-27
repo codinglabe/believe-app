@@ -208,15 +208,7 @@ export default function EmailInviteIndex({ connections, contacts: initialContact
     }, [initialContacts, currentPage, connections])
 
 
-    // Handle flash messages
-    useEffect(() => {
-        if (flash?.success) {
-            showSuccessToast(flash.success)
-        }
-        if (flash?.error) {
-            showErrorToast(flash.error)
-        }
-    }, [flash])
+    // Flash toasts shown by app-layout; do not duplicate here.
 
     // Debounced search function
     const performSearch = useCallback((value: string) => {

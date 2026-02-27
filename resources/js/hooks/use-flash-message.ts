@@ -19,8 +19,10 @@ export const useFlashMessage = () => {
     const { props } = usePage<PageProps>()
 
     useEffect(() => {
-        if (props.flash) {
-            showToast(props.flash)
+        const flash = props.flash
+        const message = flash?.message
+        if (flash && typeof message === 'string' && message.trim() !== '') {
+            showToast(flash)
         }
     }, [props.flash])
 }

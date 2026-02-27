@@ -63,12 +63,7 @@ export default function UsersList({ allRoles, allPermissions, filters = {} }: Us
 
   // Show flash messages
   React.useEffect(() => {
-    if (flash?.success) {
-      showSuccessToast(flash.success)
-    }
-    if (flash?.error) {
-      showErrorToast(flash.error)
-    }
+    // Flash toasts shown by app-layout; skip to avoid duplicate
   }, [flash])
 
   // Debounce search

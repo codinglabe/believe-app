@@ -177,15 +177,7 @@ export default function Show({ order, userRole }: Props) {
         calculateProfit();
     }, [order]);
 
-    // Handle flash messages
-    useEffect(() => {
-        if (flash.success) {
-            showSuccessToast(flash.success);
-        }
-        if (flash.error) {
-            showErrorToast(flash.error);
-        }
-    }, [flash.success, flash.error]);
+    // Flash toasts shown by app-layout; do not duplicate here.
 
     const calculateProfit = () => {
         // REVENUE BREAKDOWN

@@ -85,8 +85,10 @@ export default function RootLayout({
 
     const page = usePage<{ success?: string; error?: string }>();
     useEffect(() => {
-        if (page.props?.success) toast.success(page.props.success)
-        if (page.props?.error) toast.error(page.props.error)
+        const success = page.props?.success
+        const error = page.props?.error
+        if (typeof success === "string" && success.trim() !== "") toast.success(success)
+        if (typeof error === "string" && error.trim() !== "") toast.error(error)
     }, [page.props?.success, page.props?.error])
   return (
       <NotificationProvider>

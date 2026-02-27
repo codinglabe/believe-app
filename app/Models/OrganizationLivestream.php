@@ -46,27 +46,30 @@ class OrganizationLivestream extends Model
         return $this->belongsTo(Organization::class);
     }
 
+    /**
+     * Invite tokens for guest join links (/join/{token}).
+     */
+    public function inviteTokens(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(LivestreamInviteToken::class, 'organization_livestream_id');
+    }
+
     /** VDO.Ninja room name max length (they allow &lt; 31). */
     private const VDO_ROOM_NAME_MAX_LENGTH = 30;
 
+    /** Meeting slug prefix per client: biu_mtg_xxxx */
+    private const MEETING_SLUG_PREFIX = 'biu_mtg_';
+
     /**
-     * Generate a unique room name for an organization.
-     * Every new livestream gets a new room name (random suffix). Never reuse a name.
-     * VDO.Ninja: alphanumeric only, max 31 chars — we keep to 30.
+     * Generate a unique meeting/room name (slug) for BIU meetings.
+     * Format: biu_mtg_ + 8 random alphanumeric. VDO.Ninja: alphanumeric only, max 31 chars.
      */
     public static function generateRoomName(Organization $organization): string
     {
-        $slug = Str::slug($organization->name, '_');
-        $clean = preg_replace('/[^a-zA-Z0-9_]/', '_', $slug);
-        $clean = trim($clean, '_') ?: 'room';
-        // believe_ (8) + _ (1) + random(8) = 17, so base part max 30 - 17 = 13
-        $base = 'believe_' . substr($clean, 0, 13);
-        $base = trim($base, '_') ?: 'believe_room';
-
-        $roomName = $base . '_' . Str::random(8);
+        $roomName = self::MEETING_SLUG_PREFIX . Str::random(8);
         $roomName = substr($roomName, 0, self::VDO_ROOM_NAME_MAX_LENGTH);
         while (self::where('room_name', $roomName)->exists()) {
-            $roomName = $base . '_' . Str::random(8);
+            $roomName = self::MEETING_SLUG_PREFIX . Str::random(8);
             $roomName = substr($roomName, 0, self::VDO_ROOM_NAME_MAX_LENGTH);
         }
 
@@ -214,7 +217,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&videodevice=0&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart';
+        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&videodevice=0&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     /**
@@ -229,27 +232,34 @@ class OrganizationLivestream extends Model
     }
 
     /**
-     * Unity Live embed: host output only — view=roomName&solo. No join prompt. Viewers see the host's stream (when host shares screen).
+     * Public viewer URL for /live/{slug}: view-only room so viewers see the same as the host.
+     * Shows: host screen/share, host webcam, and every participant's screen share or webcam.
+     * Uses room view (getRoomViewUrl), not solo — so all pushers in the room are visible.
      */
     public function getPublicViewUrl(): ?string
     {
-        return $this->getSoloViewUrl();
+        return $this->getRoomViewUrl();
     }
 
     /**
-     * Room view URL: join room with activespeaker=1 (same idea as scene view; scene+joinscene may reduce join UI).
+     * Room view URL: view-only (no camera/screen prompt). Same content the host sees.
+     * - nopush / viewonly: receive only, no publishing (viewers never prompted to share).
+     * - showall: show every participant (host + guests) who is pushing screen or webcam.
+     * - activespeaker=1: emphasize active speaker; showlabels=1 for names.
+     * So: host's feed, any participant's share, and whatever the host is watching is what goes live.
      */
     public function getRoomViewUrl(): string
     {
         $room = rawurlencode($this->getVdoRoomName());
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?room={$room}{$passwordParam}&activespeaker=1&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
+        return "https://vdo.ninja/?room={$room}{$passwordParam}&nopush&viewonly&activespeaker=1&showall&showlabels=1&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
     /**
      * Solo view URL: one stream full screen (view=roomName&solo). Only shows host stream (ID = room name).
      * Use as fallback or when you only need the host feed.
+     * &autostart = start receiving/displaying the stream as soon as the viewer page loads (helps on reload).
      */
     public function getSoloViewUrl(): string
     {
@@ -258,7 +268,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($roomName);
         $pw = rawurlencode((string) $this->getDecryptedPassword());
         $passwordParam = $pw !== '' ? '&password=' . $pw : '';
-        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&cleanoutput&noheader&nopreview&nocontrols&nosettings";
+        return "https://vdo.ninja/?view={$view}&solo&fullscreen&room={$room}{$passwordParam}&cleanoutput&noheader&nopreview&nocontrols&nosettings&autostart";
     }
 
     /**
@@ -267,6 +277,15 @@ class OrganizationLivestream extends Model
     public function getPublicViewUrlFallback(): string
     {
         return $this->getSoloViewUrl();
+    }
+
+    /**
+     * Public view URL with no audio (for Unity Live index previews).
+     * Use on listing page so multiple stream previews don't all play sound; sound only on watch page.
+     */
+    public function getPublicViewUrlMuted(): string
+    {
+        return $this->getSoloViewUrl() . '&noaudio';
     }
 
     /**
@@ -297,7 +316,7 @@ class OrganizationLivestream extends Model
             $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
             $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         }
-        return "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&videodevice=0&showlabels=1&showall&style=6{$avatarParam}&autostart{$passwordParam}";
+        return "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&videodevice=0&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
     }
 
     /**
@@ -309,11 +328,27 @@ class OrganizationLivestream extends Model
     }
 
     /**
-     * Check if the stream can be started.
+     * Check if the stream can be started (meeting in progress, not yet streaming).
+     */
+    public function canStartMeeting(): bool
+    {
+        return in_array($this->status, ['draft', 'scheduled']);
+    }
+
+    /**
+     * Check if the stream can be started (legacy).
      */
     public function canStart(): bool
     {
         return in_array($this->status, ['draft', 'scheduled']);
+    }
+
+    /**
+     * Check if host can trigger "Go Live" (stream to viewers).
+     */
+    public function canGoLive(): bool
+    {
+        return in_array($this->status, ['draft', 'scheduled', 'meeting_live']);
     }
 
     /**

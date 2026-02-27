@@ -62,7 +62,7 @@ interface Livestream {
   participantUrl: string
   hostPushUrl?: string
   watchUrl?: string | null
-  status: "draft" | "scheduled" | "live" | "ended" | "cancelled"
+  status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
   scheduledAt: string | null
   startedAt: string | null
   endedAt: string | null
@@ -74,7 +74,11 @@ interface Livestream {
   streamKeyDisplay?: string | null
   rtmpUrl?: string | null
   unityLiveUrl?: string
+  liveViewerUrl?: string
   isPublic?: boolean
+  canStartMeeting?: boolean
+  canGoLive?: boolean
+  latestInviteUrl?: string | null
 }
 
 const DEFAULT_OBS_WS = "ws://127.0.0.1:4455"
@@ -106,10 +110,17 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   const [goLiveOpen, setGoLiveOpen] = useState(false)
   const [goLiveTab, setGoLiveTab] = useState("streaming")
   const [infoOpen, setInfoOpen] = useState(false)
-  const [iframeTab, setIframeTab] = useState<"director" | "host">("director")
   const [isUpdatingVisibility, setIsUpdatingVisibility] = useState(false)
-  const { props } = usePage<{ errors?: { go_live?: string }; browser_publish_url?: string | null }>()
+  const [isStartingMeeting, setIsStartingMeeting] = useState(false)
+  const [isGeneratingInvite, setIsGeneratingInvite] = useState(false)
+  const [sidebarTab, setSidebarTab] = useState<"meeting-info" | "invite-link">("meeting-info")
+  const { props } = usePage<{
+    errors?: { go_live?: string }
+    browser_publish_url?: string | null
+    flash?: { inviteUrl?: string; success?: string }
+  }>()
   const goLiveError = props.errors?.go_live ?? null
+  const flashInviteUrl = props.flash?.inviteUrl
 
   useEffect(() => {
     const url = props.browser_publish_url
@@ -117,6 +128,13 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
       window.open(url, "_blank", "noopener,noreferrer,width=800,height=600")
     }
   }, [props.browser_publish_url])
+
+  useEffect(() => {
+    if (flashInviteUrl) {
+      navigator.clipboard.writeText(flashInviteUrl).then(() => setCopied("invite"))
+      setTimeout(() => setCopied(null), 3000)
+    }
+  }, [flashInviteUrl])
 
   // Prevent page scroll — livestream view is fixed to viewport, no body scroll
   useEffect(() => {
@@ -236,7 +254,8 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     const statusConfig = {
       draft: { label: "Draft", className: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30" },
       scheduled: { label: "Scheduled", className: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-500/20 dark:text-blue-400 dark:border-blue-500/30" },
-      live: { label: "Live", className: "bg-red-100 text-red-600 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 animate-pulse" },
+      meeting_live: { label: "Meeting Live", className: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-500/20 dark:text-amber-400 dark:border-amber-500/30" },
+      live: { label: "Stream Live", className: "bg-red-100 text-red-600 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/40 animate-pulse" },
       ended: { label: "Ended", className: "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/20 dark:text-gray-400 dark:border-gray-500/30" },
       cancelled: { label: "Cancelled", className: "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/20 dark:text-red-400 dark:border-red-500/30" },
     }
@@ -246,6 +265,23 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
 
   const joinUrl = typeof window !== "undefined" ? `${window.location.origin}/livestreams/join/${livestream.roomName}` : ""
   const unityLiveUrl = livestream.unityLiveUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/unity-live/${livestream.roomName}` : "")
+  const liveViewerUrl = livestream.liveViewerUrl ?? (typeof window !== "undefined" ? `${window.location.origin}/live/${livestream.roomName}` : "")
+
+  const handleStartMeeting = () => {
+    setIsStartingMeeting(true)
+    router.post(`/livestreams/${livestream.id}/start-meeting`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsStartingMeeting(false),
+    })
+  }
+
+  const handleGenerateInviteLink = () => {
+    setIsGeneratingInvite(true)
+    router.post(`/livestreams/${livestream.id}/generate-invite`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsGeneratingInvite(false),
+    })
+  }
 
   const toggleVisibility = (publicVal: boolean) => {
     setIsUpdatingVisibility(true)
@@ -258,7 +294,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
 
   const meetingInfoContent = (
     <div className="w-full min-w-0 space-y-4">
-      {/* Public / Private — only when live so the choice is clear for viewers */}
+      {/* Public / Private — only when live */}
       <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
@@ -277,23 +313,21 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
             : "Private — only people with the viewer link can watch."}
         </p>
       </div>
-      {/* Viewer link (Unity Live big screen) — when live */}
-      {livestream.status === "live" && unityLiveUrl && (
+      {/* Viewer link when stream is live */}
+      {livestream.status === "live" && liveViewerUrl && (
         <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
           <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
             <ExternalLink className="h-3.5 w-3.5 text-primary" />
-            {livestream.isPublic ? "Watch on Unity Live" : "Viewer link (private)"}
+            {livestream.isPublic ? "Watch link (with volume)" : "Viewer link (private)"}
           </div>
           <p className="text-xs text-muted-foreground">
-            {livestream.isPublic
-              ? "Stream appears on the Unity Live page. Share this link for the big-screen view."
-              : "Share this link so viewers can watch. Not listed on Unity Live."}
+            Share this link so viewers can watch with mute and volume controls.
           </p>
           <Button
             variant="outline"
             size="sm"
             className="w-full h-9 gap-2"
-            onClick={() => copyToClipboard(unityLiveUrl, "unity")}
+            onClick={() => copyToClipboard(liveViewerUrl, "unity")}
           >
             {copied === "unity" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
             Copy viewer link
@@ -322,15 +356,55 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
           Copy
         </Button>
       </div>
-      <Button
-        variant="secondary"
-        size="sm"
-        className="w-full h-10 gap-2 rounded-lg font-medium shadow-sm border border-border bg-primary/5 hover:bg-primary/10 text-foreground"
-        onClick={() => copyToClipboard(joinUrl, "invite")}
-      >
-        {copied === "invite" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-        Copy invite link
-      </Button>
+    </div>
+  )
+
+  const displayInviteUrl = props.flash?.inviteUrl ?? livestream.latestInviteUrl ?? null
+  const inviteLinkContent = (
+    <div className="w-full min-w-0 space-y-4">
+      <p className="text-xs text-muted-foreground">
+        Generate a secure link for guests. They’ll join at <span className="font-mono text-foreground">/join/…</span> with no need to enter the meeting ID or passcode.
+      </p>
+      {displayInviteUrl ? (
+        <div className="space-y-2">
+          <Label className="text-xs text-muted-foreground">Current invite link</Label>
+          <div className="flex gap-2">
+            <Input
+              readOnly
+              value={displayInviteUrl}
+              className="font-mono text-xs h-9 bg-muted/50"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0"
+              onClick={() => {
+                navigator.clipboard.writeText(displayInviteUrl).then(() => setCopied("invite"))
+                setTimeout(() => setCopied(null), 3000)
+              }}
+              aria-label="Copy invite link"
+            >
+              {copied === "invite" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {(livestream.canStartMeeting || livestream.status === "meeting_live" || livestream.status === "live") ? (
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full h-10 gap-2 rounded-lg font-medium shadow-sm border border-border bg-primary/5 hover:bg-primary/10 text-foreground"
+          onClick={handleGenerateInviteLink}
+          disabled={isGeneratingInvite}
+        >
+          {copied === "invite" ? <CheckCircle2 className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+          {isGeneratingInvite ? "Generating…" : copied === "invite" ? "Invite link copied!" : displayInviteUrl ? "Generate new invite link" : "Generate invite link"}
+        </Button>
+      ) : (
+        <p className="text-xs text-muted-foreground">
+          Start the meeting or go live to generate invite links.
+        </p>
+      )}
     </div>
   )
 
@@ -361,31 +435,51 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   </SheetTrigger>
                   <SheetContent side="left" className="w-[90vw] max-w-sm overflow-y-auto">
                     <SheetHeader className="pb-4 border-b border-border">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                          <Info className="h-5 w-5 text-primary" />
-                        </div>
-                        <div>
-                          <SheetTitle className="text-lg">Meeting info</SheetTitle>
-                          <p className="text-sm text-muted-foreground mt-0.5">Share these details to invite others</p>
-                        </div>
-                      </div>
+                      <SheetTitle className="text-lg">Meeting</SheetTitle>
                     </SheetHeader>
-                    <div className="mt-5">{meetingInfoContent}</div>
+                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full mt-4">
+                      <TabsList className="grid w-full grid-cols-2 h-9">
+                        <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
+                          <Info className="h-3.5 w-3.5 shrink-0" />
+                          Meeting info
+                        </TabsTrigger>
+                        <TabsTrigger value="invite-link" className="text-xs gap-1.5">
+                          <Copy className="h-3.5 w-3.5 shrink-0" />
+                          Invite link
+                        </TabsTrigger>
+                      </TabsList>
+                      <TabsContent value="meeting-info" className="mt-4">
+                        {meetingInfoContent}
+                      </TabsContent>
+                      <TabsContent value="invite-link" className="mt-4">
+                        {inviteLinkContent}
+                      </TabsContent>
+                    </Tabs>
                   </SheetContent>
                 </Sheet>
-                {livestream.status !== "live" && (
+                {livestream.canStartMeeting && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 px-2.5 rounded-md touch-manipulation text-xs font-medium"
+                    onClick={handleStartMeeting}
+                    disabled={isStartingMeeting}
+                  >
+                    {isStartingMeeting ? "…" : "Start Meeting"}
+                  </Button>
+                )}
+                {livestream.canGoLive && livestream.status !== "live" && (
                   <>
                     <Button
-                    variant="default"
-                    size="icon"
-                    className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
-                    onClick={handleGoLiveClick}
-                    disabled={isUpdatingStatus}
-                    aria-label="Go Live"
-                  >
-                    <Play className="h-4 w-4" />
-                  </Button>
+                      variant="default"
+                      size="icon"
+                      className="h-8 w-8 rounded-md bg-red-600 hover:bg-red-700 touch-manipulation"
+                      onClick={handleGoLiveClick}
+                      disabled={isUpdatingStatus}
+                      aria-label="Go Live"
+                    >
+                      <Play className="h-4 w-4" />
+                    </Button>
                     {canGoLiveWithOBS && (
                       <Button
                         variant="outline"
@@ -407,7 +501,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" side="bottom" className="w-48">
-                    {livestream.status !== "live" && (
+                    {livestream.canGoLive && livestream.status !== "live" && (
                       <>
                         <DropdownMenuItem onClick={handleGoLiveClick} disabled={isUpdatingStatus}>
                           <Play className="h-4 w-4 mr-2" />
@@ -430,16 +524,21 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                         End stream
                       </DropdownMenuItem>
                     )}
-                    <DropdownMenuItem onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}>
+                    <DropdownMenuItem onClick={() => window.open(livestream.hostPushUrl ?? livestream.directorUrl, "_blank")}>
                       <Maximize2 className="h-4 w-4 mr-2" />
                       Open meeting in new tab
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </div>
-              {/* Desktop: Go Live + OBS Live (when ready) + Stream options + End stream (when live) in header */}
+              {/* Desktop: Start Meeting + Go Live + OBS Live (when ready) + Stream options + End stream (when live) */}
               <div className="hidden md:flex items-center gap-1.5">
-                {livestream.status !== "live" && (
+                {livestream.canStartMeeting && (
+                  <Button variant="outline" size="sm" className="h-8 px-3" onClick={handleStartMeeting} disabled={isStartingMeeting}>
+                    {isStartingMeeting ? "…" : "Start Meeting"}
+                  </Button>
+                )}
+                {livestream.canGoLive && livestream.status !== "live" && (
                   <>
                     <Button
                       size="sm"
@@ -479,7 +578,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 sm:h-9 sm:w-9 touch-manipulation"
-                onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}
+                onClick={() => window.open(livestream.hostPushUrl ?? livestream.directorUrl, "_blank")}
                 aria-label="Open meeting in new tab"
                 title="Open meeting in new tab"
               >
@@ -490,66 +589,48 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
 
         {/* Main: left sidebar (desktop only) + meeting area — min-h-0 prevents flex overflow */}
         <div className="flex flex-1 min-h-0 overflow-hidden">
-          {/* Left: Meeting Info — desktop only */}
+          {/* Left: Meeting Info / Invite Link tabs — desktop only */}
           <aside className="hidden md:flex w-64 lg:w-72 shrink-0 flex-col border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
-            <Card className="rounded-none border-0 border-b border-border shadow-none bg-transparent p-0">
-              <CardHeader className="p-0 py-3">
-                <div className="flex items-center gap-2">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                    <Info className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <CardTitle className="text-base font-semibold">Meeting info</CardTitle>
-                    <CardDescription className="text-xs mt-0.5">Share these details to invite others</CardDescription>
-                  </div>
-                </div>
-              </CardHeader>
-              <CardContent className="p-0 pb-3">
-                {meetingInfoContent}
-              </CardContent>
-            </Card>
+            <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full flex flex-col min-h-0">
+              <Card className="rounded-none border-0 border-b border-border shadow-none bg-transparent p-0">
+                <CardHeader className="p-0 py-3 px-3">
+                  <TabsList className="grid w-full grid-cols-2 h-9">
+                    <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
+                      <Info className="h-3.5 w-3.5 shrink-0" />
+                      Meeting info
+                    </TabsTrigger>
+                    <TabsTrigger value="invite-link" className="text-xs gap-1.5">
+                      <Copy className="h-3.5 w-3.5 shrink-0" />
+                      Invite link
+                    </TabsTrigger>
+                  </TabsList>
+                </CardHeader>
+                <CardContent className="p-0 pb-3 px-3 overflow-y-auto">
+                  <TabsContent value="meeting-info" className="mt-3 mb-0">
+                    {meetingInfoContent}
+                  </TabsContent>
+                  <TabsContent value="invite-link" className="mt-3 mb-0">
+                    {inviteLinkContent}
+                  </TabsContent>
+                </CardContent>
+              </Card>
+            </Tabs>
           </aside>
 
           {/* Center: meeting area — on mobile full width; min-h-0 so iframe doesn't cause scroll */}
           <div className="flex flex-1 flex-col min-w-0 min-h-0 w-0 overflow-hidden">
-            {/* Director tab = Director URL; Host tab = Push URL (host joins and pushes stream) */}
-            <div className="flex shrink-0 border-b border-border bg-muted/30">
-              <button
-                type="button"
-                onClick={() => setIframeTab("director")}
-                className={`px-4 py-2.5 text-sm font-medium transition-colors ${iframeTab === "director" ? "border-b-2 border-primary text-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Director
-              </button>
-              <button
-                type="button"
-                onClick={() => setIframeTab("host")}
-                className={`px-4 py-2.5 text-sm font-medium transition-colors ${iframeTab === "host" ? "border-b-2 border-primary text-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
-              >
-                Host
-              </button>
-            </div>
-            {/* Both iframes stay mounted so switching tabs does not reload. Director = director URL; Host = push URL. */}
+            {/* Host iframe only (no Director tab per client: Host / Guest / Viewer only) */}
             <div className="flex-1 min-h-0 min-w-0 bg-black relative overflow-hidden">
-              {livestream.directorUrl ? (
-                <iframe
-                  key="director"
-                  src={livestream.directorUrl}
-                  title="Director"
-                  className={`absolute inset-0 w-full h-full ${iframeTab !== "director" ? "invisible pointer-events-none -z-10" : "z-0"}`}
-                  allow="camera; microphone; fullscreen; display-capture *; autoplay; clipboard-write"
-                />
-              ) : null}
               {(livestream.hostPushUrl ?? livestream.directorUrl) ? (
                 <iframe
                   key="host"
                   src={livestream.hostPushUrl ?? livestream.directorUrl}
                   title="Host"
-                  className={`absolute inset-0 w-full h-full ${iframeTab !== "host" ? "invisible pointer-events-none -z-10" : "z-0"}`}
+                  className="absolute inset-0 w-full h-full z-0"
                   allow="camera; microphone; fullscreen; display-capture https://vdo.ninja https://www.vdo.ninja; autoplay; clipboard-write"
                 />
               ) : null}
-              {!livestream.directorUrl && !livestream.hostPushUrl ? (
+              {!livestream.hostPushUrl && !livestream.directorUrl ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm sm:text-base">Loading meeting…</div>
               ) : null}
               {livestream.status === "live" && (
@@ -563,7 +644,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                   variant="secondary"
                   size="sm"
                   className="h-8 gap-1.5 rounded-full bg-background/90 shadow-md touch-manipulation"
-                  onClick={() => window.open(iframeTab === "director" ? livestream.directorUrl : (livestream.hostPushUrl ?? livestream.directorUrl), "_blank")}
+                  onClick={() => window.open(livestream.hostPushUrl ?? livestream.directorUrl, "_blank")}
                 >
                   <Maximize2 className="h-3.5 w-3.5" />
                   <span className="text-xs">Full screen</span>
