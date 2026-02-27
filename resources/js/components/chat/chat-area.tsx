@@ -28,15 +28,16 @@ export function ChatArea() {
     )
   }
 
-  // Determine chat header name for direct chats
+  // Determine chat header name for direct chats (other participant's name)
+  const otherMember = activeRoom.type === "direct" ? activeRoom.members?.find((m) => m.id !== currentUser?.id) : null
   const chatHeaderName =
     activeRoom.type === "direct"
-      ? activeRoom.members.find((member) => member.id !== currentUser.id)?.name || "Direct Chat"
+      ? (otherMember?.name ?? "Direct Chat")
       : activeRoom.name
 
   const chatHeaderAvatar =
     activeRoom.type === "direct"
-      ? activeRoom.members.find((member) => member.id !== currentUser.id)?.avatar
+      ? (otherMember?.avatar ?? (otherMember as { avatar_url?: string })?.avatar_url)
       : activeRoom.image
 
   const getBreadcrumbText = () => {

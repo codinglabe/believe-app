@@ -15,13 +15,14 @@ interface ConversationItemProps {
 }
 
 export function ConversationItem({ room, isActive, onClick,  currentUser}: ConversationItemProps) {
+  const otherMember = room.type === 'direct' ? room.members?.find((m) => m.id !== currentUser?.id) : null
   const displayAvatar = room.type === 'direct'
-  ? room.members.find(member => member.id !== currentUser.id)?.avatar // Always find non-current user
-  : room.image;
+    ? (otherMember?.avatar ?? (otherMember as { avatar_url?: string })?.avatar_url)
+    : room.image
 
-const displayName = room.type === 'direct'
-  ? room.members.find(member => member.id !== currentUser.id)?.name || 'Direct Chat'
-  : room.name;
+  const displayName = room.type === 'direct'
+    ? (otherMember?.name || 'Direct Chat')
+    : room.name
   const lastMessageTime = room.last_message?.created_at
     ? formatDistanceToNowStrict(new Date(room.last_message.created_at), { addSuffix: true })
     : null;

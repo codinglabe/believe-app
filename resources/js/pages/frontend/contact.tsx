@@ -2,7 +2,7 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { Mail, Phone, MapPin, Clock, Send, MessageCircle, HelpCircle, Users, CheckCircle2, ArrowRight, Building2, Globe } from "lucide-react"
+import { MapPin, Send, MessageCircle, HelpCircle, Users, CheckCircle2, ArrowRight, Globe } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Input } from "@/components/frontend/ui/input"
@@ -59,38 +59,7 @@ interface ContactPageProps {
   }
 }
 
-const defaultContactMethods = [
-  {
-    icon: Mail,
-    title: "Email Support",
-    description: "Send us an email and we'll respond within 24 hours",
-    contact: "wendhi@stuttiegroup.com",
-    action: "mailto:wendhi@stuttiegroup.com",
-    color: "from-blue-500 to-blue-600",
-    bgColor: "bg-blue-50 dark:bg-blue-900/20",
-    iconColor: "text-blue-600 dark:text-blue-400",
-  },
-  {
-    icon: Phone,
-    title: "Phone Support",
-    description: "Speak with our support team directly",
-    contact: "+1 (555) 123-4567",
-    action: "tel:+15551234567",
-    color: "from-green-500 to-green-600",
-    bgColor: "bg-green-50 dark:bg-green-900/20",
-    iconColor: "text-green-600 dark:text-green-400",
-  },
-  {
-    icon: MessageCircle,
-    title: "Live Chat",
-    description: "Chat with us in real-time during business hours",
-    contact: "Available 9 AM - 5 PM EST",
-    action: "#",
-    color: "from-purple-500 to-purple-600",
-    bgColor: "bg-purple-50 dark:bg-purple-900/20",
-    iconColor: "text-purple-600 dark:text-purple-400",
-  },
-]
+// Contact is form-only. Technical help: wendhi@supportgroup.com
 
 const defaultFaqItems = [
   {
@@ -115,11 +84,6 @@ const defaultFaqItems = [
   },
 ]
 
-const getContactMethodIcon = (title?: string) => {
-  if (title?.toLowerCase().includes('email')) return Mail
-  if (title?.toLowerCase().includes('phone')) return Phone
-  return MessageCircle
-}
 
 export default function ContactPage({
   seo,
@@ -346,109 +310,35 @@ export default function ContactPage({
                 </motion.div>
             </div>
 
-            {/* Contact Information Sidebar */}
+            {/* Sidebar: form-only contact + technical help */}
             <div className="space-y-6">
-                {/* Contact Methods */}
                 <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
+                  initial={{ opacity: 0, x: 30 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ duration: 0.8, delay: 0.2 }}
                 >
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Building2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                      Contact Information
-                    </CardTitle>
+                  <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg">
+                    <CardHeader className="pb-4">
+                      <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                        <MessageCircle className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                        How to reach us
+                      </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                    {(contactMethods.length > 0 ? contactMethods : defaultContactMethods).map((method, index) => {
-                      const Icon = getContactMethodIcon(method.title)
-                      const methodData = typeof method === 'object' && 'title' in method ? method : defaultContactMethods[index]
-                      return (
-                      <motion.div
-                        key={index}
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-                        className="group"
-                      >
-                        <Link
-                          href={method.action}
-                          className="flex items-start gap-4 p-4 rounded-xl border border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-600 hover:shadow-md transition-all duration-200 bg-white dark:bg-gray-800"
+                      <p className="text-sm text-gray-600 dark:text-gray-300">
+                        We respond to all inquiries through the contact form on this page. Please submit your message below and we&apos;ll get back to you as soon as possible.
+                      </p>
+                      <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Technical help</p>
+                        <a
+                          href="mailto:wendhi@supportgroup.com"
+                          className="text-sm font-medium text-blue-600 dark:text-blue-400 hover:underline"
                         >
-                          <div className={`p-3 rounded-lg ${methodData.bgColor || 'bg-blue-50 dark:bg-blue-900/20'} group-hover:scale-110 transition-transform duration-200`}>
-                            <Icon className={`h-5 w-5 ${methodData.iconColor || 'text-blue-600 dark:text-blue-400'}`} />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-semibold text-gray-900 dark:text-white mb-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                              {methodData.title || method.title}
-                            </h4>
-                            <p className="text-sm text-gray-600 dark:text-gray-300 mb-2">{methodData.description || method.description}</p>
-                            <p className="text-sm font-medium text-blue-600 dark:text-blue-400 group-hover:underline">
-                              {methodData.contact || method.contact}
-                            </p>
-                        </div>
-                            </Link>
-                      </motion.div>
-                      )
-                    })}
+                          wendhi@supportgroup.com
+                        </a>
+                      </div>
                     </CardContent>
-                </Card>
-                </motion.div>
-
-                {/* Office Hours */}
-                <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-                >
-                <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-gray-800 dark:to-gray-800 border-blue-200 dark:border-gray-700 shadow-lg">
-                  <CardHeader className="pb-4">
-                    <CardTitle className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Clock className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        Office Hours
-                    </CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                    <div className="space-y-3">
-                      {officeHours?.day_range && (
-                        <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
-                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.day_range}</span>
-                          <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{officeHours.hours || ''}</span>
-                        </div>
-                      )}
-                      {officeHours?.saturday_day && (
-                        <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
-                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.saturday_day}</span>
-                          <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">{officeHours.saturday_hours || ''}</span>
-                        </div>
-                      )}
-                      {officeHours?.sunday_day && (
-                        <div className="flex justify-between items-center py-2">
-                          <span className="font-medium text-gray-900 dark:text-white">{officeHours.sunday_day}</span>
-                          <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">{officeHours.sunday_status || 'Closed'}</span>
-                        </div>
-                      )}
-                      {!officeHours && (
-                        <>
-                          <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
-                            <span className="font-medium text-gray-900 dark:text-white">Monday - Friday</span>
-                            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">9:00 AM - 6:00 PM EST</span>
-                          </div>
-                          <div className="flex justify-between items-center py-2 border-b border-blue-200 dark:border-gray-700">
-                            <span className="font-medium text-gray-900 dark:text-white">Saturday</span>
-                            <span className="text-sm font-semibold text-blue-600 dark:text-blue-400">10:00 AM - 4:00 PM EST</span>
-                          </div>
-                          <div className="flex justify-between items-center py-2">
-                            <span className="font-medium text-gray-900 dark:text-white">Sunday</span>
-                            <span className="text-sm font-semibold text-gray-500 dark:text-gray-400">Closed</span>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                    </CardContent>
-                </Card>
+                  </Card>
                 </motion.div>
 
                 {/* Office Location */}

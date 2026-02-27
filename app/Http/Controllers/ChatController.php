@@ -387,6 +387,52 @@ class ChatController extends Controller
         ]);
     }
 
+    /**
+     * Format a chat room for API response (same shape as index() so frontend shows names/avatars).
+     */
+    private function formatRoomForResponse(ChatRoom $room, User $currentUser): array
+    {
+        $room->load(['members.organization', 'latestMessage.user', 'topics']);
+        $latestMessage = $room->latestMessage->first();
+        $isMember = $room->members->contains('id', $currentUser->id);
+
+        return [
+            'id' => $room->id,
+            'name' => $room->name,
+            'type' => $room->type,
+            'image' => $room->image_url,
+            'description' => $room->description,
+            'created_at' => $room->created_at->toISOString(),
+            'last_message' => $latestMessage ? [
+                'message' => $latestMessage->message ?? '',
+                'created_at' => $latestMessage->created_at->toISOString() ?? '',
+                'user_name' => $latestMessage->user->name ?? '',
+            ] : null,
+            'unread_count' => $isMember ? $room->messages()->where('user_id', '!=', $currentUser->id)->whereDoesntHave('reads', function ($query) use ($currentUser) {
+                $query->where('user_id', $currentUser->id);
+            })->count() : 0,
+            'members' => $room->members->map(function ($member) {
+                return [
+                    'id' => $member->id,
+                    'name' => $member->name,
+                    'avatar' => $member->avatar_url,
+                    'is_online' => $member->is_online,
+                    'role' => $member->role,
+                    'organization' => $member->organization ? ['id' => $member->organization->id, 'name' => $member->organization->name] : null,
+                ];
+            })->values()->all(),
+            'is_member' => $isMember,
+            'created_by' => $room->created_by,
+            'topics' => $room->topics->map(function ($topic) {
+                return [
+                    'id' => $topic->id,
+                    'name' => $topic->name,
+                    'description' => $topic->description,
+                ];
+            })->values()->all(),
+        ];
+    }
+
     public function createDirectChat(Request $request)
     {
         $request->validate([
@@ -403,15 +449,13 @@ class ChatController extends Controller
             }, '=', 2)
             ->first();
 
-        // dd($existingRoom);
-
         if ($existingRoom) {
-            return response()->json(['room' => $existingRoom->load('members.organization', 'latestMessage.user')]);
+            return response()->json(['room' => $this->formatRoomForResponse($existingRoom, $user1)]);
         }
 
         $room = DB::transaction(function () use ($user1, $user2) {
             $room = ChatRoom::create([
-                'name' => 'Direct Chat', // Name will be dynamically set on frontend
+                'name' => 'Direct Chat',
                 'type' => 'direct',
                 'created_by' => $user1->id,
             ]);
@@ -421,12 +465,10 @@ class ChatController extends Controller
             return $room;
         });
 
-        $room->load('members');
-
         // Broadcast the new room
         broadcast(new RoomCreated($room))->toOthers();
 
-        return response()->json(['room' => $room->load('members.organization', 'latestMessage.user')]);
+        return response()->json(['room' => $this->formatRoomForResponse($room, $user1)]);
     }
 
     public function joinRoom(ChatRoom $chatRoom)

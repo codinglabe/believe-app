@@ -572,10 +572,16 @@ export const ChatProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const createDirectChat = useCallback(async (userId: number) => {
     try {
       const { data } = await api.post<{ room: ChatRoom }>("/chat/direct-chat", { user_id: userId })
-      console.log("Direct chat created:", data.room)
-      setActiveRoom(data.room)
+      const room = data.room
+      if (!room) return
+      setChatRooms((prev) => {
+        const exists = prev.some((r) => r.id === room.id)
+        if (exists) return prev.map((r) => (r.id === room.id ? room : r))
+        return [room, ...prev]
+      })
+      setActiveRoom(room)
       toast.success("Direct chat started")
-      return data.room // Return the room data
+      return room
     } catch (error) {
       console.error("Error creating direct chat:", error)
       toast.error("Failed to start direct chat")
