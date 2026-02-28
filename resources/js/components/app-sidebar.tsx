@@ -64,7 +64,8 @@ import {
     Search,
     Youtube,
     Video,
-    TrendingUp
+    TrendingUp,
+    Cloud
 } from 'lucide-react';
 import SiteTitle from './site-title';
 import { Button } from '@/components/ui/button';
@@ -131,6 +132,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 title: 'Board of Directors',
                 href: '/board-members',
                 icon: Users,
+                role: "organization"
+            },
+            {
+                title: 'Compliance',
+                href: '/compliance',
+                icon: Shield,
                 role: "organization"
             },
         ],
@@ -767,6 +774,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                         title: 'YouTube',
                         href: route('integrations.youtube'),
                         icon: Youtube,
+                        role: "organization"
+                    },
+                    {
+                        title: 'Dropbox (recordings)',
+                        href: route('integrations.dropbox'),
+                        icon: Cloud,
                         role: "organization"
                     },
                 ],

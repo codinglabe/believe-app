@@ -1,9 +1,10 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState } from "react"
 import { Head } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import {
@@ -11,12 +12,7 @@ import {
   VideoOff,
   Mic,
   MicOff,
-  Lock,
-  Heart,
-  Settings,
-  ChevronDown,
   AlertCircle,
-  Bot,
 } from "lucide-react"
 
 interface Livestream {
@@ -41,170 +37,157 @@ interface Props {
 
 export default function GuestJoin({ livestream, organization }: Props) {
   const [displayName, setDisplayName] = useState("")
-  const [cameraEnabled, setCameraEnabled] = useState(false)
-  const [micEnabled, setMicEnabled] = useState(false)
-  const [stream, setStream] = useState<MediaStream | null>(null)
-  const [deviceOk, setDeviceOk] = useState(false)
-  const videoRef = useRef<HTMLVideoElement>(null)
-
-  useEffect(() => {
-    return () => {
-      if (stream) {
-        stream.getTracks().forEach((track) => track.stop())
-      }
-    }
-  }, [stream])
-
-  const testDevices = async () => {
-    try {
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      })
-      setStream(mediaStream)
-      setCameraEnabled(true)
-      setMicEnabled(true)
-      setDeviceOk(true)
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream
-      }
-    } catch (err) {
-      console.error("Error accessing devices:", err)
-      setDeviceOk(false)
-    }
-  }
+  const [cameraOn, setCameraOn] = useState(true)
+  const [micOn, setMicOn] = useState(true)
+  const [consentChecked, setConsentChecked] = useState(false)
 
   const canJoin = ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
+
+  const displayLabel = (displayName || "Guest").trim()
+  const initial = displayLabel.charAt(0).toUpperCase() || "G"
 
   const handleJoin = () => {
     if (!canJoin) return
     const name = displayName.trim() || "Guest"
     const url = new URL(livestream.participantUrl)
-    url.searchParams.set("label", name)
+    // Full participant interface for everyone. If no consent: add suffix so host can exclude from recording (VDO.Ninja has no "don't record me" flag).
+    const label = consentChecked ? name : `${name} (not recorded)`
+    url.searchParams.set("label", label)
+    if (!cameraOn) url.searchParams.set("novideo", "1")
+    if (!micOn) url.searchParams.set("nomicrophone", "1")
     window.open(url.toString(), "_blank")
   }
 
   return (
     <FrontendLayout>
       <Head title={`Join: ${livestream.title || "Meeting"}`} />
-      <div className="min-h-[calc(100vh-140px)] flex flex-col md:flex-row bg-background">
-        {/* Left panel: Join controls */}
-        <div className="flex flex-col justify-center p-6 md:p-8 md:w-72 md:max-w-[320px] md:min-h-[calc(100vh-140px)] border-r border-border/50">
-          <h1 className="text-2xl md:text-3xl font-semibold text-foreground mb-1">
-            Join meeting
-          </h1>
-          <p className="text-muted-foreground text-sm md:text-base mb-6">
-            {livestream.title || "Untitled"}
-          </p>
-
-          {!canJoin && (
-            <Alert className="mb-4">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription>
-                This meeting is not currently available to join.
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {canJoin && (
-            <>
-              <label className="text-sm font-medium text-foreground mb-2 block">
-                Your name
-              </label>
-              <Input
-                type="text"
-                placeholder="John Doe"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-                className="bg-muted/50 border-border mb-4 h-11"
-              />
-
-              <Button
-                onClick={handleJoin}
-                className="w-full h-12 bg-blue-600 hover:bg-blue-700 text-white text-base font-medium"
-              >
-                Join meeting
-                <ChevronDown className="ml-2 h-4 w-4 -rotate-90" aria-hidden />
-              </Button>
-
-              {/* Icon row: mic, video, lock, heart, settings */}
-              <div className="flex items-center gap-4 mt-6 text-muted-foreground">
-                <button
-                  type="button"
-                  onClick={testDevices}
-                  className="p-2 rounded-full hover:bg-muted transition-colors"
-                  title={micEnabled ? "Microphone on" : "Test microphone"}
-                  aria-label="Microphone"
-                >
-                  {micEnabled ? (
-                    <Mic className="h-5 w-5 text-foreground" />
-                  ) : (
-                    <MicOff className="h-5 w-5" />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  className="p-2 rounded-full hover:bg-muted transition-colors"
-                  title={cameraEnabled ? "Camera on" : "Camera off"}
-                  aria-label="Camera"
-                >
-                  {cameraEnabled ? (
-                    <Video className="h-5 w-5 text-foreground" />
-                  ) : (
-                    <VideoOff className="h-5 w-5" />
-                  )}
-                </button>
-                <span className="p-2 text-green-500" title="Secure connection" aria-hidden>
-                  <Lock className="h-5 w-5" />
-                </span>
-                <span className="p-2" aria-hidden>
-                  <Heart className="h-5 w-5" />
-                </span>
-                <span className="p-2" aria-hidden>
-                  <Settings className="h-5 w-5" />
-                </span>
-              </div>
-
-              {/* Status */}
-              <div className="flex items-center gap-2 mt-6 text-sm text-muted-foreground">
-                <span
-                  className={`h-2 w-2 rounded-full ${deviceOk ? "bg-green-500" : "bg-muted-foreground/50"}`}
-                  aria-hidden
-                />
-                {deviceOk ? "Everything is working properly" : "Allow camera and microphone to verify"}
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Right panel: Video / avatar placeholder */}
-        <div className="flex-1 min-h-[320px] md:min-h-[calc(100vh-140px)] flex items-center justify-center bg-muted/30 p-6">
-          {cameraEnabled && stream ? (
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="max-h-full max-w-full rounded-lg object-contain aspect-video bg-black"
-            />
-          ) : (
-            <div className="flex flex-col items-center justify-center text-muted-foreground">
-              <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-muted flex items-center justify-center mb-3">
-                <Bot className="h-12 w-12 md:h-16 md:w-16 text-muted-foreground/70" />
-              </div>
-              <p className="text-sm">Your video will appear here</p>
-              {canJoin && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="mt-3"
-                  onClick={testDevices}
-                >
-                  Test camera
-                </Button>
-              )}
+      <div className="min-h-screen flex flex-col bg-background">
+        <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 lg:p-8">
+          <div className="w-full max-w-[420px]">
+            {/* Header */}
+            <div className="text-center mb-8">
+              <p className="text-sm text-muted-foreground mb-1">
+                {organization.name} is inviting you to a meeting
+              </p>
+              <h1 className="text-2xl sm:text-3xl font-semibold text-foreground break-words">
+                {livestream.title || "Meeting"}
+              </h1>
             </div>
-          )}
+
+            {!canJoin && (
+              <Alert className="mb-6">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  This meeting is not currently available to join.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {canJoin && (
+              <>
+                {/* YOU'LL JOIN AS card */}
+                <div className="rounded-2xl bg-card shadow-xl border border-border overflow-hidden">
+                  <div className="px-6 pt-6 pb-4">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-3">
+                      You&apos;ll join as
+                    </p>
+                    <div className="flex items-center gap-4">
+                      <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-full bg-muted text-xl font-semibold text-muted-foreground">
+                        {initial}
+                      </div>
+                      <Input
+                        type="text"
+                        placeholder="Your name"
+                        value={displayName}
+                        onChange={(e) => setDisplayName(e.target.value)}
+                        className="flex-1 h-12 text-base bg-muted/50 border-border"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Camera & mic toggles */}
+                  <div className="px-6 py-4 border-t border-border flex items-center justify-center gap-6">
+                    <button
+                      type="button"
+                      onClick={() => setCameraOn((v) => !v)}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
+                        cameraOn
+                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          : "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                      }`}
+                      aria-label={cameraOn ? "Turn off camera" : "Turn on camera"}
+                    >
+                      {cameraOn ? (
+                        <Video className="h-6 w-6" />
+                      ) : (
+                        <VideoOff className="h-6 w-6" />
+                      )}
+                      <span className="text-xs font-medium">{cameraOn ? "Camera on" : "Camera off"}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMicOn((v) => !v)}
+                      className={`flex flex-col items-center gap-1.5 p-3 rounded-xl min-w-[72px] transition-colors ${
+                        micOn
+                          ? "bg-primary/10 text-primary hover:bg-primary/20"
+                          : "bg-destructive/10 text-destructive hover:bg-destructive/20"
+                      }`}
+                      aria-label={micOn ? "Turn off microphone" : "Turn on microphone"}
+                    >
+                      {micOn ? (
+                        <Mic className="h-6 w-6" />
+                      ) : (
+                        <MicOff className="h-6 w-6" />
+                      )}
+                      <span className="text-xs font-medium">{micOn ? "Mic on" : "Mic off"}</span>
+                    </button>
+                  </div>
+
+                  {/* Join button */}
+                  <div className="p-6 pt-4">
+                    <Button
+                      className="w-full h-12 text-base font-medium rounded-xl"
+                      onClick={handleJoin}
+                    >
+                      Join now
+                    </Button>
+                    {!consentChecked && (
+                      <p className="text-center text-xs text-muted-foreground mt-2">
+                        You will join with full video and audio. Your name will show &quot;(not recorded)&quot; so the host will not include you in the recording.
+                      </p>
+                    )}
+                    <p className="text-center text-xs text-muted-foreground mt-4">
+                      You can turn your camera and microphone on or off after joining.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Recording & Consent Disclosure */}
+                <div className="mt-6 rounded-2xl bg-card shadow-xl border border-border overflow-hidden px-6 py-5">
+                  <h2 className="text-sm font-semibold text-foreground mb-2">
+                    Recording &amp; Consent Disclosure
+                  </h2>
+                  <p className="text-sm text-muted-foreground mb-4 leading-relaxed">
+                    This meeting may be recorded, stored, and/or streamed live for organizational, training, archival, or public broadcast purposes. By joining or remaining in this meeting, you provide your consent to be recorded and/or streamed.
+                  </p>
+                  <label className="flex items-start gap-3 cursor-pointer group">
+                    <Checkbox
+                      checked={consentChecked}
+                      onCheckedChange={(checked) => setConsentChecked(checked === true)}
+                      className="mt-0.5 shrink-0"
+                    />
+                    <span className="text-sm text-foreground/90 group-hover:text-foreground">
+                      I consent to being recorded and/or streamed live.
+                    </span>
+                  </label>
+                </div>
+              </>
+            )}
+
+            <p className="text-center text-xs text-muted-foreground mt-6">
+              Believe In Unity
+            </p>
+          </div>
         </div>
       </div>
     </FrontendLayout>

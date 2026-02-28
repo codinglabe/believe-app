@@ -4,8 +4,9 @@ import { useState, useMemo } from "react"
 import { Head } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Checkbox } from "@/components/ui/checkbox"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
-import { Video, VideoOff, Mic, MicOff, User } from "lucide-react"
+import { Video, VideoOff, Mic, MicOff } from "lucide-react"
 
 interface Livestream {
   id: number
@@ -31,15 +32,18 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
   const [joined, setJoined] = useState(false)
   const [cameraOn, setCameraOn] = useState(true)
   const [micOn, setMicOn] = useState(true)
+  const [consentChecked, setConsentChecked] = useState(false)
 
   const iframeUrl = useMemo(() => {
     const url = new URL(livestream.participantUrl)
     const name = (displayName || "Guest").trim()
-    if (name) url.searchParams.set("label", name)
+    // Full participant interface for everyone. If no consent: add suffix so host can exclude from recording.
+    const label = consentChecked ? name : `${name} (not recorded)`
+    url.searchParams.set("label", label)
     if (!cameraOn) url.searchParams.set("novideo", "1")
     if (!micOn) url.searchParams.set("nomicrophone", "1")
     return url.toString()
-  }, [livestream.participantUrl, displayName, cameraOn, micOn])
+  }, [livestream.participantUrl, displayName, cameraOn, micOn, consentChecked])
 
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
@@ -128,10 +132,36 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                   >
                     Join now
                   </Button>
-                  <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
-                    You can turn your camera and microphone on or off after joining.
-                  </p>
+                  {consentChecked ? (
+                    <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
+                      You can turn your camera and microphone on or off after joining.
+                    </p>
+                  ) : (
+                    <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
+                      You will join with full video and audio. Your name will show &quot;(not recorded)&quot; so the host will not include you in the recording.
+                    </p>
+                  )}
                 </div>
+              </div>
+
+              {/* Recording & Consent Disclosure */}
+              <div className="mt-6 rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden px-6 py-5">
+                <h2 className="text-sm font-semibold text-neutral-900 dark:text-white mb-2">
+                  Recording &amp; Consent Disclosure
+                </h2>
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4 leading-relaxed">
+                  This meeting may be recorded, stored, and/or streamed live for organizational, training, archival, or public broadcast purposes. By joining or remaining in this meeting, you provide your consent to be recorded and/or streamed.
+                </p>
+                <label className="flex items-start gap-3 cursor-pointer group">
+                  <Checkbox
+                    checked={consentChecked}
+                    onCheckedChange={(checked) => setConsentChecked(checked === true)}
+                    className="mt-0.5 shrink-0 rounded border-neutral-300 dark:border-neutral-600 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                  />
+                  <span className="text-sm text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white">
+                    I consent to being recorded and/or streamed live.
+                  </span>
+                </label>
               </div>
 
               <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-6">

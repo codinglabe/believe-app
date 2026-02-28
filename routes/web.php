@@ -6,6 +6,7 @@ use App\Http\Controllers\AboutPageController;
 use App\Http\Controllers\AdminAboutPageController;
 use App\Http\Controllers\Admin\SeoController as AdminSeoController;
 use App\Http\Controllers\BoardMemberController;
+use App\Http\Controllers\GovernanceComplianceController;
 use App\Http\Controllers\CampaignController;
 use App\Http\Controllers\CartController;
 use App\Http\Controllers\ExcelDataController;
@@ -952,6 +953,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
     });
 
     Route::middleware("role:organization")->group(function () {
+        Route::get('/compliance', [GovernanceComplianceController::class, 'index'])->name('governance.compliance');
         Route::resource('board-members', BoardMemberController::class)
             ->only(['index', 'store', 'update', 'destroy'])
             ->shallow();
@@ -1594,6 +1596,16 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
         Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
         Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
+        Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
+        Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
+        Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
+        Route::get('/dropbox/callback', [IntegrationsController::class, 'dropboxCallback'])->name('dropbox.callback');
+        Route::post('/dropbox/disconnect', [IntegrationsController::class, 'disconnectDropbox'])->name('dropbox.disconnect');
+        Route::put('/dropbox/folder', [IntegrationsController::class, 'updateDropboxFolder'])->name('dropbox.folder.update');
+        Route::post('/dropbox/move-recordings', [IntegrationsController::class, 'moveRecordingsToFolder'])->name('dropbox.move-recordings');
+        Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
+        Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
+        Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
     });
 });
 

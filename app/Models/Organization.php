@@ -55,6 +55,14 @@ class Organization extends Model
         'is_compliance_locked',
         'gift_card_terms_approved',
         'gift_card_terms_approved_at',
+        'dropbox_folder_name',
+    ];
+
+    protected $hidden = [
+        'youtube_access_token',
+        'youtube_refresh_token',
+        'dropbox_access_token',
+        'dropbox_refresh_token',
     ];
 
     protected $casts = [
@@ -68,6 +76,7 @@ class Organization extends Model
         'gift_card_terms_approved' => 'boolean',
         'gift_card_terms_approved_at' => 'datetime',
         'youtube_token_expires_at' => 'datetime',
+        'dropbox_token_expires_at' => 'datetime',
     ];
 
     public function user()

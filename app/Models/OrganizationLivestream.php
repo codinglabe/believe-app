@@ -57,6 +57,9 @@ class OrganizationLivestream extends Model
     /** VDO.Ninja room name max length (they allow &lt; 31). */
     private const VDO_ROOM_NAME_MAX_LENGTH = 30;
 
+    /** Max length for Dropbox folder name (path segment). */
+    private const DROPBOX_FOLDER_MAX_LENGTH = 80;
+
     /** Meeting slug prefix per client: biu_mtg_xxxx */
     private const MEETING_SLUG_PREFIX = 'biu_mtg_';
 
@@ -147,8 +150,9 @@ class OrganizationLivestream extends Model
      * &label= set to organization name so the director does not need to enter a name manually.
      * &cleandirector = cleaner control center; &slotmode + &layouts = guest grid layouts (2x2, 2x3, 3x3).
      * &record = enable recording so the director can record the meeting (start/stop from VDO.Ninja UI).
+     * @param bool $recordToDropbox If true and org has Dropbox, add dropbox params so recordings save to Dropbox. If false, recording is local only.
      */
-    public function getDirectorUrl(): string
+    public function getDirectorUrl(bool $recordToDropbox = true): string
     {
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
@@ -162,7 +166,54 @@ class OrganizationLivestream extends Model
         $layouts = $this->getVdoGridLayouts();
         $layoutsParam = '&slotmode&layouts=' . rawurlencode(json_encode($layouts));
         // openscene = allow scene viewers (e.g. Unity Live embed) to receive scene 0. showlabels=1 = names in grid (avatar labels).
-        return "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&record&openscene{$layoutsParam}";
+        // record=6000 = explicit recording bitrate so video is captured (without it, recording can be audio-only). recordcodec=h264 for reliable video in WebM.
+        $base = "https://vdo.ninja/?director={$room}&password={$pass}&clearstorage&label={$label}&showlabels=1&activespeaker=1&cleandirector&record=6000&recordcodec=h264&openscene{$layoutsParam}";
+
+        // Dropbox: same as host push — ensure folder exists, then add params so Director recordings save in folder (only when $recordToDropbox)
+        if ($recordToDropbox && $this->organization) {
+            $oauthService = app(\App\Services\DropboxOAuthService::class);
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
+            if (! empty($dropboxToken)) {
+                $folderName = $this->getDropboxFolderName();
+                $folderPath = '/' . trim($folderName, '/');
+                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
+                $base .= '&dropbox=' . rawurlencode($dropboxToken);
+                $base .= '&dropboxpath=/' . rawurlencode($folderName);
+                $base .= '&cloud=1';
+            }
+        }
+
+        return $base;
+    }
+
+    /**
+     * Record the entire director scene (camera + screen + all participants) as one video.
+     * Use this for recording so the file has video; per-stream recording from host push can be audio-only when not screen-sharing.
+     * Opens scene=0 (director's composed view), screen-captures it, and records. Director must be in the room first.
+     *
+     * @param bool $recordToDropbox If true and org has Dropbox, recordings save to Dropbox folder.
+     */
+    public function getSceneRecordUrl(bool $recordToDropbox = true): string
+    {
+        $room = rawurlencode($this->getVdoRoomName());
+        $pass = rawurlencode((string) $this->getDecryptedPassword());
+        $passwordParam = $pass !== '' ? '&password=' . $pass : '';
+        // VDO.Ninja: record entire scene = scene=0 + layout + remote + publish + record (screen-capture of the composed view).
+        $base = "https://vdo.ninja/?scene=0&layout&remote&clean&chroma=000&ssar=landscape&nosettings&prefercurrenttab&selfbrowsersurface=include&displaysurface=browser&np&nopush&publish&record=6000&recordcodec=h264&screenshareaspectratio=1.7777777777777777&locked=1.7777777777777777&room={$room}{$passwordParam}";
+        if ($recordToDropbox && $this->organization) {
+            $oauthService = app(\App\Services\DropboxOAuthService::class);
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
+            if (! empty($dropboxToken)) {
+                $this->loadMissing('organization');
+                $folderName = $this->getDropboxFolderName();
+                $folderPath = '/' . trim($folderName, '/');
+                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
+                $base .= '&dropbox=' . rawurlencode($dropboxToken);
+                $base .= '&dropboxpath=/' . rawurlencode($folderName);
+                $base .= '&cloud=1';
+            }
+        }
+        return $base;
     }
 
     /**
@@ -217,7 +268,7 @@ class OrganizationLivestream extends Model
         $room = rawurlencode($this->getVdoRoomName());
         $pass = rawurlencode((string) $password);
         $avatarInitialUrl = 'https://ui-avatars.com/api/?name=Guest&size=256&length=1';
-        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&videodevice=0&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
+        return "https://vdo.ninja/?room={$room}&password={$pass}&label=&videodevice=0&audiodevice=1&showlabels=1&showall&style=6&avatar=" . rawurlencode($avatarInitialUrl) . '&autostart&noheader';
     }
 
     /**
@@ -289,14 +340,42 @@ class OrganizationLivestream extends Model
     }
 
     /**
+     * Sanitize a string for use as a Dropbox folder name (path-safe).
+     */
+    private static function sanitizeDropboxFolderName(string $raw): string
+    {
+        $safe = preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $raw);
+        $safe = preg_replace('/\s+/', ' ', trim($safe));
+        return trim($safe, " \t\n\r\0\x0B.");
+    }
+
+    /**
+     * Dropbox folder name: org-level only so one folder per org (no folder per livestream/title).
+     * Uses organization dropbox_folder_name if set, otherwise "BIU Meeting Recordings".
+     */
+    public function getDropboxFolderName(): string
+    {
+        $orgFolder = $this->organization?->dropbox_folder_name;
+        if ($orgFolder !== null && $orgFolder !== '') {
+            $safe = self::sanitizeDropboxFolderName($orgFolder);
+            if ($safe !== '') {
+                return substr($safe, 0, self::DROPBOX_FOLDER_MAX_LENGTH);
+            }
+        }
+        return 'BIU Meeting Recordings';
+    }
+
+    /**
      * Get the VDO.Ninja host push link (no OBS): host joins and pushes their stream.
      * Uses push={roomName} so stream ID matches getPublicViewUrl (view=roomName). label= sets display name.
      * &record = host can record. &showlabels=1 &showall = grid; &style=6 = avatar (initial) until video.
+     * Full HD: quality=0, bitrate=6000, width=1920, height=1080, framerate=30.
      * &videodevice=0 = no camera from start so avatar/initial shows immediately (not only after share-and-stop).
      * Custom host avatar: set livestream settings['host_avatar_url'] to a full image URL; otherwise no avatar param.
      * Do not use &novideo for host — it blocks receiving video (participant screen shares would not show).
+     * @param bool $recordToDropbox If true and org has Dropbox, add dropbox params so recordings save to Dropbox. If false, recording is local only (browser download).
      */
-    public function getHostPushUrl(): string
+    public function getHostPushUrl(bool $recordToDropbox = true): string
     {
         $this->loadMissing('organization');
         $settings = $this->settings ?? [];
@@ -316,7 +395,26 @@ class OrganizationLivestream extends Model
             $initial = mb_substr(trim($hostName), 0, 1) ?: 'H';
             $avatarParam = '&avatar=' . rawurlencode("https://ui-avatars.com/api/?name={$initial}&size=256&length=1");
         }
-        return "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record&videodevice=0&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        // record=6000 so recording captures video (not just audio); recordcodec=h264 for reliable video in WebM.
+        $base = "https://vdo.ninja/?room={$room}&push={$push}&label={$label}&record=6000&recordcodec=h264&quality=0&bitrate=6000&framerate=30&width=1920&height=1080&videodevice=0&audiodevice=1&showlabels=1&showall&style=6{$avatarParam}&autostart&noheader{$passwordParam}";
+        if ($recordToDropbox && $this->organization) {
+            $oauthService = app(\App\Services\DropboxOAuthService::class);
+            $dropboxToken = $oauthService->getAccessTokenForOrganization($this->organization);
+            if (! empty($dropboxToken)) {
+                $folderName = $this->getDropboxFolderName();
+                $folderPath = '/' . trim($folderName, '/');
+
+                // VDO.Ninja only uploads to dropboxpath when the folder exists; otherwise it uploads to root.
+                $oauthService->ensureFolderExists($dropboxToken, $folderPath);
+
+                // VDO.Ninja requires the leading slash raw (not encoded); encode only the folder name.
+                $base .= '&dropbox=' . rawurlencode($dropboxToken);
+                $base .= '&dropboxpath=/' . rawurlencode($folderName);
+                // Do not use &autorecord=1 — host starts one recording manually from the director UI to avoid multiple/auto recordings when participants join.
+                $base .= '&cloud=1';
+            }
+        }
+        return $base;
     }
 
     /**

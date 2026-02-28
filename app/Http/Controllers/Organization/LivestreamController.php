@@ -205,9 +205,17 @@ class LivestreamController extends Controller
         $latestInviteUrl = $latestInviteToken ? url('/join/' . $latestInviteToken->token) : null;
 
         // Get decrypted values for display (but don't expose in API)
-        $directorUrl = $livestream->getDirectorUrl();
+        // When Dropbox is connected, offer both URLs so host can choose: record locally or to Dropbox
+        $dropboxConnected = !empty($livestream->organization->dropbox_refresh_token);
+        $directorUrl = $livestream->getDirectorUrl(true);
+        $directorUrlLocal = $livestream->getDirectorUrl(false);
+        $directorUrlDropbox = $dropboxConnected ? $livestream->getDirectorUrl(true) : null;
         $participantUrl = $livestream->getParticipantUrl();
-        $hostPushUrl = $livestream->getHostPushUrl();
+        $hostPushUrl = $livestream->getHostPushUrl(true);
+        $hostPushUrlLocal = $livestream->getHostPushUrl(false);
+        $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
+        $sceneRecordUrl = $livestream->getSceneRecordUrl(false);
+        $sceneRecordUrlDropbox = $dropboxConnected ? $livestream->getSceneRecordUrl(true) : null;
         $watchUrl = $livestream->getPublicViewUrl(); // Viewer link (no director) — for Unity Live / share with audience
         $password = $livestream->getDecryptedPassword();
 
@@ -240,8 +248,15 @@ class LivestreamController extends Controller
                 'roomName' => $livestream->room_name,
                 'roomPassword' => $password,
                 'directorUrl' => $directorUrl,
+                'directorUrlLocal' => $directorUrlLocal,
+                'directorUrlDropbox' => $directorUrlDropbox,
                 'participantUrl' => $participantUrl,
                 'hostPushUrl' => $hostPushUrl,
+                'hostPushUrlLocal' => $hostPushUrlLocal,
+                'hostPushUrlDropbox' => $hostPushUrlDropbox,
+                'sceneRecordUrl' => $sceneRecordUrl,
+                'sceneRecordUrlDropbox' => $sceneRecordUrlDropbox,
+                'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,
                 'liveViewerUrl' => $liveViewerUrl,

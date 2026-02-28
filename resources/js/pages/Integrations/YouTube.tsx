@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react"
 import AppLayout from "@/layouts/app-layout"
 import { Head, Link, router, usePage } from "@inertiajs/react"
-import { route } from "ziggy-js"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Youtube, ExternalLink, ArrowLeft, ThumbsUp, MessageCircle, Share2, Eye } from "lucide-react"
+import { Youtube, ExternalLink, ArrowLeft, ThumbsUp, MessageCircle, Share2, Eye, Cloud } from "lucide-react"
 import { toast } from "react-hot-toast"
 import { ChannelPageContent } from "@/components/frontend/ChannelPageContent"
 
@@ -167,6 +166,16 @@ export default function IntegrationsYouTube({ youtube_channel_url, youtube_redir
               Connect your YouTube channel so your videos appear on Community Videos
             </p>
           </div>
+        </div>
+
+        <div className="mb-6 flex items-center gap-2 text-sm text-muted-foreground">
+          <span>Integrations:</span>
+          <Link href={route("integrations.youtube")} className="font-medium text-foreground hover:underline">YouTube</Link>
+          <span>·</span>
+          <Link href={route("integrations.dropbox")} className="font-medium text-foreground hover:underline inline-flex items-center gap-1">
+            <Cloud className="w-4 h-4" />
+            Dropbox (recordings)
+          </Link>
         </div>
 
         {isConnected ? (

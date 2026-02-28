@@ -116,18 +116,31 @@ class IRSForm990Service
                 $cleanReturnEIN = preg_replace('/[^0-9]/', '', $returnEIN);
                 
                 if ($cleanReturnEIN === $ein) {
-                    $taxYear = (string) $return->TaxYr ?? null;
-                    
+                    $taxYear = (string) ($return->TaxYr ?? $return->tax_year ?? '');
+                    if ($taxYear === '') {
+                        $taxYear = (string) Carbon::now()->year;
+                    }
+
                     // Extract board members from this return
                     $this->extractAndStoreBoardMembers($cleanReturnEIN, $return, $taxYear);
-                    
+
+                    $filingDate = $this->parseDate((string) ($return->FiledDt ?? $return->filing_date ?? ''));
+                    $formType = (string) ($return->FormType ?? $return->form_type ?? '990');
+                    if ($formType === '') {
+                        $formType = '990';
+                    }
+
                     return [
                         'ein' => $cleanReturnEIN,
                         'tax_year' => $taxYear,
-                        'form_type' => (string) $return->FormType ?? '990',
-                        'filing_date' => $this->parseDate((string) $return->FiledDt ?? null),
+                        'form_type' => $formType,
+                        'filing_date' => $filingDate,
                         'is_filed' => true,
                         'irs_data' => json_decode(json_encode($return), true),
+                        'meta' => [
+                            'source' => 'irs_xml',
+                            'parsed_at' => now()->toIso8601String(),
+                        ],
                     ];
                 }
             }
@@ -989,18 +1002,42 @@ class IRSForm990Service
                 return;
             }
 
+            $taxYear = isset($filingData['tax_year']) ? (string) $filingData['tax_year'] : (string) Carbon::now()->year;
+            $filingDate = isset($filingData['filing_date']) ? $filingData['filing_date'] : null;
+            if ($filingDate && is_string($filingDate)) {
+                $filingDate = \Carbon\Carbon::parse($filingDate)->format('Y-m-d');
+            }
+            $dueDate = null;
+            if (isset($filingData['due_date'])) {
+                $dueDate = $filingData['due_date'];
+                if (is_string($dueDate)) {
+                    $dueDate = \Carbon\Carbon::parse($dueDate)->format('Y-m-d');
+                }
+            } else {
+                $dueDate = $this->calculateDueDate($taxYear);
+            }
+
             Form990Filing::updateOrCreate(
                 [
                     'organization_id' => $organization->id,
-                    'tax_year' => $filingData['tax_year'] ?? Carbon::now()->year,
+                    'tax_year' => $taxYear,
                 ],
                 [
-                    'form_type' => $filingData['form_type'] ?? '990',
-                    'filing_date' => $filingData['filing_date'] ?? null,
+                    'form_type' => $filingData['form_type'] ?? $organization->filing_req ?? '990',
+                    'filing_date' => $filingDate,
                     'is_filed' => $filingData['is_filed'] ?? true,
+                    'due_date' => $dueDate,
+                    'extended_due_date' => $filingData['extended_due_date'] ?? null,
+                    'is_extended' => $filingData['is_extended'] ?? false,
                     'last_checked_at' => now(),
                     'irs_data' => $filingData['irs_data'] ?? null,
-                    'meta' => $filingData['meta'] ?? null,
+                    'meta' => array_merge(
+                        is_array($filingData['meta'] ?? null) ? $filingData['meta'] : [],
+                        [
+                            'source' => 'irs_check',
+                            'last_checked_at' => now()->toIso8601String(),
+                        ]
+                    ),
                 ]
             );
         } catch (\Exception $e) {
@@ -1032,9 +1069,19 @@ class IRSForm990Service
                     'tax_year' => $taxYear,
                 ],
                 [
+                    'form_type' => $organization->filing_req ?? '990',
+                    'filing_date' => null,
                     'is_filed' => false,
                     'due_date' => $dueDate,
+                    'extended_due_date' => null,
+                    'is_extended' => false,
                     'last_checked_at' => now(),
+                    'irs_data' => null,
+                    'meta' => [
+                        'source' => 'irs_check',
+                        'reason' => 'no_filing_found',
+                        'checked_at' => now()->toIso8601String(),
+                    ],
                 ]
             );
         } catch (\Exception $e) {

@@ -116,6 +116,15 @@ return [
         'rtmp_internal' => env('MEDIAMTX_RTMP_INTERNAL', 'rtmp://127.0.0.1:1935'),
     ],
 
+    'dropbox' => [
+        'client_id' => env('DROPBOX_CLIENT_ID'),
+        'client_secret' => env('DROPBOX_CLIENT_SECRET'),
+        'redirect_uri' => env('DROPBOX_REDIRECT_URI', env('APP_URL') . '/integrations/dropbox/callback'),
+        'access_token' => env('DROPBOX_ACCESS_TOKEN'), // optional: app-level token for legacy use
+        // SSL: set DROPBOX_SSL_VERIFY=false on Windows/local if you get "cURL error 60: unable to get local issuer certificate"
+        'verify' => filter_var(env('DROPBOX_SSL_VERIFY', true), FILTER_VALIDATE_BOOLEAN),
+    ],
+
     'irs' => [
         'download_timeout' => (int) env('IRS_DOWNLOAD_TIMEOUT', 900), // seconds per ZIP (15 min default)
         'download_retries' => (int) env('IRS_DOWNLOAD_RETRIES', 3),
