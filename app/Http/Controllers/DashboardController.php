@@ -14,6 +14,7 @@ use App\Models\FractionalOrder;
 use App\Models\GiftCard;
 use App\Models\JobApplication;
 use App\Models\JobPost;
+use App\Models\AdminSetting;
 use App\Models\PromotionalBanner;
 use App\Services\TaxComplianceService;
 use Carbon\Carbon;
@@ -262,8 +263,9 @@ class DashboardController extends Controller
             }
         }
 
-        // Get all active promotional banners for carousel
-        $promotionalBanners = PromotionalBanner::getActiveBanners();
+        // Get all active promotional banners for carousel (only if global setting is on)
+        $showPromotionalBanners = (bool) AdminSetting::get('promotional_banners_show_on_dashboard', true);
+        $promotionalBanners = $showPromotionalBanners ? PromotionalBanner::getActiveBanners() : collect();
         $promotionalBanner = $promotionalBanners->first(); // For backward compatibility
 
         // Get Form 990 filing status
@@ -308,8 +310,61 @@ class DashboardController extends Controller
         // For organization users: check if they have any active plan subscription
         $hasSubscription = $user->current_plan_id !== null;
 
+        // Profile completion (integrations) for behavior nudge banner – organization users only
+        $profileCompletion = null;
+        if ($organization) {
+            $hasDropbox = ! empty($organization->dropbox_refresh_token) || ! empty($organization->dropbox_access_token);
+            $hasYoutube = ! empty($organization->youtube_refresh_token) || ! empty($organization->youtube_access_token);
+            $hasEmail = $organization->emailConnections()->where('is_active', true)->exists();
+            $socialAccounts = $organization->social_accounts ?? [];
+            $hasSocial = is_array($socialAccounts) && collect($socialAccounts)->filter(fn ($v) => is_string($v) && trim($v) !== '')->isNotEmpty();
+
+            $items = [
+                [
+                    'id' => 'email',
+                    'label' => 'Email Invites',
+                    'benefit' => 'Community Outreach',
+                    'route' => '/email-invite',
+                    'connected' => $hasEmail,
+                ],
+                [
+                    'id' => 'social',
+                    'label' => 'Social Media',
+                    'benefit' => 'Visibility Hub',
+                    'route' => route('social-media.index'),
+                    'connected' => $hasSocial,
+                ],
+                [
+                    'id' => 'youtube',
+                    'label' => 'YouTube',
+                    'benefit' => 'Broadcast Hub',
+                    'route' => route('integrations.youtube'),
+                    'connected' => $hasYoutube,
+                ],
+                [
+                    'id' => 'dropbox',
+                    'label' => 'Dropbox',
+                    'benefit' => 'Secure AI Vault',
+                    'route' => route('integrations.dropbox'),
+                    'connected' => $hasDropbox,
+                ],
+            ];
+            $completed = collect($items)->where('connected', true)->count();
+            $total = count($items);
+            $percent = $total > 0 ? (int) round(($completed / $total) * 100) : 100;
+            $missing = collect($items)->where('connected', false)->values()->all();
+            $profileCompletion = [
+                'percent' => $percent,
+                'completed' => $completed,
+                'total' => $total,
+                'missing' => $missing,
+                'completeSetupHref' => $missing[0]['route'] ?? null,
+            ];
+        }
+
         return Inertia::render('dashboard', [
             'isAdmin' => false,
+            'profileCompletion' => $profileCompletion,
             'totalOrg' => 0,
             'orgInfo' => $organization ?? null,
             'totalFav' => $totalFav ?? 0,

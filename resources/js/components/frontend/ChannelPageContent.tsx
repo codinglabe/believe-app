@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { Link, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
 import axios from "axios"
@@ -51,6 +51,7 @@ export interface ShortItem {
   thumbnail_url: string
   views: number
   views_formatted: string
+  duration?: string
   channel_slug?: string
   creator?: string
   creatorAvatar?: string | null
@@ -89,6 +90,16 @@ export function ChannelPageContent({
   const [youtube_videos, setYoutubeVideos] = useState<YouTubeVideoItem[]>(initialYoutubeVideos)
   const [likeLoadingId, setLikeLoadingId] = useState<string | null>(null)
   const isDashboard = variant === "dashboard"
+
+  // Only show real videos/shorts: exclude duration "0:00" or empty (placeholder/invalid)
+  const filteredYoutubeVideos = useMemo(
+    () => youtube_videos.filter((v) => (v.duration ?? "") !== "" && (v.duration ?? "") !== "0:00"),
+    [youtube_videos]
+  )
+  const filteredShorts = useMemo(
+    () => shorts.filter((s) => (s.duration ?? "") !== "" && (s.duration ?? "") !== "0:00"),
+    [shorts]
+  )
 
   const handleYoutubeLike = async (e: React.MouseEvent, yt: YouTubeVideoItem) => {
     e.preventDefault()
@@ -253,14 +264,14 @@ export function ChannelPageContent({
       <div className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 pt-1 pb-8">
         {activeTab === "videos" && (
           <>
-            {shorts.length > 0 && (
+            {filteredShorts.length > 0 && (
               <section className="mb-6">
                 <h2 className={`text-base font-semibold mb-3 px-0.5 flex items-center gap-2 ${isDashboard ? "text-foreground" : "text-gray-900 dark:text-white"}`}>
                   <Clapperboard className="w-5 h-5 text-purple-500 dark:text-purple-400" aria-hidden />
                   Shorts
                 </h2>
                 <div className="flex gap-3 overflow-x-auto pb-2 -mx-0.5 scrollbar-none">
-                  {shorts.map((short) => {
+                  {filteredShorts.map((short) => {
                     const params = new URLSearchParams()
                     if (short.channel_slug) params.set("channel_slug", short.channel_slug)
                     if (short.creator) params.set("creator", short.creator)
@@ -297,7 +308,7 @@ export function ChannelPageContent({
                 </div>
               </section>
             )}
-            {videos.length === 0 && youtube_videos.length === 0 ? (
+            {videos.length === 0 && filteredYoutubeVideos.length === 0 && filteredShorts.length === 0 ? (
               <div className={`text-center py-20 rounded-xl border ${isDashboard ? "bg-card border-border" : "bg-white dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"}`}>
                 <p className={`mb-2 ${isDashboard ? "text-muted-foreground" : "text-gray-600 dark:text-gray-400"}`}>No videos yet</p>
                 <p className={`text-sm mb-6 ${isDashboard ? "text-muted-foreground" : "text-gray-500 dark:text-gray-500"}`}>This channel hasn't uploaded any videos.</p>
@@ -345,7 +356,7 @@ export function ChannelPageContent({
               </div>
             ) : null}
 
-            {youtube_videos.length > 0 && (
+            {filteredYoutubeVideos.length > 0 && (
               <div className={videos.length > 0 ? "mt-10" : "mt-2"}>
                 <h2 className={`text-lg font-semibold mb-4 flex items-center gap-2 ${isDashboard ? "text-foreground" : "text-gray-900 dark:text-white"}`}>
                   <Youtube className="w-5 h-5 text-red-500" />
@@ -355,7 +366,7 @@ export function ChannelPageContent({
                   Click a video to watch on our site.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                  {youtube_videos.map((yt) => {
+                  {filteredYoutubeVideos.map((yt) => {
                     const q = new URLSearchParams()
                     if (channel.slug) q.set("channel_slug", channel.slug)
                     if (channel.name) q.set("creator", channel.name)

@@ -27,9 +27,20 @@ class BoardMemberController extends Controller
             ->with('user')
             ->get();
 
+        // IRS board members for this organization (by EIN) — show when adding member so user can pick from 990 data
+        $cleanEIN = $organization->ein ? preg_replace('/\D/', '', $organization->ein) : '';
+        $irsBoardMembers = $cleanEIN
+            ? IrsBoardMember::where('ein', $cleanEIN)->active()->orderBy('name')->orderBy('position')->get()
+            : collect();
+
         return Inertia::render('board-members/index', [
             'organization' => $organization,
             'boardMembers' => $boardMembers,
+            'irsBoardMembers' => $irsBoardMembers->map(fn (IrsBoardMember $m) => [
+                'id' => $m->id,
+                'name' => $m->name,
+                'position' => $m->position ?? '',
+            ])->values()->all(),
         ]);
     }
 
@@ -39,12 +50,30 @@ class BoardMemberController extends Controller
 
         // $this->authorize('create', [BoardMember::class, $organization]);
 
+        $cleanEIN = $organization->ein ? preg_replace('/\D/', '', $organization->ein) : '';
+        $hasIrsMembers = $cleanEIN && IrsBoardMember::where('ein', $cleanEIN)->active()->exists();
+
         $request->validate([
-            'name' => 'required|string|max:255',
+            'name' => $hasIrsMembers ? 'nullable|string|max:255' : 'required|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'position' => 'required|string|max:255',
-            'role' => 'required|string|in:admin,leader'
+            'position' => $hasIrsMembers ? 'nullable|string|max:255' : 'required|string|max:255',
+            'role' => 'required|string|in:admin,leader',
+            'irs_board_member_id' => $hasIrsMembers
+                ? 'required|integer|exists:irs_board_members,id'
+                : 'nullable|sometimes|integer|exists:irs_board_members,id',
         ]);
+
+        // When IRS member is required, resolve name and position from selected IRS record
+        $name = $request->name;
+        $position = $request->position;
+        if ($hasIrsMembers && $request->irs_board_member_id) {
+            $irsMember = IrsBoardMember::where('id', $request->irs_board_member_id)
+                ->where('ein', $cleanEIN)
+                ->active()
+                ->firstOrFail();
+            $name = $irsMember->name;
+            $position = $irsMember->position ?? '';
+        }
 
         // Check if current user has permission to assign this role
         $currentUserRole = Auth::user()->organization_role;
@@ -64,7 +93,7 @@ class BoardMemberController extends Controller
             // Create new user with random password
             $password = Str::random(12);
             $user = User::create([
-                'name' => $request->name,
+                'name' => $name,
                 'email' => $request->email,
                 'password' => Hash::make($password),
                 'organization_role' => $request->role,
@@ -102,7 +131,7 @@ class BoardMemberController extends Controller
             if ($irsBoardMembers->isNotEmpty()) {
                 // Check if name matches exactly (case-insensitive)
                 $nameMatch = false;
-                $userName = strtolower(trim($request->name));
+                $userName = strtolower(trim($name));
 
                 foreach ($irsBoardMembers as $irsMember) {
                     $irsName = strtolower(trim($irsMember->name));
@@ -130,7 +159,7 @@ class BoardMemberController extends Controller
         $boardMember = BoardMember::create([
             'organization_id' => $organization->id,
             'user_id' => $user->id,
-            'position' => $request->position,
+            'position' => $position,
             'is_active' => $verificationStatus !== 'not_found', // Deactivate if not found
             // 'verification_status' => $verificationStatus,
             // 'verification_notes' => $verificationNotes,
@@ -141,7 +170,7 @@ class BoardMemberController extends Controller
         // Record history
         $boardMember->histories()->create([
             'action' => 'appointed',
-            'details' => "Appointed as {$request->position} with role: {$request->role}",
+            'details' => "Appointed as {$position} with role: {$request->role}",
             'changed_by' => auth()->id(),
         ]);
 

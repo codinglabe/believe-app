@@ -32,18 +32,16 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
   const [joined, setJoined] = useState(false)
   const [cameraOn, setCameraOn] = useState(true)
   const [micOn, setMicOn] = useState(true)
-  const [consentChecked, setConsentChecked] = useState(false)
+  const [consentToRecording, setConsentToRecording] = useState(false)
 
   const iframeUrl = useMemo(() => {
     const url = new URL(livestream.participantUrl)
     const name = (displayName || "Guest").trim()
-    // Full participant interface for everyone. If no consent: add suffix so host can exclude from recording.
-    const label = consentChecked ? name : `${name} (not recorded)`
-    url.searchParams.set("label", label)
+    if (name) url.searchParams.set("label", name)
     if (!cameraOn) url.searchParams.set("novideo", "1")
     if (!micOn) url.searchParams.set("nomicrophone", "1")
     return url.toString()
-  }, [livestream.participantUrl, displayName, cameraOn, micOn, consentChecked])
+  }, [livestream.participantUrl, displayName, cameraOn, micOn])
 
   const displayLabel = (displayName || "Guest").trim()
   const initial = displayLabel.charAt(0).toUpperCase() || "G"
@@ -67,7 +65,7 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
 
               {/* Join card */}
               <div className="rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden">
-                {/* Preview: "You'll join as" */}
+                {/* Preview: "YOU'LL JOIN AS" */}
                 <div className="px-6 pt-6 pb-4">
                   <p className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400 mb-3">
                     You’ll join as
@@ -124,39 +122,34 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                   </button>
                 </div>
 
-                {/* Join button — uses project primary */}
+                {/* Join button */}
                 <div className="p-6 pt-4">
                   <Button
-                    className="w-full h-12 text-base font-medium rounded-xl bg-primary hover:bg-primary/90 text-primary-foreground shadow-sm"
+                    className="w-full h-12 text-base font-medium rounded-xl bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 shadow-sm"
                     onClick={() => setJoined(true)}
+                    disabled={!consentToRecording}
                   >
                     Join now
                   </Button>
-                  {consentChecked ? (
-                    <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
-                      You can turn your camera and microphone on or off after joining.
-                    </p>
-                  ) : (
-                    <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
-                      You will join with full video and audio. Your name will show &quot;(not recorded)&quot; so the host will not include you in the recording.
-                    </p>
-                  )}
+                  <p className="text-center text-xs text-neutral-500 dark:text-neutral-400 mt-4">
+                    You can turn your camera and microphone on or off after joining.
+                  </p>
                 </div>
               </div>
 
               {/* Recording & Consent Disclosure */}
-              <div className="mt-6 rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden px-6 py-5">
-                <h2 className="text-sm font-semibold text-neutral-900 dark:text-white mb-2">
+              <div className="mt-6 rounded-2xl bg-white dark:bg-neutral-900 shadow-xl border border-neutral-200/80 dark:border-white/10 overflow-hidden p-6">
+                <h2 className="text-base font-semibold text-neutral-900 dark:text-white mb-3">
                   Recording &amp; Consent Disclosure
                 </h2>
-                <p className="text-sm text-neutral-600 dark:text-neutral-400 mb-4 leading-relaxed">
+                <p className="text-sm text-neutral-600 dark:text-neutral-400 leading-relaxed mb-4">
                   This meeting may be recorded, stored, and/or streamed live for organizational, training, archival, or public broadcast purposes. By joining or remaining in this meeting, you provide your consent to be recorded and/or streamed.
                 </p>
                 <label className="flex items-start gap-3 cursor-pointer group">
                   <Checkbox
-                    checked={consentChecked}
-                    onCheckedChange={(checked) => setConsentChecked(checked === true)}
-                    className="mt-0.5 shrink-0 rounded border-neutral-300 dark:border-neutral-600 data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                    checked={consentToRecording}
+                    onCheckedChange={(checked) => setConsentToRecording(checked === true)}
+                    className="mt-0.5 shrink-0"
                   />
                   <span className="text-sm text-neutral-700 dark:text-neutral-300 group-hover:text-neutral-900 dark:group-hover:text-white">
                     I consent to being recorded and/or streamed live.
@@ -164,7 +157,7 @@ export default function GuestJoinByToken({ livestream, organization }: Props) {
                 </label>
               </div>
 
-              <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-6">
+              <p className="text-center text-xs text-neutral-400 dark:text-neutral-500 mt-8">
                 Believe In Unity
               </p>
             </div>

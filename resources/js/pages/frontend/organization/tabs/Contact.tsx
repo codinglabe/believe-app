@@ -2,7 +2,7 @@
 
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { motion } from "framer-motion"
-import { Mail, Phone, Globe, User } from "lucide-react"
+import { Mail, Globe, ExternalLink } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/frontend/ui/card"
 import { Head } from "@inertiajs/react"
 import OrganizationProfileLayout from "@/components/frontend/organization/OrganizationProfileLayout"
@@ -12,12 +12,16 @@ interface Props {
   auth: any
 }
 
+const socialAccounts = (organization: any) => organization?.social_accounts && typeof organization.social_accounts === 'object' ? organization.social_accounts : {}
+
 export default function OrganizationContact({ organization, auth }: Props) {
+  const social = socialAccounts(organization)
   const contactInfo = [
+    { label: 'Website', value: organization.website, icon: Globe, href: organization.website ? (organization.website.startsWith('http') ? organization.website : `https://${organization.website}`) : null },
     { label: 'Email', value: organization.email, icon: Mail, href: organization.email ? `mailto:${organization.email}` : null },
-    { label: 'Phone', value: organization.phone, icon: Phone, href: organization.phone ? `tel:${organization.phone}` : null },
-    { label: 'Website', value: organization.website, icon: Globe, href: organization.website || null },
-    { label: 'Contact Person', value: organization.contact_name ? `${organization.contact_name}${organization.contact_title ? ` - ${organization.contact_title}` : ''}` : null, icon: User },
+    { label: 'Facebook', value: social.facebook || null, icon: ExternalLink, href: social.facebook ? (social.facebook.startsWith('http') ? social.facebook : `https://${social.facebook}`) : null },
+    { label: 'Instagram', value: social.instagram || null, icon: ExternalLink, href: social.instagram ? (social.instagram.startsWith('http') ? social.instagram : `https://${social.instagram}`) : null },
+    { label: 'YouTube', value: social.youtube || organization.youtube_channel_url || null, icon: ExternalLink, href: (() => { const u = social.youtube || organization.youtube_channel_url; return u ? (u.startsWith('http') ? u : `https://${u}`) : null; })() },
   ].filter(item => item.value)
 
   return (

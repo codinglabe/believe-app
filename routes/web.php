@@ -1772,6 +1772,7 @@ Route::prefix('admin/promotional-banners')
         Route::get('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'index'])->name('index');
         Route::get('/create', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'create'])->name('create');
         Route::post('/', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'store'])->name('store');
+        Route::patch('/show-on-dashboard', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'toggleShowOnDashboard'])->name('toggle-dashboard');
         Route::get('/{promotionalBanner}/edit', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'edit'])->name('edit');
         Route::put('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'update'])->name('update');
         Route::delete('/{promotionalBanner}', [App\Http\Controllers\Admin\PromotionalBannerController::class, 'destroy'])->name('destroy');

@@ -8,12 +8,19 @@ import AppLayout from "@/layouts/app-layout"
 import { Users, Plus, UserCheck, UserX, Calendar, Mail, Briefcase, Shield, Crown, CheckCircle2, XCircle, AlertCircle, Clock } from "lucide-react"
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip"
 
-interface Props extends PageProps {
-  organization: Organization
-    boardMembers: BoardMemberType[]
+interface IrsBoardMemberOption {
+  id: number
+  name: string
+  position: string
 }
 
-export default function Index({ organization, boardMembers }: Props) {
+interface Props extends PageProps {
+  organization: Organization
+  boardMembers: BoardMemberType[]
+  irsBoardMembers: IrsBoardMemberOption[]
+}
+
+export default function Index({ organization, boardMembers, irsBoardMembers }: Props) {
     const [showAddForm, setShowAddForm] = useState(false)
 
     const auth = usePage().props.auth;
@@ -22,7 +29,8 @@ export default function Index({ organization, boardMembers }: Props) {
     name: "",
     email: "",
     position: "",
-    role: "" // Default role
+    role: "", // Default role
+    irs_board_member_id: "" as string,
   })
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -34,6 +42,10 @@ export default function Index({ organization, boardMembers }: Props) {
       },
     })
   }
+
+  const irsMemberId = (data as { irs_board_member_id?: string }).irs_board_member_id
+  const requireIrsSelection = irsBoardMembers.length > 0
+  const canSubmit = !!irsMemberId
 
   const updateStatus = (member: BoardMemberType, status: boolean) => {
     router.post(route("board-members.status", member.id), {
@@ -253,25 +265,97 @@ export default function Index({ organization, boardMembers }: Props) {
             {showAddForm && (
               <div className="p-4 sm:p-6 md:p-8 bg-muted/30 border-b border-border">
                 <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+                  {irsBoardMembers.length > 0 && (
+                    <p className="text-sm text-muted-foreground">
+                      Select a board member from IRS Form 990 or enter manually. Name and position come from the selection when available.
+                    </p>
+                  )}
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5 md:gap-6">
+                    {/* Col 1: IRS dropdown when we have members, else Full Name */}
                     <div className="space-y-2">
-                      <label htmlFor="name" className="block text-sm font-medium text-card-foreground">
-                        Full Name
-                      </label>
-                      <input
-                        id="name"
-                        type="text"
-                        value={data.name}
-                        onChange={(e) => setData("name", e.target.value)}
-                        className="w-full px-3 py-2.5 bg-input border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors duration-200"
-                        placeholder="Enter full name"
-                      />
-                      {errors.name && <p className="text-destructive text-sm">{errors.name}</p>}
+                      {irsBoardMembers.length > 0 ? (
+                        <>
+                          <label htmlFor="irs_board_member_id" className="block text-sm font-medium text-card-foreground">
+                            Select member (IRS) <span className="text-destructive">*</span>
+                          </label>
+                          <select
+                            id="irs_board_member_id"
+                            required={requireIrsSelection}
+                            value={irsMemberId ?? ""}
+                            onChange={(e) => {
+                              const val = e.target.value
+                              setData("irs_board_member_id", val)
+                              if (val) {
+                                const m = irsBoardMembers.find((x) => x.id === Number(val))
+                                if (m) {
+                                  setData("name", m.name)
+                                  setData("position", m.position || "")
+                                }
+                              } else {
+                                setData("name", "")
+                                setData("position", "")
+                              }
+                            }}
+                            className="w-full px-3 py-2.5 bg-input border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors duration-200"
+                          >
+                            <option value="">— Select a member —</option>
+                            {irsBoardMembers.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.name}{m.position ? ` — ${m.position}` : ""}
+                              </option>
+                            ))}
+                          </select>
+                          {(errors.irs_board_member_id || errors.name) && (
+                            <p className="text-destructive text-sm">{errors.irs_board_member_id || errors.name}</p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <label htmlFor="irs_board_member_id" className="block text-sm font-medium text-card-foreground">Select member (IRS)</label>
+                          <select
+                            id="irs_board_member_id"
+                            className="w-full px-3 py-2.5 bg-muted/50 border border-border rounded-lg text-sm text-muted-foreground cursor-default"
+                            disabled
+                          >
+                            <option>— No IRS members —</option>
+                          </select>
+                        </>
+                      )}
                     </div>
+                    {/* Col 2: Position (read-only when IRS selected, else dropdown or placeholder) */}
                     <div className="space-y-2">
-                      <label htmlFor="email" className="block text-sm font-medium text-card-foreground">
-                        Email Address
-                      </label>
+                      <label className="block text-sm font-medium text-card-foreground">Position</label>
+                      {irsBoardMembers.length > 0 ? (
+                        <div className="w-full px-3 py-2.5 bg-muted/50 border border-border rounded-lg text-sm text-muted-foreground">
+                          {irsMemberId ? (data.position || "—") : "—"}
+                        </div>
+                      ) : (
+                        <>
+                          <select
+                            id="position"
+                            value={data.position}
+                            onChange={(e) => setData("position", e.target.value)}
+                            className="w-full px-3 py-2.5 bg-input border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors duration-200"
+                          >
+                            <option value="">Select Position</option>
+                            <option value="Chairperson">Chairperson</option>
+                            <option value="President">President</option>
+                            <option value="Vice President">Vice President</option>
+                            <option value="CEO">CEO</option>
+                            <option value="Vice Chairperson">Vice Chairperson</option>
+                            <option value="Secretary">Secretary</option>
+                            <option value="Treasurer">Treasurer</option>
+                            <option value="Director">Director</option>
+                            <option value="Committee Chair">Committee Chair</option>
+                            <option value="Other">Other</option>
+                          </select>
+                          {errors.position && <p className="text-destructive text-sm">{errors.position}</p>}
+                        </>
+                      )}
+                    </div>
+                    {/* Col 3: Email */}
+                    <div className="space-y-2">
+                      <label htmlFor="email" className="block text-sm font-medium text-card-foreground">Email Address</label>
                       <input
                         id="email"
                         type="email"
@@ -282,41 +366,16 @@ export default function Index({ organization, boardMembers }: Props) {
                       />
                       {errors.email && <p className="text-destructive text-sm">{errors.email}</p>}
                     </div>
+                    {/* Col 4: Role */}
                     <div className="space-y-2">
-                      <label htmlFor="position" className="block text-sm font-medium text-card-foreground">
-                        Position
-                      </label>
-                      <select
-                        id="position"
-                        value={data.position}
-                        onChange={(e) => setData("position", e.target.value)}
-                        className="w-full px-3 py-2.5 bg-input border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors duration-200"
-                      >
-                        <option value="">Select Position</option>
-                        <option value="Chairperson">Chairperson</option>
-                        <option value="President">President</option>
-                        <option value="Vice President">Vice President</option>
-                        <option value="CEO">CEO</option>
-                        <option value="Vice Chairperson">Vice Chairperson</option>
-                        <option value="Secretary">Secretary</option>
-                        <option value="Treasurer">Treasurer</option>
-                        <option value="Director">Director</option>
-                        <option value="Committee Chair">Committee Chair</option>
-                        <option value="Other">Other</option>
-                      </select>
-                      {errors.position && <p className="text-destructive text-sm">{errors.position}</p>}
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="role" className="block text-sm font-medium text-card-foreground">
-                        Role
-                      </label>
+                      <label htmlFor="role" className="block text-sm font-medium text-card-foreground">Role</label>
                       <select
                         id="role"
                         value={data.role}
                         onChange={(e) => setData("role", e.target.value)}
                         className="w-full px-3 py-2.5 bg-input border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-colors duration-200"
-                        disabled={auth.user.organization_role !== 'admin'} // Only admin can set roles
-                                          >
+                        disabled={auth.user.organization_role !== 'admin'}
+                      >
                         <option value="">Select Role</option>
                         <option value="leader">Leader</option>
                         {auth.user.organization_role === 'admin' && (
@@ -339,7 +398,7 @@ export default function Index({ organization, boardMembers }: Props) {
                     </button>
                     <button
                       type="submit"
-                      disabled={processing}
+                      disabled={processing || !canSubmit}
                       className="inline-flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground font-medium py-2.5 px-4 rounded-lg transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto text-sm sm:text-base"
                     >
                       {processing ? "Adding..." : "Add Member"}

@@ -29,11 +29,13 @@ interface NotificationProviderProps {
 export const NotificationProvider: React.FC<NotificationProviderProps> = ({ children, user }) => {
     const [notifications, setNotifications] = useState<NotificationData[]>([]);
 
+    const userId = user?.id;
+
     useEffect(() => {
-        if (!user) return;
+        if (userId == null) return;
 
         // Listen for daily prayer notifications
-        echo.private(`users.${user.id}`)
+        echo.private(`users.${userId}`)
             .listen('.daily.prayer.received', (e: any) => {
                 const notification: NotificationData = {
                     id: e.id,
@@ -50,9 +52,9 @@ export const NotificationProvider: React.FC<NotificationProviderProps> = ({ chil
 
         // Cleanup on unmount
         return () => {
-            echo.private(`users.${user.id}`).stopListening('.daily.prayer.received');
+            echo.private(`users.${userId}`).stopListening('.daily.prayer.received');
         };
-    }, [user]);
+    }, [userId]);
 
     const playNotificationSound = () => {
         const audio = new Audio('/sounds/notification.mp3');

@@ -22,7 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { ArrowLeft, Cloud, MoreHorizontal, Download, Pencil, Trash2, Video, Calendar, FileVideo, HardDrive, Search, Loader2, Link2Off } from "lucide-react"
+import { ArrowLeft, Cloud, MoreHorizontal, Download, Pencil, Trash2, Video, Calendar, FileVideo, HardDrive, Search, Loader2, Link2Off, ChevronLeft, ChevronRight } from "lucide-react"
 import { toast } from "react-hot-toast"
 
 /* Match Unity Meet: purple-600 to blue-600 gradient */
@@ -54,10 +54,27 @@ export default function IntegrationsDropbox({
   dropboxFolderPath = "",
   dropboxFiles = [],
 }: Props) {
+  const PER_PAGE = 24
   const [searchQuery, setSearchQuery] = useState("")
   const [searchResults, setSearchResults] = useState<DropboxFile[] | null>(null)
   const [searching, setSearching] = useState(false)
+  const [currentPage, setCurrentPage] = useState(1)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const filesToShow = searchQuery.trim() !== "" ? (searchResults ?? []) : dropboxFiles
+  const totalItems = filesToShow.length
+  const totalPages = totalItems === 0 ? 0 : Math.ceil(totalItems / PER_PAGE)
+  const startItem = totalItems === 0 ? 0 : (currentPage - 1) * PER_PAGE + 1
+  const endItem = totalItems === 0 ? 0 : Math.min(currentPage * PER_PAGE, totalItems)
+  const paginatedFiles = filesToShow.slice((currentPage - 1) * PER_PAGE, currentPage * PER_PAGE)
+
+  useEffect(() => {
+    setCurrentPage(1)
+  }, [searchQuery, totalItems])
+
+  useEffect(() => {
+    if (currentPage > totalPages && totalPages >= 1) setCurrentPage(totalPages)
+  }, [currentPage, totalPages])
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current)
@@ -83,7 +100,6 @@ export default function IntegrationsDropbox({
     }
   }, [searchQuery])
 
-  const filesToShow = searchQuery.trim() !== "" ? (searchResults ?? []) : dropboxFiles
   const isSearching = searchQuery.trim() !== "" && searching
 
   return (
@@ -170,7 +186,11 @@ export default function IntegrationsDropbox({
                   </div>
                 </div>
                 {!searchQuery.trim() && dropboxFiles.length > 0 && (
-                  <p className="text-sm text-muted-foreground">{dropboxFiles.length} file{dropboxFiles.length === 1 ? "" : "s"}</p>
+                  <p className="text-sm text-muted-foreground">
+                    {totalPages > 1
+                      ? `${dropboxFiles.length} file${dropboxFiles.length === 1 ? "" : "s"} · Page ${currentPage} of ${totalPages}`
+                      : `${dropboxFiles.length} file${dropboxFiles.length === 1 ? "" : "s"}`}
+                  </p>
                 )}
 
                 {isSearching ? (
@@ -197,11 +217,71 @@ export default function IntegrationsDropbox({
                     )}
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                    {filesToShow.map((file) => (
-                      <FileCard key={file.path_display} file={file} />
-                    ))}
-                  </div>
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                      {paginatedFiles.map((file) => (
+                        <FileCard key={file.path_display} file={file} />
+                      ))}
+                    </div>
+                    {totalPages > 1 && (
+                      <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 border-t border-border pt-6">
+                        <p className="text-sm text-muted-foreground order-2 sm:order-1">
+                          Showing {startItem}–{endItem} of {totalItems}
+                        </p>
+                        <div className="flex items-center gap-1 order-1 sm:order-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 gap-1 border-purple-200 dark:border-purple-500/30 text-muted-foreground hover:text-foreground hover:bg-purple-50 dark:hover:bg-purple-950/30"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage <= 1}
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                            Prev
+                          </Button>
+                          <div className="flex items-center gap-0.5 mx-1">
+                            {Array.from({ length: totalPages }, (_, i) => i + 1)
+                              .filter((p) => {
+                                if (totalPages <= 7) return true
+                                if (p === 1 || p === totalPages) return true
+                                if (p >= currentPage - 1 && p <= currentPage + 1) return true
+                                return false
+                              })
+                              .map((p, i, arr) => {
+                                const showEllipsisBefore = i > 0 && p - arr[i - 1] > 1
+                                return (
+                                  <span key={p} className="flex items-center gap-0.5">
+                                    {showEllipsisBefore && <span className="px-1.5 text-muted-foreground">…</span>}
+                                    <Button
+                                      variant={currentPage === p ? "default" : "ghost"}
+                                      size="sm"
+                                      className={`h-9 w-9 min-w-9 p-0 ${
+                                        currentPage === p
+                                          ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90"
+                                          : "text-muted-foreground hover:text-foreground hover:bg-purple-100 dark:hover:bg-purple-900/20"
+                                      }`}
+                                      onClick={() => setCurrentPage(p)}
+                                    >
+                                      {p}
+                                    </Button>
+                                  </span>
+                                )
+                              })}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-9 gap-1 border-purple-200 dark:border-purple-500/30 text-muted-foreground hover:text-foreground hover:bg-purple-50 dark:hover:bg-purple-950/30"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage >= totalPages}
+                          >
+                            Next
+                            <ChevronRight className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </section>
             </>

@@ -99,7 +99,6 @@ export default function Navbar() {
   const coreNavItems = [
     { name: "Home", href: "/" },
     { name: "About", href: "/about" },
-    { name: "Pricing", href: "/pricing" },
     { name: "Donate", href: "/donate" },
   ]
 
