@@ -601,13 +601,13 @@ export default function OrganizationPage({
   }
 
   const orgName = organization?.name ?? "Organization"
-  const orgDescription = organization?.description ?? organization?.mission ?? undefined
+  const metaDescription = organization?.description ?? organization?.mission ?? undefined
 
   return (
     <FrontendLayout>
       <PageHead
         title={orgName}
-        description={orgDescription ? String(orgDescription).slice(0, 160) : undefined}
+        description={metaDescription ? String(metaDescription).slice(0, 160) : undefined}
       />
         <div className="min-h-screen bg-gray-50 dark:bg-[#0a0f1a] text-gray-900 dark:text-white">
 

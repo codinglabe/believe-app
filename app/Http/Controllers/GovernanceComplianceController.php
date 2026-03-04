@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\ExcelData;
 use App\Models\FoundationCode;
+use App\Models\NteeCode;
 use App\Models\StatusCode;
 use App\Models\SubsectionCode;
 use Illuminate\Http\Request;
@@ -188,8 +189,12 @@ class GovernanceComplianceController extends Controller
         if ($rowData !== null && isset($rowData[self::BMF_NTEE_CD]) && (string) $rowData[self::BMF_NTEE_CD] !== '') {
             $nteeDisplay = $rowData[self::BMF_NTEE_CD];
         }
-        if ($nteeDisplay && ! empty($meta['ntee_description'])) {
-            $nteeDisplay = $nteeDisplay . ' - ' . $meta['ntee_description'];
+        $nteeDescription = $meta['ntee_description'] ?? null;
+        if ($nteeDisplay && empty($nteeDescription)) {
+            $nteeDescription = NteeCode::where('ntee_codes', $nteeDisplay)->value('description');
+        }
+        if ($nteeDisplay && ! empty($nteeDescription)) {
+            $nteeDisplay = $nteeDisplay . ' - ' . $nteeDescription;
         }
 
         $scheduleRequirements = $meta['schedule_requirements'] ?? [];
