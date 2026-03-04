@@ -214,8 +214,6 @@ class LivestreamController extends Controller
         $hostPushUrl = $livestream->getHostPushUrl(true);
         $hostPushUrlLocal = $livestream->getHostPushUrl(false);
         $hostPushUrlDropbox = $dropboxConnected ? $livestream->getHostPushUrl(true) : null;
-        $sceneRecordUrl = $livestream->getSceneRecordUrl(false);
-        $sceneRecordUrlDropbox = $dropboxConnected ? $livestream->getSceneRecordUrl(true) : null;
         $watchUrl = $livestream->getPublicViewUrl(); // Viewer link (no director) — for Unity Live / share with audience
         $password = $livestream->getDecryptedPassword();
 
@@ -254,8 +252,6 @@ class LivestreamController extends Controller
                 'hostPushUrl' => $hostPushUrl,
                 'hostPushUrlLocal' => $hostPushUrlLocal,
                 'hostPushUrlDropbox' => $hostPushUrlDropbox,
-                'sceneRecordUrl' => $sceneRecordUrl,
-                'sceneRecordUrlDropbox' => $sceneRecordUrlDropbox,
                 'dropboxRecordingAvailable' => $dropboxConnected,
                 'watchUrl' => $watchUrl,
                 'unityLiveUrl' => $unityLiveUrl,

@@ -85,19 +85,36 @@ class SyncIrsBoardMembers extends Command
     }
 
     /**
-     * Dispatch one ProcessIrsZipJob per ZIP file to the irs-import queue.
+     * Dispatch one ProcessIrsZipJob per ZIP file for the previous two years (same as bulk sync).
      */
     private function dispatchBulkSyncJobs(string $taxYear): int
     {
-        $zipFileNames = $this->irsService->getXmlZipFileNamesForYearPublic($taxYear);
-        if (empty($zipFileNames)) {
-            $this->warn('No ZIP filenames for year ' . $taxYear);
+        $yearInt = (int) $taxYear;
+        $yearsToSync = [$yearInt, $yearInt - 1];
+        $yearsToSync = array_filter($yearsToSync, fn ($y) => $y >= 2019);
+        $yearsToSync = array_values($yearsToSync);
+
+        $totalDispatched = 0;
+        foreach ($yearsToSync as $yearToSync) {
+            $yearStr = (string) $yearToSync;
+            $zipFileNames = $this->irsService->getXmlZipFileNamesForYearPublic($yearStr);
+            if (empty($zipFileNames)) {
+                $this->warn('No ZIP filenames for year ' . $yearStr);
+                continue;
+            }
+            foreach ($zipFileNames as $zipFileName) {
+                ProcessIrsZipJob::dispatch($yearStr, $zipFileName);
+                $totalDispatched++;
+            }
+            $this->info('Dispatched ' . count($zipFileNames) . ' jobs for year ' . $yearStr . '.');
+        }
+
+        if ($totalDispatched === 0) {
+            $this->warn('No jobs dispatched (no ZIP filenames for ' . implode(', ', $yearsToSync) . ').');
             return Command::FAILURE;
         }
-        foreach ($zipFileNames as $zipFileName) {
-            ProcessIrsZipJob::dispatch($taxYear, $zipFileName);
-        }
-        $this->info('Dispatched ' . count($zipFileNames) . ' jobs to queue irs-import for year ' . $taxYear . '.');
+
+        $this->info('Dispatched ' . $totalDispatched . ' jobs total (previous two years) to queue irs-import.');
         $this->line('');
         $this->line('Run a worker to process them (e.g. in a separate terminal or screen):');
         $this->line('  php artisan queue:work --queue=irs-import --memory=1024 --tries=2');
@@ -106,8 +123,7 @@ class SyncIrsBoardMembers extends Command
         $this->line('  IRS_JOB_TIMEOUT=14400   (e.g. 4 hours)');
         $this->line('  IRS_SYNC_MEMORY_LIMIT=2048M');
         $this->line('');
-        $this->line('After jobs finish, optionally run verification:');
-        $this->line('  php artisan irs:sync-board-members --update-expired');
+        $this->line('Each job also updates expired terms (status, removed_date); no separate command needed.');
         return Command::SUCCESS;
     }
 
@@ -148,60 +164,72 @@ class SyncIrsBoardMembers extends Command
         }
         $this->newLine();
 
-        // Check if IRS data exists
-        $dataDir = storage_path("app/irs-data/{$taxYear}");
-        $xmlFiles = [];
-        if (is_dir($dataDir)) {
-            $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function($file) {
-                return strpos($file, 'zips') === false;
-            });
-        }
+        // Previous two years to fetch, one by one: e.g. 2024 and 2023
+        $yearInt = (int) $taxYear;
+        $yearsToSync = [$yearInt, $yearInt - 1];
+        $yearsToSync = array_filter($yearsToSync, fn ($y) => $y >= 2019);
+        $yearsToSync = array_values($yearsToSync);
 
-        // Download IRS data if requested or if no files exist (auto-try fallback years)
-        if ($this->option('download') || empty($xmlFiles)) {
-            $yearsToTry = $this->getYearsToTry((int) $taxYear);
-            $downloaded = false;
-            foreach ($yearsToTry as $tryYear) {
-                $tryYearStr = (string) $tryYear;
-                if ($tryYearStr !== $taxYear) {
-                    $this->info("Trying fallback year {$tryYearStr}...");
-                } elseif (empty($xmlFiles)) {
-                    $this->info("No XML files found. Downloading IRS data for year {$taxYear}...");
-                    $this->warn("This can take 30–90 minutes (each ZIP is 50–500+ MB). Do not interrupt.");
-                } else {
-                    $this->info("Downloading IRS data for year {$taxYear}...");
-                }
-                $progress = fn (string $msg) => $this->line($msg);
-                if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
-                    $this->info("IRS data downloaded and extracted successfully for year {$tryYearStr}.");
-                    if ($tryYearStr !== $taxYear) {
-                        $taxYear = $tryYearStr;
-                        $this->info("Using year {$taxYear} for sync.");
+        $results = [
+            'processed' => 0,
+            'created' => 0,
+            'updated' => 0,
+            'inactivated' => 0,
+            'errors' => 0,
+        ];
+
+        foreach ($yearsToSync as $index => $yearToSync) {
+            $yearStr = (string) $yearToSync;
+            $this->newLine();
+            $this->info('--- Year ' . $yearStr . ' (' . ($index + 1) . '/' . count($yearsToSync) . ') ---');
+
+            $dataDir = storage_path("app/irs-data/{$yearStr}");
+            $xmlFiles = [];
+            if (is_dir($dataDir)) {
+                $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function ($file) {
+                    return strpos($file, 'zips') === false;
+                });
+            }
+
+            if ($this->option('download') || empty($xmlFiles)) {
+                $yearsToTry = $this->getYearsToTry($yearToSync);
+                $downloaded = false;
+                foreach ($yearsToTry as $tryYear) {
+                    $tryYearStr = (string) $tryYear;
+                    if ($tryYearStr !== $yearStr) {
+                        $this->info("Trying fallback year {$tryYearStr} for this sync year...");
+                    } elseif (empty($xmlFiles)) {
+                        $this->info("No XML files for {$yearStr}. Downloading IRS data...");
                     }
-                    $downloaded = true;
-                    break;
+                    $progress = fn (string $msg) => $this->line($msg);
+                    if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
+                        $this->info("IRS data ready for year {$tryYearStr}.");
+                        if ($tryYearStr !== $yearStr) {
+                            $yearStr = $tryYearStr;
+                        }
+                        $downloaded = true;
+                        break;
+                    }
+                }
+                if (!$downloaded && empty($xmlFiles)) {
+                    $this->warn("No data for year {$yearStr}; skipping.");
+                    continue;
                 }
             }
-            if (!$downloaded && empty($xmlFiles)) {
-                $this->warn("Automatic download failed for all tried years (" . implode(', ', $yearsToTry) . ").");
-                $this->info("You can download manually from: https://www.irs.gov/charities-non-profits/form-990-series-downloads");
-                $this->info("Extract ZIP files to: storage/app/irs-data/<year>/");
-                return Command::FAILURE;
-            }
-            if (!$downloaded && !empty($xmlFiles)) {
-                $this->info("Download failed, but found existing XML files. Continuing with existing files...");
-            }
-        }
 
-        // Sync board members for this EIN (even if organization doesn't exist in our DB)
-        if ($organization) {
-            $this->info("Syncing board members for organization: {$organization->name}...");
-        } else {
-            $this->info("Syncing IRS board members data for EIN: {$ein}...");
-        }
-        $this->newLine();
+            if ($organization) {
+                $this->info("Syncing board members for {$organization->name} (year {$yearStr})...");
+            } else {
+                $this->info("Syncing IRS board members for EIN {$ein} (year {$yearStr})...");
+            }
 
-        $results = $this->irsService->syncBoardMembersForOrganization($ein, (string) $taxYear);
+            $yearResults = $this->irsService->syncBoardMembersForOrganization($ein, $yearStr);
+            $results['processed'] += $yearResults['processed'];
+            $results['created'] += $yearResults['created'];
+            $results['updated'] += $yearResults['updated'];
+            $results['inactivated'] += $yearResults['inactivated'];
+            $results['errors'] += $yearResults['errors'];
+        }
 
         $this->newLine();
         if ($organization) {
@@ -213,28 +241,31 @@ class SyncIrsBoardMembers extends Command
         $this->info("  - Created: {$results['created']}");
         $this->info("  - Updated: {$results['updated']}");
         $this->info("  - Inactivated: {$results['inactivated']}");
-        
         if ($results['errors'] > 0) {
             $this->warn("  - Errors: {$results['errors']}");
         }
 
-        // Only verify if organization exists in our database
-        if ($organization) {
+        // Only verify if organization exists in our database (use first synced year)
+        if ($organization && !empty($yearsToSync)) {
             $this->newLine();
             $this->info("Verifying board members against IRS data...");
-            
-            // Verify board members for this organization
-            $verificationResults = $this->irsService->verifyBoardMembersAgainstIRS($ein, $taxYear);
-            
+            $verificationResults = $this->irsService->verifyBoardMembersAgainstIRS($ein, (string) $yearsToSync[0]);
             $this->info("Verification Summary:");
             $this->info("  - Verified: {$verificationResults['verified']}");
             $this->info("  - Not found in IRS data: {$verificationResults['not_found']}");
             $this->info("  - Deactivated due to not found: {$verificationResults['deactivated']}");
         } else {
-            $this->newLine();
-            $this->warn("Skipping verification - organization not found in database.");
+            if (!$organization) {
+                $this->newLine();
+                $this->warn("Skipping verification - organization not found in database.");
+            }
             $this->info("IRS board members data has been synced and stored.");
         }
+
+        $this->newLine();
+        $this->info("Updating expired board member terms (status, term_end_date, removed_date)...");
+        $expiredCount = $this->irsService->updateExpiredBoardMemberTerms();
+        $this->info("  - Marked as expired: {$expiredCount}");
 
         $this->newLine();
         $this->info('Done!');
@@ -242,86 +273,110 @@ class SyncIrsBoardMembers extends Command
     }
 
     /**
-     * Handle bulk sync for all organizations
+     * Handle bulk sync for all organizations (previous two years, one by one).
      */
     private function handleBulkSync(string $taxYear): int
     {
-        $this->info('Starting IRS Board Members bulk sync...');
+        $this->info('Starting IRS Board Members bulk sync (previous two years)...');
 
-        // Check if XML files already exist
-        $dataDir = storage_path("app/irs-data/{$taxYear}");
-        $xmlFiles = [];
-        if (is_dir($dataDir)) {
-            $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function($file) {
-                return strpos($file, 'zips') === false;
-            });
-        }
+        $yearInt = (int) $taxYear;
+        $yearsToSync = [$yearInt, $yearInt - 1];
+        $yearsToSync = array_filter($yearsToSync, fn ($y) => $y >= 2019);
+        $yearsToSync = array_values($yearsToSync);
 
-        // Download IRS data if requested or if no files exist (auto-try fallback years)
-        if ($this->option('download') || empty($xmlFiles)) {
-            $yearsToTry = $this->getYearsToTry((int) $taxYear);
-            $downloaded = false;
-            foreach ($yearsToTry as $tryYear) {
-                $tryYearStr = (string) $tryYear;
-                if ($tryYearStr !== $taxYear) {
-                    $this->info("Trying fallback year {$tryYearStr}...");
-                } elseif (empty($xmlFiles)) {
-                    $this->info("No XML files found. Downloading IRS data for year {$taxYear}...");
-                    $this->warn("This can take 30–90 minutes (each ZIP is 50–500+ MB). Do not interrupt.");
-                } else {
-                    $this->info("Downloading IRS data for year {$taxYear}...");
-                }
-                $progress = fn (string $msg) => $this->line($msg);
-                if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
-                    $this->info("IRS data downloaded and extracted successfully for year {$tryYearStr}.");
-                    if ($tryYearStr !== $taxYear) {
-                        $taxYear = $tryYearStr;
-                        $this->info("Using year {$taxYear} for bulk sync.");
+        $results = [
+            'organizations_processed' => 0,
+            'board_members_found' => 0,
+            'board_members_created' => 0,
+            'board_members_updated' => 0,
+            'board_members_inactivated' => 0,
+            'errors' => 0,
+        ];
+
+        foreach ($yearsToSync as $index => $yearToSync) {
+            $yearStr = (string) $yearToSync;
+            $this->newLine();
+            $this->info('--- Year ' . $yearStr . ' (' . ($index + 1) . '/' . count($yearsToSync) . ') ---');
+
+            $dataDir = storage_path("app/irs-data/{$yearStr}");
+            $xmlFiles = [];
+            if (is_dir($dataDir)) {
+                $xmlFiles = array_filter(glob("{$dataDir}/*.xml"), function ($file) {
+                    return strpos($file, 'zips') === false;
+                });
+            }
+
+            if ($this->option('download') || empty($xmlFiles)) {
+                $yearsToTry = $this->getYearsToTry($yearToSync);
+                $downloaded = false;
+                foreach ($yearsToTry as $tryYear) {
+                    $tryYearStr = (string) $tryYear;
+                    if ($tryYearStr !== $yearStr) {
+                        $this->info("Trying fallback year {$tryYearStr}...");
+                    } elseif (empty($xmlFiles)) {
+                        $this->info("No XML files found. Downloading IRS data for year {$yearStr}...");
+                        $this->warn("This can take 30–90 minutes (each ZIP is 50–500+ MB). Do not interrupt.");
+                    } else {
+                        $this->info("Downloading IRS data for year {$yearStr}...");
                     }
-                    $downloaded = true;
-                    break;
+                    $progress = fn (string $msg) => $this->line($msg);
+                    if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
+                        $this->info("IRS data downloaded and extracted successfully for year {$tryYearStr}.");
+                        if ($tryYearStr !== $yearStr) {
+                            $yearStr = $tryYearStr;
+                        }
+                        $downloaded = true;
+                        break;
+                    }
                 }
+                if (!$downloaded && empty($xmlFiles)) {
+                    $this->warn("No data for year {$yearStr}; skipping.");
+                    continue;
+                }
+                if (!$downloaded && !empty($xmlFiles)) {
+                    $this->info("Download failed, but found existing XML files. Continuing...");
+                }
+            } else {
+                $this->info("Found " . count($xmlFiles) . " existing XML file(s) for year {$yearStr}.");
             }
-            if (!$downloaded && empty($xmlFiles)) {
-                $this->warn("Automatic download failed for all tried years (" . implode(', ', $yearsToTry) . ").");
-                $this->info("You can download manually from: https://www.irs.gov/charities-non-profits/form-990-series-downloads");
-                $this->info("Extract ZIP files to: storage/app/irs-data/<year>/");
-                return Command::FAILURE;
-            }
-            if (!$downloaded && !empty($xmlFiles)) {
-                $this->info("Download failed, but found existing XML files. Continuing with existing files...");
-            }
-        } else {
-            $this->info("Found " . count($xmlFiles) . " existing XML file(s). Processing without download...");
+
+            $this->info("Processing bulk IRS XML for year {$yearStr} (all organizations)...");
+            $this->newLine();
+
+            $yearResults = $this->irsService->processBulkIRSBoardMembers($yearStr);
+            $results['organizations_processed'] += $yearResults['organizations_processed'];
+            $results['board_members_found'] += $yearResults['board_members_found'];
+            $results['board_members_created'] += $yearResults['board_members_created'];
+            $results['board_members_updated'] += $yearResults['board_members_updated'];
+            $results['board_members_inactivated'] += $yearResults['board_members_inactivated'];
+            $results['errors'] += $yearResults['errors'];
         }
 
-        // Process bulk IRS XML file (all organizations)
-        $this->info("Processing bulk IRS XML file for year {$taxYear}...");
-        $this->info("This will extract board members for ALL organizations in the IRS file.");
         $this->newLine();
-
-        $results = $this->irsService->processBulkIRSBoardMembers($taxYear);
-
-        $this->newLine();
-        $this->info("Bulk Processing Summary:");
+        $this->info("Bulk Processing Summary (all years):");
         $this->info("  - Organizations processed: {$results['organizations_processed']}");
         $this->info("  - Board members found: {$results['board_members_found']}");
         $this->info("  - Board members created: {$results['board_members_created']}");
         $this->info("  - Board members updated: {$results['board_members_updated']}");
         $this->info("  - Board members inactivated: {$results['board_members_inactivated']}");
-        
         if ($results['errors'] > 0) {
             $this->warn("  - Errors: {$results['errors']}");
         }
 
+        if (!empty($yearsToSync)) {
+            $this->newLine();
+            $this->info("Verifying board members against IRS data...");
+            $verificationResults = $this->irsService->verifyBoardMembersAgainstIRS(null, (string) $yearsToSync[0]);
+            $this->info("Verification Summary:");
+            $this->info("  - Verified: {$verificationResults['verified']}");
+            $this->info("  - Not found in IRS data: {$verificationResults['not_found']}");
+            $this->info("  - Deactivated due to not found: {$verificationResults['deactivated']}");
+        }
+
         $this->newLine();
-        $this->info("Verifying board members against IRS data...");
-        $verificationResults = $this->irsService->verifyBoardMembersAgainstIRS(null, $taxYear);
-        
-        $this->info("Verification Summary:");
-        $this->info("  - Verified: {$verificationResults['verified']}");
-        $this->info("  - Not found in IRS data: {$verificationResults['not_found']}");
-        $this->info("  - Deactivated due to not found: {$verificationResults['deactivated']}");
+        $this->info("Updating expired board member terms (status, term_end_date, removed_date)...");
+        $expiredCount = $this->irsService->updateExpiredBoardMemberTerms();
+        $this->info("  - Marked as expired: {$expiredCount}");
 
         $this->newLine();
         $this->info('Done!');

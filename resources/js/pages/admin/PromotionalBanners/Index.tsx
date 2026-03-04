@@ -24,6 +24,7 @@ import {
     CheckCircle,
     XCircle,
 } from "lucide-react"
+import { Switch } from "@/components/admin/ui/switch"
 import { motion } from "framer-motion"
 import type { BreadcrumbItem } from "@/types"
 
@@ -47,6 +48,7 @@ interface PromotionalBanner {
 
 interface PromotionalBannersIndexProps {
     banners: PromotionalBanner[]
+    showOnDashboard: boolean
 }
 
 const breadcrumbs: BreadcrumbItem[] = [
@@ -54,10 +56,19 @@ const breadcrumbs: BreadcrumbItem[] = [
     { title: 'Promotional Banners', href: '/admin/promotional-banners' },
 ]
 
-export default function AdminPromotionalBannersIndex({ banners }: PromotionalBannersIndexProps) {
+export default function AdminPromotionalBannersIndex({ banners, showOnDashboard }: PromotionalBannersIndexProps) {
     const [deletingId, setDeletingId] = useState<number | null>(null)
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
     const [bannerToDelete, setBannerToDelete] = useState<PromotionalBanner | null>(null)
+    const [toggling, setToggling] = useState(false)
+
+    const handleToggleShowOnDashboard = () => {
+        setToggling(true)
+        router.patch(route("admin.promotional-banners.toggle-dashboard"), {}, {
+            preserveScroll: true,
+            onFinish: () => setToggling(false),
+        })
+    }
 
     const handleDelete = (banner: PromotionalBanner) => {
         setBannerToDelete(banner)
@@ -98,7 +109,17 @@ export default function AdminPromotionalBannersIndex({ banners }: PromotionalBan
                             Manage promotional banners displayed on the dashboard. Total: {banners.length} banners
                         </p>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-4 py-2">
+                            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                                {showOnDashboard ? 'Shown on dashboard' : 'Hidden from dashboard'}
+                            </span>
+                            <Switch
+                                checked={showOnDashboard}
+                                onCheckedChange={handleToggleShowOnDashboard}
+                                disabled={toggling}
+                            />
+                        </div>
                         <Link href="/admin/promotional-banners/create">
                             <Button className="bg-primary hover:bg-primary/90">
                                 <Plus className="h-4 w-4 mr-2" />

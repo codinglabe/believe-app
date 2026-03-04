@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\BaseController;
+use App\Models\AdminSetting;
 use App\Models\PromotionalBanner;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -49,8 +50,11 @@ class PromotionalBannerController extends BaseController
             ];
         });
 
+        $showOnDashboard = (bool) AdminSetting::get('promotional_banners_show_on_dashboard', true);
+
         return Inertia::render('admin/PromotionalBanners/Index', [
             'banners' => $banners,
+            'showOnDashboard' => $showOnDashboard,
         ]);
     }
 
@@ -212,6 +216,23 @@ class PromotionalBannerController extends BaseController
                 ->withInput()
                 ->with('error', 'Failed to update promotional banner: ' . $e->getMessage());
         }
+    }
+
+    /**
+     * Toggle whether promotional banners are shown on the dashboard (global setting).
+     * When off, no promotional banners appear on the dashboard.
+     */
+    public function toggleShowOnDashboard(Request $request)
+    {
+        $this->authorizeRole($request, 'admin');
+        $this->authorizePermission($request, 'promotional.banner.update');
+
+        $current = (bool) AdminSetting::get('promotional_banners_show_on_dashboard', true);
+        AdminSetting::set('promotional_banners_show_on_dashboard', ! $current, 'boolean');
+
+        return redirect()->back()->with('success', ! $current
+            ? 'Promotional banners are now shown on the dashboard.'
+            : 'Promotional banners are now hidden from the dashboard.');
     }
 
     /**

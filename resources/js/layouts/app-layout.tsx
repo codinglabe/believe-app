@@ -1,9 +1,8 @@
 import AppLayoutTemplate from '@/layouts/app/app-sidebar-layout';
 import { type BreadcrumbItem, PageProps } from '@/types';
-import { type ReactNode } from 'react';
+import { type ReactNode, useRef, useEffect } from 'react';
 import { Toaster } from 'react-hot-toast';
 import { usePage } from '@inertiajs/react';
-import { useEffect } from 'react';
 import { CsrfTokenSync } from '@/components/CsrfTokenSync';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import { NotificationProvider } from '@/pages/Contexts/NotificationContext';
@@ -61,9 +60,15 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
         }
       }, [])
 
+    const authUserId = auth?.user?.id;
+    const fcmTokenSavedForUser = useRef<number | null>(null);
+
     useEffect(() => {
-    const saveFCMTokenAfterLogin = async () => {
-        if (auth?.user?.id) {
+        const saveFCMTokenAfterLogin = async () => {
+            if (!authUserId) return;
+            if (fcmTokenSavedForUser.current === authUserId) return;
+            fcmTokenSavedForUser.current = authUserId;
+
             const fcmToken = await requestNotificationPermission();
             const deviceInfo = getDeviceInfo();
 
@@ -74,24 +79,37 @@ export default ({ children, breadcrumbs, ...props }: AppLayoutProps) => {
                 });
                 console.log("Token saved after login");
             }
-        }
-    };
+        };
 
-    saveFCMTokenAfterLogin();
-    }, [auth?.user?.id]);
+        saveFCMTokenAfterLogin();
+    }, [authUserId]);
 
-    // Single place for Laravel session flash toasts (do not duplicate in pages or useFlashMessage)
+    // Single place for Laravel session flash toasts – use primitives + ref so deps don't churn every render
     const { props: pageProps } = usePage();
+    const success = typeof pageProps.success === 'string' ? pageProps.success : '';
+    const error = typeof pageProps.error === 'string' ? pageProps.error : '';
+    const info = typeof pageProps.info === 'string' ? pageProps.info : '';
+    const warning = typeof pageProps.warning === 'string' ? pageProps.warning : '';
+    const lastFlashRef = useRef({ success: '', error: '', info: '', warning: '' });
+
     useEffect(() => {
-        const success = pageProps.success;
-        const error = pageProps.error;
-        const info = pageProps.info;
-        const warning = pageProps.warning;
-        if (typeof success === 'string' && success.trim() !== '') showSuccessToast(success);
-        if (typeof error === 'string' && error.trim() !== '') showErrorToast(error);
-        if (typeof info === 'string' && info.trim() !== '') showSuccessToast(info);
-        if (typeof warning === 'string' && warning.trim() !== '') showErrorToast(warning);
-    }, [pageProps.success, pageProps.error, pageProps.info, pageProps.warning]);
+        if (success.trim() !== '' && lastFlashRef.current.success !== success) {
+            lastFlashRef.current.success = success;
+            showSuccessToast(success);
+        }
+        if (error.trim() !== '' && lastFlashRef.current.error !== error) {
+            lastFlashRef.current.error = error;
+            showErrorToast(error);
+        }
+        if (info.trim() !== '' && lastFlashRef.current.info !== info) {
+            lastFlashRef.current.info = info;
+            showSuccessToast(info);
+        }
+        if (warning.trim() !== '' && lastFlashRef.current.warning !== warning) {
+            lastFlashRef.current.warning = warning;
+            showErrorToast(warning);
+        }
+    }, [success, error, info, warning]);
 
     return (
             <NotificationProvider user={auth.user}>

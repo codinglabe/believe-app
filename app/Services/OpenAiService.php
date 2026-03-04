@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Log;
 class OpenAiService
 {
     protected $apiKey;
+
     protected $apiUrl = 'https://api.openai.com/v1/chat/completions';
 
     public function __construct()
@@ -15,18 +16,28 @@ class OpenAiService
         $this->apiKey = config('services.openai.api_key');
     }
 
+    /**
+     * Base HTTP client for OpenAI requests (respects verify_ssl for local dev SSL issues).
+     */
+    protected function httpClient(): \Illuminate\Http\Client\PendingRequest
+    {
+        $verify = config('services.openai.verify_ssl', true);
+
+        return Http::withOptions(['verify' => $verify])
+            ->withHeaders([
+                'Authorization' => 'Bearer ' . $this->apiKey,
+                'Content-Type' => 'application/json',
+            ])
+            ->timeout(120)
+            ->connectTimeout(30);
+    }
+
     public function generateContent(string $prompt, int $count, string $type): array
     {
         $systemPrompt = $this->buildSystemPrompt($type, $count);
 
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(120)
-                ->connectTimeout(30)
-                ->post($this->apiUrl, [
+            $response = $this->httpClient()->post($this->apiUrl, [
                     'model' => 'gpt-3.5-turbo',
                     'messages' => [
                         [
@@ -204,19 +215,13 @@ PROMPT;
     public function chatCompletion(array $messages): string
     {
         try {
-            $response = Http::withHeaders([
-                'Authorization' => 'Bearer ' . $this->apiKey,
-                'Content-Type' => 'application/json',
-            ])
-                ->timeout(120)
-                ->connectTimeout(30)
-                ->post($this->apiUrl, [
-                    'model' => 'gpt-3.5-turbo',
-                    'messages' => $messages,
-                    'temperature' => 0.7,
-                    'max_tokens' => 2000,
-                    'top_p' => 0.9,
-                ]);
+            $response = $this->httpClient()->post($this->apiUrl, [
+                'model' => 'gpt-3.5-turbo',
+                'messages' => $messages,
+                'temperature' => 0.7,
+                'max_tokens' => 2000,
+                'top_p' => 0.9,
+            ]);
 
             if ($response->failed()) {
                 $errorBody = $response->body();

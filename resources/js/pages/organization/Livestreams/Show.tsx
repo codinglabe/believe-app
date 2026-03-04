@@ -51,7 +51,6 @@ import {
   Radio,
   Cloud,
   HardDrive,
-  Loader2,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 
@@ -68,8 +67,6 @@ interface Livestream {
   hostPushUrl?: string
   hostPushUrlLocal?: string
   hostPushUrlDropbox?: string | null
-  sceneRecordUrl?: string
-  sceneRecordUrlDropbox?: string | null
   dropboxRecordingAvailable?: boolean
   watchUrl?: string | null
   status: "draft" | "scheduled" | "meeting_live" | "live" | "ended" | "cancelled"
@@ -152,19 +149,6 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
       setTimeout(() => setCopied(null), 3000)
     }
   }, [flashInviteUrl])
-
-  const canGenerateInvite = livestream.canStartMeeting || livestream.status === "meeting_live" || livestream.status === "live"
-  const displayInviteUrl = props.flash?.inviteUrl ?? livestream.latestInviteUrl ?? null
-
-  // Auto-generate invite link when user opens the Invite link tab (no Generate button needed).
-  useEffect(() => {
-    if (sidebarTab !== "invite-link" || !canGenerateInvite || displayInviteUrl || isGeneratingInvite) return
-    setIsGeneratingInvite(true)
-    router.post(`/livestreams/${livestream.id}/generate-invite`, {}, {
-      preserveScroll: true,
-      onFinish: () => setIsGeneratingInvite(false),
-    })
-  }, [sidebarTab, canGenerateInvite, displayInviteUrl, isGeneratingInvite, livestream.id])
 
   // Prevent page scroll — livestream view is fixed to viewport, no body scroll
   useEffect(() => {
@@ -305,6 +289,24 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
     })
   }
 
+  const handleGenerateInviteLink = () => {
+    setIsGeneratingInvite(true)
+    router.post(`/livestreams/${livestream.id}/generate-invite`, {}, {
+      preserveScroll: true,
+      onFinish: () => setIsGeneratingInvite(false),
+    })
+  }
+
+  const displayInviteUrl = props.flash?.inviteUrl ?? livestream.latestInviteUrl ?? null
+  const canGenerateInvite = livestream.canStartMeeting || livestream.status === "meeting_live" || livestream.status === "live"
+  const handleInviteTabSelect = (value: string) => {
+    const newTab = value as "meeting-info" | "invite-link"
+    setSidebarTab(newTab)
+    if (newTab === "invite-link" && !displayInviteUrl && canGenerateInvite && !isGeneratingInvite) {
+      handleGenerateInviteLink()
+    }
+  }
+
   const toggleVisibility = (publicVal: boolean) => {
     setIsUpdatingVisibility(true)
     router.patch(
@@ -351,36 +353,6 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
               ? "Recording will download to this device when you stop."
               : "Recording will save to your Dropbox folder automatically."}
           </p>
-          <p className="text-[10px] text-muted-foreground mt-1">
-            Participants who did not consent appear as &quot;(not recorded)&quot; — exclude them from your recording scene so they are not recorded.
-          </p>
-        </div>
-      )}
-      {/* Record full scene — so recording includes video (camera + screen + participants), not just audio */}
-      {livestream.sceneRecordUrl && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3.5 space-y-2">
-          <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-            <Video className="h-3.5 w-3.5 text-primary" />
-            Full video recording
-          </div>
-          <p className="text-xs text-muted-foreground">
-            To capture <strong>video</strong> (camera, screen share, and participants), open the Director tab first, then open the recording tab below and start recording there. Recording from the join tab alone can be audio-only when the host is not screen-sharing.
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            className="w-full h-9 gap-2"
-            onClick={() => {
-              const url =
-                livestream.dropboxRecordingAvailable && recordingDestination === "dropbox" && livestream.sceneRecordUrlDropbox
-                  ? livestream.sceneRecordUrlDropbox
-                  : livestream.sceneRecordUrl
-              if (url) window.open(url, "_blank")
-            }}
-          >
-            <ExternalLink className="h-4 w-4" />
-            Open recording tab (camera + screen + video)
-          </Button>
         </div>
       )}
       {/* Public / Private — only when live */}
@@ -451,14 +423,9 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
   const inviteLinkContent = (
     <div className="w-full min-w-0 space-y-4">
       <p className="text-xs text-muted-foreground">
-        Secure link for guests. They’ll join at <span className="font-mono text-foreground">/join/…</span> with no need to enter the meeting ID or passcode.
+        Share a secure link for guests. They’ll join at <span className="font-mono text-foreground">/join/…</span> with no need to enter the meeting ID or passcode. The link is generated when you open this tab.
       </p>
-      {isGeneratingInvite && !displayInviteUrl ? (
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-          <span>Generating invite link…</span>
-        </div>
-      ) : displayInviteUrl ? (
+      {displayInviteUrl ? (
         <div className="space-y-2">
           <Label className="text-xs text-muted-foreground">Invite link</Label>
           <div className="flex gap-2">
@@ -481,9 +448,14 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
             </Button>
           </div>
         </div>
-      ) : canGenerateInvite ? null : (
+      ) : isGeneratingInvite ? (
+        <p className="text-xs text-muted-foreground flex items-center gap-2">
+          <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" aria-hidden />
+          Generating invite link…
+        </p>
+      ) : (
         <p className="text-xs text-muted-foreground">
-          Start the meeting or go live to generate invite links.
+          Start the meeting or go live to get an invite link.
         </p>
       )}
     </div>
@@ -518,7 +490,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
                     <SheetHeader className="pb-4 border-b border-border">
                       <SheetTitle className="text-lg">Meeting</SheetTitle>
                     </SheetHeader>
-                    <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full mt-4">
+                    <Tabs value={sidebarTab} onValueChange={handleInviteTabSelect} className="w-full mt-4">
                       <TabsList className="grid w-full grid-cols-2 h-9">
                         <TabsTrigger value="meeting-info" className="text-xs gap-1.5">
                           <Info className="h-3.5 w-3.5 shrink-0" />
@@ -672,7 +644,7 @@ export default function ShowLivestream({ livestream, organization, mediamtxEnabl
         <div className="flex flex-1 min-h-0 overflow-hidden">
           {/* Left: Meeting Info / Invite Link tabs — desktop only */}
           <aside className="hidden md:flex w-64 lg:w-72 shrink-0 flex-col border-r border-border bg-linear-to-b from-muted/30 to-muted/10 p-0">
-            <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as "meeting-info" | "invite-link")} className="w-full flex flex-col min-h-0">
+            <Tabs value={sidebarTab} onValueChange={handleInviteTabSelect} className="w-full flex flex-col min-h-0">
               <Card className="rounded-none border-0 border-b border-border shadow-none bg-transparent p-0">
                 <CardHeader className="p-0 py-3 px-3">
                   <TabsList className="grid w-full grid-cols-2 h-9">

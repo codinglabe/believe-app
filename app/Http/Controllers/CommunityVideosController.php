@@ -440,6 +440,11 @@ class CommunityVideosController extends Controller
                     $existingIds[$live['id']] = true;
                 }
             }
+            // Only show real shorts and videos: exclude items with duration "0:00" or empty (placeholder/invalid).
+            $youtubeVideos = array_values(array_filter($youtubeVideos, function ($v) {
+                $d = $v['duration'] ?? '';
+                return is_string($d) && $d !== '' && $d !== '0:00';
+            }));
             $channelDetails = $youtubeService->getChannelDetails($organization->youtube_channel_url);
             if ($channelDetails) {
                 $channelBannerUrl = $channelDetails['banner_url'];
@@ -451,10 +456,10 @@ class CommunityVideosController extends Controller
             }
         }
 
-        // Shorts: YouTube videos 60 seconds or less (duration "0:XX" or "1:00")
+        // Shorts: real shorts only — 60 seconds or less but not "0:00" (0:01–0:59 or 1:00)
         $shortsRaw = array_values(array_filter($youtubeVideos, function ($v) {
             $d = $v['duration'] ?? '';
-            return is_string($d) && preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+            return is_string($d) && $d !== '0:00' && preg_match('/^(?:0:[1-5]\d|0:0[1-9]|1:00)$/', $d);
         }));
         $shorts = array_map(function ($v) use ($slug, $channelName, $channelAvatar) {
             return [
@@ -464,6 +469,7 @@ class CommunityVideosController extends Controller
                 'thumbnail_url' => $v['thumbnail_url'],
                 'views' => $v['views'],
                 'views_formatted' => $v['views_formatted'],
+                'duration' => $v['duration'] ?? '',
                 'channel_slug' => $slug,
                 'creator' => $channelName,
                 'creatorAvatar' => $channelAvatar,

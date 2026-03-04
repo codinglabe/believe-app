@@ -1144,14 +1144,23 @@ public function index(Request $request)
      */
     public function generateMission(Request $request, int $id)
     {
+        $openAiApiKey = config('services.openai.api_key');
+        if (empty($openAiApiKey) || ! is_string($openAiApiKey) || trim($openAiApiKey) === '') {
+            Log::warning('Generate mission skipped: OPENAI_API_KEY is not set');
+
+            return response()->json([
+                'error' => 'AI description is not configured. Please set OPENAI_API_KEY in the server environment.',
+            ], 503);
+        }
+
         try {
             // Find the ExcelData record (this is the public organization ID)
             $excelData = ExcelData::where('id', $id)
                 ->where('status', 'complete')
                 ->firstOrFail();
 
-            $rowData = $excelData->row_data;
-            $transformedData = ExcelDataTransformer::transform($rowData);
+            $rowData = $excelData->row_data ?? [];
+            $transformedData = is_array($rowData) ? ExcelDataTransformer::transform($rowData) : [];
 
             // Get organization details from ExcelData
             $orgName = $transformedData[1] ?? $rowData[1] ?? '';
@@ -1263,15 +1272,20 @@ public function index(Request $request)
                 'description' => trim($generatedDescription)
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error generating mission statement', [
                 'excel_data_id' => $id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
+            $message = 'Failed to generate mission statement. Please try again later.';
+            if (str_contains($e->getMessage(), 'OpenAI') || str_contains($e->getMessage(), 'API')) {
+                $message = 'AI service error. Please check that OPENAI_API_KEY is set and valid.';
+            }
+
             return response()->json([
-                'error' => 'Failed to generate mission statement. Please try again later.'
+                'error' => $message,
             ], 500);
         }
     }

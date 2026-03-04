@@ -14,9 +14,9 @@ class ExcelData extends Model
     protected $fillable = [
         'file_id',
         'row_data',
+        'generated_profile',
         'ein',
         'status',
-        'ein',
         'name_virtual',
         'state_virtual',
         'city_virtual',
@@ -27,6 +27,7 @@ class ExcelData extends Model
 
     protected $casts = [
         'row_data' => 'array',
+        'generated_profile' => 'array',
     ];
 
     public function uploadedFile()

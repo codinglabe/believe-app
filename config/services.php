@@ -63,6 +63,8 @@ return [
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
+        // Set to false only on local/dev if you get "SSL certificate problem: unable to get local issuer certificate"
+        'verify_ssl' => env('OPENAI_VERIFY_SSL', true),
     ],
 
     'gmail' => [

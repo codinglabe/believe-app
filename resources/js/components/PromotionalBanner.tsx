@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useMemo } from 'react'
 import { X, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
@@ -38,17 +38,20 @@ export default function PromotionalBanner({ banner, banners }: PromotionalBanner
     // Filter out dismissed banners
     const activeBanners = allBanners.filter(b => !dismissedIds.has(b.id))
 
-    // Check if banners were dismissed in session storage
+    // Stable key so effect deps don't change every render (avoids "Maximum update depth exceeded")
+    const bannerIdsKey = useMemo(() => allBanners.map(b => b.id).join(','), [allBanners])
+
+    // Check if banners were dismissed in session storage – depend on primitive key only
     useEffect(() => {
+        const ids = bannerIdsKey ? bannerIdsKey.split(',').map(Number) : []
         const dismissed = new Set<number>()
-        allBanners.forEach(b => {
-            const isDismissed = sessionStorage.getItem(`banner_${b.id}_dismissed`)
-            if (isDismissed === 'true') {
-                dismissed.add(b.id)
+        ids.forEach(id => {
+            if (sessionStorage.getItem(`banner_${id}_dismissed`) === 'true') {
+                dismissed.add(id)
             }
         })
         setDismissedIds(dismissed)
-    }, [allBanners])
+    }, [bannerIdsKey])
 
     // Auto-slide effect (only if multiple banners and not paused)
     useEffect(() => {

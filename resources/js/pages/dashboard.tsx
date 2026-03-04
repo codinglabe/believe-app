@@ -33,6 +33,7 @@ import {
   XCircle,
 } from "lucide-react"
 import PromotionalBanner from "@/components/PromotionalBanner"
+import ProfileCompletionBanner from "@/components/ProfileCompletionBanner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -621,6 +622,7 @@ export default function Dashboard({
   promotionalBanner = null,
   promotionalBanners = null,
   hasSubscription = false,
+  profileCompletion = null,
 }: {
   totalOrg?: number
   orgInfo?: any
@@ -633,6 +635,13 @@ export default function Dashboard({
   form990Filings?: any
   overdueForm990Filings?: any[]
   hasSubscription?: boolean
+  profileCompletion?: {
+    percent: number
+    completed: number
+    total: number
+    missing: Array<{ id: string; label: string; benefit: string; route: string; connected: boolean }>
+    completeSetupHref: string | null
+  } | null
 } & AdminDashboardProps) {
   const auth = usePage().props.auth
   const organization = orgInfo
@@ -1087,6 +1096,10 @@ export default function Dashboard({
     <AppLayout breadcrumbs={breadcrumbs}>
       <Head title="Dashboard" />
       <div className="flex flex-col gap-6 m-3 md:m-6">
+        {/* Profile Completion Banner – top of dashboard nudge for organization users */}
+        {isOrgUser && profileCompletion && profileCompletion.percent < 100 && (
+          <ProfileCompletionBanner profileCompletion={profileCompletion} />
+        )}
         {/* Promotional Banner - Only shown for organization users */}
         {isOrgUser && (promotionalBanners || promotionalBanner) && (
           <PromotionalBanner banner={promotionalBanner} banners={promotionalBanners || null} />

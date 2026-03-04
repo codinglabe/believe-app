@@ -835,16 +835,13 @@ class IRSForm990Service
                     ->first();
 
                 if ($existingMember) {
-                    // Update existing member - mark as active if they were inactive
-                    if ($existingMember->status !== 'active') {
-                        $existingMember->reactivate();
-                    }
-                    
-                    // Update IRS data
+                    // Update existing member: terms, status, and clear removed_date (present in current filing)
                     $existingMember->update([
-                        'irs_data' => $memberData['irs_data'] ?? null,
+                        'status' => 'active',
                         'appointed_date' => $memberData['appointed_date'] ?? $existingMember->appointed_date,
                         'term_end_date' => $memberData['term_end_date'] ?? $existingMember->term_end_date,
+                        'removed_date' => null,
+                        'irs_data' => $memberData['irs_data'] ?? null,
                     ]);
                     
                     $stats['updated']++;
@@ -859,6 +856,7 @@ class IRSForm990Service
                             'tax_year' => $taxYear,
                             'appointed_date' => $memberData['appointed_date'] ?? null,
                             'term_end_date' => $memberData['term_end_date'] ?? null,
+                            'removed_date' => null,
                             'irs_data' => $memberData['irs_data'] ?? null,
                         ]);
                         
@@ -1169,16 +1167,13 @@ class IRSForm990Service
                     ->first();
 
                 if ($existingMember) {
-                    // Update existing member - mark as active if they were inactive
-                    if ($existingMember->status !== 'active') {
-                        $existingMember->reactivate();
-                    }
-                    
-                    // Update IRS data
+                    // Update existing member: terms, status, and clear removed_date (present in current filing)
                     $existingMember->update([
-                        'irs_data' => $memberData['irs_data'] ?? null,
+                        'status' => 'active',
                         'appointed_date' => $memberData['appointed_date'] ?? $existingMember->appointed_date,
                         'term_end_date' => $memberData['term_end_date'] ?? $existingMember->term_end_date,
+                        'removed_date' => null,
+                        'irs_data' => $memberData['irs_data'] ?? null,
                     ]);
                 } else {
                     // Create new board member
@@ -1190,6 +1185,7 @@ class IRSForm990Service
                         'tax_year' => $taxYear,
                         'appointed_date' => $memberData['appointed_date'] ?? null,
                         'term_end_date' => $memberData['term_end_date'] ?? null,
+                        'removed_date' => null,
                         'irs_data' => $memberData['irs_data'] ?? null,
                     ]);
                 }

@@ -35,5 +35,11 @@ class ProcessIrsZipJob implements ShouldQueue
         Log::info("ProcessIrsZipJob started: {$this->zipFileName} (year {$this->taxYear})");
         $result = $irsService->processSingleZipByFilename($this->taxYear, $this->zipFileName);
         Log::info("ProcessIrsZipJob finished: " . $result['message']);
+
+        // Update expired terms (status, removed_date) so everything stays in sync in one command
+        $expiredCount = $irsService->updateExpiredBoardMemberTerms();
+        if ($expiredCount > 0) {
+            Log::info("ProcessIrsZipJob: marked {$expiredCount} board member(s) as expired.");
+        }
     }
 }
