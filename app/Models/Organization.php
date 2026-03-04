@@ -36,6 +36,7 @@ class Organization extends Model
         'contact_name',
         'contact_title',
         'website',
+        'wefunder_project_url',
         'youtube_channel_url',
         'youtube_access_token',
         'youtube_refresh_token',

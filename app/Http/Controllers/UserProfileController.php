@@ -264,13 +264,16 @@ class UserProfileController extends Controller
 
     /**
      * Project applications requested (fundraise leads) — profile dashboard only.
+     * Shows only applications submitted by the current user (matched by email).
      */
     public function profileProjectApplications(Request $request)
     {
-        $leads = FundraiseLead::query()
-            ->orderByDesc('created_at')
-            ->paginate(15)
-            ->withQueryString();
+        $user = $request->user();
+        $query = FundraiseLead::query()
+            ->where('email', $user->email)
+            ->orderByDesc('created_at');
+
+        $leads = $query->paginate(15)->withQueryString();
 
         $leads->getCollection()->transform(fn (FundraiseLead $lead) => [
             'id' => $lead->id,
@@ -283,7 +286,7 @@ class UserProfileController extends Controller
 
         return Inertia::render('frontend/user-profile/project-applications', [
             'projectApplicationsLeads' => $leads,
-            'projectApplicationsTotal' => FundraiseLead::count(),
+            'projectApplicationsTotal' => $leads->total(),
         ]);
     }
 

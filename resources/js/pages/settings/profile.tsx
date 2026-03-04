@@ -45,6 +45,7 @@ type ProfileForm = {
   dob: string
     contact_title: string
     website?: string
+    wefunder_project_url?: string
     phone?: string
     description?: string
     mission?: string
@@ -87,6 +88,7 @@ export default function ProfileEdit({ mustVerifyEmail, status }: { mustVerifyEma
     dob: auth.user.dob || "",
     contact_title: auth.user?.organization?.contact_title || "",
     website: auth.user?.organization?.website || "",
+    wefunder_project_url: auth.user?.organization?.wefunder_project_url || "",
     description: auth.user?.organization?.description || "",
     mission: auth.user?.organization?.mission || "",
     gift_card_terms_approved: auth.user?.organization?.gift_card_terms_approved || false,
@@ -859,7 +861,7 @@ const getCroppedImage = async (
               {/* Website */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
-                  <Label htmlFor="name" className="text-gray-900 dark:text-white font-medium">
+                  <Label htmlFor="website" className="text-gray-900 dark:text-white font-medium">
                     Website (Optional)
                   </Label>
                   <Input
@@ -872,8 +874,28 @@ const getCroppedImage = async (
                   />
                   <InputError message={errors.website} className="mt-1" />
                 </div>
-                          </div>
+              </div>
 
+              {/* Wefunder project URL — link shown to supporters on your page */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <Label htmlFor="wefunder_project_url" className="text-gray-900 dark:text-white font-medium">
+                    Wefunder project URL (Optional)
+                  </Label>
+                  <Input
+                    id="wefunder_project_url"
+                    type="url"
+                    value={data.wefunder_project_url}
+                    onChange={(e) => setData("wefunder_project_url", e.target.value)}
+                    className="mt-1 bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-600 focus:ring-blue-500 focus:border-blue-500"
+                    placeholder="https://wefunder.com/your-project"
+                  />
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    Add your Wefunder campaign link so supporters can go straight to your investment page.
+                  </p>
+                  <InputError message={errors.wefunder_project_url} className="mt-1" />
+                </div>
+              </div>
 
               {/* Description */}
       <div className="grid grid-cols-1 gap-4">

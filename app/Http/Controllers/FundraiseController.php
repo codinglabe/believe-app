@@ -31,9 +31,10 @@ class FundraiseController extends Controller
     public function supportAProject()
     {
         return Inertia::render('frontend/SupportAProject', [
-            'seo' => array_merge(SeoService::forPage('fundraise'), ['title' => 'Support a Project']),
+            'seo' => array_merge(SeoService::forPage('fundraise'), ['title' => 'Support Mission Projects']),
             'fundMeUrl' => route('fundme.index'),
             'investUrl' => route('fundraise'),
+            'projectsUrl' => route('fundraise.applications'),
             'wefunderUrl' => self::WEFUNDER_URL,
         ]);
     }
@@ -62,6 +63,7 @@ class FundraiseController extends Controller
         return Inertia::render('frontend/FundraiseCommunityProjects', [
             'seo' => array_merge(SeoService::forPage('fundraise'), ['title' => 'Support Community Projects']),
             'wefunderUrl' => self::WEFUNDER_URL,
+            'fundraiseApplyUrl' => route('fundraise'),
             'projects' => $projects,
             'fundMeCreateUrl' => route('fundme.campaigns.create'),
             'fundMeIndexUrl' => route('fundme.index'),
@@ -94,7 +96,7 @@ class FundraiseController extends Controller
     }
 
     /**
-     * Redirect to the profile dashboard Project Applications page.
+     * Redirect to Project Applications: supporters → profile; organization users → dashboard.
      */
     public function projectApplications(Request $request)
     {
@@ -103,6 +105,37 @@ class FundraiseController extends Controller
             return redirect()->route('login', ['redirect' => $request->fullUrl()]);
         }
 
+        if ($user->hasRole(['organization', 'organization_pending', 'admin'])) {
+            return redirect()->route('dashboard.project-applications');
+        }
+
         return redirect()->route('user.profile.project-applications');
+    }
+
+    /**
+     * Dashboard Project Applications — for organization users. Shows only applications submitted by the current user (email).
+     */
+    public function dashboardProjectApplications(Request $request)
+    {
+        $user = $request->user();
+        $query = FundraiseLead::query()
+            ->where('email', $user->email)
+            ->orderByDesc('created_at');
+
+        $leads = $query->paginate(15)->withQueryString();
+
+        $leads->getCollection()->transform(fn (FundraiseLead $lead) => [
+            'id' => $lead->id,
+            'name' => $lead->name,
+            'company' => $lead->company,
+            'email' => $lead->email,
+            'project_summary' => $lead->project_summary,
+            'created_at' => $lead->created_at->toIso8601String(),
+        ]);
+
+        return Inertia::render('dashboard/ProjectApplications', [
+            'projectApplicationsLeads' => $leads,
+            'projectApplicationsTotal' => $leads->total(),
+        ]);
     }
 }

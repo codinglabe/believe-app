@@ -106,6 +106,14 @@ const mainNavItems: (NavItem | NavGroup)[] = [
         role: "organization",
     },
 
+    // Project Applications (organization / admin — applications they submitted)
+    {
+        title: 'Project Applications',
+        href: '/dashboard/project-applications',
+        icon: FileText,
+        role: ['organization', 'organization_pending', 'admin'],
+    },
+
     // Unity Meet (organization only)
     {
         title: 'Unity Meet',

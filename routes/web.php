@@ -894,6 +894,7 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
+    Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
 
     // Organization Livestreams
     Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {

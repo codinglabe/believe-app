@@ -8,13 +8,6 @@ import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import { PageHead } from "@/components/frontend/PageHead";
 import { Button } from "@/components/frontend/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/frontend/ui/card";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/frontend/ui/select";
 import { Link } from "@inertiajs/react";
 import { motion } from "framer-motion";
 import { Heart, TrendingUp, Plus, Check } from "lucide-react";
@@ -29,6 +22,7 @@ interface Project {
 interface Props {
   seo?: { title: string; description?: string };
   wefunderUrl: string;
+  fundraiseApplyUrl: string;
   projects: Project[];
   fundMeCreateUrl: string;
   fundMeIndexUrl: string;
@@ -37,6 +31,7 @@ interface Props {
 export default function FundraiseCommunityProjectsPage({
   seo,
   wefunderUrl,
+  fundraiseApplyUrl,
   projects = [],
   fundMeCreateUrl,
   fundMeIndexUrl,
@@ -64,45 +59,13 @@ export default function FundraiseCommunityProjectsPage({
               </p>
             </header>
 
-            {/* Step 1 – Create or Select a Project */}
-            <section>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-semibold">1</span>
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Create or Select a Project</h2>
-              </div>
-              <div className="flex flex-col sm:flex-row gap-3">
-                <Select>
-                  <SelectTrigger className="flex-1 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white min-h-[44px]">
-                    <SelectValue placeholder="Choose a Project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {projects.length === 0 ? (
-                      <SelectItem value="none" disabled>No projects yet</SelectItem>
-                    ) : (
-                      projects.map((p) => (
-                        <SelectItem key={p.id} value={p.id.toString()}>
-                          {p.title} {p.status !== "live" ? `(${p.status})` : ""}
-                        </SelectItem>
-                      ))
-                    )}
-                  </SelectContent>
-                </Select>
-                <Link href={fundMeCreateUrl}>
-                  <Button type="button" variant="outline" className="w-full sm:w-auto border-2 border-dashed border-gray-300 dark:border-gray-600 hover:border-primary hover:bg-primary/5 min-h-[44px]">
-                    <Plus className="w-5 h-5 mr-2" />
-                    Create New Project
-                  </Button>
-                </Link>
-              </div>
-            </section>
-
-            {/* Step 2 – Choose Project Type */}
+            {/* Choose Project Type — Create and View on each card */}
             <section>
               <div className="flex items-center gap-2 mb-4">
-                <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10 text-primary text-sm font-semibold">2</span>
                 <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Choose Project Type</h2>
               </div>
               <div className="grid sm:grid-cols-2 gap-6">
+                {/* Orange: Donation — Organizations can create FundMe + view donation projects */}
                 <Card className="border-2 border-orange-200 dark:border-orange-800 bg-white dark:bg-gray-800 overflow-hidden shadow-lg">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-center w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 mb-2">
@@ -117,14 +80,25 @@ export default function FundraiseCommunityProjectsPage({
                       <li className="flex items-center gap-2"><Check className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" /> No financial return</li>
                       <li className="flex items-center gap-2"><Check className="w-4 h-4 text-orange-600 dark:text-orange-400 shrink-0" /> Organization rewards</li>
                     </ul>
-                    <Link href={fundMeIndexUrl} className="block">
-                      <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white">View Donation Projects</Button>
-                    </Link>
+                    <div className="flex flex-col gap-2">
+                      <Link href={fundMeCreateUrl} className="block">
+                        <Button className="w-full bg-orange-600 hover:bg-orange-700 text-white">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create New Project
+                        </Button>
+                      </Link>
+                      <Link href={fundMeIndexUrl} className="block">
+                        <Button variant="outline" className="w-full border-orange-300 dark:border-orange-700 text-orange-700 dark:text-orange-300 hover:bg-orange-50 dark:hover:bg-orange-900/20">
+                          View Projects
+                        </Button>
+                      </Link>
+                    </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       <Link href={fundMeIndexUrl} className="text-orange-600 dark:text-orange-400 hover:underline">Where does it go?</Link>
                     </p>
                   </CardContent>
                 </Card>
+                {/* Green: Investment — Create (apply to raise) + View investment projects */}
                 <Card className="border-2 border-green-200 dark:border-green-800 bg-white dark:bg-gray-800 overflow-hidden shadow-lg">
                   <CardHeader className="pb-2">
                     <div className="flex items-center justify-center w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 mb-2">
@@ -139,9 +113,19 @@ export default function FundraiseCommunityProjectsPage({
                       <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" /> Risks involved (capital at risk)</li>
                       <li className="flex items-center gap-2 font-medium text-green-700 dark:text-green-400"><Check className="w-4 h-4 text-green-600 dark:text-green-400 shrink-0" /> Powered by Wefunder</li>
                     </ul>
-                    <a href={wefunderUrl} target="_blank" rel="noopener noreferrer" className="block">
-                      <Button className="w-full bg-green-600 hover:bg-green-700 text-white">View Investment Projects</Button>
-                    </a>
+                    <div className="flex flex-col gap-2">
+                      <Link href={fundraiseApplyUrl} className="block">
+                        <Button className="w-full bg-green-600 hover:bg-green-700 text-white">
+                          <Plus className="w-4 h-4 mr-2" />
+                          Create Project
+                        </Button>
+                      </Link>
+                      <a href={wefunderUrl} target="_blank" rel="noopener noreferrer" className="block">
+                        <Button variant="outline" className="w-full border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 hover:bg-green-50 dark:hover:bg-green-900/20">
+                          View Projects
+                        </Button>
+                      </a>
+                    </div>
                     <p className="text-xs text-gray-500 dark:text-gray-400">
                       <a href={wefunderUrl} target="_blank" rel="noopener noreferrer" className="text-green-600 dark:text-green-400 hover:underline">What will we invest in?</a>
                     </p>

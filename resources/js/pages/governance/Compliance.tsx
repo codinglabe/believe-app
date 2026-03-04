@@ -50,12 +50,16 @@ interface Props {
   organization: Organization
   complianceOverview: ComplianceOverview
   scheduleRequirements: ScheduleItem[]
+  lastSyncedAt?: string | null
+  dataSource?: "BMF" | "organization" | null
 }
 
 export default function GovernanceCompliance({
   organization,
   complianceOverview,
   scheduleRequirements,
+  lastSyncedAt,
+  dataSource,
 }: Props) {
   const detailsRows: { field: string; value: React.ReactNode }[] = [
     { field: "Organization Legal Name", value: complianceOverview.organization_legal_name || "—" },
@@ -160,6 +164,15 @@ export default function GovernanceCompliance({
                       Compliance Overview
                     </h1>
                     <p className="text-sm text-muted-foreground">Tax & Filing Compliance Status</p>
+                    {(lastSyncedAt || dataSource) && (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {lastSyncedAt && (
+                          <>Updated {new Date(lastSyncedAt).toLocaleDateString(undefined, { dateStyle: "medium" })}</>
+                        )}
+                        {lastSyncedAt && dataSource && " · "}
+                        {dataSource && <>Source: {dataSource === "BMF" ? "IRS BMF" : "Organization"}</>}
+                      </p>
+                    )}
                   </div>
                 </div>
               </div>

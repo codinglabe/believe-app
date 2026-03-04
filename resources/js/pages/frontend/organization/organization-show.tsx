@@ -36,6 +36,7 @@ import {
   Angry,
   DollarSign,
   AlertCircle,
+  TrendingUp,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
@@ -1364,6 +1365,19 @@ export default function OrganizationPage({
                               </a>
                         </div>
                       )}
+                    {organization.wefunder_project_url && (
+                          <div className="flex items-center gap-2 mt-2">
+                        <TrendingUp className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                              <a
+                                href={organization.wefunder_project_url.startsWith('http') ? organization.wefunder_project_url : `https://${organization.wefunder_project_url}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-emerald-400 hover:underline"
+                              >
+                                Invest on Wefunder
+                              </a>
+                        </div>
+                      )}
                 </div>
                 )}
 
@@ -1645,6 +1659,24 @@ export default function OrganizationPage({
                           </div>
                         </div>
                       )}
+                      {organization.wefunder_project_url && (
+                          <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
+                          <div className="w-10 h-10 bg-gradient-to-r from-emerald-600 to-green-600 rounded-full flex items-center justify-center">
+                            <TrendingUp className="w-5 h-5 text-white" />
+                          </div>
+                          <div>
+                            <p className="text-sm text-gray-600 dark:text-gray-400">Invest on Wefunder</p>
+                            <a
+                              href={organization.wefunder_project_url.startsWith('http') ? organization.wefunder_project_url : `https://${organization.wefunder_project_url}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-gray-900 dark:text-white hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
+                            >
+                              View our campaign
+                            </a>
+                          </div>
+                        </div>
+                      )}
                       {location && location !== 'Location not specified' && (
                           <div className="flex items-center gap-3 p-4 bg-gray-50 dark:bg-[#0a0f1a] rounded-lg border border-gray-200 dark:border-white/10">
                           <div className="w-10 h-10 bg-gradient-to-r from-purple-600 to-blue-600 rounded-full flex items-center justify-center">
@@ -1659,7 +1691,7 @@ export default function OrganizationPage({
                           </div>
                         </div>
                       )}
-                      {(!organization.phone && !organization.email && !organization.website && (!location || location === 'Location not specified')) && (
+                      {(!organization.phone && !organization.email && !organization.website && !organization.wefunder_project_url && (!location || location === 'Location not specified')) && (
                         <div className="text-center py-12">
                           <Phone className="w-16 h-16 text-gray-600 mx-auto mb-4" />
                           <p className="text-gray-600 dark:text-gray-400">Contact information not available.</p>

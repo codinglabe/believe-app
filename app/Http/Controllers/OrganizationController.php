@@ -506,6 +506,7 @@ public function index(Request $request)
                 ? $anyOrgRecord->mission
                 : 'Mission statement not available for unregistered organizations.',
             'website' => $registeredOrg && $registeredOrg->website ? $registeredOrg->website : ($anyOrgRecord && $anyOrgRecord->website ? $anyOrgRecord->website : null),
+            'wefunder_project_url' => $registeredOrg && $registeredOrg->wefunder_project_url ? $registeredOrg->wefunder_project_url : ($anyOrgRecord && $anyOrgRecord->wefunder_project_url ? $anyOrgRecord->wefunder_project_url : null),
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A', // Ruling year from excel data
         ];
 
@@ -1293,7 +1294,7 @@ public function index(Request $request)
             $registeredOrg = Organization::where('ein', $organization->ein)
                 ->where('registration_status', 'approved')
                 ->with('user:id,slug,name,email,image,cover_img')
-                ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
+                ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         } else {
             // Fallback: Try by user slug
@@ -1303,7 +1304,7 @@ public function index(Request $request)
                 $registeredOrg = Organization::where('user_id', $user->id)
                     ->where('registration_status', 'approved')
                     ->with('user:id,slug,name,email,image,cover_img')
-                    ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
+                    ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                     ->first();
 
                 if ($registeredOrg) {
@@ -1329,7 +1330,7 @@ public function index(Request $request)
             $registeredOrg = Organization::where('ein', $organization->ein)
                 ->where('registration_status', 'approved')
                 ->with('user:id,slug,name,email,image,cover_img')
-                ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
+                ->select('id', 'ein', 'user_id', 'name', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         }
 
@@ -1337,7 +1338,7 @@ public function index(Request $request)
         $anyOrgRecord = $registeredOrg;
         if (!$anyOrgRecord) {
             $anyOrgRecord = Organization::where('ein', $organization->ein)
-                ->select('id', 'ein', 'description', 'mission', 'website', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
+                ->select('id', 'ein', 'description', 'mission', 'website', 'wefunder_project_url', 'phone', 'email', 'contact_name', 'contact_title', 'social_accounts', 'city', 'state')
                 ->first();
         }
 
@@ -1415,6 +1416,7 @@ public function index(Request $request)
                 ? $anyOrgRecord->mission
                 : 'Mission statement not available for unregistered organizations.',
             'website' => $registeredOrg && $registeredOrg->website ? $registeredOrg->website : ($anyOrgRecord && $anyOrgRecord->website ? $anyOrgRecord->website : null),
+            'wefunder_project_url' => $registeredOrg && $registeredOrg->wefunder_project_url ? $registeredOrg->wefunder_project_url : ($anyOrgRecord && $anyOrgRecord->wefunder_project_url ? $anyOrgRecord->wefunder_project_url : null),
             'ruling' => $transformedData[7] ?? $rowData[7] ?? 'N/A',
             'phone' => $registeredOrg ? $registeredOrg->phone : ($anyOrgRecord ? $anyOrgRecord->phone : null),
             'email' => $registeredOrg ? $registeredOrg->email : ($anyOrgRecord ? $anyOrgRecord->email : null),

@@ -13,6 +13,7 @@ interface Props {
   seo?: { title: string; description?: string };
   fundMeUrl: string;
   investUrl: string;
+  projectsUrl: string;
   wefunderUrl: string;
 }
 
@@ -33,12 +34,13 @@ export default function SupportAProjectPage({
   seo,
   fundMeUrl,
   investUrl,
+  projectsUrl,
   wefunderUrl,
 }: Props) {
   return (
     <FrontendLayout>
       <PageHead
-        title={seo?.title ?? "Support a Project"}
+        title={seo?.title ?? "Support Mission Projects"}
         description={seo?.description ?? "Choose how you'd like to participate: give a donation or invest and participate in project returns."}
       />
 
@@ -76,7 +78,7 @@ export default function SupportAProjectPage({
                 Choose your path
               </motion.span>
               <h1 className="text-3xl font-bold tracking-tight text-gray-900 dark:text-white sm:text-4xl lg:text-5xl lg:leading-tight">
-                Support a Project
+                Support Mission Projects
               </h1>
               <p className="mt-4 text-lg text-gray-600 dark:text-gray-400 sm:text-xl max-w-2xl mx-auto">
                 Choose how you'd like to participate:
@@ -90,61 +92,73 @@ export default function SupportAProjectPage({
               animate="show"
               className="grid grid-cols-1 gap-4 sm:gap-6 lg:grid-cols-2 lg:gap-8"
             >
-              {/* Give (Donation) — FundMe */}
+              {/* Give (Donation) — Donate Now + View Projects (same card pattern as Grow) */}
               <motion.div variants={item} className="min-h-[280px] sm:min-h-0">
-                <Link
-                  href={fundMeUrl}
-                  className="group block h-full rounded-2xl sm:rounded-3xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-4 dark:focus-visible:ring-offset-gray-900"
-                >
-                  <div className="relative h-full min-h-[280px] sm:min-h-[320px] flex flex-col justify-between bg-gradient-to-br from-orange-500 via-orange-600 to-amber-700 dark:from-orange-600 dark:via-orange-700 dark:to-amber-800 p-6 sm:p-8 lg:p-10 shadow-xl shadow-orange-500/20 dark:shadow-orange-900/30 transition-all duration-300 hover:shadow-2xl hover:shadow-orange-500/25 hover:-translate-y-1 active:translate-y-0">
-                    {/* Card shine overlay */}
-                    <div className="pointer-events-none absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white/10 via-transparent to-transparent" />
-                    <div className="relative">
-                      <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm mb-5 sm:mb-6">
-                        <Heart className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Give</h2>
-                      <p className="mt-1 text-white/90 text-sm sm:text-base font-medium">Donation</p>
-                      <p className="mt-4 text-white/90 text-sm sm:text-base leading-relaxed max-w-sm">
-                        Make a donation to support this mission.
-                      </p>
+                <div className="relative h-full min-h-[280px] sm:min-h-[320px] flex flex-col justify-between rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-orange-500 via-orange-600 to-amber-700 dark:from-orange-600 dark:via-orange-700 dark:to-amber-800 p-6 sm:p-8 lg:p-10 shadow-xl shadow-orange-500/20 dark:shadow-orange-900/30">
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white/10 via-transparent to-transparent" />
+                  <div className="relative">
+                    <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm mb-5 sm:mb-6">
+                      <Heart className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                     </div>
-                    <div className="relative mt-6 sm:mt-8">
-                      <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-orange-700 shadow-lg shadow-orange-900/20 transition-all duration-200 group-hover:bg-white/95 group-hover:gap-3">
-                        Believe FundMe
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Give</h2>
+                    <p className="mt-1 text-white/90 text-sm sm:text-base font-medium">Donation</p>
+                    <p className="mt-4 text-white/90 text-sm sm:text-base leading-relaxed max-w-sm">
+                      Make a donation to support this mission.
+                    </p>
+                  </div>
+                  <div className="relative mt-6 sm:mt-8 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link
+                        href={fundMeUrl}
+                        className="inline-flex items-center justify-center rounded-xl bg-white px-5 py-3 text-sm font-semibold text-orange-700 shadow-lg shadow-orange-900/20 transition-all duration-200 hover:bg-white/95 hover:shadow-orange-900/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700"
+                      >
+                        Donate Now
+                      </Link>
+                      <Link
+                        href={fundMeUrl}
+                        className="group inline-flex items-center justify-center gap-2 rounded-xl border-2 border-white/40 bg-white/10 backdrop-blur-sm px-5 py-3 text-sm font-semibold text-white transition-all duration-200 hover:bg-white hover:text-orange-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-orange-700"
+                      >
+                        View Projects
                         <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                      </span>
+                      </Link>
                     </div>
                   </div>
-                </Link>
+                </div>
               </motion.div>
 
-              {/* Grow (Investment) — Wefunder */}
+              {/* Grow (Investment) — Apply + View Projects */}
               <motion.div variants={item} className="min-h-[280px] sm:min-h-0">
-                <Link
-                  href={investUrl}
-                  className="group block h-full rounded-2xl sm:rounded-3xl overflow-hidden focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus-visible:ring-offset-4 dark:focus-visible:ring-offset-gray-900"
-                >
-                  <div className="relative h-full min-h-[280px] sm:min-h-[320px] flex flex-col justify-between bg-gradient-to-br from-emerald-500 via-green-600 to-teal-700 dark:from-emerald-600 dark:via-green-700 dark:to-teal-800 p-6 sm:p-8 lg:p-10 shadow-xl shadow-emerald-500/20 dark:shadow-emerald-900/30 transition-all duration-300 hover:shadow-2xl hover:shadow-emerald-500/25 hover:-translate-y-1 active:translate-y-0">
-                    <div className="pointer-events-none absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white/10 via-transparent to-transparent" />
-                    <div className="relative">
-                      <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm mb-5 sm:mb-6">
-                        <TrendingUp className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
-                      </div>
-                      <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Grow</h2>
-                      <p className="mt-1 text-white/90 text-sm sm:text-base font-medium">Investment</p>
-                      <p className="mt-4 text-white/90 text-sm sm:text-base leading-relaxed max-w-sm">
-                        Invest and participate in project returns through Wefunder.
-                      </p>
+                <div className="relative h-full min-h-[280px] sm:min-h-[320px] flex flex-col justify-between rounded-2xl sm:rounded-3xl overflow-hidden bg-gradient-to-br from-emerald-500 via-green-600 to-teal-700 dark:from-emerald-600 dark:via-green-700 dark:to-teal-800 p-6 sm:p-8 lg:p-10 shadow-xl shadow-emerald-500/20 dark:shadow-emerald-900/30">
+                  <div className="pointer-events-none absolute inset-0 rounded-2xl sm:rounded-3xl bg-gradient-to-br from-white/10 via-transparent to-transparent" />
+                  <div className="relative">
+                    <div className="inline-flex items-center justify-center w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-white/20 backdrop-blur-sm mb-5 sm:mb-6">
+                      <TrendingUp className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
                     </div>
-                    <div className="relative mt-6 sm:mt-8">
-                      <span className="inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-emerald-700 shadow-lg shadow-emerald-900/20 transition-all duration-200 group-hover:bg-white/95 group-hover:gap-3">
-                        Wefunder
-                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                      </span>
-                    </div>
+                    <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">Grow</h2>
+                    <p className="mt-1 text-white/90 text-sm sm:text-base font-medium">Investment</p>
+                    <p className="mt-4 text-white/90 text-sm sm:text-base leading-relaxed max-w-sm">
+                      Invest and participate in project returns through Wefunder.
+                    </p>
                   </div>
-                </Link>
+                  <div className="relative mt-6 sm:mt-8 space-y-3">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <Link
+                        href={investUrl}
+                        className="inline-flex items-center justify-center rounded-xl bg-emerald-400 px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 transition-all duration-200 hover:bg-emerald-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-700"
+                      >
+                        Apply
+                      </Link>
+                      <Link
+                        href={projectsUrl}
+                        className="group inline-flex items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-semibold text-emerald-700 shadow-lg shadow-emerald-900/20 transition-all duration-200 hover:bg-white/95 hover:shadow-emerald-900/25 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-emerald-700"
+                      >
+                        View Projects
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                      </Link>
+                    </div>
+                    <p className="text-sm text-white/80">For organizations seeking funding.</p>
+                  </div>
+                </div>
               </motion.div>
             </motion.div>
 
