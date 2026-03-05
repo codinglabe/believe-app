@@ -53,7 +53,7 @@ self.addEventListener("activate", (event) => {
 
 // Navigation and auth routes: network only (no cache) to prevent stale CSRF → 419
 // Do NOT intercept API/data routes: let the browser handle them natively to avoid
-// "Failed to fetch" / net::ERR_FAILED (e.g. /wallet/balance, Inertia XHR, community-videos).
+// "Failed to fetch" / net::ERR_FAILED (e.g. /wallet/balance, Inertia XHR, unity-videos).
 self.addEventListener("fetch", (event) => {
     const url = event.request.url;
     const path = new URL(url).pathname;
@@ -62,7 +62,7 @@ self.addEventListener("fetch", (event) => {
     // Let browser handle same-origin API/data requests without SW (avoids fetch failures)
     if (!isNavigate) {
         if (path.startsWith("/api/") || path.startsWith("/wallet/") || path.startsWith("/sanctum/") ||
-            path.startsWith("/community-videos/") || path === "/" || path.startsWith("/login") || path.startsWith("/register")) {
+            path.startsWith("/unity-videos/") || path === "/" || path.startsWith("/login") || path.startsWith("/register")) {
             return; // do not call respondWith — browser handles request natively
         }
     }

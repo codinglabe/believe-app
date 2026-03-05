@@ -731,6 +731,12 @@ const mainNavItems: (NavItem | NavGroup)[] = [
                 role: "admin"
             },
             {
+                title: 'IRS Members',
+                href: '/admin/irs-members',
+                icon: FileText,
+                role: "admin"
+            },
+            {
                 title: 'Compliance / Logs',
                 icon: ClipboardList,
                 items: [

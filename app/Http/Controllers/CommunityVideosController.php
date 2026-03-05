@@ -15,6 +15,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
@@ -25,12 +26,29 @@ class CommunityVideosController extends Controller
     public function index(Request $request): Response
     {
         $search = $request->input('search', '');
-        $category = $request->input('category', 'all');
         $tab = $request->input('tab', 'latest');
+        $org = $request->input('org', 'all');
 
         try {
-            // Only YouTube videos from connected channels (no database/uploaded videos)
-            $youtubeVideos = $this->fetchAllYouTubeVideos();
+            // Organizations with connected YouTube (for Non-Profits tab dropdown)
+            $nonprofitOrganizations = Organization::query()
+                ->whereNotNull('youtube_channel_url')
+                ->orderBy('name')
+                ->get(['id', 'name'])
+                ->map(fn ($o) => ['id' => $o->id, 'name' => $o->name])
+                ->values()
+                ->all();
+
+            // Only YouTube videos from connected channels; cache 5 min for fast loads/reloads. On fetch failure, use stale cache if any.
+            try {
+                $youtubeVideos = Cache::remember('unity_videos_all', 300, fn () => $this->fetchAllYouTubeVideos());
+            } catch (\Throwable $e) {
+                Log::warning('Unity Videos: fetch failed, using stale cache if available', ['message' => $e->getMessage()]);
+                $youtubeVideos = Cache::get('unity_videos_all');
+                if (! $youtubeVideos instanceof Collection) {
+                    $youtubeVideos = collect();
+                }
+            }
 
             if ($search !== '') {
                 $searchLower = strtolower($search);
@@ -39,14 +57,23 @@ class CommunityVideosController extends Controller
                         || str_contains(strtolower($v['creator'] ?? ''), $searchLower);
                 })->values();
             }
-            if ($category !== 'all' && in_array($category, ['events', 'stories', 'impact'], true)) {
-                $youtubeVideos = collect();
-            }
-            if ($tab === 'latest') {
-                $youtubeVideos = $youtubeVideos->sortByDesc('sort_at')->values();
-            }
+            // Apply exactly one sort per tab so each tab shows only its intended list
             if ($tab === 'trending') {
                 $youtubeVideos = $youtubeVideos->sortByDesc('views')->values();
+            } elseif ($tab === 'nonprofits') {
+                // Non-Profits tab: only organization channel videos (exclude supporter channels)
+                $youtubeVideos = $youtubeVideos->filter(fn ($v) => ! empty($v['organization_id'] ?? null))->sortBy('creator')->values();
+                // Optional: filter to a single organization when org param is set
+                if ($org !== 'all' && $org !== '' && (int) $org > 0) {
+                    $orgId = (int) $org;
+                    $youtubeVideos = $youtubeVideos->filter(fn ($v) => (int) ($v['organization_id'] ?? 0) === $orgId)->values();
+                }
+            } elseif ($tab === 'supporter') {
+                // Supporter tab: only supporter (individual user) channel videos (exclude organization channels)
+                $youtubeVideos = $youtubeVideos->filter(fn ($v) => empty($v['organization_id'] ?? null))->sortByDesc('sort_at')->values();
+            } else {
+                $tab = 'latest';
+                $youtubeVideos = $youtubeVideos->sortByDesc('sort_at')->values();
             }
 
             $userId = Auth::id();
@@ -59,20 +86,116 @@ class CommunityVideosController extends Controller
             };
             $fullLengthOnly = $youtubeVideos->reject($isShort)->values();
 
-            $videosList = $fullLengthOnly->all();
+            $gridPerPage = 12;
+            $page = (int) $request->input('page', 1);
+            $totalVideos = $fullLengthOnly->count();
             $featured = null;
-            $videos = $videosList;
-            if (count($videosList) > 0) {
-                $featured = $videosList[0];
-                $videos = array_slice($videosList, 1);
+            $videos = [];
+            if ($totalVideos > 0) {
+                if ($page === 1) {
+                    $featured = $fullLengthOnly->first();
+                    $videos = $fullLengthOnly->slice(1, $gridPerPage)->values()->all();
+                } else {
+                    $offset = 1 + $gridPerPage * ($page - 1);
+                    $videos = $fullLengthOnly->slice($offset, $gridPerPage)->values()->all();
+                }
             }
+            $hasMore = $totalVideos > 1 + $gridPerPage * $page;
+            $nextPage = $page + 1;
 
             // Shorts are not shown on this page (only real videos)
             $shorts = [];
 
             $channelBanners = $this->getChannelBannersForIndex();
+
+            // Stats for filter bar (imported videos, livestream replays)
+            $livestreamReplays = $fullLengthOnly->filter(fn ($v) => ($v['duration'] ?? '') === 'LIVE')->count();
+            $stats = [
+                'total_videos' => $totalVideos,
+                'livestream_replays' => $livestreamReplays,
+            ];
+
+            // Current user's channel: org or supporter (for "Your YouTube Channel" sidebar / Connect CTA)
+            $myChannel = null;
+            $userOrgHasYoutube = false;
+            $userOrgCanConnect = false;
+            $userId = Auth::id();
+            if ($userId) {
+                $org = Organization::query()
+                    ->select('id', 'name', 'user_id', 'youtube_channel_url', 'registered_user_image')
+                    ->where('user_id', $userId)
+                    ->with('user:id,slug')
+                    ->first();
+                $currentUser = User::query()
+                    ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
+                    ->find($userId);
+
+                if ($org) {
+                    $userOrgCanConnect = true;
+                    if ($org->youtube_channel_url) {
+                        $userOrgHasYoutube = true;
+                        $youtubeService = app(YouTubeService::class);
+                        $details = $youtubeService->getChannelDetails($org->youtube_channel_url);
+                        $allPreview = $youtubeService->getChannelVideos($org->youtube_channel_url, 15);
+                        $previewVideos = collect($allPreview)->filter(function ($v) {
+                            $d = $v['duration'] ?? '';
+                            if (! is_string($d) || $d === '' || $d === '0:00') {
+                                return false;
+                            }
+                            return ! preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+                        })->take(6)->values()->all();
+                        $userSlug = $org->user ? $org->user->slug : null;
+                        if (! $userSlug && $org->user_id) {
+                            $userSlug = User::query()->where('id', $org->user_id)->value('slug');
+                        }
+                        $myChannel = [
+                            'name' => $details['name'] ?? $org->name,
+                            'avatar' => $details['avatar_url'] ?? ($org->registered_user_image ? Storage::url($org->registered_user_image) : null),
+                            'subscriber_count' => $details['subscriber_count'] ?? 0,
+                            'subscriber_count_formatted' => $details['subscriber_count_formatted'] ?? number_format($details['subscriber_count'] ?? 0),
+                            'channel_slug' => $userSlug,
+                            'preview_videos' => array_map(fn ($v) => [
+                                'slug' => $v['id'],
+                                'title' => $v['title'],
+                                'thumbnail_url' => $v['thumbnail_url'],
+                                'duration' => $v['duration'] ?? '',
+                            ], $previewVideos),
+                        ];
+                    }
+                } elseif ($currentUser && $currentUser->youtube_channel_url) {
+                    // Supporter with connected YouTube channel
+                    $userOrgCanConnect = true;
+                    $userOrgHasYoutube = true;
+                    $youtubeService = app(YouTubeService::class);
+                    $details = $youtubeService->getChannelDetails($currentUser->youtube_channel_url);
+                    $allPreview = $youtubeService->getChannelVideos($currentUser->youtube_channel_url, 15);
+                    $previewVideos = collect($allPreview)->filter(function ($v) {
+                        $d = $v['duration'] ?? '';
+                        if (! is_string($d) || $d === '' || $d === '0:00') {
+                            return false;
+                        }
+                        return ! preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+                    })->take(6)->values()->all();
+                    $myChannel = [
+                        'name' => $details['name'] ?? $currentUser->name,
+                        'avatar' => $details['avatar_url'] ?? ($currentUser->registered_user_image ? Storage::url($currentUser->registered_user_image) : ($currentUser->image ? Storage::url($currentUser->image) : null)),
+                        'subscriber_count' => $details['subscriber_count'] ?? 0,
+                        'subscriber_count_formatted' => $details['subscriber_count_formatted'] ?? number_format($details['subscriber_count'] ?? 0),
+                        'channel_slug' => $currentUser->slug,
+                        'preview_videos' => array_map(fn ($v) => [
+                            'slug' => $v['id'],
+                            'title' => $v['title'],
+                            'thumbnail_url' => $v['thumbnail_url'],
+                            'duration' => $v['duration'] ?? '',
+                        ], $previewVideos),
+                    ];
+                } elseif ($currentUser) {
+                    // Supporter without YouTube: show Connect CTA
+                    $userOrgCanConnect = true;
+                }
+            }
         } catch (\Throwable $e) {
-            Log::error('Community Videos index failed', [
+            Log::error('Unity Videos index failed', [
                 'message' => $e->getMessage(),
                 'file' => $e->getFile(),
                 'line' => $e->getLine(),
@@ -81,12 +204,28 @@ class CommunityVideosController extends Controller
             $videos = [];
             $shorts = [];
             $channelBanners = [];
+            $stats = ['total_videos' => 0, 'livestream_replays' => 0];
+            $myChannel = null;
+            $userOrgHasYoutube = false;
+            $userOrgCanConnect = false;
+            $hasMore = false;
+            $nextPage = 2;
+            $nonprofitOrganizations = [];
+        }
+
+        // Load-more: return next page as JSON for infinite scroll
+        if ($request->wantsJson() && $page > 1) {
+            return response()->json([
+                'videos' => $videos ?? [],
+                'has_more' => $hasMore ?? false,
+                'next_page' => $nextPage ?? 2,
+            ]);
         }
 
         return Inertia::render('frontend/community-videos/Index', [
             'seo' => [
-                'title' => 'Community Videos',
-                'description' => 'Watch and share inspiring stories and community events from our supporters and nonprofits.',
+                'title' => 'Unity Videos',
+                'description' => 'Watch and share inspiring stories and community events from our supporters and nonprofits on Unity Videos.',
             ],
             'channelBanners' => $channelBanners,
             'featuredVideo' => $featured,
@@ -94,10 +233,35 @@ class CommunityVideosController extends Controller
             'shorts' => $shorts,
             'filters' => [
                 'search' => $search,
-                'category' => $category,
                 'tab' => $tab,
+                'org' => $org,
             ],
+            'nonprofitOrganizations' => $nonprofitOrganizations ?? [],
+            'stats' => $stats ?? ['total_videos' => 0, 'livestream_replays' => 0],
+            'videos_has_more' => $hasMore ?? false,
+            'videos_next_page' => $nextPage ?? 2,
+            'myChannel' => $myChannel ?? null,
+            'authUserChannelSlug' => isset($myChannel['channel_slug']) ? $myChannel['channel_slug'] : null,
+            'userOrgHasYoutube' => $userOrgHasYoutube ?? false,
+            'userOrgCanConnect' => $userOrgCanConnect ?? false,
         ]);
+    }
+
+    /**
+     * API: Search organizations with YouTube channel (for Non-Profits dropdown).
+     */
+    public function organizations(Request $request): \Illuminate\Http\JsonResponse
+    {
+        $search = trim((string) $request->input('search', ''));
+        $query = Organization::query()
+            ->whereNotNull('youtube_channel_url')
+            ->orderBy('name')
+            ->limit(50);
+        if ($search !== '') {
+            $query->where('name', 'like', '%' . $search . '%');
+        }
+        $data = $query->get(['id', 'name'])->map(fn ($o) => ['id' => $o->id, 'name' => $o->name])->values()->all();
+        return response()->json(['data' => $data]);
     }
 
     /**
@@ -109,13 +273,14 @@ class CommunityVideosController extends Controller
     private function getChannelBannersForIndex(): array
     {
         $orgs = Organization::query()
-            ->select('id', 'name', 'youtube_channel_url')
+            ->select('id', 'name', 'youtube_channel_url', 'user_id')
             ->whereNotNull('youtube_channel_url')
             ->with('user:id,slug')
             ->get();
 
         $youtubeService = app(YouTubeService::class);
         $banners = [];
+        $orgOwnerIds = $orgs->pluck('user_id')->filter()->all();
 
         foreach ($orgs as $org) {
             $channelSlug = $org->user?->slug;
@@ -133,7 +298,43 @@ class CommunityVideosController extends Controller
             }
         }
 
+        // Supporters: users with YouTube channel who are not org owners
+        $supporters = User::query()
+            ->select('id', 'name', 'slug', 'youtube_channel_url')
+            ->whereNotNull('youtube_channel_url')
+            ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
+            ->get();
+
+        foreach ($supporters as $supporter) {
+            if (! $supporter->slug) {
+                continue;
+            }
+            $details = $youtubeService->getChannelDetails($supporter->youtube_channel_url);
+            $bannerUrl = ($details !== null && isset($details['banner_url'])) ? $details['banner_url'] : null;
+            if (is_string($bannerUrl) && $bannerUrl !== '') {
+                $banners[] = [
+                    'slug' => $supporter->slug,
+                    'name' => $details['name'] ?? $supporter->name,
+                    'banner_url' => $bannerUrl,
+                ];
+            }
+        }
+
         return $banners;
+    }
+
+    /**
+     * Warm the Unity Videos index cache (used by scheduler so first visit is fast).
+     */
+    public function warmUnityVideosCache(): void
+    {
+        try {
+            $videos = $this->fetchAllYouTubeVideos();
+            Cache::put('unity_videos_all', $videos, 300);
+            Log::info('Unity Videos cache warmed', ['count' => $videos->count()]);
+        } catch (\Throwable $e) {
+            Log::warning('Unity Videos cache warm failed', ['message' => $e->getMessage()]);
+        }
     }
 
     /**
@@ -147,6 +348,14 @@ class CommunityVideosController extends Controller
             ->select('id', 'name', 'registered_user_image', 'user_id', 'youtube_channel_url')
             ->whereNotNull('youtube_channel_url')
             ->with('user:id,slug')
+            ->get();
+
+        $orgOwnerIds = $orgs->pluck('user_id')->filter()->all();
+        $supporters = User::query()
+            ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
+            ->whereNotNull('youtube_channel_url')
+            ->whereNotNull('slug')
+            ->when(! empty($orgOwnerIds), fn ($q) => $q->whereNotIn('id', $orgOwnerIds))
             ->get();
 
         $youtubeService = app(YouTubeService::class);
@@ -185,7 +394,6 @@ class CommunityVideosController extends Controller
                 ]);
             }
 
-            // Include currently live streams (so they appear in the feed)
             $liveStreams = $youtubeService->getChannelLiveStreams($org->youtube_channel_url, 10);
             $existingSlugs = $all->pluck('slug')->flip();
             foreach ($liveStreams as $yt) {
@@ -215,6 +423,85 @@ class CommunityVideosController extends Controller
                     'watch_url' => $yt['watch_url'],
                     'sort_at' => PHP_INT_MAX,
                 ]);
+            }
+        }
+
+        foreach ($supporters as $supporter) {
+            try {
+                $channelSlug = $supporter->slug;
+                $creatorAvatar = $supporter->registered_user_image
+                    ? Storage::url($supporter->registered_user_image)
+                    : ($supporter->image ? Storage::url($supporter->image) : null);
+                $youtubeService->getChannelDetails($supporter->youtube_channel_url); // ensure channel is valid
+                $creatorName = $supporter->name; // show person name, not channel name
+
+                $channelVideos = $youtubeService->getChannelVideos($supporter->youtube_channel_url, 30);
+            } catch (\Throwable $e) {
+                Log::warning('Unity Videos: skip supporter channel', ['user_id' => $supporter->id, 'message' => $e->getMessage()]);
+                continue;
+            }
+
+            foreach ($channelVideos as $yt) {
+                $publishedAt = $yt['published_at'] ?? '';
+                $sortAt = $publishedAt ? Carbon::parse($publishedAt)->timestamp : 0;
+                $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
+
+                $all->push([
+                    'id' => 'yt-' . $yt['id'],
+                    'slug' => $yt['id'],
+                    'title' => $yt['title'],
+                    'creator' => $creatorName,
+                    'creatorAvatar' => $creatorAvatar,
+                    'thumbnail_url' => $yt['thumbnail_url'],
+                    'duration' => $yt['duration'],
+                    'views' => $yt['views'],
+                    'views_formatted' => $yt['views_formatted'],
+                    'time_ago' => $timeAgo,
+                    'likes' => $yt['likes'] ?? 0,
+                    'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
+                    'comment_count' => $yt['comment_count'] ?? 0,
+                    'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
+                    'channel_slug' => $channelSlug,
+                    'organization_id' => null,
+                    'source' => 'youtube',
+                    'watch_url' => $yt['watch_url'],
+                    'sort_at' => $sortAt,
+                ]);
+            }
+
+            try {
+                $liveStreams = $youtubeService->getChannelLiveStreams($supporter->youtube_channel_url, 10);
+                $existingSlugs = $all->pluck('slug')->flip();
+                foreach ($liveStreams as $yt) {
+                    if ($existingSlugs->has($yt['id'])) {
+                        continue;
+                    }
+                    $publishedAt = $yt['published_at'] ?? '';
+                    $timeAgo = $publishedAt ? Carbon::parse($publishedAt)->diffForHumans() : '';
+                    $all->push([
+                        'id' => 'yt-' . $yt['id'],
+                        'slug' => $yt['id'],
+                        'title' => $yt['title'],
+                        'creator' => $creatorName,
+                        'creatorAvatar' => $creatorAvatar,
+                        'thumbnail_url' => $yt['thumbnail_url'],
+                        'duration' => $yt['duration'],
+                        'views' => $yt['views'],
+                        'views_formatted' => $yt['views_formatted'],
+                        'time_ago' => $timeAgo,
+                        'likes' => $yt['likes'] ?? 0,
+                        'likes_formatted' => $yt['likes_formatted'] ?? number_format((int) ($yt['likes'] ?? 0)),
+                        'comment_count' => $yt['comment_count'] ?? 0,
+                        'comment_count_formatted' => $yt['comment_count_formatted'] ?? number_format((int) ($yt['comment_count'] ?? 0)),
+                        'channel_slug' => $channelSlug,
+                        'organization_id' => null,
+                        'source' => 'youtube',
+                        'watch_url' => $yt['watch_url'],
+                        'sort_at' => PHP_INT_MAX,
+                    ]);
+                }
+            } catch (\Throwable $e) {
+                // Non-fatal: we already have regular videos for this supporter
             }
         }
 
@@ -378,7 +665,7 @@ class CommunityVideosController extends Controller
 
         return Inertia::render('frontend/community-videos/Channel', array_merge($data, [
             'seo' => [
-                'title' => $data['channel']['name'] . ' - Community Videos',
+                'title' => $data['channel']['name'] . ' - Unity Videos',
                 'description' => $data['channel']['description'] ? Str::limit($data['channel']['description'], 160) : 'Watch community videos from ' . $data['channel']['name'],
             ],
         ]));
@@ -393,7 +680,7 @@ class CommunityVideosController extends Controller
     public function getChannelPageData(string $slug): array
     {
         $user = User::query()
-            ->select('id', 'name', 'slug', 'image', 'registered_user_image')
+            ->select('id', 'name', 'slug', 'image', 'registered_user_image', 'youtube_channel_url')
             ->where('slug', $slug)
             ->firstOrFail();
 
@@ -401,6 +688,8 @@ class CommunityVideosController extends Controller
             ->select('id', 'user_id', 'name', 'description', 'mission', 'registered_user_image', 'youtube_channel_url')
             ->where('user_id', $user->id)
             ->first();
+
+        $channelUrl = $organization?->youtube_channel_url ?? $user->youtube_channel_url;
 
         if ($organization) {
             $channelName = $organization->name;
@@ -429,10 +718,10 @@ class CommunityVideosController extends Controller
 
         $youtubeVideos = [];
         $channelBannerUrl = null;
-        if ($organization?->youtube_channel_url) {
+        if ($channelUrl) {
             $youtubeService = app(YouTubeService::class);
-            $youtubeVideos = $youtubeService->getChannelVideos($organization->youtube_channel_url, 24);
-            $liveStreams = $youtubeService->getChannelLiveStreams($organization->youtube_channel_url, 10);
+            $youtubeVideos = $youtubeService->getChannelVideos($channelUrl, 24);
+            $liveStreams = $youtubeService->getChannelLiveStreams($channelUrl, 10);
             $existingIds = array_flip(array_column($youtubeVideos, 'id'));
             foreach ($liveStreams as $live) {
                 if (! isset($existingIds[$live['id']])) {
@@ -445,7 +734,7 @@ class CommunityVideosController extends Controller
                 $d = $v['duration'] ?? '';
                 return is_string($d) && $d !== '' && $d !== '0:00';
             }));
-            $channelDetails = $youtubeService->getChannelDetails($organization->youtube_channel_url);
+            $channelDetails = $youtubeService->getChannelDetails($channelUrl);
             if ($channelDetails) {
                 $channelBannerUrl = $channelDetails['banner_url'];
                 $totalVideos = $channelDetails['video_count'];
@@ -497,7 +786,7 @@ class CommunityVideosController extends Controller
                 'avatar' => $channelAvatar,
                 'banner_url' => $channelBannerUrl,
                 'organization_slug' => $organization ? $slug : null,
-                'youtube_channel_url' => $organization?->youtube_channel_url ?? null,
+                'youtube_channel_url' => $channelUrl,
                 'total_videos' => $totalVideos,
                 'total_views' => $totalViews,
                 'platform_app_likes' => $platformAppLikes,
@@ -641,7 +930,7 @@ class CommunityVideosController extends Controller
                 'embed_url' => 'https://www.youtube.com/embed/' . $id . '?autoplay=0',
             ];
             $seoTitle = $details['title'];
-            $seoDescription = Str::limit($details['description'], 160) ?: 'Watch this video on Community Videos.';
+            $seoDescription = Str::limit($details['description'], 160) ?: 'Watch this video on Unity Videos.';
         } else {
             // API unavailable or video not found: still show embed so the video can play
             $video = [
@@ -664,13 +953,21 @@ class CommunityVideosController extends Controller
                 'embed_url' => 'https://www.youtube.com/embed/' . $id . '?autoplay=0',
             ];
             $seoTitle = $creator ?: 'Watch video';
-            $seoDescription = 'Watch this video on Community Videos.';
+            $seoDescription = 'Watch this video on Unity Videos.';
         }
 
-        // More videos (like YouTube sidebar): all community YouTube videos excluding current, limit 20
+        // More videos (like YouTube sidebar): full-length videos only (exclude current, Shorts, and 0:00)
         $allVideos = $this->fetchAllYouTubeVideos();
+        $isShortOrInvalid = function (array $v): bool {
+            $d = $v['duration'] ?? '';
+            if (! is_string($d) || $d === '' || $d === '0:00') {
+                return true;
+            }
+            return (bool) preg_match('/^(?:0:\d{1,2}|1:00)$/', $d);
+        };
         $moreVideos = $allVideos
             ->reject(fn ($v) => ($v['slug'] ?? '') === $id)
+            ->reject($isShortOrInvalid)
             ->take(20)
             ->values()
             ->all();
@@ -722,7 +1019,7 @@ class CommunityVideosController extends Controller
                 'creatorAvatar' => $creatorAvatar ?: null,
             ];
             $seoTitle = $details['title'];
-            $seoDescription = Str::limit($details['description'], 160) ?: 'Watch this short on Community Videos.';
+            $seoDescription = Str::limit($details['description'], 160) ?: 'Watch this short on Unity Videos.';
         } else {
             $video = [
                 'id' => $id,
@@ -734,7 +1031,7 @@ class CommunityVideosController extends Controller
                 'creatorAvatar' => $creatorAvatar ? (str_starts_with($creatorAvatar, 'http') || str_starts_with($creatorAvatar, '/') ? $creatorAvatar : null) : null,
             ];
             $seoTitle = $creator ?: 'Short';
-            $seoDescription = 'Watch this short on Community Videos.';
+            $seoDescription = 'Watch this short on Unity Videos.';
         }
 
         $engagement = $this->getVideoEngagement($id, 'yt', $channelSlug);

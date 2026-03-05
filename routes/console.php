@@ -18,6 +18,9 @@ Schedule::command('irs:bmf:import --update-only --chunk=1000')
 
 Schedule::command('rss:warm-nonprofit')->everyFifteenMinutes();
 
+// Warm Unity Videos cache so /unity-videos loads quickly on first visit
+Schedule::command('unity-videos:warm-cache')->everyFiveMinutes();
+
 Schedule::command("model:prune", ['--model' => [\App\Models\SendJob::class]])->daily()->at("03:00")->withoutOverlapping()->runInBackground();
 
 

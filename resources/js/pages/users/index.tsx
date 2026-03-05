@@ -18,7 +18,9 @@ import {
   MoreVertical,
   Key,
   EyeOff,
-  CheckCircle2
+  CheckCircle2,
+  Mail,
+  Building2
 } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
 import { Link, router, usePage, Head, useForm } from "@inertiajs/react"
@@ -55,6 +57,7 @@ interface User {
   customPermissions: string[]
   joinedDate: string
   emailVerifiedAt: string | null
+  organization_name?: string | null
 }
 
 interface UsersPaginator {
@@ -265,48 +268,62 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
   const getStatusBadge = (loginStatus: number) => {
     if (loginStatus === 1) {
       return (
-        <Badge className="bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800">
-          <UserCheck className="h-3 w-3 mr-1" />
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+          <UserCheck className="h-3 w-3" />
           Active
-        </Badge>
+        </span>
       )
     }
     return (
-      <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 border-red-200 dark:border-red-800">
-        <EyeOff className="h-3 w-3 mr-1" />
-        Login Disabled
-      </Badge>
+      <span className="inline-flex items-center gap-1 rounded-full bg-red-500/10 px-2 py-0.5 text-[11px] font-medium text-red-600 dark:text-red-400 border border-red-500/20">
+        <EyeOff className="h-3 w-3" />
+        Disabled
+      </span>
     )
   }
 
   const getEmailVerificationBadge = (emailVerifiedAt: string | null) => {
     if (emailVerifiedAt) {
       return (
-        <Badge className="bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800 mt-1">
-          <CheckCircle2 className="h-3 w-3 mr-1" />
+        <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/10 px-2 py-0.5 text-[11px] font-medium text-blue-600 dark:text-blue-400 border border-blue-500/20">
+          <CheckCircle2 className="h-3 w-3" />
           Verified
-        </Badge>
+        </span>
       )
     }
     return (
-      <Badge className="bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400 border-orange-200 dark:border-orange-800 mt-1">
-        <CheckCircle2 className="h-3 w-3 mr-1" />
-        Not Verified
-      </Badge>
+      <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[11px] font-medium text-amber-600 dark:text-amber-400 border border-amber-500/20">
+        <CheckCircle2 className="h-3 w-3" />
+        Unverified
+      </span>
     )
   }
 
   const getRoleBadge = (role: string) => {
-    const roleColors: Record<string, string> = {
-      'admin': 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400 border-purple-200 dark:border-purple-800',
-      'organization': 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border-blue-200 dark:border-blue-800',
-      'user': 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300 border-gray-200 dark:border-gray-700',
+    const roleStyles: Record<string, string> = {
+      'admin': 'bg-purple-500/15 text-purple-700 dark:text-purple-300 border-purple-500/30',
+      'organization': 'bg-blue-500/15 text-blue-700 dark:text-blue-300 border-blue-500/30',
+      'organization_pending': 'bg-amber-500/15 text-amber-700 dark:text-amber-300 border-amber-500/30',
+      'user': 'bg-slate-500/10 text-slate-700 dark:text-slate-300 border-slate-500/20',
     }
+    const key = role.toLowerCase().replace(/\s+/g, '_')
+    const style = roleStyles[key] || roleStyles['user']
     return (
-      <Badge className={roleColors[role.toLowerCase()] || roleColors['user']}>
+      <span className={`inline-flex items-center rounded-md border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${style}`}>
         {role}
-      </Badge>
+      </span>
     )
+  }
+
+  const getCardAccent = (role: string) => {
+    const accents: Record<string, string> = {
+      'admin': 'border-l-purple-500',
+      'organization': 'border-l-blue-500',
+      'organization_pending': 'border-l-amber-500',
+      'user': 'border-l-slate-400 dark:border-l-slate-500',
+    }
+    const key = role.toLowerCase().replace(/\s+/g, '_')
+    return accents[key] || accents['user']
   }
 
   return (
@@ -403,21 +420,19 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
               {users.data.map((user) => (
                 <Card
                   key={user.id}
-                  className="group hover:shadow-lg transition-all duration-200 border rounded-lg relative"
+                  className={`group relative overflow-hidden rounded-xl border bg-card shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-1 border-l-4 ${getCardAccent(user.role)}`}
                 >
-                  <CardContent className="p-5">
-                    {/* Top Section - Badge and Dropdown */}
-                    <div className="flex items-start justify-between mb-4">
-                      <div className="top-0 left-0">
-                        {getRoleBadge(user.role)}
-                      </div>
+                  <CardContent className="p-0">
+                    {/* Top: role pill + menu */}
+                    <div className="flex items-center justify-between px-4 pt-3 pb-2">
+                      {getRoleBadge(user.role)}
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                          <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/80">
                             <MoreVertical className="h-4 w-4" />
                           </Button>
                         </DropdownMenuTrigger>
@@ -474,30 +489,31 @@ export default function UsersIndex({ allRoles, filters = {} }: UsersListProps) {
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
-
-                    {/* Center Section - Avatar, Name, Email */}
-                    <div className="flex flex-col items-center mb-4">
-                      <Avatar className="h-16 w-16 mb-3">
+                    {/* Main: avatar + name + org/email */}
+                    <div className="flex items-start gap-3 px-4 pb-3">
+                      <Avatar className="h-11 w-11 shrink-0 border-2 border-background shadow-md ring-1 ring-black/5 dark:ring-white/5">
                         <AvatarImage src={user.avatar || undefined} alt={user.name} />
-                        <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                          {user.name
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")
-                            .toUpperCase()
-                            .slice(0, 2)}
+                        <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">
+                          {user.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2)}
                         </AvatarFallback>
                       </Avatar>
-                      
-                      <h3 className="font-semibold text-base text-center mb-1 line-clamp-1">{user.name}</h3>
-                      <p className="text-sm text-muted-foreground text-center line-clamp-1">{user.email}</p>
-                    </div>
-
-                    {/* Bottom Section - Status and Verification Badge */}
-                    <div className="flex items-center justify-between pt-4 border-t">
-                      <div className="flex flex-col">
-                        {getStatusBadge(user.loginStatus)}
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <h3 className="font-semibold text-foreground truncate leading-tight">{user.name}</h3>
+                        {user.organization_name ? (
+                          <p className="mt-1 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                            <Building2 className="h-3 w-3 shrink-0 text-muted-foreground/80" />
+                            {user.organization_name}
+                          </p>
+                        ) : null}
+                        <p className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground truncate">
+                          <Mail className="h-3 w-3 shrink-0 text-muted-foreground/80" />
+                          {user.email}
+                        </p>
                       </div>
+                    </div>
+                    {/* Bottom: status badges */}
+                    <div className="flex flex-wrap items-center gap-2 px-4 py-3 bg-muted/30 dark:bg-muted/20 border-t border-border/50">
+                      {getStatusBadge(user.loginStatus)}
                       {getEmailVerificationBadge(user.emailVerifiedAt)}
                     </div>
                   </CardContent>

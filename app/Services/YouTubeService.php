@@ -113,7 +113,7 @@ class YouTubeService
 
     /**
      * Fetch recent uploads from a channel. Returns array of video items for frontend.
-     * No cache so new uploads (including Shorts) appear in real time.
+     * Cached 5 minutes per channel so index page loads quickly on first visit and reload.
      *
      * @return array<int, array{id: string, title: string, thumbnail_url: string, published_at: string, views: int, views_formatted: string, duration: string, watch_url: string}>
      */
@@ -133,7 +133,9 @@ class YouTubeService
             return [];
         }
 
-        return $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults);
+        $cacheKey = 'youtube_channel_videos_' . md5($channelUrl) . '_' . $maxResults;
+
+        return Cache::remember($cacheKey, 300, fn () => $this->fetchPlaylistVideos($uploadsPlaylistId, $maxResults));
     }
 
     /**
@@ -259,7 +261,7 @@ class YouTubeService
 
         return Cache::remember($cacheKey, 3600, function () use ($channelId) {
             $response = $this->http()->get($this->baseUrl . '/channels', [
-                'part' => 'brandingSettings,statistics',
+                'part' => 'snippet,brandingSettings,statistics',
                 'id' => $channelId,
                 'key' => $this->apiKey,
             ]);
@@ -275,17 +277,29 @@ class YouTubeService
                 return null;
             }
 
+            $snippet = $item['snippet'] ?? [];
+            $thumbnails = $snippet['thumbnails'] ?? [];
+            $thumb = $thumbnails['medium'] ?? $thumbnails['default'] ?? null;
+            $avatarUrl = $thumb && isset($thumb['url']) ? (string) $thumb['url'] : null;
+
             $branding = $item['brandingSettings'] ?? [];
             $image = $branding['image'] ?? [];
             $bannerUrl = $image['bannerExternalUrl'] ?? null;
             $stats = $item['statistics'] ?? [];
             $videoCount = (int) ($stats['videoCount'] ?? 0);
             $viewCount = (int) ($stats['viewCount'] ?? 0);
+            $subscriberCount = (int) ($stats['subscriberCount'] ?? 0);
 
             return [
+                'name' => $snippet['title'] ?? null,
+                'avatar_url' => $avatarUrl,
                 'banner_url' => $bannerUrl ? (string) $bannerUrl : null,
                 'video_count' => $videoCount,
                 'view_count' => $viewCount,
+                'subscriber_count' => $subscriberCount,
+                'subscriber_count_formatted' => $subscriberCount >= 1000000
+                    ? round($subscriberCount / 1000000, 1) . 'M'
+                    : ($subscriberCount >= 1000 ? round($subscriberCount / 1000, 1) . 'K' : (string) $subscriberCount),
             ];
         });
     }

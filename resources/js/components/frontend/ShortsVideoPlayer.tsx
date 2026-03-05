@@ -222,7 +222,7 @@ export function ShortsVideoPlayer({
     if (onShare) {
       onShare()
     } else {
-      const url = `${window.location.origin}/community-videos/shorts/yt/${videoId}${channelSlug ? `?channel_slug=${encodeURIComponent(channelSlug)}&creator=${encodeURIComponent(creator || "")}` : ""}`
+      const url = `${window.location.origin}/unity-videos/shorts/yt/${videoId}${channelSlug ? `?channel_slug=${encodeURIComponent(channelSlug)}&creator=${encodeURIComponent(creator || "")}` : ""}`
       if (navigator.share) {
         navigator.share({ title: title || "Short", url }).catch(() => navigator.clipboard.writeText(url))
       } else {
@@ -403,10 +403,10 @@ export function ShortsVideoPlayer({
           >
             <div className="flex items-center gap-2">
               <Link
-                href="/community-videos"
+                href="/unity-videos"
                 onClick={(e) => e.stopPropagation()}
                 className={btnClass}
-                aria-label="Back to Community Videos"
+                aria-label="Back to Unity Videos"
               >
                 <ArrowLeft className="h-5 w-5" />
               </Link>

@@ -110,7 +110,7 @@ export function ChannelPageContent({
     }
     setLikeLoadingId(yt.id)
     try {
-      const { data } = await axios.post(route("community-videos.engagement.like"), {
+      const { data } = await axios.post(route("unity-videos.engagement.like"), {
         video_id: yt.id,
         source: "yt",
         channel_slug: channel.slug ?? undefined,
@@ -136,9 +136,9 @@ export function ChannelPageContent({
   }
 
   const handleYoutubeShare = async (yt: YouTubeVideoItem) => {
-    const url = `${window.location.origin}/community-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
+    const url = `${window.location.origin}/unity-videos/watch/yt/${yt.id}${channel.slug ? `?channel_slug=${encodeURIComponent(channel.slug)}&creator=${encodeURIComponent(channel.name)}` : ""}`
     try {
-      await axios.post(route("community-videos.engagement.share"), {
+      await axios.post(route("unity-videos.engagement.share"), {
         video_id: yt.id,
         source: "yt",
         channel_slug: channel.slug ?? undefined,
@@ -276,7 +276,7 @@ export function ChannelPageContent({
                     if (short.channel_slug) params.set("channel_slug", short.channel_slug)
                     if (short.creator) params.set("creator", short.creator)
                     if (short.creatorAvatar) params.set("creator_avatar", short.creatorAvatar)
-                    const watchHref = `/community-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
+                    const watchHref = `/unity-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
                     return (
                       <a
                         key={short.id}
@@ -313,7 +313,7 @@ export function ChannelPageContent({
                 <p className={`mb-2 ${isDashboard ? "text-muted-foreground" : "text-gray-600 dark:text-gray-400"}`}>No videos yet</p>
                 <p className={`text-sm mb-6 ${isDashboard ? "text-muted-foreground" : "text-gray-500 dark:text-gray-500"}`}>This channel hasn't uploaded any videos.</p>
                 <Button className="bg-purple-600 hover:bg-purple-500 text-white border-0 rounded-lg" asChild>
-                  <Link href="/community-videos">Browse Community Videos</Link>
+                  <Link href="/unity-videos">Browse Unity Videos</Link>
                 </Button>
               </div>
             ) : null}
@@ -322,7 +322,7 @@ export function ChannelPageContent({
                 {videos.map((video) => (
                   <Link
                     key={video.id}
-                    href={`/community-videos/watch/${video.slug}`}
+                    href={`/unity-videos/watch/${video.slug}`}
                     className="group"
                   >
                     <div className={`relative aspect-video w-full rounded-lg overflow-hidden ${isDashboard ? "bg-muted" : "bg-gray-200 dark:bg-gray-800"}`}>
@@ -371,7 +371,7 @@ export function ChannelPageContent({
                     if (channel.slug) q.set("channel_slug", channel.slug)
                     if (channel.name) q.set("creator", channel.name)
                     if (channel.avatar) q.set("creator_avatar", channel.avatar)
-                    const watchHref = `/community-videos/watch/yt/${yt.id}${q.toString() ? `?${q.toString()}` : ""}`
+                    const watchHref = `/unity-videos/watch/yt/${yt.id}${q.toString() ? `?${q.toString()}` : ""}`
                     return (
                       <div key={yt.id} className="group block">
                         <a
@@ -406,7 +406,7 @@ export function ChannelPageContent({
                             </h3>
                           </a>
                           <Link
-                            href={`/community-videos/channel/${channel.slug}`}
+                            href={`/unity-videos/channel/${channel.slug}`}
                             className="text-xs text-gray-500 dark:text-gray-400 mt-1 block truncate hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                           >
                             {channel.name}

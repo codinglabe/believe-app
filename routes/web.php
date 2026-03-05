@@ -206,19 +206,20 @@ Route::post('/nonprofit-news/save/{article}', [SavedNewsController::class, 'togg
     ->name('nonprofit.news.save.toggle')
     ->middleware('auth');
 
-Route::get('/community-videos', [CommunityVideosController::class, 'index'])->name('community-videos.index');
-Route::get('/community-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('community-videos.channel');
-Route::get('/community-videos/upload', [CommunityVideosController::class, 'upload'])->name('community-videos.upload')->middleware('auth');
+Route::get('/unity-videos', [CommunityVideosController::class, 'index'])->name('unity-videos.index');
+Route::get('/unity-videos/organizations', [CommunityVideosController::class, 'organizations'])->name('unity-videos.organizations');
+Route::get('/unity-videos/channel/{slug}', [CommunityVideosController::class, 'channel'])->name('unity-videos.channel');
+Route::get('/unity-videos/upload', [CommunityVideosController::class, 'upload'])->name('unity-videos.upload')->middleware('auth');
 // More specific route first so /watch/yt/{id} is not matched by /watch/{slug}
-Route::get('/community-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('community-videos.show-youtube');
-Route::get('/community-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('community-videos.show-short');
-Route::get('/community-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('community-videos.show');
+Route::get('/unity-videos/watch/yt/{id}', [CommunityVideosController::class, 'showYouTube'])->name('unity-videos.show-youtube');
+Route::get('/unity-videos/shorts/yt/{id}', [CommunityVideosController::class, 'showShort'])->name('unity-videos.show-short');
+Route::get('/unity-videos/watch/{slug}', [CommunityVideosController::class, 'show'])->name('unity-videos.show');
 
-Route::post('/community-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('community-videos.engagement.like')->middleware('auth');
-Route::post('/community-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('community-videos.engagement.view')->middleware('auth');
-Route::post('/community-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('community-videos.engagement.share');
-Route::get('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('community-videos.engagement.comments');
-Route::post('/community-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('community-videos.engagement.comment')->middleware('auth');
+Route::post('/unity-videos/engagement/like', [CommunityVideoEngagementController::class, 'like'])->name('unity-videos.engagement.like')->middleware('auth');
+Route::post('/unity-videos/engagement/view', [CommunityVideoEngagementController::class, 'view'])->name('unity-videos.engagement.view')->middleware('auth');
+Route::post('/unity-videos/engagement/share', [CommunityVideoEngagementController::class, 'share'])->name('unity-videos.engagement.share');
+Route::get('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comments'])->name('unity-videos.engagement.comments');
+Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementController::class, 'comment'])->name('unity-videos.engagement.comment')->middleware('auth');
 
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
@@ -557,6 +558,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get("/profile/topics/select", [UsersInterestedTopicsController::class, 'userSelect'])
         ->name('topics.select');
+
+    Route::get('/profile/integrations', [UserProfileController::class, 'integrations'])->name('profile.integrations');
 });
 
 Route::post('/user/topics/store', [UsersInterestedTopicsController::class, 'store'])
@@ -1591,12 +1594,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
     });
 
-    // Integrations (organization only)
-    Route::prefix('integrations')->name('integrations.')->middleware('role:organization')->group(function () {
-        Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube');
-        Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
-        Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
-        Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
+    // Integrations – Dropbox (organization only; inside dashboard group)
+    Route::prefix('integrations')->name('integrations.')->group(function () {
         Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
         Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
         Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
@@ -1610,6 +1609,14 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
     });
 });
 
+// YouTube integration: organization + supporter (outside dashboard group so role:user can access)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+    Route::get('/youtube/connect', [IntegrationsController::class, 'youtubeConnect'])->name('youtube.connect'); // supporter (normal user) only
+    Route::get('/youtube', [IntegrationsController::class, 'youtube'])->name('youtube'); // organization only
+    Route::get('/youtube/redirect', [IntegrationsController::class, 'redirectToYouTube'])->name('youtube.redirect');
+    Route::get('/youtube/callback', [IntegrationsController::class, 'youtubeCallback'])->name('youtube.callback');
+    Route::put('/youtube', [IntegrationsController::class, 'updateYoutube'])->name('youtube.update');
+});
 
 // route for donation
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
@@ -1799,7 +1806,15 @@ Route::prefix('admin/contact-submissions')
         Route::get('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'show'])->name('show');
         Route::put('/{contactSubmission}/status', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'updateStatus'])->name('update-status');
         Route::delete('/{contactSubmission}', [App\Http\Controllers\Admin\ContactSubmissionController::class, 'destroy'])->name('destroy');
-});
+    });
+
+// Admin IRS Board Members (System Management)
+Route::prefix('admin/irs-members')
+    ->middleware(['auth', 'EnsureEmailIsVerified', 'role:admin', 'topics.selected'])
+    ->name('admin.irs-members.')
+    ->group(function () {
+        Route::get('/', [App\Http\Controllers\Admin\IrsBoardMemberController::class, 'index'])->name('index');
+    });
 
 // Admin Fundraise Leads (qualified leads from /fundraise funnel → Wefunder)
 Route::prefix('admin/fundraise-leads')

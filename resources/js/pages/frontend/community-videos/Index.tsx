@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
+import { useDebounce } from "@/hooks/useDebounce"
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { Link, router, usePage } from "@inertiajs/react"
 import { route } from "ziggy-js"
@@ -8,15 +9,18 @@ import axios from "axios"
 import { PageHead } from "@/components/frontend/PageHead"
 import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/ui/input"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/frontend/ui/popover"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard } from "lucide-react"
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/frontend/ui/command"
+import { Search, Heart, ThumbsUp, Play, Building2, ChevronDown, Share2, Eye, MessageCircle, Clapperboard, Youtube, Lock, Sparkles, Brain, HardDrive, ChevronsUpDown, Check } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
+import { cn } from "@/lib/utils"
 
 interface VideoItem {
   id: number | string
@@ -51,6 +55,15 @@ interface ChannelBanner {
   banner_url: string
 }
 
+interface MyChannel {
+  name: string
+  avatar: string | null
+  subscriber_count: number
+  subscriber_count_formatted: string
+  channel_slug: string | null
+  preview_videos: Array<{ slug: string; title: string; thumbnail_url: string; duration: string }>
+}
+
 interface Props {
   seo?: { title?: string; description?: string }
   channelBanners?: ChannelBanner[]
@@ -59,45 +72,136 @@ interface Props {
   shorts?: VideoItem[]
   filters: {
     search: string
-    category: string
     tab: string
+    org?: string
   }
+  nonprofitOrganizations?: Array<{ id: number; name: string }>
+  stats?: { total_videos: number; livestream_replays: number }
+  videos_has_more?: boolean
+  videos_next_page?: number
+  myChannel?: MyChannel | null
+  authUserChannelSlug?: string | null
+  userOrgHasYoutube?: boolean
+  userOrgCanConnect?: boolean
 }
 
 function formatCount(n: number) {
   return n >= 1e6 ? (n / 1e6).toFixed(1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(1) + "K" : String(n)
 }
 
-const BANNER_AUTO_ADVANCE_MS = 5000
 const SHORTS_AUTO_ADVANCE_MS = 4500
 const SHORTS_PER_PAGE = 4
 
-export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters }: Props) {
+export default function CommunityVideosIndex({ seo, channelBanners = [], featuredVideo: initialFeatured, videos: initialVideos, shorts = [], filters, nonprofitOrganizations = [], stats = { total_videos: 0, livestream_replays: 0 }, videos_has_more = false, videos_next_page = 2, myChannel = null, authUserChannelSlug = null, userOrgHasYoutube = false, userOrgCanConnect = false }: Props) {
   const { auth } = usePage().props as { auth?: { user?: { id: number } } }
   const [featuredVideo, setFeaturedVideo] = useState<VideoItem | null>(initialFeatured)
   const [videos, setVideos] = useState<VideoItem[]>(initialVideos)
+  const [hasMore, setHasMore] = useState(videos_has_more)
+  const [nextPage, setNextPage] = useState(videos_next_page)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [searchInput, setSearchInput] = useState(filters.search)
   const [likeLoadingId, setLikeLoadingId] = useState<string | number | null>(null)
-  const [bannerIndex, setBannerIndex] = useState(0)
   const [shortsIndex, setShortsIndex] = useState(0)
-  const bannerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const [orgDropdownOpen, setOrgDropdownOpen] = useState(false)
+  const [orgSearchQuery, setOrgSearchQuery] = useState("")
+  const [orgSearchResults, setOrgSearchResults] = useState<Array<{ id: number; name: string }>>([])
+  const [orgSearchLoading, setOrgSearchLoading] = useState(false)
+  const [selectedOrgName, setSelectedOrgName] = useState<string | null>(null)
   const shortsIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
+  const orgDropdownJustOpenedRef = useRef(false)
 
+  // Sync video list and pagination from server when props change (e.g. after search or tab change)
   useEffect(() => {
     setFeaturedVideo(initialFeatured)
     setVideos(initialVideos)
-  }, [initialFeatured, initialVideos])
+    setHasMore(videos_has_more)
+    setNextPage(videos_next_page)
+  }, [initialFeatured, initialVideos, videos_has_more, videos_next_page, filters.search, filters.tab, filters.org])
 
-  // Auto-advance channel banner slider
+  // Keep search input in sync with URL (e.g. back/forward, or after server response)
   useEffect(() => {
-    if (channelBanners.length <= 1) return
-    bannerIntervalRef.current = setInterval(() => {
-      setBannerIndex((i) => (i + 1) % channelBanners.length)
-    }, BANNER_AUTO_ADVANCE_MS)
-    return () => {
-      if (bannerIntervalRef.current) clearInterval(bannerIntervalRef.current)
+    const urlSearch = filters.search ?? ""
+    setSearchInput(urlSearch)
+  }, [filters.search])
+
+  const loadMore = useCallback(() => {
+    if (loadingMore || !hasMore) return
+    setLoadingMore(true)
+    axios.get(route("unity-videos.index"), {
+      params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org },
+      headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
+    }).then(({ data }) => {
+      setVideos((prev) => [...prev, ...(data.videos || [])])
+      setHasMore(!!data.has_more)
+      setNextPage(data.next_page ?? nextPage + 1)
+    }).catch(() => {
+      setHasMore(false)
+    }).finally(() => {
+      setLoadingMore(false)
+    })
+  }, [loadingMore, hasMore, nextPage, filters.search, filters.tab, filters.org])
+
+  useEffect(() => {
+    const el = loadMoreSentinelRef.current
+    if (!el || !hasMore) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && hasMore && !loadingMore) loadMore()
+      },
+      { rootMargin: "200px", threshold: 0 }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasMore, loadingMore, loadMore])
+
+  const fetchOrganizations = useCallback((search: string) => {
+    setOrgSearchLoading(true)
+    axios.get(route("unity-videos.organizations"), { params: { search } })
+      .then(({ data }) => setOrgSearchResults(data?.data ?? []))
+      .catch(() => setOrgSearchResults([]))
+      .finally(() => setOrgSearchLoading(false))
+  }, [])
+
+  useEffect(() => {
+    if (!orgDropdownOpen) return
+    fetchOrganizations(orgSearchQuery)
+  }, [orgDropdownOpen])
+
+  const debouncedFetchOrgs = useDebounce((q: string) => {
+    if (!orgDropdownOpen) return
+    fetchOrganizations(q)
+  }, 300)
+
+  useEffect(() => {
+    if (!orgDropdownOpen) return
+    debouncedFetchOrgs(orgSearchQuery)
+  }, [orgSearchQuery, orgDropdownOpen])
+
+  useEffect(() => {
+    if (!orgDropdownOpen) {
+      setOrgSearchQuery("")
     }
-  }, [channelBanners.length])
+  }, [orgDropdownOpen])
+
+  // Sync selected org display name when page loads with org in URL
+  const orgFilter = filters.org ?? "all"
+  useEffect(() => {
+    if (orgFilter !== "all" && nonprofitOrganizations.length > 0) {
+      const name = nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name
+      if (name) setSelectedOrgName((prev) => prev ?? name)
+    }
+  }, [orgFilter, nonprofitOrganizations])
+
+  const orgDropdownDisplayName = useMemo(() => {
+    if (orgFilter === "all") return "All organizations"
+    return (
+      selectedOrgName ??
+      nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ??
+      orgSearchResults.find((o) => String(o.id) === orgFilter)?.name ??
+      "Organization"
+    )
+  }, [orgFilter, selectedOrgName, nonprofitOrganizations, orgSearchResults])
 
   const shortsSlides = useMemo(() => {
     const pages: VideoItem[][] = []
@@ -117,9 +221,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     }
   }, [shortsSlides.length])
 
-  const activeTab = (filters.tab === "latest" || filters.tab === "trending" || filters.tab === "nonprofits"
+  const activeTab = (filters.tab === "latest" || filters.tab === "trending" || filters.tab === "nonprofits" || filters.tab === "supporter"
     ? filters.tab
-    : "latest") as "latest" | "trending" | "nonprofits"
+    : "latest") as "latest" | "trending" | "nonprofits" | "supporter"
   const category = filters.category || "all"
 
   const updateVideoLike = useCallback((videoId: string | number, newLiked: boolean, newAppLikes: number) => {
@@ -142,13 +246,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       e.preventDefault()
       e.stopPropagation()
       if (!auth?.user?.id) {
-        window.location.href = route("login") + "?redirect=" + encodeURIComponent("/community-videos")
+        window.location.href = route("login") + "?redirect=" + encodeURIComponent("/unity-videos")
         return
       }
       const id = video.slug ?? video.id
       setLikeLoadingId(id)
       try {
-        const { data } = await axios.post(route("community-videos.engagement.like"), {
+        const { data } = await axios.post(route("unity-videos.engagement.like"), {
           video_id: String(video.slug ?? video.id),
           source: "yt",
           channel_slug: video.channel_slug ?? undefined,
@@ -166,9 +270,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   const handleShare = useCallback(async (e: React.MouseEvent, video: VideoItem) => {
     e.preventDefault()
     e.stopPropagation()
-    const url = `${window.location.origin}/community-videos/watch/yt/${video.slug}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator)}` : ""}`
+    const url = `${window.location.origin}/unity-videos/watch/yt/${video.slug}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator)}` : ""}`
     try {
-      await axios.post(route("community-videos.engagement.share"), {
+      await axios.post(route("unity-videos.engagement.share"), {
         video_id: String(video.slug ?? video.id),
         source: "yt",
         channel_slug: video.channel_slug ?? undefined,
@@ -185,135 +289,124 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
     }
   }, [])
 
+  // Defaults: only include in URL when different from these
+  const defaultSearch = ""
+  const defaultTab = "latest"
+  const defaultOrg = "all"
+
   const applyFilters = useCallback(
-    (updates: { search?: string; category?: string; tab?: string }) => {
-      router.get("/community-videos", {
-        search: updates.search !== undefined ? updates.search : filters.search,
-        category: updates.category !== undefined ? updates.category : filters.category,
-        tab: updates.tab !== undefined ? updates.tab : filters.tab,
-      }, { preserveState: false })
+    (updates: { search?: string; tab?: string; org?: string }) => {
+      const search = updates.search !== undefined ? updates.search : filters.search
+      const tab = updates.tab !== undefined ? updates.tab : filters.tab
+      const org = updates.org !== undefined ? updates.org : (filters.org ?? defaultOrg)
+      const params: Record<string, string> = {}
+      if (search !== defaultSearch) params.search = search
+      if (tab !== defaultTab) params.tab = tab
+      if (tab === "nonprofits" && org !== defaultOrg) params.org = org
+      router.get("/unity-videos", params, { preserveState: false })
     },
-    [filters.search, filters.category, filters.tab]
+    [filters.search, filters.tab, filters.org]
   )
+
+  // Debounced search: apply filters automatically after user stops typing (400ms)
+  const debouncedApplySearch = useDebounce((value: string) => {
+    if (value === filters.search) return
+    applyFilters({ search: value })
+  }, 400)
+
+  useEffect(() => {
+    if (searchInput === filters.search) return
+    debouncedApplySearch(searchInput)
+  }, [searchInput, filters.search])
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     applyFilters({ search: searchInput })
   }
 
-  const handleCategoryChange = (value: string) => {
-    applyFilters({ category: value })
+  const handleOrgChange = (value: string, displayName?: string | null) => {
+    setSelectedOrgName(value === "all" ? null : displayName ?? null)
+    applyFilters({ tab: "nonprofits", org: value })
   }
 
-  const handleTabChange = (tab: "latest" | "trending" | "nonprofits") => {
+  const handleTabChange = (tab: "latest" | "trending" | "nonprofits" | "supporter") => {
     applyFilters({ tab })
   }
 
   const hasContent = featuredVideo || videos.length > 0
 
+  // When search returns only one result it's shown as featured and grid is empty; show it in the grid too so the grid is visible
+  const gridVideos =
+    (filters.search?.trim() && featuredVideo && videos.length === 0)
+      ? [featuredVideo]
+      : videos
+
+  const connectYoutubeUrl = route("login") + "?redirect=" + encodeURIComponent("/integrations/youtube/redirect")
+
   return (
     <FrontendLayout>
-      <PageHead title={seo?.title ?? "Community Videos"} description={seo?.description} />
-      <div className="min-h-screen bg-white dark:bg-gray-900">
-        <header className="fixed top-16 left-0 right-0 z-10 w-full bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-2">
-            <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
-              {/* Row 1 on mobile: search */}
-              <div className="flex items-center gap-2 min-w-0 flex-1 w-full sm:max-w-2xl">
-                <div className="relative flex-1 min-w-0">
-                  <Input
-                    placeholder="Search"
-                    value={searchInput}
-                    onChange={(e) => setSearchInput(e.target.value)}
-                    className="h-8 sm:h-9 pl-3 sm:pl-4 pr-9 sm:pr-10 rounded-full border border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-900 text-sm focus-visible:ring-1"
-                  />
-                  <button
-                    type="submit"
-                    className="absolute right-0 top-0 h-8 sm:h-9 w-9 flex items-center justify-center rounded-r-full bg-gray-100 dark:bg-gray-700 border border-l-0 border-gray-300 dark:border-gray-600"
-                  >
-                    <Search className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-                  </button>
+      <PageHead title={seo?.title ?? "Unity Video Hub"} description={seo?.description} />
+      <div className="min-h-screen bg-gray-950 text-gray-100">
+        {/* Profile completion banner - logged-in user (org or supporter) without YouTube */}
+        {userOrgCanConnect && !userOrgHasYoutube && auth?.user && (
+          <div className="bg-amber-500/15 border-b border-amber-500/30">
+            <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <p className="text-sm text-amber-200">
+                <strong>Complete Your Profile to Unlock All Unity Video Hub Features:</strong> 1. Connect your YouTube channel
+              </p>
+              <div className="flex items-center gap-3">
+                <div className="w-24 h-2 rounded-full bg-gray-700 overflow-hidden">
+                  <div className="h-full w-[80%] rounded-full bg-amber-400" />
                 </div>
+                <Button
+                  size="sm"
+                  type="button"
+                  className="bg-amber-500 hover:bg-amber-600 text-gray-900 font-medium"
+                  onClick={() => { window.location.href = route("integrations.youtube.redirect"); }}
+                >
+                  Continue &gt;
+                </Button>
               </div>
-              {/* Row 2 on mobile: categories */}
-              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
-                <Select value={category} onValueChange={handleCategoryChange}>
-                  <SelectTrigger className="h-8 sm:h-9 flex-1 min-w-0 sm:flex-none sm:w-[130px] rounded-full border border-gray-300 dark:border-gray-600 text-sm bg-gray-50 dark:bg-gray-900">
-                    <SelectValue placeholder="Categories" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All</SelectItem>
-                    <SelectItem value="events">Events</SelectItem>
-                    <SelectItem value="stories">Stories</SelectItem>
-                    <SelectItem value="impact">Impact</SelectItem>
-                  </SelectContent>
-                </Select>
+            </div>
+          </div>
+        )}
+
+        <header className="sticky top-16 left-0 right-0 z-10 w-full bg-gray-950/95 backdrop-blur border-b border-gray-800">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3">
+            <form onSubmit={handleSearchSubmit} className="flex justify-center">
+              <div className="relative w-full max-w-md">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                <Input
+                  type="search"
+                  placeholder="Search videos..."
+                  value={searchInput}
+                  onChange={(e) => setSearchInput(e.target.value)}
+                  className="h-10 pl-10 pr-20 w-full rounded-lg border border-gray-700 bg-gray-900 text-gray-100 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500/50"
+                />
+                <button
+                  type="submit"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/80 transition-colors"
+                >
+                  Search
+                </button>
               </div>
             </form>
           </div>
         </header>
 
-        {/* Channel banner slider - full width, animated */}
-        {channelBanners.length > 0 && (
-          <section className="w-full pt-16 sm:pt-14" aria-label="Channel banners">
-            <div className="relative w-full overflow-hidden h-[140px] sm:h-[180px] lg:h-[220px] bg-gray-900">
-              <div
-                className="flex h-full transition-transform duration-700 ease-out"
-                style={{
-                  width: `${channelBanners.length * 100}%`,
-                  transform: `translateX(-${bannerIndex * (100 / channelBanners.length)}%)`,
-                }}
-              >
-                {channelBanners.map((channel) => (
-                  <Link
-                    key={channel.slug}
-                    href={`/community-videos/channel/${channel.slug}`}
-                    className="relative flex-shrink-0 h-full block group"
-                    style={{ width: `${100 / channelBanners.length}%` }}
-                  >
-                    <img
-                      src={channel.banner_url}
-                      alt={`${channel.name} channel banner`}
-                      className="w-full h-full object-cover object-top transition-transform duration-500 group-hover:scale-[1.02]"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    <div className="absolute bottom-0 left-0 right-0 p-3 sm:p-4 bg-gradient-to-t from-black/80 to-transparent">
-                      <span className="text-white font-semibold text-sm sm:text-base drop-shadow-sm">{channel.name}</span>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-              {channelBanners.length > 1 && (
-                <>
-                  <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
-                    {channelBanners.map((_, i) => (
-                      <button
-                        key={i}
-                        type="button"
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); setBannerIndex(i) }}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${i === bannerIndex ? "w-5 bg-white" : "w-1.5 bg-white/50 hover:bg-white/70"}`}
-                        aria-label={`Go to slide ${i + 1}`}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
-            </div>
-          </section>
-        )}
-
-        <div className={`container mx-auto px-4 sm:px-6 lg:px-8 pb-6 ${channelBanners.length > 0 ? "pt-6" : "pt-24 sm:pt-20"}`}>
-          <main className="min-w-0">
+        <div className="container mx-auto px-4 sm:px-6 lg:px-8 pt-20 pb-8">
+          <div className="flex flex-col lg:flex-row gap-8">
+            <main className="min-w-0 flex-1">
           {featuredVideo && (() => {
             const fp = new URLSearchParams()
             if (featuredVideo.channel_slug) fp.set("channel_slug", featuredVideo.channel_slug)
             if (featuredVideo.creator) fp.set("creator", featuredVideo.creator)
             if (featuredVideo.creatorAvatar) fp.set("creator_avatar", featuredVideo.creatorAvatar)
             const fq = fp.toString()
-            const featuredWatchHref = `/community-videos/watch/yt/${featuredVideo.slug}${fq ? `?${fq}` : ""}`
+            const featuredWatchHref = `/unity-videos/watch/yt/${featuredVideo.slug}${fq ? `?${fq}` : ""}`
             return (
             <section className="mb-8">
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 shadow-sm">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-gray-700 bg-gray-900 shadow-lg">
                 <a
                   href={featuredWatchHref}
                   onClick={(e) => { e.preventDefault(); window.location.href = featuredWatchHref }}
@@ -335,26 +428,26 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     </div>
                   </div>
                 </a>
-                <div className="lg:col-span-2 flex flex-col bg-gradient-to-r from-purple-600 to-blue-600 dark:from-purple-700 dark:to-blue-700 p-3 sm:p-4">
+                <div className="lg:col-span-2 flex flex-col border-l border-gray-700 bg-gray-800/90 p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 text-xs text-white/90">
+                    <div className="flex items-center gap-2 text-xs text-gray-400">
                       <span>{featuredVideo.views_formatted} views</span>
                       {featuredVideo.time_ago ? (
                         <>
-                          <span className="text-white/60" aria-hidden>·</span>
+                          <span className="text-gray-600" aria-hidden>·</span>
                           <span>{featuredVideo.time_ago}</span>
                         </>
                       ) : null}
                     </div>
                     {featuredVideo.channel_slug ? (
-                      <Button variant="secondary" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-0 h-7 text-xs gap-1" asChild>
-                        <Link href={`/community-videos/channel/${featuredVideo.channel_slug}`}>
-                          Visit Channel
+                      <Button variant="outline" size="sm" className="border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 h-7 text-xs gap-1" asChild>
+                        <Link href={`/unity-videos/channel/${featuredVideo.channel_slug}`}>
+                          {featuredVideo.channel_slug === authUserChannelSlug ? "Visit Channel" : "Subscribe"}
                           <ChevronDown className="w-4 h-4" />
                         </Link>
                       </Button>
                     ) : (
-                      <Button variant="secondary" size="sm" className="bg-white/10 hover:bg-white/20 text-white border-0 h-7 text-xs gap-1">
+                      <Button variant="outline" size="sm" className="border-gray-600 bg-gray-800 text-gray-200 h-7 text-xs gap-1">
                         Visit Channel
                         <ChevronDown className="w-4 h-4" />
                       </Button>
@@ -370,8 +463,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     </h2>
                   </a>
                   {featuredVideo.nonprofit && (
-                    <div className="flex items-center gap-1.5 text-xs sm:text-sm text-white/90 mb-2">
-                      <Building2 className="w-3.5 h-3.5 shrink-0 text-white/80" />
+                    <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-400 mb-2">
+                      <Building2 className="w-3.5 h-3.5 shrink-0" />
                       <span>{featuredVideo.nonprofit}</span>
                     </div>
                   )}
@@ -379,8 +472,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     <Button
                       type="button"
                       size="sm"
-                      variant="secondary"
-                      className={`h-7 rounded border-0 text-xs gap-1 ${!!featuredVideo.user_liked ? "bg-white/30 text-pink-300 hover:bg-white/40" : "bg-white/20 hover:bg-white/30 text-white"}`}
+                      variant="outline"
+                      className={`h-7 rounded border-gray-600 text-xs gap-1 ${!!featuredVideo.user_liked ? "bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30" : "bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700"}`}
                       onClick={(e) => handleLike(e, featuredVideo)}
                       disabled={likeLoadingId === featuredVideo.slug || likeLoadingId === featuredVideo.id}
                     >
@@ -391,7 +484,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   <div className="flex items-center justify-end mt-auto">
                     <button
                       type="button"
-                      className="p-1.5 rounded hover:bg-white/10 text-white/90 flex items-center gap-1.5 text-xs"
+                      className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-gray-200 flex items-center gap-1.5 text-xs"
                       onClick={(e) => handleShare(e, featuredVideo)}
                     >
                       <Share2 className="w-4 h-4" />
@@ -406,8 +499,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
 
           {shorts.length > 0 && (
             <section className="mb-6" aria-label="Shorts">
-              <h2 className="text-base font-semibold text-gray-900 dark:text-white mb-3 px-0.5 flex items-center gap-2">
-                <Clapperboard className="w-5 h-5 text-purple-500 dark:text-purple-400" aria-hidden />
+              <h2 className="text-base font-semibold text-white mb-3 px-0.5 flex items-center gap-2">
+                <Clapperboard className="w-5 h-5 text-purple-400" aria-hidden />
                 Shorts
               </h2>
               <div className="relative w-full overflow-hidden">
@@ -429,7 +522,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                         if (short.channel_slug) params.set("channel_slug", short.channel_slug)
                         if (short.creator) params.set("creator", short.creator)
                         if (short.creatorAvatar) params.set("creator_avatar", short.creatorAvatar)
-                        const watchHref = `/community-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
+                        const watchHref = `/unity-videos/shorts/yt/${short.slug}${params.toString() ? `?${params.toString()}` : ""}`
                         return (
                           <a
                             key={short.id}
@@ -437,7 +530,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                             className="shrink-0 w-[140px] sm:w-[160px] group block"
                           >
-                            <div className="relative aspect-[9/16] w-full rounded-xl overflow-hidden bg-gray-200 dark:bg-gray-800">
+                            <div className="relative aspect-9/16 w-full rounded-xl overflow-hidden bg-gray-800">
                               <img
                                 src={short.thumbnail_url}
                                 alt={short.title}
@@ -468,7 +561,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                         key={i}
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShortsIndex(i) }}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${i === shortsIndex ? "w-5 bg-purple-600" : "w-1.5 bg-gray-300 dark:bg-gray-600 hover:bg-gray-400 dark:hover:bg-gray-500"}`}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${i === shortsIndex ? "w-5 bg-purple-500" : "w-1.5 bg-gray-600 hover:bg-gray-500"}`}
                         aria-label={`Shorts slide ${i + 1}`}
                       />
                     ))}
@@ -478,39 +571,137 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             </section>
           )}
 
-          <div className="flex gap-1 overflow-x-auto pb-2 -mx-1 scrollbar-none border-b border-gray-200 dark:border-gray-700 mb-6">
-            {(["latest", "trending", "nonprofits"] as const).map((tab) => (
+          {/* Filter bar + stats */}
+          <div className="flex flex-wrap items-center gap-3 pb-4 mb-4 border-b border-gray-800">
+            {(["latest", "trending", "nonprofits", "supporter"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
                 onClick={() => handleTabChange(tab)}
-                className={`shrink-0 px-4 py-2 rounded-full text-sm font-medium transition-colors ${
+                className={`shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === tab
-                    ? "bg-gradient-to-r from-purple-600 to-blue-600 text-white hover:opacity-90"
-                    : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700"
+                    ? "bg-purple-600 text-white hover:bg-purple-500"
+                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
                 }`}
               >
-                {tab === "nonprofits" ? "Nonprofits" : tab === "latest" ? "Latest" : "Trending"}
+                {tab === "nonprofits" ? "Non-Profits" : tab === "supporter" ? "Supporter" : tab === "latest" ? "Latest" : "Trending"}
               </button>
             ))}
+            {activeTab === "nonprofits" ? (
+              <Popover
+                open={orgDropdownOpen}
+                onOpenChange={(open) => {
+                  if (open) {
+                    orgDropdownJustOpenedRef.current = true
+                    setTimeout(() => { orgDropdownJustOpenedRef.current = false }, 200)
+                    setOrgDropdownOpen(true)
+                  } else {
+                    if (orgDropdownJustOpenedRef.current) return
+                    setOrgDropdownOpen(false)
+                  }
+                }}
+              >
+                <PopoverTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    role="combobox"
+                    aria-expanded={orgDropdownOpen}
+                    className="h-9 min-w-[220px] w-[280px] max-w-[320px] shrink-0 justify-between rounded-lg border-gray-700 bg-gray-800 text-gray-300 text-sm hover:bg-gray-700 hover:text-gray-200"
+                  >
+                    <span className="truncate" title={orgDropdownDisplayName}>
+                      {orgDropdownDisplayName}
+                    </span>
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent
+                  className="w-[320px] min-w-[320px] p-0 rounded-lg border-gray-700 bg-gray-800"
+                  align="start"
+                  onOpenAutoFocus={(e) => e.preventDefault()}
+                  onCloseAutoFocus={(e) => e.preventDefault()}
+                >
+                  <Command className="rounded-lg border-0 bg-transparent" shouldFilter={false}>
+                    <CommandInput
+                      placeholder="Search organizations..."
+                      value={orgSearchQuery}
+                      onValueChange={setOrgSearchQuery}
+                      className="h-11 border-b border-gray-700 bg-gray-800/50 text-gray-200 placeholder:text-gray-500 focus:ring-0 text-sm"
+                    />
+                    <CommandList className="max-h-[280px]">
+                      {orgSearchLoading ? (
+                        <div className="py-6 text-center text-sm text-gray-400">Loading…</div>
+                      ) : (
+                        <>
+                          <CommandEmpty>No organization found.</CommandEmpty>
+                          <CommandGroup className="p-1">
+                            <CommandItem
+                              value="all"
+                              onSelect={() => { handleOrgChange("all"); setOrgDropdownOpen(false) }}
+                              className={cn(
+                                "text-gray-200 cursor-pointer rounded-md py-2.5",
+                                orgFilter === "all" ? "bg-purple-600/30 text-white font-medium" : "hover:bg-gray-700"
+                              )}
+                            >
+                              <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === "all" ? "opacity-100" : "opacity-0")} />
+                              All organizations
+                            </CommandItem>
+                            {(() => {
+                              const hasValidSelectedId = orgFilter !== "all" && orgFilter !== "" && !Number.isNaN(Number(orgFilter))
+                              const selectedOrg = hasValidSelectedId
+                                ? { id: Number(orgFilter), name: selectedOrgName ?? nonprofitOrganizations.find((o) => String(o.id) === orgFilter)?.name ?? "Organization" }
+                                : null
+                              const selectedInResults = selectedOrg && orgSearchResults.some((o) => String(o.id) === orgFilter)
+                              const orgsToShow = selectedOrg && !selectedInResults ? [selectedOrg, ...orgSearchResults] : orgSearchResults
+                              return orgsToShow.map((org) => {
+                                const isSelected = orgFilter === String(org.id)
+                                return (
+                                  <CommandItem
+                                    key={org.id}
+                                    value={String(org.id)}
+                                    onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
+                                    className={cn(
+                                      "text-gray-200 cursor-pointer rounded-md py-2.5",
+                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-gray-700"
+                                    )}
+                                  >
+                                    <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
+                                    {org.name}
+                                  </CommandItem>
+                                )
+                              })
+                            })()}
+                          </CommandGroup>
+                        </>
+                      )}
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
+            ) : null}
+            <span className="text-sm text-gray-500 ml-auto">
+              ► {stats.total_videos} Imported Videos · {stats.livestream_replays} Livestream Replays
+            </span>
           </div>
 
           {!hasContent ? (
             <div className="text-center py-16">
-              <p className="text-gray-500 dark:text-gray-400 mb-4">No videos found.</p>
-              <p className="text-sm text-gray-400 dark:text-gray-500">
-                Try adjusting your search or filters.
-              </p>
+              <p className="text-gray-400 mb-4">No videos found.</p>
+              <p className="text-sm text-gray-500">Try adjusting your search or filters.</p>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {videos.map((video) => {
+            <>
+              <h2 className="text-lg font-semibold text-white mb-4">
+                {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporter" : "Non-Profits"}
+              </h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+              {gridVideos.map((video) => {
                 const params = new URLSearchParams()
                 if (video.channel_slug) params.set("channel_slug", video.channel_slug)
                 if (video.creator) params.set("creator", video.creator)
                 if (video.creatorAvatar) params.set("creator_avatar", video.creatorAvatar)
                 const q = params.toString()
-                const watchHref = `/community-videos/watch/yt/${video.slug}${q ? `?${q}` : ""}`
+                const watchHref = `/unity-videos/watch/yt/${video.slug}${q ? `?${q}` : ""}`
                 return (
                   <div key={video.id} className="group block">
                     <a
@@ -518,7 +709,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                       className="block"
                     >
-                      <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-gray-200 dark:bg-gray-800">
+                      <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-gray-800">
                         <img
                           src={video.thumbnail_url}
                           alt={video.title}
@@ -529,15 +720,15 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                         </div>
                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/30">
                           <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center">
-                            <Play className="w-7 h-7 text-purple-600 ml-1 fill-purple-600" />
+                            <Play className="w-7 h-7 text-red-600 ml-1 fill-red-600" />
                           </div>
                         </div>
                       </div>
                     </a>
                     <div className="flex gap-3 mt-2">
-                      <Avatar className="h-9 w-9 rounded-full shrink-0">
+                      <Avatar className="h-9 w-9 rounded-full shrink-0 border border-gray-700">
                         {video.creatorAvatar && <AvatarImage src={video.creatorAvatar} alt={video.creator} />}
-                        <AvatarFallback className="rounded-full bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 text-xs">
+                        <AvatarFallback className="rounded-full bg-gray-700 text-gray-300 text-xs">
                           {video.creator.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
@@ -547,36 +738,46 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                           className="block"
                         >
-                          <h3 className="text-sm font-medium text-gray-900 dark:text-white line-clamp-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
+                          <h3 className="text-sm font-medium text-gray-100 line-clamp-2 group-hover:text-purple-400 transition-colors">
                             {video.title}
                           </h3>
                         </a>
-                        <p className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 truncate">
+                        <p className="text-xs text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                          <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
                           {video.channel_slug ? (
-                            <button
-                              type="button"
-                              className="text-left truncate w-full hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer"
-                              onClick={(e) => {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                router.visit(`/community-videos/channel/${video.channel_slug}`)
-                              }}
-                            >
-                              {video.creator}
-                            </button>
+                            <>
+                              <button
+                                type="button"
+                                className="text-left truncate hover:text-purple-400 cursor-pointer"
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  router.visit(`/unity-videos/channel/${video.channel_slug}`)
+                                }}
+                              >
+                                {video.creator}
+                              </button>
+                              <Link
+                                href={`/unity-videos/channel/${video.channel_slug}`}
+                                className="text-purple-400 hover:text-purple-300 text-xs shrink-0"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {video.channel_slug === authUserChannelSlug ? "Visit Channel" : "Subscribe"}
+                              </Link>
+                            </>
                           ) : (
                             video.creator
                           )}
                         </p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="flex items-center gap-1.5 text-purple-500 dark:text-purple-400">
+                        <p className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="flex items-center gap-1.5 text-gray-400">
                             <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden />
                             {video.views_formatted} views
                           </span>
                           {video.time_ago ? (
                             <>
-                              <span className="text-gray-400 dark:text-gray-500" aria-hidden>·</span>
-                              <span className="text-gray-500 dark:text-gray-400">{video.time_ago}</span>
+                              <span className="text-gray-600" aria-hidden>·</span>
+                              <span>{video.time_ago}</span>
                             </>
                           ) : null}
                           <button
@@ -589,13 +790,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             {!!video.user_liked ? <Heart className="w-3.5 h-3.5 shrink-0 fill-current" aria-hidden /> : <ThumbsUp className="w-3.5 h-3.5 shrink-0" aria-hidden />}
                             {video.total_likes_formatted ?? video.likes_formatted ?? video.likes ?? 0}
                           </button>
-                          <span className="flex items-center gap-1 text-purple-500 dark:text-purple-400">
+                          <span className="flex items-center gap-1 text-gray-400">
                             <MessageCircle className="w-3.5 h-3.5 shrink-0" aria-hidden />
                             {video.total_comment_count_formatted ?? video.comment_count_formatted ?? video.comment_count ?? 0}
                           </span>
                           <button
                             type="button"
-                            className="flex items-center gap-1 text-purple-500 dark:text-purple-400 hover:text-purple-600 dark:hover:text-purple-300 transition-colors"
+                            className="flex items-center gap-1 text-gray-400 hover:text-purple-400 transition-colors"
                             title="Share"
                             onClick={(e) => handleShare(e, video)}
                           >
@@ -609,8 +810,99 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 )
               })}
             </div>
+            {hasMore && (
+              <div ref={loadMoreSentinelRef} className="min-h-[80px] flex items-center justify-center py-6">
+                {loadingMore && (
+                  <div className="flex items-center gap-2 text-gray-400 text-sm">
+                    <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Loading more videos…
+                  </div>
+                )}
+              </div>
+            )}
+            </>
           )}
           </main>
+
+          {/* Right sidebar: Your YouTube Channel or Connect CTA */}
+          <aside className="w-full lg:w-[320px] shrink-0 space-y-6">
+            {myChannel ? (
+              <div className="rounded-xl border border-gray-700/50 bg-gray-900/80 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Your YouTube Channel</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <Avatar className="h-12 w-12 rounded-full border-2 border-gray-700">
+                    {myChannel.avatar && <AvatarImage src={myChannel.avatar} alt={myChannel.name} />}
+                    <AvatarFallback className="rounded-full bg-gray-700 text-gray-300 text-sm">{myChannel.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0 flex-1">
+                    <p className="font-semibold text-white truncate flex items-center gap-1">
+                      {myChannel.name}
+                      <span className="text-blue-400" title="Verified">✓</span>
+                    </p>
+                    <p className="text-xs text-gray-500">{myChannel.subscriber_count_formatted} Subscribers</p>
+                  </div>
+                </div>
+                {myChannel.channel_slug && (
+                  <Link href={`/unity-videos/channel/${myChannel.channel_slug}`}>
+                    <Button size="sm" className="w-full rounded-lg bg-red-600 hover:bg-red-500 text-white text-sm mb-4">
+                      Visit Channel
+                    </Button>
+                  </Link>
+                )}
+                <div className="flex gap-2 border-b border-gray-800 pb-2 text-xs text-gray-500">
+                  <span>Home</span><span>Videos</span><span>Playlists</span><span>About</span>
+                </div>
+                <div className="flex gap-2 mt-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                  {myChannel.preview_videos.map((pv) => (
+                    <Link key={pv.slug} href={myChannel.channel_slug ? `/unity-videos/watch/yt/${pv.slug}?channel_slug=${encodeURIComponent(myChannel.channel_slug)}&creator=${encodeURIComponent(myChannel.name)}` : `/unity-videos/watch/yt/${pv.slug}`} className="shrink-0 w-[100px] block rounded-lg overflow-hidden bg-gray-800 group">
+                      <div className="aspect-video relative">
+                        <img src={pv.thumbnail_url} alt={pv.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+                        {pv.duration === "LIVE" ? (
+                          <span className="absolute bottom-0.5 right-0.5 bg-red-600 text-white text-[10px] px-1 rounded">LIVE</span>
+                        ) : pv.duration ? (
+                          <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[10px] px-1 rounded">{pv.duration}</span>
+                        ) : null}
+                      </div>
+                      <p className="text-[10px] text-gray-400 truncate px-1 py-0.5 line-clamp-2">{pv.title}</p>
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {(userOrgCanConnect && !userOrgHasYoutube) || !myChannel ? (
+              <div className="rounded-xl border border-gray-700/50 bg-gray-900/80 p-4">
+                <div className="flex items-center gap-2 mb-3">
+                  <Youtube className="w-6 h-6 text-red-500" />
+                  <h3 className="font-semibold text-white">Connect Your YouTube Channel</h3>
+                </div>
+                <p className="text-xs text-gray-400 mb-3">To unlock all features of Unity Video Hub:</p>
+                <ul className="space-y-2 text-xs text-gray-400 mb-4">
+                  <li className="flex items-center gap-2"><HardDrive className="w-4 h-4 text-gray-500 shrink-0" /> Enable automatic livestream replay storage</li>
+                  <li className="flex items-center gap-2"><Youtube className="w-4 h-4 text-red-500 shrink-0" /> Import your YouTube videos into the Unity Video Hub</li>
+                  <li className="flex items-center gap-2"><Brain className="w-4 h-4 text-gray-500 shrink-0" /> Let Navigator AI learn from your video content for better insights.</li>
+                </ul>
+                {auth?.user ? (
+                  <Button
+                    type="button"
+                    className="w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold"
+                    onClick={() => { window.location.href = route("integrations.youtube.redirect"); }}
+                  >
+                    Connect Now
+                  </Button>
+                ) : (
+                  <Link href={connectYoutubeUrl}>
+                    <Button className="w-full rounded-lg bg-amber-500 hover:bg-amber-600 text-gray-900 font-semibold">
+                      Connect Now
+                    </Button>
+                  </Link>
+                )}
+              </div>
+            ) : null}
+          </aside>
+        </div>
         </div>
       </div>
     </FrontendLayout>

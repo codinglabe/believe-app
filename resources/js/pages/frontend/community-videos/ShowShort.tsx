@@ -41,7 +41,7 @@ export default function CommunityVideoShowShort({ seo, video: initialVideo }: Pr
   const handleLike = async () => {
     setLikeLoading(true)
     try {
-      const { data } = await axios.post(route("community-videos.engagement.like"), {
+      const { data } = await axios.post(route("unity-videos.engagement.like"), {
         video_id: video.id,
         source: "yt",
         channel_slug: video.channel_slug ?? undefined,
@@ -67,9 +67,9 @@ export default function CommunityVideoShowShort({ seo, video: initialVideo }: Pr
   }
 
   const handleShare = async () => {
-    const url = `${window.location.origin}/community-videos/shorts/yt/${video.id}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator ?? "")}` : ""}`
+    const url = `${window.location.origin}/unity-videos/shorts/yt/${video.id}${video.channel_slug ? `?channel_slug=${encodeURIComponent(video.channel_slug)}&creator=${encodeURIComponent(video.creator ?? "")}` : ""}`
     try {
-      await axios.post(route("community-videos.engagement.share"), {
+      await axios.post(route("unity-videos.engagement.share"), {
         video_id: video.id,
         source: "yt",
         channel_slug: video.channel_slug ?? undefined,

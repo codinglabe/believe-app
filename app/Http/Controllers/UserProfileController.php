@@ -85,7 +85,38 @@ class UserProfileController extends Controller
         ]);
     }
 
+    /**
+     * Profile Integrations page (supporters only – YouTube connect/disconnect).
+     */
+    public function integrations(Request $request): Response
+    {
+        $user = $request->user();
+        $youtubeChannelUrl = $user->youtube_channel_url ?? null;
+        $myChannel = null;
 
+        if ($youtubeChannelUrl) {
+            try {
+                $youtubeService = app(\App\Services\YouTubeService::class);
+                $details = $youtubeService->getChannelDetails($youtubeChannelUrl);
+                if ($details) {
+                    $myChannel = [
+                        'name' => $details['name'] ?? $user->name,
+                        'avatar' => $details['avatar_url'] ?? null,
+                        'subscriber_count' => $details['subscriber_count'] ?? 0,
+                        'subscriber_count_formatted' => $details['subscriber_count_formatted'] ?? '0',
+                        'channel_slug' => $user->slug ?? null,
+                    ];
+                }
+            } catch (\Throwable $e) {
+                // Leave myChannel null on failure
+            }
+        }
+
+        return Inertia::render('frontend/user-profile/Integrations', [
+            'youtube_channel_url' => $youtubeChannelUrl,
+            'myChannel' => $myChannel,
+        ]);
+    }
 
     public function edit()
     {

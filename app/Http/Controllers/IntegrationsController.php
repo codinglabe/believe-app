@@ -16,19 +16,20 @@ class IntegrationsController extends Controller
 {
     /**
      * Show the YouTube integration page (organization only).
-     * Connect via button → OAuth; no manual URL.
+     * Supporters are redirected to profile integrations (user.profile.integrations).
      */
     public function youtube(): Response|RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can manage YouTube integration.');
+        $organization = $user->organization ?? null;
+
+        if (! $organization) {
+            return redirect()->route('user.profile.integrations');
         }
 
-        $organization = $user->organization;
-
+        $youtubeChannelUrl = $organization->youtube_channel_url;
         $channel_page = null;
-        if ($organization->youtube_channel_url) {
+        if ($youtubeChannelUrl && $user->slug) {
             try {
                 $channel_page = app(\App\Http\Controllers\CommunityVideosController::class)->getChannelPageData($user->slug);
             } catch (\Throwable $e) {
@@ -37,31 +38,65 @@ class IntegrationsController extends Controller
         }
 
         return Inertia::render('Integrations/YouTube', [
-            'youtube_channel_url' => $organization->youtube_channel_url,
+            'youtube_channel_url' => $youtubeChannelUrl,
             'youtube_redirect_uri' => config('services.youtube.redirect_uri'),
             'channel_page' => $channel_page,
+            'is_supporter' => false,
         ]);
     }
 
     /**
-     * Redirect to Google OAuth so user can connect their YouTube channel.
+     * Show the YouTube integration page (supporter / normal user only).
+     * Same UI as organization page; organizations are redirected to integrations.youtube.
+     */
+    public function youtubeConnect(): Response|RedirectResponse
+    {
+        $user = Auth::user();
+        $organization = $user->organization ?? null;
+
+        if ($organization) {
+            return redirect()->route('integrations.youtube');
+        }
+
+        $youtubeChannelUrl = $user->youtube_channel_url;
+        $channel_page = null;
+        if ($youtubeChannelUrl && $user->slug) {
+            try {
+                $channel_page = app(\App\Http\Controllers\CommunityVideosController::class)->getChannelPageData($user->slug);
+            } catch (\Throwable $e) {
+                // Channel slug may not exist yet; leave channel_page null
+            }
+        }
+
+        return Inertia::render('Integrations/YouTube', [
+            'youtube_channel_url' => $youtubeChannelUrl,
+            'youtube_redirect_uri' => config('services.youtube.redirect_uri'),
+            'channel_page' => $channel_page,
+            'is_supporter' => true,
+        ]);
+    }
+
+    /**
+     * Redirect to Google OAuth so user can connect their YouTube channel (organization or supporter).
      */
     public function redirectToYouTube(): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can connect YouTube.');
-        }
+        $organization = $user->organization ?? null;
 
         $clientId = config('services.youtube.client_id');
         $redirectUri = config('services.youtube.redirect_uri');
         if (empty($clientId) || empty($redirectUri)) {
-            return redirect()->route('integrations.youtube')->with('error', 'YouTube integration is not configured. Please set YOUTUBE_CLIENT_ID and redirect URI.');
+            $route = $organization ? 'integrations.youtube' : 'user.profile.integrations';
+            return redirect()->route($route)->with('error', 'YouTube integration is not configured. Please set YOUTUBE_CLIENT_ID and redirect URI.');
         }
 
         // CSRF protection: required by Google OAuth "Use secure flows" – do not remove
         $state = Str::random(40);
-        session(['youtube_oauth_state' => $state]);
+        session([
+            'youtube_oauth_state' => $state,
+            'youtube_oauth_for_supporter' => ! $organization,
+        ]);
 
         $params = [
             'client_id' => $clientId,
@@ -79,26 +114,30 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * OAuth callback: exchange code for token, fetch channel, save to org.
+     * OAuth callback: exchange code for token, fetch channel, save to org or user (supporter).
      */
     public function youtubeCallback(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $state = $request->query('state');
+        $sessionState = session('youtube_oauth_state');
+        $forSupporter = session('youtube_oauth_for_supporter', false);
+
+        if (empty($state) || $state !== $sessionState) {
+            session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter']);
+            $route = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
+            return redirect()->route($route)->with('error', 'Invalid state. Please try connecting again.');
+        }
+        session()->forget(['youtube_oauth_state', 'youtube_oauth_for_supporter']);
+
+        $callbackRoute = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
+        if (! $forSupporter && (! $user->organization)) {
             return redirect()->route('integrations.youtube')->with('error', 'Organization not found.');
         }
 
-        $state = $request->query('state');
-        $sessionState = session('youtube_oauth_state');
-        if (empty($state) || $state !== $sessionState) {
-            session()->forget('youtube_oauth_state');
-            return redirect()->route('integrations.youtube')->with('error', 'Invalid state. Please try connecting again.');
-        }
-        session()->forget('youtube_oauth_state');
-
         $code = $request->query('code');
         if (empty($code)) {
-            return redirect()->route('integrations.youtube')->with('error', 'No authorization code received. Please try again.');
+            return redirect()->route($callbackRoute)->with('error', 'No authorization code received. Please try again.');
         }
 
         $clientId = config('services.youtube.client_id');
@@ -117,7 +156,7 @@ class IntegrationsController extends Controller
 
         if (! $tokenResponse->successful()) {
             Log::warning('YouTube OAuth token exchange failed', ['body' => $tokenResponse->body()]);
-            return redirect()->route('integrations.youtube')->with('error', 'Could not connect to YouTube. Please try again.');
+            return redirect()->route($callbackRoute)->with('error', 'Could not connect to YouTube. Please try again.');
         }
 
         $tokenData = $tokenResponse->json();
@@ -126,7 +165,7 @@ class IntegrationsController extends Controller
         $expiresIn = $tokenData['expires_in'] ?? 3600;
 
         if (! $accessToken) {
-            return redirect()->route('integrations.youtube')->with('error', 'No access token received.');
+            return redirect()->route($callbackRoute)->with('error', 'No access token received.');
         }
 
         $channelsResponse = $http->withToken($accessToken)->get('https://www.googleapis.com/youtube/v3/channels', [
@@ -137,56 +176,78 @@ class IntegrationsController extends Controller
 
         if (! $channelsResponse->successful()) {
             Log::warning('YouTube channels.list failed', ['body' => $channelsResponse->body()]);
-            return redirect()->route('integrations.youtube')->with('error', 'Could not load your YouTube channel. Please try again.');
+            return redirect()->route($callbackRoute)->with('error', 'Could not load your YouTube channel. Please try again.');
         }
 
         $channelsData = $channelsResponse->json();
         $items = $channelsData['items'] ?? [];
         if (empty($items)) {
-            return redirect()->route('integrations.youtube')->with('error', 'No YouTube channel found for this account. Create a channel on YouTube first, then connect again.');
+            return redirect()->route($callbackRoute)->with('error', 'No YouTube channel found for this account. Create a channel on YouTube first, then connect again.');
         }
 
         $channelId = $items[0]['id'] ?? null;
         if (! $channelId) {
-            return redirect()->route('integrations.youtube')->with('error', 'Could not get channel ID.');
+            return redirect()->route($callbackRoute)->with('error', 'Could not get channel ID.');
         }
 
         $channelUrl = 'https://www.youtube.com/channel/' . $channelId;
 
-        // Encrypt tokens before storing
-        $encryptedAccessToken = \Illuminate\Support\Facades\Crypt::encryptString($accessToken);
-        $encryptedRefreshToken = $refreshToken ? \Illuminate\Support\Facades\Crypt::encryptString($refreshToken) : null;
+        $encryptedAccessToken = Crypt::encryptString($accessToken);
+        $encryptedRefreshToken = $refreshToken ? Crypt::encryptString($refreshToken) : null;
         $expiresAt = now()->addSeconds($expiresIn);
 
+        if ($forSupporter) {
+            $user->update([
+                'youtube_channel_url' => $channelUrl,
+                'youtube_access_token' => $encryptedAccessToken,
+                'youtube_refresh_token' => $encryptedRefreshToken,
+                'youtube_token_expires_at' => $expiresAt,
+            ]);
+        } else {
         $user->organization->update([
             'youtube_channel_url' => $channelUrl,
             'youtube_access_token' => $encryptedAccessToken,
             'youtube_refresh_token' => $encryptedRefreshToken,
             'youtube_token_expires_at' => $expiresAt,
         ]);
+        }
 
-        return redirect()->route('integrations.youtube')->with('success', 'YouTube channel connected. Your videos will appear on Community Videos.');
+        $route = $forSupporter ? 'user.profile.integrations' : 'integrations.youtube';
+        return redirect()->route($route)->with('success', 'YouTube channel connected. Your videos will appear on Unity Videos.');
     }
 
     /**
-     * Disconnect: clear the organization's YouTube channel URL.
+     * Disconnect: clear the organization's or user's YouTube channel URL.
      */
     public function updateYoutube(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can update YouTube integration.');
-        }
+        $organization = $user->organization ?? null;
 
         $validated = $request->validate([
             'youtube_channel_url' => ['nullable', 'string', 'max:500', 'url'],
         ]);
 
-        $user->organization->update([
-            'youtube_channel_url' => $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null,
-        ]);
+        $value = $validated['youtube_channel_url'] ? trim($validated['youtube_channel_url']) : null;
 
-        return redirect()->route('integrations.youtube')->with('success', 'YouTube channel saved.');
+        if ($organization) {
+            $organization->update([
+                'youtube_channel_url' => $value,
+                'youtube_access_token' => null,
+                'youtube_refresh_token' => null,
+                'youtube_token_expires_at' => null,
+            ]);
+        } else {
+            $user->update([
+                'youtube_channel_url' => $value,
+                'youtube_access_token' => null,
+                'youtube_refresh_token' => null,
+                'youtube_token_expires_at' => null,
+            ]);
+        }
+
+        $route = $organization ? 'integrations.youtube' : 'user.profile.integrations';
+        return redirect()->route($route)->with('success', 'YouTube channel saved.');
     }
 
     /**

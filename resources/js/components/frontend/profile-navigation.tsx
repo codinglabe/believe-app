@@ -17,6 +17,7 @@ import {
   GraduationCap,
   UserCheck,
   Menu,
+  Youtube,
 } from "lucide-react"
 import { Link } from "@inertiajs/react"
 
@@ -105,6 +106,13 @@ const navigationItems: NavigationItem[] = [
     icon: Receipt,
     description: "Transactions",
     color: "from-teal-500 to-cyan-600",
+  },
+  {
+    name: "Integrations",
+    href: "/profile/integrations",
+    icon: Youtube,
+    description: "YouTube channel",
+    color: "from-red-500 to-red-600",
   },
   {
     name: "Security",

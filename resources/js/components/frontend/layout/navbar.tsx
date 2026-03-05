@@ -106,7 +106,7 @@ export default function Navbar() {
   const communityItems = [
     { name: "Unity Live", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
-    { name: "Community Videos", href: "/community-videos", icon: Video },
+    { name: "Unity Videos", href: "/unity-videos", icon: Video },
     ...(isLoggedIn ? [
       { name: "Social Feed", href: route("social-feed.index"), icon: Users },
       { name: "Find Supporters", href: route("find-supporters.index"), icon: UserPlus },

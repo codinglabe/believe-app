@@ -35,6 +35,7 @@ import {
   Briefcase,
   QrCode,
   Globe,
+  Youtube,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -212,6 +213,13 @@ const navigationItems = [
     icon: CreditCard,
     description: "Billing & wallet",
     color: "from-indigo-500 to-purple-600",
+  },
+  {
+    name: "Integrations",
+    href: route("user.profile.integrations"),
+    icon: Youtube,
+    description: "YouTube channel connect / disconnect",
+    color: "from-red-500 to-red-600",
   },
   {
     name: "Security",

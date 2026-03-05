@@ -86,6 +86,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'city',
         'state',
         'zipcode',
+        'youtube_channel_url',
+        'youtube_access_token',
+        'youtube_refresh_token',
+        'youtube_token_expires_at',
     ];
 
     /**
@@ -96,6 +100,8 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'youtube_access_token',
+        'youtube_refresh_token',
     ];
 
     /**
@@ -118,6 +124,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_included' => 'integer',
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
+            'youtube_token_expires_at' => 'datetime',
         ];
     }
 
