@@ -206,6 +206,8 @@ class HandleInertiaRequests extends Middleware
                         'reward_points' => $user->reward_points ?? 0,
                         'believe_points' => $user->believe_points ?? 0,
                         'credits' => $user->credits ?? 0,
+                        'ai_tokens_used' => $user->ai_tokens_used ?? 0,
+                        'ai_tokens_included' => $user->ai_tokens_included ?? 0,
                         'current_plan_id' => $user->current_plan_id ?? null,
                         'current_plan_details' => $user->current_plan_details ?? null,
                         "image" => $user->role !== "organization" ? ($user->image ? '/storage/' . $user->image : null) :  ($user->organization?->user->image ? '/storage/' . $user->organization?->user->image : null),

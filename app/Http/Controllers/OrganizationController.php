@@ -1249,9 +1249,9 @@ public function index(Request $request)
             $prompt .= " within the description text itself. Make sure to naturally incorporate these details into the narrative. ";
             $prompt .= "Keep it comprehensive (approximately 200-400 words). Return only the description text, no additional commentary or formatting.";
 
-            // Generate description using OpenAI
+            // Generate description using OpenAI (no token tracking for this feature)
             $openAiService = new OpenAiService();
-            $generatedDescription = $openAiService->chatCompletion([
+            $result = $openAiService->chatCompletion([
                 [
                     'role' => 'system',
                     'content' => 'You are a professional nonprofit consultant specializing in writing compelling organization descriptions. Create clear, engaging, and informative "About Us" descriptions for nonprofit organizations.'
@@ -1261,6 +1261,7 @@ public function index(Request $request)
                     'content' => $prompt
                 ]
             ]);
+            $generatedDescription = $result['content'];
 
             // Update organization with generated description
             $organization->update([

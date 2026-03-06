@@ -65,6 +65,7 @@ class OpenAiService
             }
 
             $content = $response->json('choices.0.message.content');
+            $usage = $response->json('usage') ?? [];
 
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI');
@@ -79,7 +80,10 @@ class OpenAiService
                 ]);
             }
 
-            return $parsed;
+            return [
+                'items' => $parsed,
+                'total_tokens' => (int) ($usage['total_tokens'] ?? 0),
+            ];
         } catch (\Exception $e) {
             Log::error('OpenAI Service Error', [
                 'message' => $e->getMessage(),
@@ -212,7 +216,12 @@ PROMPT;
         return $validatedItems;
     }
 
-    public function chatCompletion(array $messages): string
+    /**
+     * Chat completion; returns content and actual token usage from the API.
+     *
+     * @return array{content: string, total_tokens: int}
+     */
+    public function chatCompletion(array $messages): array
     {
         try {
             $response = $this->httpClient()->post($this->apiUrl, [
@@ -233,12 +242,17 @@ PROMPT;
             }
 
             $content = $response->json('choices.0.message.content');
+            $usage = $response->json('usage') ?? [];
+            $totalTokens = (int) ($usage['total_tokens'] ?? 0);
 
             if (empty($content)) {
                 throw new \Exception('Empty response from OpenAI');
             }
 
-            return trim($content);
+            return [
+                'content' => trim($content),
+                'total_tokens' => $totalTokens,
+            ];
         } catch (\Exception $e) {
             Log::error('OpenAI Chat Service Error', [
                 'message' => $e->getMessage(),

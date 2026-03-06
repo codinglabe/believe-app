@@ -139,18 +139,20 @@ class AiChatController extends Controller
         ]);
 
         $user = auth()->user();
-        $creditsNeeded = 1; // 1 credit per message
+        $creditsNeeded = 1; // kept for optional future use; AI chat is token-based now
         $currentCredits = $user->credits ?? 0;
 
-        // Check if user has enough credits
-        if ($currentCredits < $creditsNeeded) {
+        // Token-based allowance: only allow if user has remaining AI tokens (when plan has a limit)
+        $tokensIncluded = (int) ($user->ai_tokens_included ?? 0);
+        $tokensUsed = (int) ($user->ai_tokens_used ?? 0);
+        if ($tokensIncluded > 0 && $tokensUsed >= $tokensIncluded) {
             return response()->json([
                 'success' => false,
-                'error' => 'insufficient_credits',
-                'message' => 'Insufficient credits. Please purchase more credits to continue.',
-                'credits_available' => $currentCredits,
-                'credits_needed' => $creditsNeeded,
-            ], 402); // 402 Payment Required
+                'error' => 'insufficient_tokens',
+                'message' => 'You have used all your AI tokens for this period. Please upgrade your plan or wait for your next allocation.',
+                'ai_tokens_used' => $tokensUsed,
+                'ai_tokens_included' => $tokensIncluded,
+            ], 402);
         }
 
         try {
@@ -210,20 +212,17 @@ class AiChatController extends Controller
                 // Update conversation timestamp
                 $conversation->update(['last_message_at' => now()]);
 
-                // Deduct credits
-                $user->decrement('credits', $creditsNeeded);
-                $user->refresh();
-
+                // No credit deduction — AI chat uses token-based usage only
                 return response()->json([
                     'success' => true,
                     'response' => $welcomeMessage,
                     'conversation_id' => $conversation->id,
-                    'credits_remaining' => $user->credits,
-                    'credits_deducted' => $creditsNeeded,
+                    'ai_tokens_used' => $user->ai_tokens_used,
+                    'ai_tokens_included' => $user->ai_tokens_included,
                 ]);
             }
 
-            // Check for title generation requests first (before operations)
+            // Check for title generation requests first
             $isTitleGenerationRequest = $this->isTitleGenerationRequest($validated['message']);
             
             if ($isTitleGenerationRequest) {
@@ -249,21 +248,17 @@ class AiChatController extends Controller
                 // Update conversation timestamp
                 $conversation->update(['last_message_at' => now()]);
 
-                // Deduct credits
-                $user->decrement('credits', $creditsNeeded);
-                $user->refresh();
-
                 return response()->json([
                     'success' => true,
                     'response' => $titleSuggestions,
                     'conversation_id' => $conversation->id,
-                    'credits_remaining' => $user->credits,
-                    'credits_deducted' => $creditsNeeded,
+                    'ai_tokens_used' => $user->ai_tokens_used,
+                    'ai_tokens_included' => $user->ai_tokens_included,
                     'is_title_generation' => true,
                 ]);
             }
 
-            // Check for content operations (create/edit/delete) first
+            // Check for content operations
             // BUT skip if it's actually a campaign status update (has "status" with "active/inactive/paused/cancelled")
             $isCampaignStatusUpdate = preg_match('/\bstatus\s+(?:active|inactive|paused|cancelled)/i', $validated['message']) && 
                                        stripos($validated['message'], 'content') === false &&
@@ -304,23 +299,17 @@ class AiChatController extends Controller
                 $conversation->update(['last_message_at' => now()]);
                 
                 if ($operationResult['success']) {
-                    // Deduct credits only after successful operation
-                    $user->decrement('credits', $creditsNeeded);
-                    $user->refresh();
-
                     Log::info('Content operation successful', [
                         'operation' => $contentOperation,
                         'user_id' => $user->id,
-                        'credits_deducted' => $creditsNeeded,
-                        'remaining_credits' => $user->credits,
                     ]);
 
                             return response()->json([
                                 'success' => true,
                                 'response' => $responseContent,
                                 'conversation_id' => $conversation->id,
-                                'credits_remaining' => $user->credits,
-                                'credits_deducted' => $creditsNeeded,
+                                'ai_tokens_used' => $user->ai_tokens_used,
+                                'ai_tokens_included' => $user->ai_tokens_included,
                                 'operation' => $contentOperation,
                             ]);
                 } else {
@@ -418,23 +407,17 @@ class AiChatController extends Controller
                 $conversation->update(['last_message_at' => now()]);
 
                 if ($operationResult['success']) {
-                    // Deduct credits only after successful operation
-                    $user->decrement('credits', $creditsNeeded);
-                    $user->refresh();
-
                     Log::info('Campaign operation successful', [
                         'operation' => $campaignOperation,
                         'user_id' => $user->id,
-                        'credits_deducted' => $creditsNeeded,
-                        'remaining_credits' => $user->credits,
                     ]);
 
                     return response()->json([
                         'success' => true,
                         'response' => $campaignResponseContent,
                         'conversation_id' => $conversation->id,
-                        'credits_remaining' => $user->credits,
-                        'credits_deducted' => $creditsNeeded,
+                        'ai_tokens_used' => $user->ai_tokens_used,
+                        'ai_tokens_included' => $user->ai_tokens_included,
                         'operation' => $campaignOperation,
                     ]);
                             } else {
@@ -490,7 +473,9 @@ class AiChatController extends Controller
             }
 
             // Call OpenAI API
-            $response = $this->openAiService->chatCompletion($messages);
+            $result = $this->openAiService->chatCompletion($messages);
+            $response = $result['content'];
+            $totalTokens = $result['total_tokens'] ?? 0;
 
             // Save assistant message
             $assistantMessage = AiChatMessage::create([
@@ -511,23 +496,27 @@ class AiChatController extends Controller
                 'last_message_at' => now(),
             ]);
 
-            // Deduct credits after successful response
-            $user->decrement('credits', $creditsNeeded);
+            // Track actual token usage from OpenAI response (real deduction)
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
             $user->refresh();
 
             Log::info('AI Chat message sent', [
                 'user_id' => $user->id,
                 'conversation_id' => $conversation->id,
-                'credits_deducted' => $creditsNeeded,
-                'remaining_credits' => $user->credits,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used_total' => $user->ai_tokens_used,
             ]);
 
             return response()->json([
                 'success' => true,
                 'response' => $response,
                 'conversation_id' => $conversation->id,
-                'credits_remaining' => $user->credits,
-                'credits_deducted' => $creditsNeeded,
+                'tokens_used' => $totalTokens,
+                'ai_tokens_used' => $user->ai_tokens_used,
+                'ai_tokens_included' => $user->ai_tokens_included,
             ]);
         } catch (\Exception $e) {
             Log::error('AI Chat error', [
@@ -1002,8 +991,13 @@ PROMPT;
                 ['role' => 'user', 'content' => $userPrompt],
             ];
 
-            $suggestions = $this->openAiService->chatCompletion($messages);
-            
+            $result = $this->openAiService->chatCompletion($messages);
+            $suggestions = $result['content'] ?? '';
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
+
             // Format the response professionally
             return "Here are some campaign title suggestions:\n\n" . trim($suggestions) . "\n\nYou can use any of these by saying: \"create campaign with title [number or exact title]\" or \"use the first one\".";
             
@@ -2593,7 +2587,7 @@ PROMPT;
                     if (!empty($data['scripture_ref'])) {
                         $titlePrompt .= " related to {$data['scripture_ref']}";
                     }
-                    $data['title'] = $this->generateContentTitle($titlePrompt, $data['type'] ?? 'prayer');
+                    $data['title'] = $this->generateContentTitle($titlePrompt, $data['type'] ?? 'prayer', $user);
                     Log::info('Generated content title', ['title' => $data['title']]);
                 } catch (\Exception $e) {
                     Log::error('Failed to generate content title', ['error' => $e->getMessage()]);
@@ -2611,7 +2605,7 @@ PROMPT;
                 // User explicitly wants body generated
                 $finalTitle = $data['title'] ?? ($data['type'] ?? 'Prayer');
                 try {
-                    $generatedContent = $this->generateContentBody($finalTitle, $data['type'] ?? 'prayer', $data['scripture_ref'] ?? null);
+                    $generatedContent = $this->generateContentBody($finalTitle, $data['type'] ?? 'prayer', $data['scripture_ref'] ?? null, $user);
                     $data['body'] = trim($generatedContent);
                     
                     if (strlen($data['body']) < 10) {
@@ -2630,7 +2624,7 @@ PROMPT;
                         'error' => $e->getMessage(),
                     ]);
                     try {
-                        $data['body'] = $this->generateContentBodySimple($finalTitle, $data['type'] ?? 'prayer');
+                        $data['body'] = $this->generateContentBodySimple($finalTitle, $data['type'] ?? 'prayer', $user);
                         Log::info('Generated content body using simple method', [
                             'user_id' => $user->id,
                             'body_length' => strlen($data['body']),
@@ -2730,7 +2724,7 @@ PROMPT;
     /**
      * Generate content title using AI
      */
-    protected function generateContentTitle(string $prompt, string $type = 'prayer'): string
+    protected function generateContentTitle(string $prompt, string $type = 'prayer', ?User $user = null): string
     {
         $systemPrompt = <<<PROMPT
 You are a creative professional specializing in generating compelling titles for spiritual content.
@@ -2749,8 +2743,13 @@ PROMPT;
             ['role' => 'user', 'content' => $prompt],
         ];
 
-        $title = trim($this->openAiService->chatCompletion($messages));
-        $title = trim($title, ' "\'');
+        $result = $this->openAiService->chatCompletion($messages);
+            $title = trim($result['content'] ?? '');
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0 && $user) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
+            $title = trim($title, ' "\'');
         
         if (empty($title) || strlen($title) < 3) {
             $typeName = ucfirst($type);
@@ -2763,7 +2762,7 @@ PROMPT;
     /**
      * Generate content body using AI
      */
-    protected function generateContentBody(string $title, string $type, ?string $scriptureRef = null): string
+    protected function generateContentBody(string $title, string $type, ?string $scriptureRef = null, ?User $user = null): string
     {
         $typeDescriptions = [
             'prayer' => 'a heartfelt prayer',
@@ -2787,13 +2786,18 @@ PROMPT;
             ],
         ];
 
-        return $this->openAiService->chatCompletion($messages);
+        $result = $this->openAiService->chatCompletion($messages);
+        $totalTokens = (int) ($result['total_tokens'] ?? 0);
+        if ($totalTokens > 0 && $user) {
+            $user->increment('ai_tokens_used', $totalTokens);
+        }
+        return $result['content'] ?? '';
     }
 
     /**
      * Generate content body using simpler approach (fallback)
      */
-    protected function generateContentBodySimple(string $title, string $type): string
+    protected function generateContentBodySimple(string $title, string $type, ?User $user = null): string
     {
         $typeDescriptions = [
             'prayer' => 'prayer',
@@ -2815,7 +2819,12 @@ PROMPT;
             ],
         ];
 
-        return trim($this->openAiService->chatCompletion($messages));
+        $result = $this->openAiService->chatCompletion($messages);
+        $totalTokens = (int) ($result['total_tokens'] ?? 0);
+        if ($totalTokens > 0 && $user) {
+            $user->increment('ai_tokens_used', $totalTokens);
+        }
+        return trim($result['content'] ?? '');
     }
 
     /**
@@ -2945,10 +2954,15 @@ PROMPT;
                 ['role' => 'user', 'content' => $message],
             ];
 
-            $response = $this->openAiService->chatCompletion($messages);
+            $result = $this->openAiService->chatCompletion($messages);
+            $responseContent = $result['content'] ?? '';
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
             
             // Parse JSON from response
-            $cleanResponse = trim($response);
+            $cleanResponse = trim($responseContent);
             $cleanResponse = preg_replace('/^```json\s*/i', '', $cleanResponse);
             $cleanResponse = preg_replace('/\s*```$/i', '', $cleanResponse);
             $cleanResponse = preg_replace('/^```\s*/i', '', $cleanResponse);
@@ -2980,7 +2994,7 @@ PROMPT;
         } catch (\Exception $e) {
             Log::error('Failed to extract content data', [
                 'error' => $e->getMessage(),
-                'response' => substr($response ?? 'No response', 0, 200),
+                'response' => substr($responseContent ?? 'No response', 0, 200),
             ]);
 
             return [
@@ -3912,7 +3926,12 @@ PROMPT;
                 ['role' => 'user', 'content' => $userPrompt],
             ];
 
-            $title = trim($this->openAiService->chatCompletion($messages));
+            $result = $this->openAiService->chatCompletion($messages);
+            $title = trim(is_array($result) ? ($result['content'] ?? '') : $result);
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
             
             // Clean up any quotes or extra text
             $title = trim($title, ' "\'');
@@ -4245,10 +4264,15 @@ PROMPT;
                 ['role' => 'user', 'content' => $message],
             ];
 
-            $response = $this->openAiService->chatCompletion($messages);
+            $result = $this->openAiService->chatCompletion($messages);
+            $responseContent = $result['content'] ?? '';
+            $totalTokens = (int) ($result['total_tokens'] ?? 0);
+            if ($totalTokens > 0) {
+                $user->increment('ai_tokens_used', $totalTokens);
+            }
             
             // Parse JSON from response
-            $cleanResponse = trim($response);
+            $cleanResponse = trim($responseContent);
             $cleanResponse = preg_replace('/^```json\s*/i', '', $cleanResponse);
             $cleanResponse = preg_replace('/\s*```$/i', '', $cleanResponse);
             $cleanResponse = preg_replace('/^```\s*/i', '', $cleanResponse);
