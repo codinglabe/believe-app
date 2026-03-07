@@ -90,6 +90,10 @@ class User extends Authenticatable implements MustVerifyEmail
         'youtube_access_token',
         'youtube_refresh_token',
         'youtube_token_expires_at',
+        'dropbox_refresh_token',
+        'dropbox_access_token',
+        'dropbox_token_expires_at',
+        'dropbox_folder_name',
     ];
 
     /**
@@ -125,6 +129,7 @@ class User extends Authenticatable implements MustVerifyEmail
             'ai_tokens_used' => 'integer',
             'believe_points' => 'decimal:2',
             'youtube_token_expires_at' => 'datetime',
+            'dropbox_token_expires_at' => 'datetime',
         ];
     }
 
@@ -585,6 +590,14 @@ class User extends Authenticatable implements MustVerifyEmail
     public function bankAccounts(): HasMany
     {
         return $this->hasMany(BankAccount::class);
+    }
+
+    /**
+     * Livestreams created by this user (supporter meetings — VDO.Ninja).
+     */
+    public function userLivestreams(): HasMany
+    {
+        return $this->hasMany(UserLivestream::class);
     }
 
 

@@ -26,6 +26,7 @@ import { useWebRTC } from "@/hooks/useWebRTC"
 import { useRecording } from "@/hooks/useRecording"
 import type { Meeting, User, MeetingLink, Participant, ChatMessage } from "@/types"
 import AppLayout from "@/layouts/app-layout"
+import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import ParticipantsCard from "@/components/meeting/ParticipantsCard"
 import ChatCard from "@/components/meeting/ChatCard"
 import EmojiPicker from "@/components/meeting/EmojiPicker"
@@ -36,9 +37,12 @@ interface Props {
   user: User
   role: "host" | "student" | "organization" | "user"
   meetingLink: MeetingLink
+  /** When true, use frontend layout (for supporter host room page). */
+  useFrontendLayout?: boolean
 }
 
-export default function MeetingRoom({ meeting, user, role, meetingLink }: Props) {
+export default function MeetingRoom({ meeting, user, role, meetingLink, useFrontendLayout = false }: Props) {
+  const LayoutComponent = useFrontendLayout ? FrontendLayout : AppLayout
   // State
   const [meetingDuration, setMeetingDuration] = useState(0)
   const [participants, setParticipants] = useState<Participant[]>([])
@@ -390,7 +394,7 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
 
   if (isLoading) {
     return (
-      <AppLayout>
+      <LayoutComponent>
         <div className="flex items-center justify-center h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800">
           <div className="text-center animate-fade-in">
             <div className="relative">
@@ -401,12 +405,12 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
             <p className="text-gray-600 dark:text-gray-400 animate-pulse">Setting up your connection...</p>
           </div>
         </div>
-      </AppLayout>
+      </LayoutComponent>
     )
   }
 
   return (
-    <AppLayout>
+    <LayoutComponent>
       <Head title={`${meeting.title} - Meeting Room`} />
 
       <div ref={containerRef} className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 pt-16">
@@ -874,6 +878,6 @@ export default function MeetingRoom({ meeting, user, role, meetingLink }: Props)
           }
         `}</style>
       </div>
-    </AppLayout>
+    </LayoutComponent>
   )
 }

@@ -224,6 +224,24 @@ Route::post('/unity-videos/engagement/comments', [CommunityVideoEngagementContro
 Route::get('/unity-live', [UnityLiveController::class, 'index'])->name('unity-live.index');
 Route::get('/unity-live/{slug}', [UnityLiveController::class, 'show'])->name('unity-live.show')->where('slug', '[a-zA-Z0-9_]+');
 
+// Supporter meeting: same as organization — index, create, edit, delete, room page (VDO.Ninja)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->group(function () {
+    Route::get('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'index'])->name('livestreams.supporter.index');
+    Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
+    Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
+    Route::get('/livestreams/supporter/ready/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}/edit', [\App\Http\Controllers\SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
+    Route::put('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
+    Route::delete('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'show'])->name('livestreams.supporter.show')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/start-meeting', [\App\Http\Controllers\SupporterLivestreamController::class, 'startMeeting'])->name('livestreams.supporter.start-meeting')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/set-live', [\App\Http\Controllers\SupporterLivestreamController::class, 'setLive'])->name('livestreams.supporter.set-live')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/end-stream', [\App\Http\Controllers\SupporterLivestreamController::class, 'endStream'])->name('livestreams.supporter.end-stream')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/visibility', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateVisibility'])->name('livestreams.supporter.update-visibility')->where('id', '[0-9]+');
+    Route::patch('/livestreams/supporter/{id}/stream-key', [\App\Http\Controllers\SupporterLivestreamController::class, 'updateStreamKey'])->name('livestreams.supporter.update-stream-key')->where('id', '[0-9]+');
+    Route::post('/livestreams/supporter/{id}/go-live-obs-auto', [\App\Http\Controllers\SupporterLivestreamController::class, 'goLiveOBSAuto'])->name('livestreams.supporter.go-live-obs-auto')->where('id', '[0-9]+');
+});
+
 // VDO.Ninja meeting: guest join by secure token (public)
 Route::get('/join/{token}', [\App\Http\Controllers\Organization\LivestreamController::class, 'guestJoinByToken'])->name('livestreams.guest-join-by-token')->where('token', '[a-zA-Z0-9_-]+');
 // Viewer page: /live/{slug} — view-only with Mute + Volume (public, when stream is live)
@@ -1593,20 +1611,20 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(f
         Route::get('/accounts/{account}/posts', [SocialMediaController::class, 'getPostsByAccount'])->name('accounts.posts');
         Route::get('/posts/{post}/analytics', [SocialMediaController::class, 'getPostAnalytics'])->name('posts.analytics');
     });
+});
 
-    // Integrations – Dropbox (organization only; inside dashboard group)
-    Route::prefix('integrations')->name('integrations.')->group(function () {
-        Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
-        Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
-        Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
-        Route::get('/dropbox/callback', [IntegrationsController::class, 'dropboxCallback'])->name('dropbox.callback');
-        Route::post('/dropbox/disconnect', [IntegrationsController::class, 'disconnectDropbox'])->name('dropbox.disconnect');
-        Route::put('/dropbox/folder', [IntegrationsController::class, 'updateDropboxFolder'])->name('dropbox.folder.update');
-        Route::post('/dropbox/move-recordings', [IntegrationsController::class, 'moveRecordingsToFolder'])->name('dropbox.move-recordings');
-        Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
-        Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
-        Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
-    });
+// Integrations – Dropbox (organization + supporter)
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending|user', 'topics.selected'])->prefix('integrations')->name('integrations.')->group(function () {
+    Route::get('/dropbox', [IntegrationsController::class, 'dropbox'])->name('dropbox');
+    Route::get('/dropbox/search', [IntegrationsController::class, 'searchDropbox'])->name('dropbox.search');
+    Route::get('/dropbox/redirect', [IntegrationsController::class, 'redirectToDropbox'])->name('dropbox.redirect');
+    Route::get('/dropbox/callback', [IntegrationsController::class, 'dropboxCallback'])->name('dropbox.callback');
+    Route::post('/dropbox/disconnect', [IntegrationsController::class, 'disconnectDropbox'])->name('dropbox.disconnect');
+    Route::put('/dropbox/folder', [IntegrationsController::class, 'updateDropboxFolder'])->name('dropbox.folder.update');
+    Route::post('/dropbox/move-recordings', [IntegrationsController::class, 'moveRecordingsToFolder'])->name('dropbox.move-recordings');
+    Route::get('/dropbox/download', [IntegrationsController::class, 'downloadFile'])->name('dropbox.download');
+    Route::delete('/dropbox/file', [IntegrationsController::class, 'deleteFile'])->name('dropbox.file.delete');
+    Route::put('/dropbox/file', [IntegrationsController::class, 'renameFile'])->name('dropbox.file.rename');
 });
 
 // YouTube integration: organization + supporter (outside dashboard group so role:user can access)

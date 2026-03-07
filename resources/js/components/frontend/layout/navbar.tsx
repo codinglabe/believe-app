@@ -104,7 +104,7 @@ export default function Navbar() {
 
   // Community dropdown items
   const communityItems = [
-    { name: "Unity Live", href: "/unity-live", icon: Radio },
+    { name: "Unity Live & Meet", href: "/unity-live", icon: Radio },
     { name: "News", href: "/nonprofit-news", icon: Newspaper },
     { name: "Unity Videos", href: "/unity-videos", icon: Video },
     ...(isLoggedIn ? [

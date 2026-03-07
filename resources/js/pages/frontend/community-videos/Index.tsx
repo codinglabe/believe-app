@@ -346,16 +346,16 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Unity Video Hub"} description={seo?.description} />
-      <div className="min-h-screen bg-gray-950 text-gray-100">
+      <div className="min-h-screen bg-neutral-50 dark:bg-gray-950 text-neutral-900 dark:text-gray-100">
         {/* Profile completion banner - logged-in user (org or supporter) without YouTube */}
         {userOrgCanConnect && !userOrgHasYoutube && auth?.user && (
           <div className="bg-amber-500/15 border-b border-amber-500/30">
             <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <p className="text-sm text-amber-200">
+              <p className="text-sm text-amber-800 dark:text-amber-200">
                 <strong>Complete Your Profile to Unlock All Unity Video Hub Features:</strong> 1. Connect your YouTube channel
               </p>
               <div className="flex items-center gap-3">
-                <div className="w-24 h-2 rounded-full bg-gray-700 overflow-hidden">
+                <div className="w-24 h-2 rounded-full bg-neutral-200 dark:bg-gray-700 overflow-hidden">
                   <div className="h-full w-[80%] rounded-full bg-amber-400" />
                 </div>
                 <Button
@@ -371,21 +371,21 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           </div>
         )}
 
-        <header className="sticky top-16 left-0 right-0 z-10 w-full bg-gray-950/95 backdrop-blur border-b border-gray-800">
+        <header className="sticky top-16 left-0 right-0 z-10 w-full bg-white/95 dark:bg-gray-950/95 backdrop-blur border-b border-neutral-200 dark:border-gray-800">
           <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-3">
             <form onSubmit={handleSearchSubmit} className="flex justify-center">
               <div className="relative w-full max-w-md">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 pointer-events-none" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-500 dark:text-gray-500 pointer-events-none" />
                 <Input
                   type="search"
                   placeholder="Search videos..."
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
-                  className="h-10 pl-10 pr-20 w-full rounded-lg border border-gray-700 bg-gray-900 text-gray-100 placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500/50"
+                  className="h-10 pl-10 pr-20 w-full rounded-lg border border-neutral-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-neutral-900 dark:text-gray-100 placeholder:text-neutral-400 dark:placeholder:text-gray-500 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:border-purple-500/50"
                 />
                 <button
                   type="submit"
-                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-sm font-medium text-gray-300 hover:text-white hover:bg-gray-700/80 transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 px-3 rounded-md text-sm font-medium text-neutral-600 dark:text-gray-300 hover:text-neutral-900 dark:hover:text-white hover:bg-neutral-200 dark:hover:bg-gray-700/80 transition-colors"
                 >
                   Search
                 </button>
@@ -406,7 +406,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             const featuredWatchHref = `/unity-videos/watch/yt/${featuredVideo.slug}${fq ? `?${fq}` : ""}`
             return (
             <section className="mb-8">
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-gray-700 bg-gray-900 shadow-lg">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-0 rounded-xl overflow-hidden border border-neutral-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg">
                 <a
                   href={featuredWatchHref}
                   onClick={(e) => { e.preventDefault(); window.location.href = featuredWatchHref }}
@@ -428,26 +428,26 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     </div>
                   </div>
                 </a>
-                <div className="lg:col-span-2 flex flex-col border-l border-gray-700 bg-gray-800/90 p-4 sm:p-5">
+                <div className="lg:col-span-2 flex flex-col border-l border-neutral-200 dark:border-gray-700 bg-neutral-50 dark:bg-gray-800/90 p-4 sm:p-5">
                   <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
-                    <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-gray-400">
                       <span>{featuredVideo.views_formatted} views</span>
                       {featuredVideo.time_ago ? (
                         <>
-                          <span className="text-gray-600" aria-hidden>·</span>
+                          <span className="text-neutral-400 dark:text-gray-600" aria-hidden>·</span>
                           <span>{featuredVideo.time_ago}</span>
                         </>
                       ) : null}
                     </div>
                     {featuredVideo.channel_slug ? (
-                      <Button variant="outline" size="sm" className="border-gray-600 bg-gray-800 text-gray-200 hover:bg-gray-700 h-7 text-xs gap-1" asChild>
+                      <Button variant="outline" size="sm" className="border-neutral-300 dark:border-gray-600 bg-neutral-100 dark:bg-gray-800 text-neutral-800 dark:text-gray-200 hover:bg-neutral-200 dark:hover:bg-gray-700 h-7 text-xs gap-1" asChild>
                         <Link href={`/unity-videos/channel/${featuredVideo.channel_slug}`}>
                           {featuredVideo.channel_slug === authUserChannelSlug ? "Visit Channel" : "Subscribe"}
                           <ChevronDown className="w-4 h-4" />
                         </Link>
                       </Button>
                     ) : (
-                      <Button variant="outline" size="sm" className="border-gray-600 bg-gray-800 text-gray-200 h-7 text-xs gap-1">
+                      <Button variant="outline" size="sm" className="border-neutral-300 dark:border-gray-600 bg-neutral-100 dark:bg-gray-800 text-neutral-800 dark:text-gray-200 h-7 text-xs gap-1">
                         Visit Channel
                         <ChevronDown className="w-4 h-4" />
                       </Button>
@@ -458,12 +458,12 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     onClick={(e) => { e.preventDefault(); window.location.href = featuredWatchHref }}
                     className="flex-1 min-w-0 block"
                   >
-                    <h2 className="text-base sm:text-lg font-bold text-white mb-1 line-clamp-2 hover:underline">
+                    <h2 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white mb-1 line-clamp-2 hover:underline">
                       {featuredVideo.title}
                     </h2>
                   </a>
                   {featuredVideo.nonprofit && (
-                    <div className="flex items-center gap-1.5 text-xs sm:text-sm text-gray-400 mb-2">
+                    <div className="flex items-center gap-1.5 text-xs sm:text-sm text-neutral-500 dark:text-gray-400 mb-2">
                       <Building2 className="w-3.5 h-3.5 shrink-0" />
                       <span>{featuredVideo.nonprofit}</span>
                     </div>
@@ -473,7 +473,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       type="button"
                       size="sm"
                       variant="outline"
-                      className={`h-7 rounded border-gray-600 text-xs gap-1 ${!!featuredVideo.user_liked ? "bg-pink-500/20 text-pink-400 border-pink-500/40 hover:bg-pink-500/30" : "bg-gray-700/50 text-gray-300 border-gray-600 hover:bg-gray-700"}`}
+                      className={`h-7 rounded border-neutral-300 dark:border-gray-600 text-xs gap-1 ${!!featuredVideo.user_liked ? "bg-pink-500/20 text-pink-600 dark:text-pink-400 border-pink-500/40 hover:bg-pink-500/30" : "bg-neutral-100 dark:bg-gray-700/50 text-neutral-700 dark:text-gray-300 border-neutral-300 dark:border-gray-600 hover:bg-neutral-200 dark:hover:bg-gray-700"}`}
                       onClick={(e) => handleLike(e, featuredVideo)}
                       disabled={likeLoadingId === featuredVideo.slug || likeLoadingId === featuredVideo.id}
                     >
@@ -484,7 +484,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   <div className="flex items-center justify-end mt-auto">
                     <button
                       type="button"
-                      className="p-1.5 rounded hover:bg-gray-700 text-gray-400 hover:text-gray-200 flex items-center gap-1.5 text-xs"
+                      className="p-1.5 rounded hover:bg-neutral-200 dark:hover:bg-gray-700 text-neutral-500 dark:text-gray-400 hover:text-neutral-800 dark:hover:text-gray-200 flex items-center gap-1.5 text-xs"
                       onClick={(e) => handleShare(e, featuredVideo)}
                     >
                       <Share2 className="w-4 h-4" />
@@ -499,8 +499,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
 
           {shorts.length > 0 && (
             <section className="mb-6" aria-label="Shorts">
-              <h2 className="text-base font-semibold text-white mb-3 px-0.5 flex items-center gap-2">
-                <Clapperboard className="w-5 h-5 text-purple-400" aria-hidden />
+              <h2 className="text-base font-semibold text-neutral-900 dark:text-white mb-3 px-0.5 flex items-center gap-2">
+                <Clapperboard className="w-5 h-5 text-purple-500 dark:text-purple-400" aria-hidden />
                 Shorts
               </h2>
               <div className="relative w-full overflow-hidden">
@@ -530,7 +530,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                             className="shrink-0 w-[140px] sm:w-[160px] group block"
                           >
-                            <div className="relative aspect-9/16 w-full rounded-xl overflow-hidden bg-gray-800">
+                            <div className="relative aspect-9/16 w-full rounded-xl overflow-hidden bg-neutral-200 dark:bg-gray-800">
                               <img
                                 src={short.thumbnail_url}
                                 alt={short.title}
@@ -561,7 +561,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                         key={i}
                         type="button"
                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); setShortsIndex(i) }}
-                        className={`h-1.5 rounded-full transition-all duration-300 ${i === shortsIndex ? "w-5 bg-purple-500" : "w-1.5 bg-gray-600 hover:bg-gray-500"}`}
+                        className={`h-1.5 rounded-full transition-all duration-300 ${i === shortsIndex ? "w-5 bg-purple-500" : "w-1.5 bg-neutral-400 dark:bg-gray-600 hover:bg-neutral-500 dark:hover:bg-gray-500"}`}
                         aria-label={`Shorts slide ${i + 1}`}
                       />
                     ))}
@@ -572,7 +572,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           )}
 
           {/* Filter bar + stats */}
-          <div className="flex flex-wrap items-center gap-3 pb-4 mb-4 border-b border-gray-800">
+          <div className="flex flex-wrap items-center gap-3 pb-4 mb-4 border-b border-neutral-200 dark:border-gray-800">
             {(["latest", "trending", "nonprofits", "supporter"] as const).map((tab) => (
               <button
                 key={tab}
@@ -581,7 +581,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 className={`shrink-0 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
                   activeTab === tab
                     ? "bg-purple-600 text-white hover:bg-purple-500"
-                    : "bg-gray-800 text-gray-300 hover:bg-gray-700"
+                    : "bg-neutral-200 dark:bg-gray-800 text-neutral-700 dark:text-gray-300 hover:bg-neutral-300 dark:hover:bg-gray-700"
                 }`}
               >
                 {tab === "nonprofits" ? "Non-Profits" : tab === "supporter" ? "Supporter" : tab === "latest" ? "Latest" : "Trending"}
@@ -607,7 +607,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     variant="outline"
                     role="combobox"
                     aria-expanded={orgDropdownOpen}
-                    className="h-9 min-w-[220px] w-[280px] max-w-[320px] shrink-0 justify-between rounded-lg border-gray-700 bg-gray-800 text-gray-300 text-sm hover:bg-gray-700 hover:text-gray-200"
+                    className="h-9 min-w-[220px] w-[280px] max-w-[320px] shrink-0 justify-between rounded-lg border-neutral-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-neutral-700 dark:text-gray-300 text-sm hover:bg-neutral-100 dark:hover:bg-gray-700 hover:text-neutral-900 dark:hover:text-gray-200"
                   >
                     <span className="truncate" title={orgDropdownDisplayName}>
                       {orgDropdownDisplayName}
@@ -616,7 +616,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                   </Button>
                 </PopoverTrigger>
                 <PopoverContent
-                  className="w-[320px] min-w-[320px] p-0 rounded-lg border-gray-700 bg-gray-800"
+                  className="w-[320px] min-w-[320px] p-0 rounded-lg border-neutral-200 dark:border-gray-700 bg-white dark:bg-gray-800"
                   align="start"
                   onOpenAutoFocus={(e) => e.preventDefault()}
                   onCloseAutoFocus={(e) => e.preventDefault()}
@@ -626,11 +626,11 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       placeholder="Search organizations..."
                       value={orgSearchQuery}
                       onValueChange={setOrgSearchQuery}
-                      className="h-11 border-b border-gray-700 bg-gray-800/50 text-gray-200 placeholder:text-gray-500 focus:ring-0 text-sm"
+                      className="h-11 border-b border-neutral-200 dark:border-gray-700 bg-neutral-50 dark:bg-gray-800/50 text-neutral-900 dark:text-gray-200 placeholder:text-neutral-400 dark:placeholder:text-gray-500 focus:ring-0 text-sm"
                     />
                     <CommandList className="max-h-[280px]">
                       {orgSearchLoading ? (
-                        <div className="py-6 text-center text-sm text-gray-400">Loading…</div>
+                        <div className="py-6 text-center text-sm text-neutral-500 dark:text-gray-400">Loading…</div>
                       ) : (
                         <>
                           <CommandEmpty>No organization found.</CommandEmpty>
@@ -639,8 +639,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                               value="all"
                               onSelect={() => { handleOrgChange("all"); setOrgDropdownOpen(false) }}
                               className={cn(
-                                "text-gray-200 cursor-pointer rounded-md py-2.5",
-                                orgFilter === "all" ? "bg-purple-600/30 text-white font-medium" : "hover:bg-gray-700"
+                                "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                orgFilter === "all" ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
                               )}
                             >
                               <Check className={cn("mr-2 h-4 w-4 shrink-0", orgFilter === "all" ? "opacity-100" : "opacity-0")} />
@@ -661,8 +661,8 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                                     value={String(org.id)}
                                     onSelect={() => { handleOrgChange(String(org.id), org.name); setOrgDropdownOpen(false) }}
                                     className={cn(
-                                      "text-gray-200 cursor-pointer rounded-md py-2.5",
-                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-gray-700"
+                                      "text-neutral-900 dark:text-gray-200 cursor-pointer rounded-md py-2.5",
+                                      isSelected ? "bg-purple-600/30 text-white font-medium" : "hover:bg-neutral-100 dark:hover:bg-gray-700"
                                     )}
                                   >
                                     <Check className={cn("mr-2 h-4 w-4 shrink-0", isSelected ? "opacity-100" : "opacity-0")} />
@@ -679,19 +679,19 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                 </PopoverContent>
               </Popover>
             ) : null}
-            <span className="text-sm text-gray-500 ml-auto">
+            <span className="text-sm text-neutral-500 dark:text-gray-500 ml-auto">
               ► {stats.total_videos} Imported Videos · {stats.livestream_replays} Livestream Replays
             </span>
           </div>
 
           {!hasContent ? (
             <div className="text-center py-16">
-              <p className="text-gray-400 mb-4">No videos found.</p>
-              <p className="text-sm text-gray-500">Try adjusting your search or filters.</p>
+              <p className="text-neutral-500 dark:text-gray-400 mb-4">No videos found.</p>
+              <p className="text-sm text-neutral-500 dark:text-gray-500">Try adjusting your search or filters.</p>
             </div>
           ) : (
             <>
-              <h2 className="text-lg font-semibold text-white mb-4">
+              <h2 className="text-lg font-semibold text-neutral-900 dark:text-white mb-4">
                 {filters.search?.trim() ? `Search results for "${filters.search.trim()}"` : activeTab === "latest" ? "Latest" : activeTab === "trending" ? "Trending" : activeTab === "supporter" ? "Supporter" : "Non-Profits"}
               </h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -709,7 +709,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                       className="block"
                     >
-                      <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-gray-800">
+                      <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-neutral-100 dark:bg-gray-800">
                         <img
                           src={video.thumbnail_url}
                           alt={video.title}
@@ -726,9 +726,9 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                       </div>
                     </a>
                     <div className="flex gap-3 mt-2">
-                      <Avatar className="h-9 w-9 rounded-full shrink-0 border border-gray-700">
+                      <Avatar className="h-9 w-9 rounded-full shrink-0 border border-neutral-200 dark:border-gray-700">
                         {video.creatorAvatar && <AvatarImage src={video.creatorAvatar} alt={video.creator} />}
-                        <AvatarFallback className="rounded-full bg-gray-700 text-gray-300 text-xs">
+                        <AvatarFallback className="rounded-full bg-neutral-200 dark:bg-gray-700 text-neutral-600 dark:text-gray-300 text-xs">
                           {video.creator.charAt(0)}
                         </AvatarFallback>
                       </Avatar>
@@ -738,17 +738,17 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           onClick={(e) => { e.preventDefault(); window.location.href = watchHref }}
                           className="block"
                         >
-                          <h3 className="text-sm font-medium text-gray-100 line-clamp-2 group-hover:text-purple-400 transition-colors">
+                          <h3 className="text-sm font-medium text-neutral-900 dark:text-gray-100 line-clamp-2 group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">
                             {video.title}
                           </h3>
                         </a>
-                        <p className="text-xs text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
+                        <p className="text-xs text-neutral-500 dark:text-gray-500 mt-0.5 truncate flex items-center gap-1 flex-wrap">
                           <Youtube className="w-3.5 h-3.5 text-red-500 shrink-0" />
                           {video.channel_slug ? (
                             <>
                               <button
                                 type="button"
-                                className="text-left truncate hover:text-purple-400 cursor-pointer"
+                                className="text-left truncate hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer"
                                 onClick={(e) => {
                                   e.preventDefault()
                                   e.stopPropagation()
@@ -759,7 +759,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                               </button>
                               <Link
                                 href={`/unity-videos/channel/${video.channel_slug}`}
-                                className="text-purple-400 hover:text-purple-300 text-xs shrink-0"
+                                className="text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 text-xs shrink-0"
                                 onClick={(e) => e.stopPropagation()}
                               >
                                 {video.channel_slug === authUserChannelSlug ? "Visit Channel" : "Subscribe"}
@@ -769,14 +769,14 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             video.creator
                           )}
                         </p>
-                        <p className="text-xs text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
-                          <span className="flex items-center gap-1.5 text-gray-400">
+                        <p className="text-xs text-neutral-500 dark:text-gray-500 mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <span className="flex items-center gap-1.5 text-neutral-500 dark:text-gray-400">
                             <Eye className="w-3.5 h-3.5 shrink-0" aria-hidden />
                             {video.views_formatted} views
                           </span>
                           {video.time_ago ? (
                             <>
-                              <span className="text-gray-600" aria-hidden>·</span>
+                              <span className="text-neutral-400 dark:text-gray-600" aria-hidden>·</span>
                               <span>{video.time_ago}</span>
                             </>
                           ) : null}
@@ -790,13 +790,13 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                             {!!video.user_liked ? <Heart className="w-3.5 h-3.5 shrink-0 fill-current" aria-hidden /> : <ThumbsUp className="w-3.5 h-3.5 shrink-0" aria-hidden />}
                             {video.total_likes_formatted ?? video.likes_formatted ?? video.likes ?? 0}
                           </button>
-                          <span className="flex items-center gap-1 text-gray-400">
+                          <span className="flex items-center gap-1 text-neutral-500 dark:text-gray-400">
                             <MessageCircle className="w-3.5 h-3.5 shrink-0" aria-hidden />
                             {video.total_comment_count_formatted ?? video.comment_count_formatted ?? video.comment_count ?? 0}
                           </span>
                           <button
                             type="button"
-                            className="flex items-center gap-1 text-gray-400 hover:text-purple-400 transition-colors"
+                            className="flex items-center gap-1 text-neutral-500 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
                             title="Share"
                             onClick={(e) => handleShare(e, video)}
                           >
@@ -813,7 +813,7 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
             {hasMore && (
               <div ref={loadMoreSentinelRef} className="min-h-[80px] flex items-center justify-center py-6">
                 {loadingMore && (
-                  <div className="flex items-center gap-2 text-gray-400 text-sm">
+                  <div className="flex items-center gap-2 text-neutral-500 dark:text-gray-400 text-sm">
                     <svg className="animate-spin h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden>
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -830,19 +830,19 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
           {/* Right sidebar: Your YouTube Channel or Connect CTA */}
           <aside className="w-full lg:w-[320px] shrink-0 space-y-6">
             {myChannel ? (
-              <div className="rounded-xl border border-gray-700/50 bg-gray-900/80 p-4">
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3">Your YouTube Channel</h3>
+              <div className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wider text-neutral-500 dark:text-gray-500 mb-3">Your YouTube Channel</h3>
                 <div className="flex items-center gap-3 mb-3">
-                  <Avatar className="h-12 w-12 rounded-full border-2 border-gray-700">
+                  <Avatar className="h-12 w-12 rounded-full border-2 border-neutral-200 dark:border-gray-700">
                     {myChannel.avatar && <AvatarImage src={myChannel.avatar} alt={myChannel.name} />}
-                    <AvatarFallback className="rounded-full bg-gray-700 text-gray-300 text-sm">{myChannel.name.charAt(0)}</AvatarFallback>
+                    <AvatarFallback className="rounded-full bg-neutral-200 dark:bg-gray-700 text-neutral-600 dark:text-gray-300 text-sm">{myChannel.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-white truncate flex items-center gap-1">
+                    <p className="font-semibold text-neutral-900 dark:text-white truncate flex items-center gap-1">
                       {myChannel.name}
-                      <span className="text-blue-400" title="Verified">✓</span>
+                      <span className="text-blue-500 dark:text-blue-400" title="Verified">✓</span>
                     </p>
-                    <p className="text-xs text-gray-500">{myChannel.subscriber_count_formatted} Subscribers</p>
+                    <p className="text-xs text-neutral-500 dark:text-gray-500">{myChannel.subscriber_count_formatted} Subscribers</p>
                   </div>
                 </div>
                 {myChannel.channel_slug && (
@@ -852,12 +852,12 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                     </Button>
                   </Link>
                 )}
-                <div className="flex gap-2 border-b border-gray-800 pb-2 text-xs text-gray-500">
+                <div className="flex gap-2 border-b border-neutral-200 dark:border-gray-800 pb-2 text-xs text-neutral-500 dark:text-gray-500">
                   <span>Home</span><span>Videos</span><span>Playlists</span><span>About</span>
                 </div>
                 <div className="flex gap-2 mt-3 overflow-x-auto pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                   {myChannel.preview_videos.map((pv) => (
-                    <Link key={pv.slug} href={myChannel.channel_slug ? `/unity-videos/watch/yt/${pv.slug}?channel_slug=${encodeURIComponent(myChannel.channel_slug)}&creator=${encodeURIComponent(myChannel.name)}` : `/unity-videos/watch/yt/${pv.slug}`} className="shrink-0 w-[100px] block rounded-lg overflow-hidden bg-gray-800 group">
+                    <Link key={pv.slug} href={myChannel.channel_slug ? `/unity-videos/watch/yt/${pv.slug}?channel_slug=${encodeURIComponent(myChannel.channel_slug)}&creator=${encodeURIComponent(myChannel.name)}` : `/unity-videos/watch/yt/${pv.slug}`} className="shrink-0 w-[100px] block rounded-lg overflow-hidden bg-neutral-100 dark:bg-gray-800 group">
                       <div className="aspect-video relative">
                         <img src={pv.thumbnail_url} alt={pv.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                         {pv.duration === "LIVE" ? (
@@ -866,23 +866,23 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
                           <span className="absolute bottom-0.5 right-0.5 bg-black/80 text-white text-[10px] px-1 rounded">{pv.duration}</span>
                         ) : null}
                       </div>
-                      <p className="text-[10px] text-gray-400 truncate px-1 py-0.5 line-clamp-2">{pv.title}</p>
+                      <p className="text-[10px] text-neutral-500 dark:text-gray-400 truncate px-1 py-0.5 line-clamp-2">{pv.title}</p>
                     </Link>
                   ))}
                 </div>
               </div>
             ) : null}
             {(userOrgCanConnect && !userOrgHasYoutube) || !myChannel ? (
-              <div className="rounded-xl border border-gray-700/50 bg-gray-900/80 p-4">
+              <div className="rounded-xl border border-neutral-200 dark:border-gray-700/50 bg-white dark:bg-gray-900/80 p-4">
                 <div className="flex items-center gap-2 mb-3">
                   <Youtube className="w-6 h-6 text-red-500" />
-                  <h3 className="font-semibold text-white">Connect Your YouTube Channel</h3>
+                  <h3 className="font-semibold text-neutral-900 dark:text-white">Connect Your YouTube Channel</h3>
                 </div>
-                <p className="text-xs text-gray-400 mb-3">To unlock all features of Unity Video Hub:</p>
-                <ul className="space-y-2 text-xs text-gray-400 mb-4">
-                  <li className="flex items-center gap-2"><HardDrive className="w-4 h-4 text-gray-500 shrink-0" /> Enable automatic livestream replay storage</li>
+                <p className="text-xs text-neutral-500 dark:text-gray-400 mb-3">To unlock all features of Unity Video Hub:</p>
+                <ul className="space-y-2 text-xs text-neutral-500 dark:text-gray-400 mb-4">
+                  <li className="flex items-center gap-2"><HardDrive className="w-4 h-4 text-neutral-400 dark:text-gray-500 shrink-0" /> Enable automatic livestream replay storage</li>
                   <li className="flex items-center gap-2"><Youtube className="w-4 h-4 text-red-500 shrink-0" /> Import your YouTube videos into the Unity Video Hub</li>
-                  <li className="flex items-center gap-2"><Brain className="w-4 h-4 text-gray-500 shrink-0" /> Let Navigator AI learn from your video content for better insights.</li>
+                  <li className="flex items-center gap-2"><Brain className="w-4 h-4 text-neutral-400 dark:text-gray-500 shrink-0" /> Let Navigator AI learn from your video content for better insights.</li>
                 </ul>
                 {auth?.user ? (
                   <Button

@@ -89,7 +89,7 @@ export default function CommunityVideoShowShort({ seo, video: initialVideo }: Pr
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? video.title} description={seo?.description} />
-      <div className="min-h-screen bg-black">
+      <div className="min-h-screen bg-neutral-100 dark:bg-black">
         <ShortsVideoPlayer
           videoId={video.id}
           title={video.title}

@@ -251,27 +251,40 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Show the Dropbox integration page (organization only).
+     * Show the Dropbox integration page (organization or supporter).
      * Connect for livestream recording uploads.
      */
     public function dropbox(): Response|RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can manage Dropbox integration.');
+        $isSupporter = $user->role === 'user';
+        if ($isSupporter) {
+            $dropboxLinked = ! empty($user->dropbox_refresh_token);
+        } else {
+            if (! $user->organization) {
+                return redirect()->route('dashboard')->with('error', 'Organization not found.');
+            }
+            $dropboxLinked = ! empty($user->organization->dropbox_refresh_token);
         }
-
-        $organization = $user->organization;
-        $dropboxLinked = ! empty($organization->dropbox_refresh_token);
 
         $dropboxFiles = [];
         $dropboxFolderPath = '';
+        $dropboxFolderName = '';
+
         if ($dropboxLinked) {
-            $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($organization);
-            $folderName = $organization->dropbox_folder_name ? trim($organization->dropbox_folder_name) : 'BIU Meeting Recordings';
-            $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName)) ?: 'BIU Meeting Recordings';
-            $folderPath = '/' . $folderName;
+            $token = $isSupporter
+                ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+                : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
+            $folderPath = $isSupporter
+                ? $this->getDropboxRecordingFolderPathForUser($user)
+                : $this->getDropboxRecordingFolderPath($user->organization);
             $dropboxFolderPath = $folderPath;
+            $dropboxFolderName = $isSupporter
+                ? ($user->dropbox_folder_name ? trim($user->dropbox_folder_name) : 'BIU Meeting Recordings')
+                : ($user->organization->dropbox_folder_name ?? '');
+            if ($dropboxFolderName === '') {
+                $dropboxFolderName = 'BIU Meeting Recordings';
+            }
             if ($token) {
                 try {
                     $api = new \App\Services\DropboxOrgApi($token);
@@ -301,13 +314,22 @@ class IntegrationsController extends Controller
             }
         }
 
-        return Inertia::render('Integrations/Dropbox', [
+        $backUrl = $isSupporter ? route('livestreams.supporter.index') : route('dashboard');
+
+        $props = [
             'dropboxLinked' => $dropboxLinked,
             'dropboxRedirectUri' => config('services.dropbox.redirect_uri'),
-            'dropboxFolderName' => $organization->dropbox_folder_name ?? '',
+            'dropboxFolderName' => $isSupporter ? ($user->dropbox_folder_name ?? '') : ($user->organization->dropbox_folder_name ?? ''),
             'dropboxFolderPath' => $dropboxFolderPath,
             'dropboxFiles' => $dropboxFiles,
-        ]);
+            'backUrl' => $backUrl,
+        ];
+
+        if ($isSupporter) {
+            return Inertia::render('frontend/livestreams/Dropbox', $props);
+        }
+
+        return Inertia::render('Integrations/Dropbox', array_merge($props, ['isSupporter' => false]));
     }
 
     /**
@@ -316,8 +338,9 @@ class IntegrationsController extends Controller
     public function redirectToDropbox(): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can connect Dropbox.');
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
+            return redirect()->route('dashboard')->with('error', 'Organization not found.');
         }
 
         $clientId = config('services.dropbox.client_id');
@@ -344,12 +367,13 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Dropbox OAuth callback: exchange code for tokens, store refresh token on org.
+     * Dropbox OAuth callback: exchange code for tokens, store on org or user.
      */
     public function dropboxCallback(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
             return redirect()->route('integrations.dropbox')->with('error', 'Organization not found.');
         }
 
@@ -396,16 +420,24 @@ class IntegrationsController extends Controller
         $encryptedRefresh = Crypt::encryptString($refreshToken);
         $encryptedAccess = $accessToken ? Crypt::encryptString($accessToken) : null;
         $expiresAt = now()->addSeconds($expiresIn);
-
-        $user->organization->forceFill([
-            'dropbox_refresh_token' => $encryptedRefresh,
-            'dropbox_access_token' => $encryptedAccess,
-            'dropbox_token_expires_at' => $expiresAt,
-        ])->save();
-
-        // Set default recordings folder in DB and create it in Dropbox
         $defaultFolder = 'BIU Meeting Recordings';
-        $user->organization->update(['dropbox_folder_name' => $defaultFolder]);
+
+        if ($isSupporter) {
+            $user->forceFill([
+                'dropbox_refresh_token' => $encryptedRefresh,
+                'dropbox_access_token' => $encryptedAccess,
+                'dropbox_token_expires_at' => $expiresAt,
+                'dropbox_folder_name' => $defaultFolder,
+            ])->save();
+        } else {
+            $user->organization->forceFill([
+                'dropbox_refresh_token' => $encryptedRefresh,
+                'dropbox_access_token' => $encryptedAccess,
+                'dropbox_token_expires_at' => $expiresAt,
+            ])->save();
+            $user->organization->update(['dropbox_folder_name' => $defaultFolder]);
+        }
+
         if ($accessToken) {
             try {
                 $api = new \App\Services\DropboxOrgApi($accessToken);
@@ -419,38 +451,47 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Disconnect Dropbox: clear tokens on the organization.
+     * Disconnect Dropbox: clear tokens on organization or user.
      */
     public function disconnectDropbox(): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can disconnect Dropbox.');
+        $isSupporter = $user->role === 'user';
+        if ($isSupporter) {
+            $user->forceFill([
+                'dropbox_refresh_token' => null,
+                'dropbox_access_token' => null,
+                'dropbox_token_expires_at' => null,
+                'dropbox_folder_name' => null,
+            ])->save();
+        } else {
+            if (! $user->organization) {
+                return redirect()->route('dashboard')->with('error', 'Organization not found.');
+            }
+            $user->organization->forceFill([
+                'dropbox_refresh_token' => null,
+                'dropbox_access_token' => null,
+                'dropbox_token_expires_at' => null,
+                'dropbox_folder_name' => null,
+            ])->save();
         }
-
-        $user->organization->forceFill([
-            'dropbox_refresh_token' => null,
-            'dropbox_access_token' => null,
-            'dropbox_token_expires_at' => null,
-            'dropbox_folder_name' => null,
-        ])->save();
 
         return redirect()->route('integrations.dropbox')->with('success', 'Dropbox disconnected.');
     }
 
     /**
-     * Update the Dropbox folder name for recordings (organization-level default).
+     * Update the Dropbox folder name for recordings (organization or user).
      */
     public function updateDropboxFolder(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can update Dropbox folder.');
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
+            return redirect()->route('dashboard')->with('error', 'Organization not found.');
         }
 
         $folderName = $request->input('dropbox_folder_name');
         $folderName = is_string($folderName) ? trim($folderName) : '';
-        // Dropbox path-safe: no \ / : * ? " < > |
         if ($folderName !== '') {
             $folderName = preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName);
             $folderName = preg_replace('/\s+/', ' ', trim($folderName));
@@ -458,11 +499,16 @@ class IntegrationsController extends Controller
             $folderName = substr($folderName, 0, 255);
         }
 
-        $user->organization->update(['dropbox_folder_name' => $folderName === '' ? null : $folderName]);
+        if ($isSupporter) {
+            $user->update(['dropbox_folder_name' => $folderName === '' ? null : $folderName]);
+        } else {
+            $user->organization->update(['dropbox_folder_name' => $folderName === '' ? null : $folderName]);
+        }
 
-        // Create the folder in Dropbox when a name is set
         if ($folderName !== '') {
-            $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
+            $token = $isSupporter
+                ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+                : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
             if ($token) {
                 try {
                     $api = new \App\Services\DropboxOrgApi($token);
@@ -477,26 +523,27 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Move recent recording files from Dropbox root into the org's recording folder.
-     * Use when VDO.Ninja saved to root instead of the folder.
+     * Move recent recording files from Dropbox root into the recording folder.
      */
     public function moveRecordingsToFolder(): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
-            return redirect()->route('dashboard')->with('error', 'Only organizations can run this.');
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
+            return redirect()->route('dashboard')->with('error', 'Organization not found.');
         }
 
-        $org = $user->organization;
-        $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($org);
+        $token = $isSupporter
+            ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+            : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
         if (! $token) {
             return redirect()->route('integrations.dropbox')->with('error', 'Dropbox not connected or token expired.');
         }
 
-        $folderName = $org->dropbox_folder_name ?: 'BIU Meeting Recordings';
-        $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
-        $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
-        $folderPath = '/' . $folderName;
+        $folderPath = $isSupporter
+            ? $this->getDropboxRecordingFolderPathForUser($user)
+            : $this->getDropboxRecordingFolderPath($user->organization);
+        $folderName = trim($folderPath, '/') ?: 'BIU Meeting Recordings';
 
         $api = new \App\Services\DropboxOrgApi($token);
         $api->createFolder($folderPath);
@@ -522,12 +569,13 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Download a file from the org's Dropbox recording folder (redirect to temporary link).
+     * Download a file from the Dropbox recording folder (redirect to temporary link).
      */
     public function downloadFile(Request $request): RedirectResponse|Response
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
             return redirect()->route('dashboard')->with('error', 'Access denied.');
         }
 
@@ -540,12 +588,16 @@ class IntegrationsController extends Controller
             return redirect()->route('integrations.dropbox')->with('error', 'Invalid file path.');
         }
 
-        $folderPath = $this->getDropboxRecordingFolderPath($user->organization);
+        $folderPath = $isSupporter
+            ? $this->getDropboxRecordingFolderPathForUser($user)
+            : $this->getDropboxRecordingFolderPath($user->organization);
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('integrations.dropbox')->with('error', 'You can only download files from your recording folder.');
         }
 
-        $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
+        $token = $isSupporter
+            ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+            : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
         if (! $token) {
             return redirect()->route('integrations.dropbox')->with('error', 'Dropbox not connected.');
         }
@@ -560,12 +612,13 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Delete a file from the org's Dropbox recording folder.
+     * Delete a file from the Dropbox recording folder.
      */
     public function deleteFile(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
             return redirect()->route('dashboard')->with('error', 'Access denied.');
         }
 
@@ -578,12 +631,16 @@ class IntegrationsController extends Controller
             return redirect()->route('integrations.dropbox')->with('error', 'Invalid file path.');
         }
 
-        $folderPath = $this->getDropboxRecordingFolderPath($user->organization);
+        $folderPath = $isSupporter
+            ? $this->getDropboxRecordingFolderPathForUser($user)
+            : $this->getDropboxRecordingFolderPath($user->organization);
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('integrations.dropbox')->with('error', 'You can only delete files from your recording folder.');
         }
 
-        $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
+        $token = $isSupporter
+            ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+            : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
         if (! $token) {
             return redirect()->route('integrations.dropbox')->with('error', 'Dropbox not connected.');
         }
@@ -597,12 +654,13 @@ class IntegrationsController extends Controller
     }
 
     /**
-     * Rename a file in the org's Dropbox recording folder.
+     * Rename a file in the Dropbox recording folder.
      */
     public function renameFile(Request $request): RedirectResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
             return redirect()->route('dashboard')->with('error', 'Access denied.');
         }
 
@@ -622,12 +680,16 @@ class IntegrationsController extends Controller
             return redirect()->route('integrations.dropbox')->with('error', 'Invalid file path.');
         }
 
-        $folderPath = $this->getDropboxRecordingFolderPath($user->organization);
+        $folderPath = $isSupporter
+            ? $this->getDropboxRecordingFolderPathForUser($user)
+            : $this->getDropboxRecordingFolderPath($user->organization);
         if ($folderPath === '' || ! str_starts_with($path, $folderPath)) {
             return redirect()->route('integrations.dropbox')->with('error', 'You can only rename files in your recording folder.');
         }
 
-        $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
+        $token = $isSupporter
+            ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+            : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
         if (! $token) {
             return redirect()->route('integrations.dropbox')->with('error', 'Dropbox not connected.');
         }
@@ -650,17 +712,21 @@ class IntegrationsController extends Controller
     public function searchDropbox(Request $request): \Illuminate\Http\JsonResponse
     {
         $user = Auth::user();
-        if ($user->role !== 'organization' || ! $user->organization) {
+        $isSupporter = $user->role === 'user';
+        if (! $isSupporter && ! $user->organization) {
             return response()->json(['error' => 'Unauthorized'], 403);
         }
 
-        $org = $user->organization;
-        $token = app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($org);
+        $token = $isSupporter
+            ? app(\App\Services\DropboxOAuthService::class)->getAccessTokenForUser($user)
+            : app(\App\Services\DropboxOAuthService::class)->getAccessTokenForOrganization($user->organization);
         if (! $token) {
             return response()->json(['error' => 'Dropbox not connected'], 400);
         }
 
-        $folderPath = $this->getDropboxRecordingFolderPath($org);
+        $folderPath = $isSupporter
+            ? $this->getDropboxRecordingFolderPathForUser($user)
+            : $this->getDropboxRecordingFolderPath($user->organization);
         $query = $request->input('q', '');
         $query = is_string($query) ? trim($query) : '';
 
@@ -681,6 +747,14 @@ class IntegrationsController extends Controller
     private function getDropboxRecordingFolderPath(\App\Models\Organization $organization): string
     {
         $folderName = $organization->dropbox_folder_name ? trim($organization->dropbox_folder_name) : 'BIU Meeting Recordings';
+        $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
+        $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
+        return '/' . $folderName;
+    }
+
+    private function getDropboxRecordingFolderPathForUser(\App\Models\User $user): string
+    {
+        $folderName = $user->dropbox_folder_name ? trim($user->dropbox_folder_name) : 'BIU Meeting Recordings';
         $folderName = trim(preg_replace('/[\\\\\/:*?"<>|]+/', ' ', $folderName));
         $folderName = trim($folderName, " \t\n\r\0\x0B.") ?: 'BIU Meeting Recordings';
         return '/' . $folderName;

@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { Head, useForm } from "@inertiajs/react"
+import { Head, useForm, usePage } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -12,6 +12,7 @@ import { Switch } from "@/components/admin/ui/switch"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Calendar, Clock, Users, Video, Shield, MessageSquare, Monitor } from "lucide-react"
 import AppLayout from "@/layouts/app-layout"
+import FrontendLayout from "@/layouts/frontend/frontend-layout"
 
 interface Course {
   id: number
@@ -23,6 +24,9 @@ interface Props {
 }
 
 export default function CreateMeeting({ courses }: Props) {
+  const { auth } = usePage().props as { auth?: { user?: { role?: string } } }
+  const userRole = auth?.user?.role ?? "user"
+  const LayoutComponent = userRole === "organization" || userRole === "organization_pending" ? AppLayout : FrontendLayout
   const { data, setData, post, processing, errors } = useForm({
     course_id: "",
     title: "",
@@ -58,7 +62,7 @@ export default function CreateMeeting({ courses }: Props) {
   const minDateTimeString = minDateTime.toISOString().slice(0, 16)
 
   return (
-    <AppLayout>
+    <LayoutComponent>
       <Head title="Create Meeting" />
 
       <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
@@ -349,6 +353,6 @@ export default function CreateMeeting({ courses }: Props) {
           </form>
         </div>
       </div>
-    </AppLayout>
+    </LayoutComponent>
   )
 }

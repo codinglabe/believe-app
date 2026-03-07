@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\LivestreamInviteToken;
 use App\Models\Organization;
 use App\Models\OrganizationLivestream;
+use App\Models\UserLivestream;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Crypt;
@@ -282,33 +283,61 @@ class LivestreamController extends Controller
     }
 
     /**
-     * Show the guest join page (public, by room name). Legacy; prefer /join/{token}.
+     * Show the guest join page (public, by room name). Supports both org and supporter livestreams.
      */
     public function guestJoin(string $roomName): Response
     {
-        $livestream = OrganizationLivestream::where('room_name', $roomName)
+        $orgStream = OrganizationLivestream::where('room_name', $roomName)
             ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
             ->with('organization')
-            ->firstOrFail();
+            ->first();
 
-        $participantUrl = $livestream->getParticipantUrl();
-        $password = $livestream->getDecryptedPassword();
+        if ($orgStream) {
+            $participantUrl = $orgStream->getParticipantUrl();
+            $password = $orgStream->getDecryptedPassword();
+            return Inertia::render('organization/Livestreams/GuestJoin', [
+                'livestream' => [
+                    'id' => $orgStream->id,
+                    'title' => $orgStream->title,
+                    'description' => $orgStream->description,
+                    'roomName' => $orgStream->room_name,
+                    'roomPassword' => $password,
+                    'participantUrl' => $participantUrl,
+                    'status' => $orgStream->status,
+                ],
+                'organization' => [
+                    'id' => $orgStream->organization->id,
+                    'name' => $orgStream->organization->name,
+                ],
+            ]);
+        }
 
-        return Inertia::render('organization/Livestreams/GuestJoin', [
-            'livestream' => [
-                'id' => $livestream->id,
-                'title' => $livestream->title,
-                'description' => $livestream->description,
-                'roomName' => $livestream->room_name,
-                'roomPassword' => $password,
-                'participantUrl' => $participantUrl,
-                'status' => $livestream->status,
-            ],
-            'organization' => [
-                'id' => $livestream->organization->id,
-                'name' => $livestream->organization->name,
-            ],
-        ]);
+        $userStream = UserLivestream::where('room_name', $roomName)
+            ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
+            ->with('user')
+            ->first();
+
+        if ($userStream) {
+            $participantUrl = $userStream->getParticipantUrl();
+            $password = $userStream->getDecryptedPassword();
+            return Inertia::render('organization/Livestreams/GuestJoin', [
+                'livestream' => [
+                    'id' => $userStream->id,
+                    'title' => $userStream->title,
+                    'description' => $userStream->description,
+                    'roomName' => $userStream->room_name,
+                    'roomPassword' => $password,
+                    'participantUrl' => $participantUrl,
+                    'status' => $userStream->status,
+                ],
+                'organization' => [
+                    'id' => 0,
+                    'name' => $userStream->user?->name ?? 'Meeting',
+                ],
+            ]);
+        }
+
+        abort(404, 'Meeting not found.');
     }
 
     /**
