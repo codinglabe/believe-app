@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Post;
 use App\Models\Organization;
 use App\Models\User;
+use App\Models\BridgeIntegration;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
@@ -23,30 +24,104 @@ class UserController extends Controller
     {
         $user = $request->user();
 
+        $data = [
+            'id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
+            'contact_number' => $user->contact_number,
+            'dob' => $user->dob,
+            'image' => $user->image,
+            'cover_img' => $user->cover_img,
+            'balance' => $user->balance ?? 0,
+            'reward_points' => $user->reward_points ?? 0,
+            'believe_points' => $user->believe_points ?? 0,
+            'created_at' => $user->created_at,
+            'role' => $user->role ?? 'user',
+            'kyc_status' => 'not_started',
+        ];
+
+        $isOrgUser = in_array($user->role ?? '', ['organization', 'organization_pending'], true);
+        if ($isOrgUser) {
+            $org = Organization::where('user_id', $user->id)->first();
+            if ($org) {
+                // Return profile image from profile-photos for display (wallet uploads). Prefer user.image over legacy organizations/ path.
+                $orgDisplayImage = $org->registered_user_image;
+                if ($org->registered_user_image && str_starts_with($org->registered_user_image, 'organizations/') && $user->image) {
+                    $orgDisplayImage = $user->image;
+                } elseif (!$org->registered_user_image && $user->image) {
+                    $orgDisplayImage = $user->image;
+                }
+                $data['organization'] = [
+                    'id' => $org->id,
+                    'name' => $org->name,
+                    'ein' => $org->ein,
+                    'email' => $org->email,
+                    'phone' => $org->phone,
+                    'contact_name' => $org->contact_name,
+                    'contact_title' => $org->contact_title,
+                    'street' => $org->street,
+                    'city' => $org->city,
+                    'state' => $org->state,
+                    'zip' => $org->zip,
+                    'website' => $org->website,
+                    'description' => $org->description,
+                    'mission' => $org->mission,
+                    'registered_user_image' => $orgDisplayImage,
+                ];
+                $integration = BridgeIntegration::where('integratable_id', $org->id)
+                    ->where('integratable_type', Organization::class)->first();
+                if ($integration) {
+                    $data['kyc_status'] = $integration->kyb_status === 'approved' ? 'verified'
+                        : ($integration->kyb_status === 'rejected' ? 'rejected' : 'pending');
+                }
+            } else {
+                $data['organization'] = null;
+            }
+        } else {
+            $integration = BridgeIntegration::where('integratable_id', $user->id)
+                ->where('integratable_type', User::class)->first();
+            if ($integration) {
+                $data['kyc_status'] = $integration->kyc_status === 'approved' ? 'verified'
+                    : ($integration->kyc_status === 'rejected' ? 'rejected' : 'pending');
+            }
+        }
+
         return response()->json([
             'success' => true,
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'contact_number' => $user->contact_number,
-                'dob' => $user->dob,
-                'image' => $user->image,
-                'cover_img' => $user->cover_img,
-                'balance' => $user->balance ?? 0,
-                'reward_points' => $user->reward_points ?? 0,
-                'believe_points' => $user->believe_points ?? 0,
-                'created_at' => $user->created_at,
-            ]
+            'data' => $data,
         ]);
     }
 
     /**
-     * Update user profile
+     * Update user profile (only allowed until verified)
      */
     public function updateProfile(Request $request)
     {
         $user = $request->user();
+
+        $isOrgUser = in_array($user->role ?? '', ['organization', 'organization_pending'], true);
+        if ($isOrgUser) {
+            $org = Organization::where('user_id', $user->id)->first();
+            if ($org) {
+                $integration = BridgeIntegration::where('integratable_id', $org->id)
+                    ->where('integratable_type', Organization::class)->first();
+                if ($integration && $integration->kyb_status === 'approved') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Profile cannot be updated after verification.',
+                    ], 422);
+                }
+            }
+        } else {
+            $integration = BridgeIntegration::where('integratable_id', $user->id)
+                ->where('integratable_type', User::class)->first();
+            if ($integration && $integration->kyc_status === 'approved') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Profile cannot be updated after verification.',
+                ], 422);
+            }
+        }
 
         $validator = Validator::make($request->all(), [
             'name' => 'sometimes|string|max:255',
@@ -91,6 +166,15 @@ class UserController extends Controller
 
         $user->update($updateData);
 
+        // When organization user uploads profile image, also set organization's registered_user_image so it displays
+        if ($request->hasFile('image') && isset($updateData['image'])) {
+            $org = Organization::where('user_id', $user->id)->first();
+            if ($org) {
+                $org->registered_user_image = $updateData['image'];
+                $org->save();
+            }
+        }
+
         return response()->json([
             'success' => true,
             'message' => 'Profile updated successfully',
@@ -101,6 +185,82 @@ class UserController extends Controller
                 'contact_number' => $user->contact_number,
                 'dob' => $user->dob,
                 'image' => $user->image,
+            ]
+        ]);
+    }
+
+    /**
+     * Update organization profile (only allowed until verified)
+     */
+    public function updateOrganizationProfile(Request $request)
+    {
+        $user = $request->user();
+        $org = Organization::where('user_id', $user->id)->first();
+
+        if (!$org) {
+            return response()->json([
+                'success' => false,
+                'message' => 'No organization found for this account.',
+            ], 404);
+        }
+
+        $integration = BridgeIntegration::where('integratable_id', $org->id)
+            ->where('integratable_type', Organization::class)->first();
+        if ($integration && $integration->kyb_status === 'approved') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Organization data cannot be updated after verification.',
+            ], 422);
+        }
+
+        $validator = Validator::make($request->all(), [
+            'name' => 'sometimes|string|max:255',
+            'ein' => 'sometimes|nullable|string|max:50',
+            'email' => 'sometimes|email|max:255',
+            'phone' => 'sometimes|nullable|string|max:30',
+            'contact_name' => 'sometimes|nullable|string|max:255',
+            'contact_title' => 'sometimes|nullable|string|max:100',
+            'street' => 'sometimes|nullable|string|max:255',
+            'city' => 'sometimes|nullable|string|max:100',
+            'state' => 'sometimes|nullable|string|max:100',
+            'zip' => 'sometimes|nullable|string|max:20',
+            'website' => 'sometimes|nullable|string|max:500',
+            'description' => 'sometimes|nullable|string|max:5000',
+            'mission' => 'sometimes|nullable|string|max:5000',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Validation error',
+                'errors' => $validator->errors()
+            ], 422);
+        }
+
+        $fields = [
+            'name', 'ein', 'email', 'phone', 'contact_name', 'contact_title',
+            'street', 'city', 'state', 'zip', 'website', 'description', 'mission',
+        ];
+        $org->update($request->only($fields));
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Organization profile updated successfully',
+            'data' => [
+                'id' => $org->id,
+                'name' => $org->name,
+                'ein' => $org->ein,
+                'email' => $org->email,
+                'phone' => $org->phone,
+                'contact_name' => $org->contact_name,
+                'contact_title' => $org->contact_title,
+                'street' => $org->street,
+                'city' => $org->city,
+                'state' => $org->state,
+                'zip' => $org->zip,
+                'website' => $org->website,
+                'description' => $org->description,
+                'mission' => $org->mission,
             ]
         ]);
     }

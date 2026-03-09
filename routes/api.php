@@ -7,6 +7,7 @@ use App\Http\Controllers\Api\UserController;
 use App\Http\Controllers\Api\WalletController;
 use App\Http\Controllers\Api\TransactionController;
 use App\Http\Controllers\Api\CardController;
+use App\Http\Controllers\Api\KycController;
 use App\Http\Controllers\KnowledgeBaseController;
 use App\Http\Controllers\Api\OrganizationLookupController;
 
@@ -40,6 +41,7 @@ Route::middleware('auth:api')->group(function () {
             Route::get('/profile', [UserController::class, 'getProfile']);
             Route::put('/profile', [UserController::class, 'updateProfile']);
             Route::post('/profile', [UserController::class, 'updateProfile']); // POST for multipart (profile photo)
+            Route::put('/organization-profile', [UserController::class, 'updateOrganizationProfile']);
             Route::put('/password', [UserController::class, 'changePassword']);
             Route::get('/security-prefs', [UserController::class, 'getSecurityPrefs']);
             Route::put('/security-prefs', [UserController::class, 'updateSecurityPrefs']);
@@ -73,6 +75,12 @@ Route::middleware('auth:api')->group(function () {
         Route::prefix('cards')->group(function () {
             Route::get('/', [CardController::class, 'index']);
             Route::get('/{id}', [CardController::class, 'show']);
+        });
+
+        // KYC
+        Route::prefix('kyc')->group(function () {
+            Route::get('/status', [KycController::class, 'status']);
+            Route::post('/submit', [KycController::class, 'submit']);
         });
         
         Route::prefix('crypto')->group(function () {

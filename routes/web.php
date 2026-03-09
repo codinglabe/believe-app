@@ -230,6 +230,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->group(functio
     Route::get('/livestreams/supporter/create', [\App\Http\Controllers\SupporterLivestreamController::class, 'create'])->name('livestreams.supporter.create');
     Route::post('/livestreams/supporter', [\App\Http\Controllers\SupporterLivestreamController::class, 'store'])->name('livestreams.supporter.store');
     Route::get('/livestreams/supporter/ready/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'ready'])->name('livestreams.supporter.ready')->where('id', '[0-9]+');
+    Route::get('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinPage'])->name('livestreams.supporter.join');
+    Route::post('/livestreams/supporter/join', [\App\Http\Controllers\SupporterLivestreamController::class, 'joinWithPasscode'])->name('livestreams.supporter.join.submit');
     Route::get('/livestreams/supporter/{id}/edit', [\App\Http\Controllers\SupporterLivestreamController::class, 'edit'])->name('livestreams.supporter.edit')->where('id', '[0-9]+');
     Route::put('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'update'])->name('livestreams.supporter.update')->where('id', '[0-9]+');
     Route::delete('/livestreams/supporter/{id}', [\App\Http\Controllers\SupporterLivestreamController::class, 'destroy'])->name('livestreams.supporter.destroy')->where('id', '[0-9]+');

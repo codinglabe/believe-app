@@ -225,6 +225,7 @@ class AuthController extends Controller
                 'reward_points' => $user->reward_points ?? 0,
                 'believe_points' => $user->believe_points ?? 0,
                 'email_verified_at' => $user->email_verified_at ? $user->email_verified_at->toIso8601String() : null,
+                'role' => $user->role ?? 'user',
             ]
         ]);
     }

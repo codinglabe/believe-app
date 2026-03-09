@@ -105,6 +105,16 @@ export default function SupporterLivestreamsIndex({ livestreams }: Props) {
                   <Cloud className="h-4 w-4" />
                   Dropbox (recordings)
                 </Link>
+                <Link href="/livestreams/supporter/join">
+                  <Button
+                    variant="outline"
+                    size="lg"
+                    className="h-11 rounded-lg px-6 border-purple-300 dark:border-purple-500/50 text-purple-700 dark:text-purple-300 hover:bg-purple-500/10 hover:border-purple-400 dark:hover:border-purple-500"
+                  >
+                    <Video className="mr-2 h-4 w-4" />
+                    Join a meeting
+                  </Button>
+                </Link>
                 <Link href="/livestreams/supporter/create">
                   <Button
                     size="lg"

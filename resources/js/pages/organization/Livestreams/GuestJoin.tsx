@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Head } from "@inertiajs/react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,7 +45,20 @@ export default function GuestJoin({ livestream, organization }: Props) {
   const [micEnabled, setMicEnabled] = useState(false)
   const [stream, setStream] = useState<MediaStream | null>(null)
   const [deviceOk, setDeviceOk] = useState(false)
+  const [joined, setJoined] = useState(false)
   const videoRef = useRef<HTMLVideoElement>(null)
+
+  const canJoin = ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
+
+  const iframeUrl = useMemo(() => {
+    if (!joined) return null
+    const url = new URL(livestream.participantUrl)
+    const name = (displayName || "Guest").trim()
+    if (name) url.searchParams.set("label", name)
+    if (!cameraEnabled) url.searchParams.set("novideo", "1")
+    if (!micEnabled) url.searchParams.set("nomicrophone", "1")
+    return url.toString()
+  }, [livestream.participantUrl, joined, displayName, cameraEnabled, micEnabled])
 
   useEffect(() => {
     return () => {
@@ -74,14 +87,47 @@ export default function GuestJoin({ livestream, organization }: Props) {
     }
   }
 
-  const canJoin = ["draft", "scheduled", "meeting_live", "live"].includes(livestream.status)
-
   const handleJoin = () => {
     if (!canJoin) return
-    const name = displayName.trim() || "Guest"
-    const url = new URL(livestream.participantUrl)
-    url.searchParams.set("label", name)
-    window.open(url.toString(), "_blank")
+    setJoined(true)
+  }
+
+  // In-meeting view: meeting embedded on same page (no new tab)
+  if (joined && iframeUrl) {
+    const displayLabel = (displayName || "Guest").trim()
+    const initial = displayLabel.charAt(0).toUpperCase() || "G"
+
+    return (
+      <FrontendLayout>
+        <Head title={`In meeting: ${livestream.title || "Meeting"}`} />
+        <div className="flex flex-col min-h-[calc(100vh-140px)] bg-background">
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-card shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-muted text-sm font-semibold text-foreground">
+                {initial}
+              </div>
+              <div className="min-w-0">
+                <span className="text-sm font-medium text-foreground truncate block">
+                  {livestream.title || "Meeting"}
+                </span>
+                <span className="text-xs text-muted-foreground truncate block">
+                  {organization.name}
+                </span>
+              </div>
+            </div>
+            <span className="shrink-0 text-xs font-medium text-muted-foreground">{displayLabel}</span>
+          </div>
+          <div className="flex-1 min-h-0 relative bg-black">
+            <iframe
+              src={iframeUrl}
+              title="Meeting"
+              allow="camera;microphone;display-capture;fullscreen;autoplay"
+              className="absolute inset-0 w-full h-full border-0"
+            />
+          </div>
+        </div>
+      </FrontendLayout>
+    )
   }
 
   return (

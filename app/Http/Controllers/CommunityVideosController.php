@@ -213,12 +213,13 @@ class CommunityVideosController extends Controller
             $nonprofitOrganizations = [];
         }
 
-        // Load-more: return next page as JSON for infinite scroll
-        if ($request->wantsJson() && $page > 1) {
+        // Load-more: return next page as JSON for infinite scroll (XHR or Accept: application/json)
+        $wantsJson = $request->wantsJson() || $request->header('X-Requested-With') === 'XMLHttpRequest';
+        if ($wantsJson && $page > 1) {
             return response()->json([
                 'videos' => $videos ?? [],
                 'has_more' => $hasMore ?? false,
-                'next_page' => $nextPage ?? 2,
+                'next_page' => $nextPage ?? (int) $page + 1,
             ]);
         }
 

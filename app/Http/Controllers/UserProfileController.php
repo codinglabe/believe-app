@@ -115,6 +115,7 @@ class UserProfileController extends Controller
         return Inertia::render('frontend/user-profile/Integrations', [
             'youtube_channel_url' => $youtubeChannelUrl,
             'myChannel' => $myChannel,
+            'dropboxLinked' => ! empty($user->dropbox_refresh_token),
         ]);
     }
 

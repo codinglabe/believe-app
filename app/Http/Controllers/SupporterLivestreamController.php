@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\OrganizationLivestream;
 use App\Models\UserLivestream;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -78,6 +79,98 @@ class SupporterLivestreamController extends Controller
 
         return redirect()->route('livestreams.supporter.ready', $livestream->id)
             ->with('success', 'Meeting ready!');
+    }
+
+    /**
+     * Show the "Join a meeting" page — enter meeting ID and passcode (no link).
+     */
+    public function joinPage(Request $request): Response
+    {
+        $errors = $request->session()->get('errors');
+        $errorBag = $errors ? $errors->getBag('default')->getMessages() : [];
+
+        return Inertia::render('frontend/livestreams/Join', [
+            'oldMeetingId' => $request->old('meeting_id'),
+            'errors' => $errorBag,
+        ]);
+    }
+
+    /**
+     * Join with meeting ID + passcode. Validates passcode then renders the guest join page.
+     */
+    public function joinWithPasscode(Request $request): Response|RedirectResponse
+    {
+        $request->validate([
+            'meeting_id' => 'required|string|max:100',
+            'passcode' => 'required|string|max:100',
+        ]);
+
+        $roomName = trim($request->input('meeting_id'));
+        $passcode = $request->input('passcode');
+
+        $orgStream = OrganizationLivestream::where('room_name', $roomName)
+            ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
+            ->with('organization')
+            ->first();
+
+        if ($orgStream) {
+            $password = $orgStream->getDecryptedPassword();
+            if ($password !== $passcode) {
+                return redirect()->route('livestreams.supporter.join')
+                    ->withInput($request->only('meeting_id'))
+                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            }
+            $participantUrl = $orgStream->getParticipantUrl();
+            return Inertia::render('frontend/livestreams/Join', [
+                'livestream' => [
+                    'id' => $orgStream->id,
+                    'title' => $orgStream->title,
+                    'description' => $orgStream->description,
+                    'roomName' => $orgStream->room_name,
+                    'roomPassword' => $password,
+                    'participantUrl' => $participantUrl,
+                    'status' => $orgStream->status,
+                ],
+                'organization' => [
+                    'id' => $orgStream->organization->id,
+                    'name' => $orgStream->organization->name,
+                ],
+            ]);
+        }
+
+        $userStream = UserLivestream::where('room_name', $roomName)
+            ->whereIn('status', ['draft', 'scheduled', 'meeting_live', 'live', 'ended'])
+            ->with('user')
+            ->first();
+
+        if ($userStream) {
+            $password = $userStream->getDecryptedPassword();
+            if ($password !== $passcode) {
+                return redirect()->route('livestreams.supporter.join')
+                    ->withInput($request->only('meeting_id'))
+                    ->withErrors(['passcode' => 'Invalid meeting ID or passcode.']);
+            }
+            $participantUrl = $userStream->getParticipantUrl();
+            return Inertia::render('frontend/livestreams/Join', [
+                'livestream' => [
+                    'id' => $userStream->id,
+                    'title' => $userStream->title,
+                    'description' => $userStream->description,
+                    'roomName' => $userStream->room_name,
+                    'roomPassword' => $password,
+                    'participantUrl' => $participantUrl,
+                    'status' => $userStream->status,
+                ],
+                'organization' => [
+                    'id' => 0,
+                    'name' => $userStream->user?->name ?? 'Meeting',
+                ],
+            ]);
+        }
+
+        return redirect()->route('livestreams.supporter.join')
+            ->withInput($request->only('meeting_id'))
+            ->withErrors(['meeting_id' => 'Meeting not found or not available to join.']);
     }
 
     public function ready(Request $request, int $id): Response

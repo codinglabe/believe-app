@@ -132,9 +132,10 @@ export default function CommunityVideosIndex({ seo, channelBanners = [], feature
       params: { page: nextPage, search: filters.search, tab: filters.tab, org: filters.org },
       headers: { Accept: "application/json", "X-Requested-With": "XMLHttpRequest" },
     }).then(({ data }) => {
-      setVideos((prev) => [...prev, ...(data.videos || [])])
-      setHasMore(!!data.has_more)
-      setNextPage(data.next_page ?? nextPage + 1)
+      const list = Array.isArray(data?.videos) ? data.videos : []
+      setVideos((prev) => [...prev, ...list])
+      setHasMore(!!data?.has_more)
+      setNextPage((v) => (Number(data?.next_page) > 0 ? Number(data.next_page) : v + 1))
     }).catch(() => {
       setHasMore(false)
     }).finally(() => {
