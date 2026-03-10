@@ -96,11 +96,11 @@ export default function UnityLiveIndex({ seo, livestreams, upcomingMeetings = []
                       <Link href="/livestreams/supporter" className="w-full sm:w-auto min-w-0">
                         <Button variant="outline" className="w-full sm:w-auto h-10 sm:h-10 px-4 text-xs sm:text-sm border-2 border-blue-500/50 text-blue-600 dark:text-blue-400 hover:bg-gradient-to-r hover:from-blue-500/10 hover:to-purple-500/10 dark:hover:from-blue-500/20 dark:hover:to-purple-500/20">
                           <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 flex-shrink-0" />
-                          My meetings
+                          My meetings / Join Meeting
                         </Button>
                       </Link>
                     ) : (
-                      <Link href="/meetings" className="w-full sm:w-auto min-w-0">
+                      <Link href="/livestreams" className="w-full sm:w-auto min-w-0">
                         <Button variant="outline" className="w-full sm:w-auto h-10 sm:h-10 px-4 text-xs sm:text-sm border-2 border-blue-500/50 text-blue-600 dark:text-blue-400 hover:bg-gradient-to-r hover:from-blue-500/10 hover:to-purple-500/10 dark:hover:from-blue-500/20 dark:hover:to-purple-500/20">
                           <Send className="h-3.5 w-3.5 sm:h-4 sm:w-4 mr-1.5 sm:mr-2 flex-shrink-0" />
                           Join Meeting
