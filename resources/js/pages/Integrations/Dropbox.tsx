@@ -291,45 +291,31 @@ export default function IntegrationsDropbox({
               </section>
             </>
           ) : (
-            /* Connect CTA section - match Unity Meet card style */
-            <section className="mx-auto flex flex-col rounded-2xl border border-purple-200 dark:border-purple-500/20 bg-card shadow-lg p-8 sm:p-10 max-w-xl min-h-[280px]" style={{ background: `linear-gradient(135deg, ${BRAND.fromMuted}, ${BRAND.toMuted})` }}>
-              <div className="flex items-center gap-3 mb-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl text-white shadow-md" style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}>
-                  <Cloud className="w-5 h-5" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-foreground">Connect Dropbox</h2>
-                  <p className="text-sm text-muted-foreground">
-                    Meeting recordings will be saved automatically. You can download, rename, or delete files from this page.
+            /* Connect CTA card – clean background, clear hierarchy */
+            <section className="mx-auto max-w-md">
+              <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-xl dark:bg-card/95">
+                <div className="p-8 sm:p-10 flex flex-col items-center text-center">
+                  <div
+                    className="flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-lg mb-6 ring-4 ring-white/20 dark:ring-black/10"
+                    style={{ background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})` }}
+                  >
+                    <Cloud className="w-8 h-8" />
+                  </div>
+                  <h2 className="text-xl font-bold tracking-tight text-foreground mb-2">Connect Dropbox</h2>
+                  <p className="text-sm text-muted-foreground max-w-sm mb-6 leading-relaxed">
+                    Save meeting recordings to your Dropbox automatically. After connecting, you can view, download, rename, and delete files from this page.
                   </p>
-                </div>
-              </div>
-              {dropboxRedirectUri && (
-                <div className="mt-0 mb-4 rounded-xl border border-purple-200 dark:border-purple-500/30 bg-background/80 dark:bg-background/50 p-4">
-                  <p className="text-sm font-medium text-foreground mb-1">Need the redirect URI?</p>
-                  <p className="text-xs text-muted-foreground mb-2">Add this URL in your Dropbox app settings:</p>
-                  <code className="block text-xs bg-muted px-3 py-2 rounded border border-border break-all select-all text-foreground">
-                    {dropboxRedirectUri}
-                  </code>
-                </div>
-              )}
-              <div className="mt-auto flex justify-end">
-                <Button
-                  asChild
-                  size="lg"
-                  className="rounded-lg text-white shadow-lg transition-all hover:shadow-[0_0_24px_rgba(147,51,234,0.35)]"
-                  style={{
-                    background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
-                  }}
-                >
                   <a
                     href={route("integrations.dropbox.redirect")}
-                    className="inline-flex items-center gap-2"
+                    className="inline-flex items-center justify-center gap-2 w-full sm:w-auto min-w-[200px] h-12 px-6 rounded-xl text-white font-semibold shadow-lg transition-all duration-200 hover:shadow-[0_8px_30px_rgba(147,51,234,0.4)] hover:scale-[1.02] active:scale-[0.98]"
+                    style={{
+                      background: `linear-gradient(135deg, ${BRAND.from}, ${BRAND.to})`,
+                    }}
                   >
                     <Cloud className="w-5 h-5" />
                     Connect with Dropbox
                   </a>
-                </Button>
+                </div>
               </div>
             </section>
           )}
