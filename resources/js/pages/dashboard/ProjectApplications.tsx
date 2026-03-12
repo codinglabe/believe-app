@@ -1,9 +1,22 @@
 "use client"
 
 import AppLayout from "@/layouts/app-layout"
-import { usePage, Link } from "@inertiajs/react"
-import { FileText, User, Building2, Mail, Calendar } from "lucide-react"
+import { usePage, Link, useForm } from "@inertiajs/react"
+import { FileText, User, Building2, Mail, Calendar, ExternalLink, Clock, Pencil } from "lucide-react"
 import type { BreadcrumbItem } from "@/types"
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 interface Lead {
   id: number
@@ -11,6 +24,7 @@ interface Lead {
   company: string
   email: string
   project_summary: string
+  wefunder_project_url: string | null
   created_at: string
 }
 
@@ -36,6 +50,70 @@ const breadcrumbs: BreadcrumbItem[] = [
   { title: "Dashboard", href: "/dashboard" },
   { title: "Project Applications", href: "/dashboard/project-applications" },
 ]
+
+function SetWefunderLinkDialog({ lead }: { lead: Lead }) {
+  const [open, setOpen] = useState(false)
+  const { data, setData, put, processing, errors } = useForm({
+    wefunder_project_url: lead.wefunder_project_url ?? "",
+  })
+
+  useEffect(() => {
+    if (open) setData("wefunder_project_url", lead.wefunder_project_url ?? "")
+  }, [open, lead.id, lead.wefunder_project_url, setData])
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    put(route("dashboard.project-applications.update", { lead: lead.id }), {
+      preserveScroll: true,
+      onSuccess: () => setOpen(false),
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" size="sm" className="gap-1.5">
+          <Pencil className="w-4 h-4" />
+          {lead.wefunder_project_url ? "Edit link" : "Set Wefunder link"}
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Wefunder project link</DialogTitle>
+          <DialogDescription>
+            When your project is approved, add the Wefunder campaign URL here. The Invest button will then become live for supporters.
+          </DialogDescription>
+        </DialogHeader>
+        <form onSubmit={handleSubmit}>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="wefunder_project_url">Wefunder project URL</Label>
+              <Input
+                id="wefunder_project_url"
+                type="url"
+                placeholder="https://wefunder.com/your-project"
+                value={data.wefunder_project_url}
+                onChange={(e) => setData("wefunder_project_url", e.target.value)}
+                className={errors.wefunder_project_url ? "border-red-500" : ""}
+              />
+              {errors.wefunder_project_url && (
+                <p className="text-sm text-red-500">{errors.wefunder_project_url}</p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={processing}>
+              {processing ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
 
 export default function DashboardProjectApplications() {
   const { projectApplicationsLeads, projectApplicationsTotal } = usePage<PageProps>().props
@@ -100,9 +178,26 @@ export default function DashboardProjectApplications() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 shrink-0">
-                      <Calendar className="w-4 h-4" />
-                      {formatDate(lead.created_at)}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <Calendar className="w-4 h-4" />
+                        {formatDate(lead.created_at)}
+                      </div>
+                      {lead.wefunder_project_url ? (
+                        <Link
+                          href={route("invest.redirect", { lead: lead.id })}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Invest
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm font-medium">
+                          <Clock className="w-4 h-4" />
+                          In Review
+                        </span>
+                      )}
+                      <SetWefunderLinkDialog lead={lead} />
                     </div>
                   </div>
                 </div>

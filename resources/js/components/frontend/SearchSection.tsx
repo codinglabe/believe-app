@@ -7,6 +7,7 @@ import { Button } from "@/components/frontend/ui/button"
 import { Input } from "@/components/frontend/ui/input"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/frontend/ui/select"
+import { Combobox } from "@/components/frontend/ui/combobox"
 import { motion } from "framer-motion"
 
 interface SearchSectionProps {
@@ -134,45 +135,54 @@ export default function SearchSection({
 
           {/* Filters and Search Button */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4 mb-6">
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
-                <SelectValue placeholder="All Categories" />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                {filterOptions.categories.map((category) => (
-                  <SelectItem key={category} value={category} className="text-gray-900 dark:text-white">
-                    {category}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: "All Categories", label: "All Categories" },
+                ...filterOptions.categories
+                  .filter((category) => category !== "All Categories")
+                  .map((category) => ({
+                    value: category,
+                    label: category,
+                  })),
+              ]}
+              value={selectedCategory}
+              onChange={(value) => setSelectedCategory(value || "All Categories")}
+              placeholder="All Categories"
+              searchPlaceholder="Search categories..."
+            />
 
-            {/* Add Category Description Filter */}
-            <Select value={selectedCategoryDescription} onValueChange={setSelectedCategoryDescription}>
-              <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
-                <SelectValue placeholder="All Descriptions" />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                {filterOptions.categoryDescriptions?.map((description) => (
-                  <SelectItem key={description} value={description} className="text-gray-900 dark:text-white">
-                    {description}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {/* Category Description Filter */}
+            <Combobox
+              options={[
+                { value: "All Descriptions", label: "All Descriptions" },
+                ...(filterOptions.categoryDescriptions || [])
+                  .filter((description) => description !== "All Descriptions")
+                  .map((description) => ({
+                    value: description,
+                    label: description,
+                  })),
+              ]}
+              value={selectedCategoryDescription}
+              onChange={(value) => setSelectedCategoryDescription(value || "All Descriptions")}
+              placeholder="All Descriptions"
+              searchPlaceholder="Search descriptions..."
+            />
 
-            <Select value={selectedState} onValueChange={handleStateChange}>
-              <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">
-                <SelectValue placeholder="All States" />
-              </SelectTrigger>
-              <SelectContent className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700">
-                {filterOptions.states.map((state) => (
-                  <SelectItem key={state} value={state} className="text-gray-900 dark:text-white">
-                    {state}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Combobox
+              options={[
+                { value: "All States", label: "All States" },
+                ...filterOptions.states
+                  .filter((state) => state !== "All States")
+                  .map((state) => ({
+                    value: state,
+                    label: state,
+                  })),
+              ]}
+              value={selectedState}
+              onChange={(value) => handleStateChange(value || "All States")}
+              placeholder="All States"
+              searchPlaceholder="Search states..."
+            />
 
             <Select value={selectedCity} onValueChange={setSelectedCity} disabled={isLoadingCities || selectedState === "All States"}>
               <SelectTrigger className="h-12 bg-white dark:bg-gray-700 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white rounded-xl">

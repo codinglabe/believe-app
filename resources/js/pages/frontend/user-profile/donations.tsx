@@ -1,7 +1,7 @@
 "use client"
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
-import { Download, Calendar, DollarSign, TrendingUp, Heart, Building2, FileText, CheckCircle2, Clock, XCircle, Search, Filter, ChevronLeft, ChevronRight, CreditCard } from "lucide-react"
+import { Download, Calendar, DollarSign, TrendingUp, Heart, Building2, FileText, CheckCircle2, Clock, XCircle, Search, Filter, ChevronLeft, ChevronRight, CreditCard, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Badge } from "@/components/frontend/ui/badge"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -114,6 +114,15 @@ export default function ProfileDonations() {
   return (
     <ProfileLayout title="Donation History" description="Track all your donations and their impact">
       <div className="space-y-6">
+        {/* Go back to Donate */}
+        <Link
+          href={route('donate')}
+          className="inline-flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 hover:text-purple-600 dark:hover:text-purple-400 transition-colors"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to Donate
+        </Link>
+
         {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="bg-gradient-to-r from-green-500 to-green-600 text-white">

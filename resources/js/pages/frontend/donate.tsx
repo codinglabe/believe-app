@@ -2,17 +2,16 @@
 import FrontendLayout from "@/layouts/frontend/frontend-layout"
 import { useState, useMemo, useRef, useEffect, useCallback } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Heart, CreditCard, Shield, Users, Zap, Search, X, Loader2, Coins, AlertCircle } from "lucide-react"
+import { Heart, CreditCard, Shield, Search, X, Loader2, Coins, Lock, ChevronRight, Building2, UtensilsCrossed, Brain, Check, Gift, Wrench, TrendingUp, Car, Package, FileText, Camera, ArrowLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { router, usePage } from "@inertiajs/react"
+import { router, usePage, Link } from "@inertiajs/react"
 import { PageHead } from "@/components/frontend/PageHead"
-import { RadioGroup, RadioGroupItem } from "@/components/frontend/ui/radio-group"
-import { Textarea } from "@/components/frontend/ui/textarea"
 import { useNotification } from "@/components/frontend/notification-provider"
 import { SubscriptionRequiredModal } from "@/components/SubscriptionRequiredModal"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
 
 // Define the expected props structure for an Inertia page
 interface Organization {
@@ -31,15 +30,45 @@ interface User {
   // Add other user properties if needed
 }
 
+interface TopOrganization {
+  name: string
+  total: number
+}
+
 interface DonatePageProps {
   seo?: { title: string; description?: string }
   organizations: Organization[]
   user?: User | null
   message?: string
   searchQuery?: string
+  thisYearDonated?: number
+  givingGoal?: number
+  topOrganizations?: TopOrganization[]
 }
 
-const donationAmounts = [25, 50, 100, 250, 500, 1000]
+const amountConfig = [
+  { amount: 25, impact: "Helps fund supplies" },
+  { amount: 50, badge: "Most Popular", impact: "Provides meals for 10 children" },
+  { amount: 100, badge: "High Impact", impact: "Funds mental health support" },
+  { amount: 250 },
+  { amount: 500 },
+  { amount: 1000 },
+]
+
+const TOP_ORG_ICONS = [Building2, UtensilsCrossed, Brain]
+
+type DonationMode = "cash_points" | "non_cash"
+type NonCashType = "goods" | "services" | "stocks_crypto" | "vehicle" | "other"
+
+const NON_CASH_TYPES: { id: NonCashType; label: string; icon: typeof Gift }[] = [
+  { id: "goods", label: "Goods", icon: Gift },
+  { id: "services", label: "Services", icon: Wrench },
+  { id: "stocks_crypto", label: "Stocks / Crypto", icon: TrendingUp },
+  { id: "vehicle", label: "Vehicle", icon: Car },
+  { id: "other", label: "Other", icon: Package },
+]
+
+const CONDITION_OPTIONS = ["New", "Like New", "Good", "Fair", "Poor"]
 
 // The component now accepts props from Laravel via Inertia
 export default function DonatePage({
@@ -47,6 +76,9 @@ export default function DonatePage({
   organizations: initialOrganizations,
   user,
   searchQuery: initialSearchQuery = "",
+  thisYearDonated = 0,
+  givingGoal = 1000,
+  topOrganizations = [],
 }: DonatePageProps) {
   const flash = usePage().props
   const { showNotification } = useNotification()
@@ -58,11 +90,22 @@ export default function DonatePage({
     }
   }, [flash])
 
+  const [donationMode, setDonationMode] = useState<DonationMode>("cash_points")
   const [selectedAmount, setSelectedAmount] = useState<number | null>(null)
   const [customAmount, setCustomAmount] = useState("")
-  const [donationType, setDonationType] = useState("one-time")
   const [selectedCauseId, setSelectedCauseId] = useState<number | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<'stripe' | 'believe_points'>('stripe')
+
+  // Non-cash donation state
+  const [nonCashType, setNonCashType] = useState<NonCashType>("goods")
+  const [nonCashItemName, setNonCashItemName] = useState("")
+  const [nonCashEstimatedValue, setNonCashEstimatedValue] = useState("")
+  const [nonCashCondition, setNonCashCondition] = useState("New")
+  const [nonCashPreferredOrgId, setNonCashPreferredOrgId] = useState<number | null>(null)
+  const [nonCashUploadPhotos, setNonCashUploadPhotos] = useState(false)
+  const [isSubmittingNonCash, setIsSubmittingNonCash] = useState(false)
+  const [nonCashSearchQuery, setNonCashSearchQuery] = useState("")
+  const [nonCashSearchFocused, setNonCashSearchFocused] = useState(false)
 
   // Get user's Believe Points balance
   const pageProps = usePage().props as any
@@ -88,6 +131,7 @@ export default function DonatePage({
   const [donorMessage, setDonorMessage] = useState("") // Renamed to avoid conflict with page message prop
 
   const searchContainerRef = useRef<HTMLDivElement>(null)
+  const nonCashOrgSearchRef = useRef<HTMLDivElement>(null)
 
   // Function to simulate Inertia.js dynamic search (router.get)
   // This function is now called explicitly, e.g., on Enter key press.
@@ -129,6 +173,9 @@ export default function DonatePage({
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
         setIsSearchFocused(false)
       }
+      if (nonCashOrgSearchRef.current && !nonCashOrgSearchRef.current.contains(event.target as Node)) {
+        setNonCashSearchFocused(false)
+      }
     }
     document.addEventListener("mousedown", handleClickOutside)
     return () => {
@@ -162,27 +209,8 @@ export default function DonatePage({
 
   const pointsRequired = getCurrentAmount() // 1$ = 1 believe point
   const hasEnoughPoints = currentBalance >= pointsRequired
-
-  // Believe Points only available for one-time donations
-  const canUseBelievePoints = donationType === 'one-time' && hasEnoughPoints
-
-  const getFrequencyText = () => {
-    switch (donationType) {
-      case "weekly":
-        return "/week"
-      case "monthly":
-        return "/month"
-      default:
-        return ""
-    }
-  }
-
-  const getAnnualImpact = () => {
-    const amount = getCurrentAmount()
-    if (donationType === "weekly") return amount * 52
-    if (donationType === "monthly") return amount * 12
-    return amount
-  }
+  const canUseBelievePoints = hasEnoughPoints
+  const givingProgress = givingGoal > 0 ? Math.min(100, (thisYearDonated / givingGoal) * 100) : 0
 
   const selectedCause = useMemo(() => {
     // Find selected cause from the *initial* full list of organizations
@@ -218,15 +246,12 @@ export default function DonatePage({
       return
     }
 
-    // Data to be sent to your Laravel backend via Inertia.js
     const donationData = {
       organization_id: selectedCauseId,
       amount: getCurrentAmount(),
-      frequency: donationType,
+      frequency: 'one-time',
       message: donorMessage,
       payment_method: paymentMethod,
-      // In a real Inertia app, if the user is logged in, Laravel already knows their ID.
-      // If not logged in, you might pass name, email, phone here for guest donations.
       name: name,
       email: email,
       phone: phone,
@@ -252,608 +277,689 @@ export default function DonatePage({
     })
   }
 
+  const handleNonCashSubmit = () => {
+    setSubmissionError(null)
+    if (!nonCashItemName.trim()) {
+      setSubmissionError("Please enter the donation item name.")
+      return
+    }
+    const value = Number.parseFloat(nonCashEstimatedValue)
+    if (Number.isNaN(value) || value < 0) {
+      setSubmissionError("Please enter a valid estimated fair market value.")
+      return
+    }
+    if (!nonCashPreferredOrgId) {
+      setSubmissionError("Please select a preferred receiving organization.")
+      return
+    }
+    setIsSubmittingNonCash(true)
+    router.post(route("donations.non-cash.store"), {
+      non_cash_type: nonCashType,
+      item_name: nonCashItemName.trim(),
+      estimated_fair_market_value: value,
+      condition: nonCashCondition,
+      organization_id: nonCashPreferredOrgId,
+      upload_photos: nonCashUploadPhotos,
+    }, {
+      preserveState: true,
+      onFinish: () => setIsSubmittingNonCash(false),
+      onSuccess: () => {
+        setNonCashItemName("")
+        setNonCashEstimatedValue("")
+        setNonCashCondition("New")
+        setNonCashPreferredOrgId(null)
+        setNonCashSearchQuery("")
+        setNonCashUploadPhotos(false)
+        showNotification({ type: "success", message: "Your non-cash donation request has been submitted. We'll be in touch shortly." })
+      },
+      onError: (errors) => {
+        const msg = typeof errors?.message === "string" ? errors.message : (errors && Object.values(errors)[0]?.[0])
+        setSubmissionError(msg || "Failed to submit donation request. Please try again.")
+      },
+    })
+  }
+
   return (
     <FrontendLayout>
       <PageHead title={seo?.title ?? "Donate"} description={seo?.description} />
-      <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-50 dark:from-gray-900 dark:via-gray-800 dark:to-gray-900">
-        {/* Hero Section */}
-        <section className="bg-gradient-to-br from-purple-600 via-blue-600 to-purple-700 dark:from-gray-900 dark:via-gray-800 dark:to-purple-900 py-12 sm:py-16 md:py-20">
-          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
-            <motion.div
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.8 }}
-              className="text-center max-w-4xl mx-auto"
+      {/* Cosmic dark purple background with subtle speckles */}
+      <div
+        className="min-h-screen relative overflow-hidden"
+        style={{
+          background: "linear-gradient(135deg, #1e0a2e 0%, #2d1b4e 25%, #1a0a2e 50%, #2d1b4e 75%, #1e0a2e 100%)",
+          backgroundImage: `
+            radial-gradient(ellipse at 20% 20%, rgba(147, 51, 234, 0.15) 0%, transparent 50%),
+            radial-gradient(ellipse at 80% 80%, rgba(236, 72, 153, 0.12) 0%, transparent 50%),
+            radial-gradient(circle at 50% 50%, rgba(255,255,255,0.03) 0%, transparent 1px),
+            linear-gradient(135deg, #1e0a2e 0%, #2d1b4e 25%, #1a0a2e 50%, #2d1b4e 75%, #1e0a2e 100%)
+          `,
+          backgroundSize: "100% 100%, 100% 100%, 2px 2px, 100% 100%",
+        }}
+      >
+        {/* Subtle speckle overlay */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-40"
+          style={{
+            backgroundImage: `radial-gradient(circle at 10% 30%, rgba(236,72,153,0.2) 0%, transparent 2%),
+              radial-gradient(circle at 90% 20%, rgba(147,51,234,0.2) 0%, transparent 2%),
+              radial-gradient(circle at 50% 70%, rgba(255,255,255,0.08) 0%, transparent 1.5%),
+              radial-gradient(circle at 30% 80%, rgba(236,72,153,0.15) 0%, transparent 2%),
+              radial-gradient(circle at 70% 50%, rgba(147,51,234,0.15) 0%, transparent 2%)`,
+          }}
+        />
+        <div className="container relative mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
+          {/* Back to Home */}
+          <Link
+            href="/"
+            className="inline-flex items-center gap-2 text-sm font-medium text-white/70 hover:text-white mb-6 transition-colors"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Back to Home
+          </Link>
+
+          {/* Page header: branding | title + subtitle | user profile */}
+          <motion.header
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-6 mb-8 sm:mb-10"
+          >
+            {/* Left: BELIEVE IN UNITY branding */}
+            <Link
+              href="/"
+              className="flex items-center gap-2 shrink-0 order-2 lg:order-1 justify-center lg:justify-start"
             >
-              <div className="inline-flex items-center justify-center mb-4">
-                <div className="p-3 bg-white/20 backdrop-blur-sm rounded-2xl shadow-lg">
-                  <Heart className="h-8 w-8 sm:h-10 sm:w-10 text-white fill-white" />
-                </div>
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-lg shadow-purple-500/20">
+                <Heart className="h-5 w-5 text-white fill-white" />
               </div>
-              <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4">
+              <span className="text-lg font-bold text-white tracking-tight">BELIEVE IN UNITY</span>
+            </Link>
+
+            {/* Center: Make a Difference Today + subtitle */}
+            <div className="text-center order-1 lg:order-2 flex-1 px-0 lg:px-4">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold text-white mb-1">
                 Make a Difference Today
               </h1>
-              <p className="text-base sm:text-lg md:text-xl text-white/90 max-w-2xl mx-auto">
-                Your donation, no matter the size, creates real impact in communities worldwide. Join thousands of
-                supporters making positive change happen.
+              <p className="text-sm sm:text-base text-white/80 max-w-xl mx-auto">
+                Your donation, no matter the size, creates real impact in communities worldwide.
               </p>
-            </motion.div>
-          </div>
-        </section>
-        <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 sm:py-12">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Donation Form */}
-            <div className="lg:col-span-2">
-              <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.8 }}>
-                {/* Card Header */}
-                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-6 py-4 mb-0">
-                  <div className="flex items-center text-white">
-                    <div className="p-2 bg-white/20 backdrop-blur-sm rounded-lg mr-3">
-                      <Heart className="h-5 w-5 text-white fill-white" />
-                    </div>
-                    <h2 className="text-xl sm:text-2xl font-bold">Make Your Donation</h2>
-                  </div>
-                  {selectedCause && (
-                    <p className="text-white/90 text-sm mt-2 ml-[3.25rem]">
-                      You are donating to{" "}
-                      <span className="font-semibold text-white">{selectedCause.name}</span>.
-                      <Button
-                        variant="link"
-                        onClick={handleClearCauseSelection}
-                        className="p-0 h-auto ml-2 text-sm text-white/90 hover:text-white underline"
-                      >
-                        (Change)
-                      </Button>
+            </div>
+
+            {/* Right: User profile (when logged in) */}
+            <div className="flex items-center justify-center lg:justify-end gap-3 shrink-0 order-3">
+              {authUser ? (
+                <div className="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 px-4 py-2.5 backdrop-blur-sm">
+                  <Avatar className="h-9 w-9 border border-white/20">
+                    <AvatarImage src={typeof (authUser as any).image === 'string' && (authUser as any).image ? ((authUser as any).image.startsWith('/') ? (authUser as any).image : `/${(authUser as any).image}`) : undefined} />
+                    <AvatarFallback className="bg-purple-500/30 text-white text-sm">
+                      {(authUser as any).name?.charAt(0)?.toUpperCase() || "U"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="text-left min-w-0">
+                    <p className="font-medium text-white text-sm truncate">{(authUser as any).name}</p>
+                    <p className="flex items-center gap-1 text-xs text-green-400">
+                      <Check className="h-3.5 w-3.5 shrink-0" />
+                      {(authUser as any).role === "organization" || (authUser as any).role === "organization_pending" ? "Organization" : "Verified Supporter"}
                     </p>
+                  </div>
+                </div>
+              ) : (
+                <Link
+                  href={route("login")}
+                  className="text-sm font-medium text-white/80 hover:text-white transition-colors"
+                >
+                  Sign in
+                </Link>
+              )}
+            </div>
+          </motion.header>
+
+          {/* Donation type: Cash/Points vs Non-Cash Asset — pill tabs */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mb-8 flex flex-col sm:flex-row gap-3 p-1 rounded-2xl bg-white/5 border border-white/10 w-full sm:w-auto sm:inline-flex"
+          >
+            <button
+              type="button"
+              onClick={() => setDonationMode("cash_points")}
+              className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
+                donationMode === "cash_points"
+                  ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
+                  : "text-white/80 hover:text-white hover:bg-white/10 border border-transparent"
+              }`}
+            >
+              <Coins className="h-5 w-5 shrink-0" />
+              Donate Cash / Points
+            </button>
+            <button
+              type="button"
+              onClick={() => setDonationMode("non_cash")}
+              className={`flex items-center justify-center gap-2 py-3.5 px-6 rounded-xl font-semibold transition-all ${
+                donationMode === "non_cash"
+                  ? "bg-purple-500/40 text-white shadow-lg shadow-purple-500/25 border border-purple-400/50"
+                  : "text-white/80 hover:text-white hover:bg-white/10 border border-transparent"
+              }`}
+            >
+              <Gift className="h-5 w-5 shrink-0" />
+              Donate Non-Cash Asset
+            </button>
+          </motion.div>
+
+          {donationMode === "cash_points" ? (
+          <>
+          {/* Three glass cards — Cash / Points */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Card 1: Select Your Donation */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+                <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80 shrink-0" />
+                <h2 className="text-lg font-bold text-white">Select Your Donation</h2>
+              </div>
+              <div className="p-5 space-y-5">
+                <p className="text-sm text-white/70">Choose amount to donate.</p>
+                {/* Org search */}
+                <div className="relative" ref={searchContainerRef}>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+                    <Input
+                      type="text"
+                      placeholder="Search for non-profit organisation..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onFocus={() => setIsSearchFocused(true)}
+                      onKeyDown={(e) => e.key === "Enter" && performSearch(searchQuery)}
+                      className="pl-10 h-11 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/50 text-sm focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  <AnimatePresence>
+                    {selectedCause && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="mt-2 flex items-center justify-between p-2 rounded-lg bg-white/10 border border-white/10"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={selectedCause.image || "/placeholder.svg"}
+                            alt=""
+                            className="h-8 w-8 rounded-full object-cover shrink-0"
+                          />
+                          <span className="font-medium text-white truncate">{selectedCause.name}</span>
+                        </div>
+                        <Button variant="ghost" size="icon" className="shrink-0 h-8 w-8 text-white/80 hover:text-white hover:bg-white/10" onClick={handleClearCauseSelection}>
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                  {isSearchFocused && !selectedCause && (searchQuery || displayedOrganizations.length > 0) && (
+                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-white/20 bg-purple-950/95 backdrop-blur-xl shadow-xl max-h-52 overflow-y-auto">
+                      {isSearchingOrganizations ? (
+                        <div className="p-3 text-center text-sm text-white/60 flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" /> Searching...
+                        </div>
+                      ) : displayedOrganizations.length === 0 ? (
+                        <p className="p-3 text-sm text-white/60">No organizations found.</p>
+                      ) : (
+                        displayedOrganizations.map((cause) => (
+                          <button
+                            key={cause.id}
+                            type="button"
+                            className="w-full p-3 text-left hover:bg-white/10 flex items-center gap-3 text-white"
+                            onClick={() => handleCauseSelect(cause.id)}
+                          >
+                            <img src={cause.image || "/placeholder.svg"} alt="" className="h-9 w-9 rounded-md object-cover shrink-0" />
+                            <div className="min-w-0">
+                              <div className="font-medium text-sm truncate">{cause.name}</div>
+                              <div className="text-xs text-white/60 truncate">{cause.description}</div>
+                            </div>
+                          </button>
+                        ))
+                      )}
+                    </div>
                   )}
                 </div>
-                <Card className="mb-8 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-lg rounded-t-none">
-                  <CardContent className="space-y-6 pt-6">
-                    {/* Organization Search and Selection */}
-                    <div className="relative" ref={searchContainerRef}>
-                      <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
-                        Select Non-Profit Organization
-                      </Label>
-                      <AnimatePresence mode="wait">
-                        {selectedCause ? (
-                          <motion.div
-                            key="selected-cause"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                            className="flex items-center justify-between p-3 border border-gray-200 dark:border-gray-600 rounded-lg bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white"
-                          >
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={selectedCause.image || "/placeholder.svg"}
-                                alt={selectedCause.name}
-                                width={32}
-                                height={32}
-                                className="rounded-full object-cover h-8 w-8"
-                              />
-                              <span className="font-medium">{selectedCause.name}</span>
-                            </div>
-                            <Button variant="ghost" size="icon" onClick={handleClearCauseSelection}>
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </motion.div>
-                        ) : (
-                          <motion.div
-                            key="search-input"
-                            initial={{ opacity: 0, y: -10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            transition={{ duration: 0.2 }}
-                          >
-                            <div className="relative">
-                              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" />
-                              <Input
-                                type="text"
-                                placeholder="Search for non-profit organizations..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onFocus={() => setIsSearchFocused(true)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    performSearch(searchQuery)
-                                  }
-                                }}
-                                className="w-full pl-12 pr-10 h-12 sm:h-14 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200 shadow-sm"
-                              />
-                              {searchQuery && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  onClick={() => setSearchQuery("")}
-                                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-500 hover:bg-transparent"
-                                >
-                                  <X className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
-                            <AnimatePresence>
-                              {isSearchFocused && (searchQuery || displayedOrganizations.length > 0) && (
-                                <motion.div
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: "auto" }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  transition={{ duration: 0.2 }}
-                                  className="absolute z-10 w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-md shadow-lg mt-2 max-h-60 overflow-y-auto"
-                                >
-                                  {isSearchingOrganizations ? (
-                                    <div className="p-4 text-center text-gray-600 dark:text-gray-300 flex items-center justify-center">
-                                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Searching organizations...
-                                    </div>
-                                  ) : displayedOrganizations.length === 0 ? (
-                                    <p className="p-3 text-center text-gray-600 dark:text-gray-300">
-                                      No non-profit organizations found matching your search.
-                                    </p>
-                                  ) : (
-                                    <div className="divide-y divide-gray-100 dark:divide-gray-700">
-                                      {displayedOrganizations.map((cause) => (
-                                        <motion.div
-                                          key={cause.id}
-                                          initial={{ opacity: 0, y: -10 }}
-                                          animate={{ opacity: 1, y: 0 }}
-                                          transition={{ duration: 0.1 }}
-                                          className="p-3 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer flex items-center gap-3"
-                                          onClick={() => handleCauseSelect(cause.id)}
-                                        >
-                                          <img
-                                            src={cause.image || "/placeholder.svg"}
-                                            alt={cause.name}
-                                            width={40}
-                                            height={40}
-                                            className="rounded-md object-cover"
-                                          />
-                                          <div>
-                                            <div className="font-medium text-gray-900 dark:text-white">
-                                              {cause.name}
-                                            </div>
-                                            <div className="text-sm text-gray-600 dark:text-gray-300 line-clamp-1">
-                                              {cause.description}
-                                            </div>
-                                          </div>
-                                        </motion.div>
-                                      ))}
-                                    </div>
-                                  )}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    {/* Donation Type */}
-                    <div>
-                      <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
-                        Donation Frequency
-                      </Label>
-                      <RadioGroup
-                        value={donationType}
-                        onValueChange={(value) => {
-                          setDonationType(value)
-                          // Reset to Stripe if switching to recurring (Believe Points only for one-time)
-                          if (value !== 'one-time' && paymentMethod === 'believe_points') {
-                            setPaymentMethod('stripe')
-                          }
-                        }}
-                        className="grid grid-cols-1 md:grid-cols-3 gap-4"
-                      >
-                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
-                          <RadioGroupItem value="one-time" id="one-time" className="border-purple-600" />
-                          <Label htmlFor="one-time" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-semibold">One-time</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Single donation</div>
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
-                          <RadioGroupItem value="weekly" id="weekly" className="border-purple-600" />
-                          <Label htmlFor="weekly" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-semibold">Weekly</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Every week</div>
-                          </Label>
-                        </div>
-                        <div className="flex items-center space-x-2 border-2 border-gray-200 dark:border-gray-600 rounded-lg p-4 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20 transition-all duration-200 cursor-pointer">
-                          <RadioGroupItem value="monthly" id="monthly" className="border-purple-600" />
-                          <Label htmlFor="monthly" className="text-gray-900 dark:text-white cursor-pointer flex-1">
-                            <div className="font-semibold">Monthly</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400">Every month</div>
-                          </Label>
-                        </div>
-                      </RadioGroup>
-                    </div>
-                    {/* Amount Selection */}
-                    <div>
-                      <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
-                        Select Amount
-                      </Label>
-                      <div className="grid grid-cols-3 sm:grid-cols-3 gap-3 mb-4">
-                        {donationAmounts.map((amount) => (
-                          <Button
-                            key={amount}
-                            variant={selectedAmount === amount ? "default" : "outline"}
-                            onClick={() => handleAmountSelect(amount)}
-                            className={`h-12 sm:h-14 text-base sm:text-lg font-semibold transition-all duration-200 ${
-                              selectedAmount === amount
-                                ? "bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-md hover:shadow-lg"
-                                : "border-gray-300 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-600 hover:bg-purple-50/50 dark:hover:bg-purple-900/20"
-                            }`}
-                          >
-                            ${amount}
-                          </Button>
-                        ))}
-                      </div>
-                      <div>
-                        <Label htmlFor="custom-amount" className="text-sm text-gray-600 dark:text-gray-300 mb-2 block">
-                          Or enter custom amount
-                        </Label>
-                        <div className="relative">
-                          <span className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500">$</span>
-                          <Input
-                            id="custom-amount"
-                            type="number"
-                            placeholder="0.00"
-                            value={customAmount}
-                            onChange={(e) => handleCustomAmountChange(e.target.value)}
-                            className="pl-8 h-12 sm:h-14 text-lg bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                    {/* Recurring Donation Impact */}
-                    {getCurrentAmount() > 0 && donationType !== "one-time" && (
-                      <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800 shadow-md">
-                        <CardContent className="pt-6">
-                          <div className="text-center">
-                            <h4 className="font-bold text-purple-900 dark:text-purple-100 mb-3 text-lg">
-                              Your {donationType} impact
-                            </h4>
-                            <div className="text-3xl font-bold text-purple-800 dark:text-purple-200 mb-2">
-                              ${getCurrentAmount()}
-                              {getFrequencyText()}
-                            </div>
-                            <p className="text-purple-700 dark:text-purple-300 text-sm font-medium">
-                              That's ${getAnnualImpact().toLocaleString()} per year making a difference!
-                            </p>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    )}
-                    {/* Donor Information */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <Label htmlFor="name" className="text-gray-900 dark:text-white">
-                          Name
-                        </Label>
-                        <Input
-                          id="name"
-                          placeholder="John Doe"
-                          value={name}
-                          onChange={(e) => setName(e.target.value)}
-                          className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        />
-                      </div>
-                      <div>
-                        <Label htmlFor="email" className="text-gray-900 dark:text-white font-semibold">
-                          Email
-                        </Label>
-                        <Input
-                          id="email"
-                          type="email"
-                          placeholder="john@example.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <Label htmlFor="phone" className="text-gray-900 dark:text-white font-semibold">
-                        Phone (Optional)
-                      </Label>
-                      <Input
-                        id="phone"
-                        type="tel"
-                        placeholder="+1 (555) 123-4567"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        className="h-12 bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                      />
-                    </div>
-                    {/* Message */}
-                    <div>
-                      <Label htmlFor="message" className="text-gray-900 dark:text-white font-semibold">
-                        Message (Optional)
-                      </Label>
-                      <Textarea
-                        id="message"
-                        placeholder="Share why you're supporting this cause..."
-                        value={donorMessage}
-                        onChange={(e) => setDonorMessage(e.target.value)}
-                        className="min-h-[100px] bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/20 transition-all duration-200"
-                      />
-                    </div>
-
-                    {/* Payment Method Selection */}
-                    <div>
-                      <Label className="text-base font-semibold mb-3 block text-gray-900 dark:text-white">
-                        Payment Method
-                      </Label>
-                      <div className="space-y-3">
-                        {/* Stripe Payment */}
-                        <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                          paymentMethod === 'stripe'
-                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                            : 'border-gray-300 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-600'
-                        }`}>
-                          <input
-                            type="radio"
-                            name="payment_method"
-                            value="stripe"
-                            checked={paymentMethod === 'stripe'}
-                            onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                            className="w-4 h-4 text-purple-600"
-                          />
-                          <CreditCard className="h-5 w-5 text-purple-600" />
-                          <div className="flex-1">
-                            <div className="font-semibold text-gray-900 dark:text-white">Pay with Card (Stripe)</div>
-                            <div className="text-sm text-gray-600 dark:text-gray-300">Secure payment via Stripe</div>
-                          </div>
-                        </label>
-
-                        {/* Believe Points Payment */}
-                        <label className={`flex items-center gap-3 p-4 border-2 rounded-lg cursor-pointer transition-all ${
-                          paymentMethod === 'believe_points'
-                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20'
-                            : 'border-gray-300 dark:border-gray-600 hover:border-purple-300 dark:hover:border-purple-600'
-                        } ${!canUseBelievePoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                          <input
-                            type="radio"
-                            name="payment_method"
-                            value="believe_points"
-                            checked={paymentMethod === 'believe_points'}
-                            onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
-                            disabled={!canUseBelievePoints}
-                            className="w-4 h-4 text-purple-600"
-                          />
-                          <Coins className="h-5 w-5 text-yellow-600" />
-                          <div className="flex-1">
-                            <div className="font-semibold flex items-center gap-2 text-gray-900 dark:text-white">
-                              Pay with Believe Points
-                              {donationType !== 'one-time' && (
-                                <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-2 py-0.5 rounded">
-                                  One-time only
-                                </span>
-                              )}
-                              {donationType === 'one-time' && !hasEnoughPoints && (
-                                <span className="text-xs bg-red-200 dark:bg-red-900/30 text-red-700 dark:text-red-300 px-2 py-0.5 rounded">
-                                  Insufficient
-                                </span>
-                              )}
-                            </div>
-                            <div className="text-sm text-gray-600 dark:text-gray-300">
-                              {donationType !== 'one-time' ? (
-                                'Available only for one-time donations'
-                              ) : (
-                                <>
-                                  Your balance: {currentBalance.toFixed(2)} points
-                                  {hasEnoughPoints && (
-                                    <span className="text-green-600 ml-2">
-                                      (You'll have {(currentBalance - pointsRequired).toFixed(2)} points remaining)
-                                    </span>
-                                  )}
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-
-                      {paymentMethod === 'believe_points' && donationType !== 'one-time' && (
-                        <div className="mt-3 p-3 bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg">
-                          <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-200">
-                            <AlertCircle className="h-4 w-4" />
-                            <span className="text-sm">
-                              Believe Points can only be used for one-time donations. Please select "One-time" frequency to use Believe Points.
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {paymentMethod === 'believe_points' && donationType === 'one-time' && !hasEnoughPoints && (
-                        <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                          <div className="flex items-center gap-2 text-red-800 dark:text-red-200">
-                            <AlertCircle className="h-4 w-4" />
-                            <span className="text-sm">
-                              You need {pointsRequired.toFixed(2)} points but only have {currentBalance.toFixed(2)} points.
-                            </span>
-                          </div>
-                        </div>
-                      )}
-
-                      {paymentMethod === 'stripe' && (
-                        <div className="mt-3 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg">
-                          <div className="flex items-center gap-2 text-blue-800 dark:text-blue-200">
-                            <Shield className="h-4 w-4" />
-                            <span className="text-sm">
-                              Your payment information is secure and encrypted. We use Stripe for payment processing.
-                            </span>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                    {submissionError && (
-                      <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 mb-4">
-                        <div className="flex items-start gap-3">
-                          <X className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                          <div className="flex-1">
-                            <p className="text-sm font-medium text-red-800 dark:text-red-200">
-                              {submissionError}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                    {/* Payment Button */}
-                    <Button
-                      size="lg"
-                      className="w-full h-14 sm:h-16 text-lg font-bold bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300"
-                      onClick={handleSubmit}
-                      disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting || (paymentMethod === 'believe_points' && !hasEnoughPoints)}
+                {/* Amount buttons */}
+                <div className="grid grid-cols-3 gap-2">
+                  {amountConfig.map(({ amount, badge, impact }) => (
+                    <button
+                      key={amount}
+                      type="button"
+                      onClick={() => handleAmountSelect(amount)}
+                      className={`relative rounded-xl border-2 p-3 text-center transition-all ${
+                        selectedAmount === amount
+                          ? "border-purple-400 bg-purple-500/30 text-white shadow-lg shadow-purple-500/20"
+                          : "border-white/20 bg-white/5 hover:border-purple-400/50 hover:bg-white/10 text-white"
+                      }`}
                     >
-                      {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
-                        </>
-                      ) : (
-                        <>
-                          {paymentMethod === 'believe_points' ? (
-                            <>
-                              <Coins className="mr-2 h-5 w-5" />
-                              Donate {pointsRequired.toFixed(2)} Points
-                            </>
-                          ) : (
-                            <>
-                              <CreditCard className="mr-2 h-5 w-5" />
-                              Donate ${getCurrentAmount().toFixed(2)}
-                              {getFrequencyText()}
-                            </>
-                          )}
-                        </>
+                      {badge && (
+                        <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-500 text-white whitespace-nowrap">
+                          {badge}
+                        </span>
                       )}
-                    </Button>
-                    {/* Security Notice */}
-                    <div className="flex items-center justify-center text-sm text-gray-600 dark:text-gray-300 pt-4">
-                      <Shield className="mr-2 h-4 w-4" />
-                      Secure payment powered by Stripe
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
-            {/* Sidebar */}
-            <div className="space-y-6">
-              {/* Impact Summary */}
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.2 }}
-              >
-                {/* Card Header */}
-                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
-                  <h3 className="text-base font-bold text-white">Your Impact</h3>
+                      <span className="block text-lg font-bold">${amount}</span>
+                      {impact && <span className="block text-xs text-white/60 mt-0.5">{impact}</span>}
+                    </button>
+                  ))}
                 </div>
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md rounded-t-none">
-                  <CardContent>
-                    {getCurrentAmount() > 0 ? (
-                      <div className="space-y-3">
-                        <div className="flex justify-between text-gray-900 dark:text-white">
-                          <span>Your donation:</span>
-                          <span className="font-semibold">
-                            ${getCurrentAmount().toFixed(2)}
-                            {getFrequencyText()}
-                          </span>
-                        </div>
-                        {donationType !== "one-time" && (
-                          <div className="flex justify-between text-gray-900 dark:text-white">
-                            <span>Annual impact:</span>
-                            <span className="font-semibold text-green-600">${getAnnualImpact().toLocaleString()}</span>
-                          </div>
-                        )}
-                        <div className="text-sm text-gray-600 dark:text-gray-300 space-y-2">
-                          <p>• ${Math.round(getCurrentAmount() * 0.85)} goes directly to programs</p>
-                          <p>• ${Math.round(getCurrentAmount() * 0.15)} covers platform costs</p>
-                        </div>
-                        <div className="pt-3 border-t">
-                          <p className="text-sm font-medium text-green-600">100% tax-deductible</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="text-gray-600 dark:text-gray-300">Select an amount to see your impact</p>
-                    )}
-                  </CardContent>
-                </Card>
-              </motion.div>
-              {/* Why Donate */}
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.3 }}
-              >
-                {/* Card Header */}
-                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
-                  <h3 className="text-base font-bold text-white">
-                    Why Donate Through {import.meta.env.VITE_APP_NAME}?
-                  </h3>
+                <div>
+                  <Label className="text-xs text-white/70 mb-1 block">Other amount</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">$</span>
+                    <Input
+                      type="number"
+                      placeholder="0.00"
+                      value={customAmount}
+                      onChange={(e) => handleCustomAmountChange(e.target.value)}
+                      className="pl-8 h-11 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50 focus-visible:border-purple-400/50"
+                    />
+                  </div>
                 </div>
-                <Card className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 shadow-md rounded-t-none">
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-start">
-                        <Shield className="h-5 w-5 text-blue-600 mr-3 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">Verified Organizations</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300">
-                            All organizations are thoroughly vetted
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-start">
-                        <Zap className="h-5 w-5 text-green-600 mr-3 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">Direct Impact</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300">85% goes directly to programs</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start">
-                        <Users className="h-5 w-5 text-purple-600 mr-3 mt-0.5" />
-                        <div>
-                          <p className="font-medium text-gray-900 dark:text-white">Transparent Reporting</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300">Track your donation's impact</p>
-                        </div>
-                      </div>
+              </div>
+            </motion.div>
+
+            {/* Card 2: Pay Securely */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.1 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+                <Lock className="h-5 w-5 text-purple-300 shrink-0" />
+                <h2 className="text-lg font-bold text-white">Pay Securely</h2>
+              </div>
+              <div className="p-5 space-y-3">
+                <button
+                  type="button"
+                  onClick={() => setPaymentMethod('stripe')}
+                  className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                    paymentMethod === 'stripe'
+                      ? "border-purple-400 bg-purple-500/20 text-white shadow-lg shadow-purple-500/10"
+                      : "border-white/20 bg-white/5 hover:border-purple-400/50 text-white"
+                  }`}
+                >
+                  <div className="h-10 w-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0">
+                    <CreditCard className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold">Pay with Credit/Debit (Square)</div>
+                    <div className="flex items-center gap-1.5 text-sm text-white/60">
+                      <Lock className="h-3.5 w-3.5" /> 100% Secure Donation
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              {/* Recurring Donation Benefits */}
-              <motion.div
-                initial={{ opacity: 0, x: 30 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.8, delay: 0.4 }}
-              >
-                {/* Card Header */}
-                <div className="bg-gradient-to-r from-purple-600 via-blue-600 to-purple-700 dark:from-purple-700 dark:via-blue-700 dark:to-purple-800 rounded-t-xl px-5 py-3 mb-0">
-                  <h3 className="text-base font-bold text-white flex items-center gap-2">
-                    <Heart className="h-4 w-4 text-white fill-white" />
-                    Recurring Donations
-                  </h3>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-white/50 shrink-0" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => canUseBelievePoints && setPaymentMethod('believe_points')}
+                  disabled={!canUseBelievePoints}
+                  className={`w-full flex items-center gap-3 p-4 rounded-xl border-2 text-left transition-all ${
+                    paymentMethod === 'believe_points'
+                      ? "border-purple-400 bg-purple-500/20 text-white shadow-lg shadow-purple-500/10"
+                      : "border-white/20 bg-white/5 hover:border-purple-400/50 text-white"
+                  } ${!canUseBelievePoints ? "opacity-60 cursor-not-allowed" : ""}`}
+                >
+                  <div className="h-10 w-10 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shrink-0">
+                    <Coins className="h-5 w-5 text-white" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-semibold">
+                      {currentBalance.toLocaleString('en-US', { maximumFractionDigits: 0 })} Believe Points
+                    </div>
+                    <div className="text-sm text-white/60">Use your points balance</div>
+                  </div>
+                  <ChevronRight className="h-5 w-5 text-white/50 shrink-0" />
+                </button>
+                <Link
+                  href="/believe-points"
+                  className="flex items-center justify-between gap-3 p-3 rounded-xl border border-white/20 bg-white/5 hover:border-purple-400/50 hover:bg-white/10 text-purple-300 font-medium text-sm transition-all"
+                >
+                  <span className="flex items-center gap-2">
+                    <Coins className="h-4 w-4 shrink-0" />
+                    Purchase Believe Points
+                  </span>
+                  <span className="text-purple-300">→</span>
+                </Link>
+              </div>
+            </motion.div>
+
+            {/* Card 3: Your Year-to-Date Giving */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: 0.2 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 border-b border-white/10">
+                <h2 className="text-lg font-bold text-white">Your Year-to-Date Giving</h2>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <div className="text-2xl font-bold text-white">
+                    ${typeof thisYearDonated === 'number' ? thisYearDonated.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : 0}
+                  </div>
+                  <div className="text-sm text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
                 </div>
-                <Card className="bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950 dark:to-blue-950 border-purple-200 dark:border-purple-800 shadow-md rounded-t-none">
-                  <CardContent>
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                        <span className="text-gray-700 dark:text-gray-300">Predictable funding for organizations</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                        <span className="text-gray-700 dark:text-gray-300">Greater long-term impact</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                        <span className="text-gray-700 dark:text-gray-300">Cancel anytime from your profile</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
+                <div className="h-2.5 rounded-full bg-white/20 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all duration-500"
+                    style={{ width: `${givingProgress}%` }}
+                  />
+                </div>
+                {topOrganizations.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="text-sm font-semibold text-white">Top 3 Organizations</div>
+                    <ul className="space-y-2">
+                      {topOrganizations.slice(0, 3).map((org, i) => {
+                        const Icon = TOP_ORG_ICONS[i] ?? Building2
+                        return (
+                          <li key={i} className="flex items-center gap-2 text-sm text-white/80">
+                            <Icon className="h-4 w-4 text-purple-400 shrink-0" />
+                            <span className="truncate flex-1">{org.name}</span>
+                            <span className="font-medium text-white shrink-0">
+                              ${org.total.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                            </span>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="text-sm text-white/60">Your top supported organizations will appear here after you donate.</p>
+                )}
+                <Link
+                  href={route("profile.donations")}
+                  className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 hover:border-purple-400/50 text-white font-medium text-sm transition-all"
+                >
+                  View Giving Dashboard
+                </Link>
+              </div>
+            </motion.div>
           </div>
+
+          {/* Make My Impact CTA + Trust footer — Cash/Points only */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            className="mt-8 space-y-6"
+          >
+            {submissionError && (
+              <div className="rounded-xl border border-red-400/30 bg-red-500/20 backdrop-blur-sm p-4 flex items-start gap-3">
+                <X className="h-5 w-5 text-red-300 shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-red-200">{submissionError}</p>
+              </div>
+            )}
+            <Button
+              size="lg"
+              className="w-full max-w-2xl mx-auto flex h-14 text-lg font-bold bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:via-purple-700 hover:to-pink-600 text-white shadow-xl shadow-purple-500/25 rounded-xl border-0"
+              onClick={handleSubmit}
+              disabled={getCurrentAmount() === 0 || !selectedCauseId || isSubmitting || (paymentMethod === 'believe_points' && !hasEnoughPoints)}
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Processing...
+                </>
+              ) : (
+                <>
+                  Make My Impact <span className="ml-1">→</span>
+                </>
+              )}
+            </Button>
+          </motion.div>
+          </>
+          ) : (
+          /* ——— Non-Cash Asset: three panels ——— */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
+            {/* Left: Select a type */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 border-b border-white/10">
+                <h2 className="text-lg font-bold text-white">Donate Non-Cash Asset</h2>
+              </div>
+              <div className="p-5 space-y-3">
+                <p className="text-sm text-white/70">Select a type:</p>
+                {NON_CASH_TYPES.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setNonCashType(id)}
+                    className={`w-full flex items-center justify-between gap-3 p-3 rounded-xl border-2 text-left transition-all ${
+                      nonCashType === id
+                        ? "border-purple-400 bg-purple-500/20 text-white"
+                        : "border-white/20 bg-white/5 text-white hover:border-white/30"
+                    }`}
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                    </span>
+                    <span className="text-xs font-medium text-white/70">Donate</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+
+            {/* Center: Non-cash form */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 flex items-center gap-2 border-b border-white/10">
+                <FileText className="h-5 w-5 text-purple-300 shrink-0" />
+                <h2 className="text-lg font-bold text-white">Donate a Non-Cash Asset</h2>
+              </div>
+              <div className="p-5 space-y-4">
+                <div>
+                  <Label className="text-sm text-white/80 mb-1 block">Donation Item</Label>
+                  <Input
+                    placeholder="e.g. Office furniture, laptops..."
+                    value={nonCashItemName}
+                    onChange={(e) => setNonCashItemName(e.target.value)}
+                    className="rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                  />
+                </div>
+                <div>
+                  <Label className="text-sm text-white/80 mb-1 block">Estimated Fair Market Value</Label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-white/60">$</span>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={nonCashEstimatedValue}
+                      onChange={(e) => setNonCashEstimatedValue(e.target.value)}
+                      className="pl-8 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <Label className="text-sm text-white/80 mb-1 block">Condition</Label>
+                  <select
+                    value={nonCashCondition}
+                    onChange={(e) => setNonCashCondition(e.target.value)}
+                    className="w-full h-10 rounded-lg border border-white/20 bg-white/5 text-white px-3 focus:ring-2 focus:ring-purple-400/50 focus:border-purple-400/50"
+                  >
+                    {CONDITION_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt} className="bg-purple-950 text-white">{opt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative" ref={nonCashOrgSearchRef}>
+                  <Label className="text-sm text-white/80 mb-1 block">Preferred Receiving Organization</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-white/50" />
+                    <Input
+                      type="text"
+                      placeholder="Select an organization"
+                      value={
+                        nonCashSearchQuery ||
+                        (nonCashPreferredOrgId
+                          ? initialOrganizations.find((o) => o.id === nonCashPreferredOrgId)?.name ?? ""
+                          : "")
+                      }
+                      onChange={(e: React.ChangeEvent<HTMLInputElement>) => {
+                        setNonCashSearchQuery(e.target.value)
+                        if (nonCashPreferredOrgId) setNonCashPreferredOrgId(null)
+                      }}
+                      onFocus={() => setNonCashSearchFocused(true)}
+                      className="pl-10 pr-9 rounded-lg border-white/20 bg-white/5 text-white placeholder:text-white/40 focus-visible:ring-purple-400/50"
+                    />
+                    {nonCashPreferredOrgId ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNonCashPreferredOrgId(null)
+                          setNonCashSearchQuery("")
+                        }}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-white/60 hover:text-white p-1"
+                        aria-label="Clear organization"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    ) : null}
+                  </div>
+                  {nonCashSearchFocused && (
+                    <div className="absolute z-20 w-full mt-1 rounded-lg border border-white/20 bg-purple-950/95 backdrop-blur-xl shadow-xl max-h-48 overflow-y-auto">
+                      {initialOrganizations
+                        .filter((o) => !nonCashSearchQuery || o.name.toLowerCase().includes(nonCashSearchQuery.toLowerCase()))
+                        .slice(0, 8)
+                        .map((org) => (
+                          <button
+                            key={org.id}
+                            type="button"
+                            className="w-full p-3 text-left hover:bg-white/10 flex items-center gap-3 text-white"
+                            onClick={() => {
+                              setNonCashPreferredOrgId(org.id)
+                              setNonCashSearchQuery("")
+                              setNonCashSearchFocused(false)
+                            }}
+                          >
+                            <img src={org.image || "/placeholder.svg"} alt="" className="h-8 w-8 rounded-full object-cover shrink-0" />
+                            <span className="font-medium text-sm truncate">{org.name}</span>
+                          </button>
+                        ))}
+                    </div>
+                  )}
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-white/80 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={nonCashUploadPhotos}
+                    onChange={(e) => setNonCashUploadPhotos(e.target.checked)}
+                    className="rounded border-white/20 bg-white/5 text-purple-500 focus:ring-purple-400/50"
+                  />
+                  <Camera className="h-4 w-4 shrink-0" />
+                  Upload Photos
+                </label>
+                {submissionError && (
+                  <div className="rounded-lg border border-red-400/30 bg-red-500/20 p-3 text-sm text-red-200">
+                    {submissionError}
+                  </div>
+                )}
+                <div className="flex flex-col gap-2 pt-2">
+                  <Button
+                    size="lg"
+                    className="w-full bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white border-0 shadow-lg"
+                    onClick={handleNonCashSubmit}
+                    disabled={isSubmittingNonCash}
+                  >
+                    {isSubmittingNonCash ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Submit Donation Request"}
+                  </Button>
+                  <button
+                    type="button"
+                    onClick={() => setDonationMode("cash_points")}
+                    className="text-sm text-white/60 hover:text-white transition-colors"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Right: Quick links + Year-to-Date */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="rounded-2xl border border-white/10 bg-purple-950/40 backdrop-blur-xl shadow-xl shadow-black/20 overflow-hidden"
+            >
+              <div className="px-5 py-4 border-b border-white/10">
+                <h2 className="text-lg font-bold text-white">Donate a Non-Cash Asset</h2>
+              </div>
+              <div className="p-5 space-y-3">
+                {NON_CASH_TYPES.map(({ id, label, icon: Icon }) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setNonCashType(id)}
+                    className="w-full flex items-center justify-between gap-3 p-3 rounded-xl border border-white/10 bg-white/5 hover:bg-white/10 text-white text-sm transition-colors"
+                  >
+                    <span className="flex items-center gap-2">
+                      <Icon className="h-4 w-4 shrink-0" />
+                      {label}
+                    </span>
+                    <ChevronRight className="h-4 w-4 text-white/50" />
+                  </button>
+                ))}
+                <div className="pt-4 border-t border-white/10">
+                  <div className="text-lg font-bold text-white">
+                    ${typeof thisYearDonated === "number" ? thisYearDonated.toLocaleString("en-US", { maximumFractionDigits: 0 }) : 0}
+                  </div>
+                  <div className="text-sm text-white/60">/ ${givingGoal.toLocaleString()} Goal</div>
+                  <div className="h-2 rounded-full bg-white/20 mt-2 overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-pink-500 transition-all"
+                      style={{ width: `${givingProgress}%` }}
+                    />
+                  </div>
+                  <Link
+                    href={route("profile.donations")}
+                    className="inline-flex items-center justify-center w-full py-2.5 rounded-xl border border-white/20 bg-white/10 hover:bg-white/20 hover:border-purple-400/50 text-white font-medium text-sm mt-3 transition-all"
+                  >
+                    View Giving Dashboard
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+          )}
+
+          {/* Trust footer — both modes */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-8 flex flex-wrap items-center justify-center gap-6 text-sm text-white/70"
+          >
+            <span className="flex items-center gap-1.5">
+              <Shield className="h-4 w-4 text-green-400" /> 100% Secure Donations
+            </span>
+            <span className="flex items-center gap-1.5">501(c)(3) EIN: 12-3456789</span>
+            <span>IRS Compliant</span>
+            <span className="flex items-center gap-1 text-white/60">secure by stripe</span>
+          </motion.div>
         </div>
 
         {/* Subscription Required Modal - Supporter View */}

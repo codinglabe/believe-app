@@ -295,30 +295,54 @@ class UserProfileController extends Controller
     }
 
     /**
-     * Project applications requested (fundraise leads) — profile dashboard only.
-     * Shows only applications submitted by the current user (matched by email).
+     * Project applications — for supporters: show all projects so they can browse and invest.
+     * Each lead includes is_own so the UI can highlight applications the supporter submitted.
      */
     public function profileProjectApplications(Request $request)
     {
         $user = $request->user();
-        $query = FundraiseLead::query()
-            ->where('email', $user->email)
-            ->orderByDesc('created_at');
+        $query = FundraiseLead::query()->orderByDesc('created_at');
 
         $leads = $query->paginate(15)->withQueryString();
 
-        $leads->getCollection()->transform(fn (FundraiseLead $lead) => [
-            'id' => $lead->id,
-            'name' => $lead->name,
-            'company' => $lead->company,
-            'email' => $lead->email,
-            'project_summary' => $lead->project_summary,
-            'created_at' => $lead->created_at->toIso8601String(),
-        ]);
+        $leads->getCollection()->transform(function (FundraiseLead $lead) use ($user) {
+            return [
+                'id' => $lead->id,
+                'name' => $lead->name,
+                'company' => $lead->company,
+                'email' => $lead->email,
+                'project_summary' => $lead->project_summary,
+                'wefunder_project_url' => $lead->wefunder_project_url,
+                'created_at' => $lead->created_at->toIso8601String(),
+                'is_own' => strcasecmp((string) $lead->email, (string) $user->email) === 0,
+            ];
+        });
 
         return Inertia::render('frontend/user-profile/project-applications', [
             'projectApplicationsLeads' => $leads,
             'projectApplicationsTotal' => $leads->total(),
+        ]);
+    }
+
+    /**
+     * Show a single project application — any supporter can view any project (to browse and invest).
+     */
+    public function profileProjectApplicationShow(Request $request, FundraiseLead $lead)
+    {
+        $user = $request->user();
+        $isOwn = strcasecmp((string) $lead->email, (string) $user->email) === 0;
+
+        return Inertia::render('frontend/user-profile/project-application-show', [
+            'lead' => [
+                'id' => $lead->id,
+                'name' => $lead->name,
+                'company' => $lead->company,
+                'email' => $lead->email,
+                'project_summary' => $lead->project_summary,
+                'wefunder_project_url' => $lead->wefunder_project_url,
+                'created_at' => $lead->created_at->toIso8601String(),
+                'is_own' => $isOwn,
+            ],
         ]);
     }
 

@@ -190,7 +190,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
   if (isSuccess) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent className="bg-[#0b1220] text-white border border-white/10 shadow-2xl rounded-2xl max-w-md">
+        <DialogContent className="bg-[#1e0a2e]/95 text-white border border-white/10 shadow-2xl rounded-2xl max-w-md backdrop-blur-xl">
           <div className="text-center py-8 px-2">
             <motion.div
               initial={{ scale: 0 }}
@@ -214,12 +214,12 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-[#0b1220] text-white border border-white/10 shadow-2xl rounded-2xl max-w-2xl max-h-[90vh] overflow-y-auto p-0">
-        <div className="p-6 border-b border-white/10 bg-gradient-to-r from-purple-600/15 via-blue-600/10 to-transparent">
+      <DialogContent className="bg-[#1e0a2e]/95 text-white border border-white/10 shadow-2xl rounded-2xl max-w-2xl max-h-[90vh] overflow-y-auto p-0 backdrop-blur-xl">
+        <div className="p-6 border-b border-white/10 bg-gradient-to-r from-purple-600/20 via-purple-500/10 to-transparent">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-3">
-              <span className="w-10 h-10 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-                <Heart className="h-5 w-5 text-rose-400" />
+              <span className="w-10 h-10 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center">
+                <Heart className="h-5 w-5 text-purple-300 fill-purple-400/80" />
               </span>
               <span className="leading-tight">
                 <span className="block text-sm text-white/70">Donate</span>
@@ -234,7 +234,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
         <div className="space-y-6 p-6">
           {/* Organization Info */}
-          <Card className="bg-white/5 border border-white/10">
+          <Card className="bg-white/5 border border-white/10 rounded-xl">
             <CardContent className="pt-4">
               <div className="flex items-center gap-4">
                 <div className="w-14 h-14 rounded-2xl bg-white/10 border border-white/10 overflow-hidden flex items-center justify-center flex-shrink-0">
@@ -264,13 +264,13 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
           {/* Payment Method Selection */}
           <div>
-            <Label className="text-base font-semibold mb-3 block">Payment Method</Label>
+            <Label className="text-base font-semibold mb-3 block text-white">Payment Method</Label>
             <div className="space-y-3">
               {/* Stripe Payment */}
-              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all bg-white/5 ${
+              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
                 paymentMethod === 'stripe'
-                  ? 'border-purple-400/50 ring-1 ring-purple-400/20'
-                  : 'border-white/10 hover:border-white/20'
+                  ? 'border-purple-400/50 bg-purple-500/20 ring-1 ring-purple-400/20'
+                  : 'border-white/10 bg-white/5 hover:border-purple-400/30'
               }`}>
                 <input
                   type="radio"
@@ -280,20 +280,20 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                   onChange={(e) => setPaymentMethod(e.target.value as 'stripe' | 'believe_points')}
                   className="w-4 h-4 text-purple-500"
                 />
-                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-                  <CreditCard className="h-5 w-5 text-white/80" />
+                <div className="w-10 h-10 rounded-xl bg-white/20 border border-white/10 flex items-center justify-center">
+                  <CreditCard className="h-5 w-5 text-white" />
                 </div>
                 <div className="flex-1">
-                  <div className="font-semibold">Pay with Card</div>
-                  <div className="text-sm text-white/60">Secure checkout via Stripe</div>
+                  <div className="font-semibold">Pay with Credit/Debit (Square)</div>
+                  <div className="text-sm text-white/60 flex items-center gap-1.5">100% Secure Donation</div>
                 </div>
               </label>
 
               {/* Believe Points Payment - Only for one-time donations */}
-              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all bg-white/5 ${
+              <label className={`flex items-center gap-3 p-4 border rounded-xl cursor-pointer transition-all ${
                 paymentMethod === 'believe_points'
-                  ? 'border-purple-400/50 ring-1 ring-purple-400/20'
-                  : 'border-white/10 hover:border-white/20'
+                  ? 'border-purple-400/50 bg-purple-500/20 ring-1 ring-purple-400/20'
+                  : 'border-white/10 bg-white/5 hover:border-purple-400/30'
               } ${!canUseBelievePoints ? 'opacity-50 cursor-not-allowed' : ''}`}>
                 <input
                   type="radio"
@@ -304,8 +304,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
                   disabled={!canUseBelievePoints}
                   className="w-4 h-4 text-purple-500"
                 />
-                <div className="w-10 h-10 rounded-xl bg-white/10 border border-white/10 flex items-center justify-center">
-                  <Coins className="h-5 w-5 text-yellow-400" />
+                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500/30 to-pink-500/30 border border-white/10 flex items-center justify-center">
+                  <Coins className="h-5 w-5 text-white" />
                 </div>
                 <div className="flex-1">
                   <div className="font-semibold flex items-center gap-2">
@@ -563,7 +563,7 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
             </Button>
             <Button
               onClick={handleDonate}
-              className="flex-1 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 border-0"
+              className="flex-1 bg-gradient-to-r from-purple-500 via-purple-600 to-pink-500 hover:from-purple-600 hover:via-purple-700 hover:to-pink-600 border-0 shadow-lg shadow-purple-500/20"
               disabled={
                 getCurrentAmount() === 0 ||
                 !donorInfo.name ||
@@ -598,8 +598,8 @@ export default function DonationModal({ isOpen, onClose, organization }: Donatio
 
           {/* Security Notice */}
           <div className="text-center text-xs text-white/60 flex items-center justify-center gap-2">
-            <Shield className="h-3.5 w-3.5" />
-            <span>Your payment information is secure and encrypted.</span>
+            <Shield className="h-3.5 w-3.5 text-green-400" />
+            <span>100% Secure Donations · secure by stripe</span>
           </div>
         </div>
       </DialogContent>

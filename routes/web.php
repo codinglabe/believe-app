@@ -274,6 +274,9 @@ Route::post('/fundraise', [App\Http\Controllers\FundraiseController::class, 'sto
 // Project applications requested (authenticated supporters can view)
 Route::get('/fundraise/applications', [App\Http\Controllers\FundraiseController::class, 'projectApplications'])->name('fundraise.applications')
     ->middleware(['auth']);
+// Invest redirect: log click then redirect to Wefunder project URL (auth optional so we can track guest clicks too)
+Route::get('/invest/redirect/{lead}', [App\Http\Controllers\InvestController::class, 'redirect'])->name('invest.redirect')
+    ->where('lead', '[0-9]+');
 // Org-only: Support Community Projects (Donation vs Investment / Wefunder)
 Route::get('/fundraise/community-projects', [App\Http\Controllers\FundraiseController::class, 'communityProjects'])->name('fundraise.community-projects')
     ->middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|organization_pending']);
@@ -291,6 +294,7 @@ Route::get('/believe-fundme/{slug}', [FundMeController::class, 'show'])->name('f
 /* marketplace */
 Route::get('/marketplace', [MarketplaceController::class, 'index'])->name('marketplace.index');
 Route::get('/product/{product}', [ProductController::class, 'show'])->name('product.show');
+Route::post('/product/{product}/bid', [ProductController::class, 'placeBid'])->name('product.bid')->middleware(['auth', 'EnsureEmailIsVerified']);
 // Note: Public route for products moved after resource routes to avoid conflict with /products/create
 
 /* Service Hub - Fiverr-like service marketplace */
@@ -538,6 +542,11 @@ Route::post('/organizations/{id}/generate-mission', [OrganizationController::cla
 // API route for dynamic city loading
 Route::get('/api/cities-by-state', [OrganizationController::class, 'getCitiesByState']);
 
+// Giving dashboard (donation history) - available to both supporters and organizations
+Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
+    Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
+});
+
 // Profile routes
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')->group(function () {
     Route::get('/profile', [UserProfileController::class, 'index'])->name('profile.index');
@@ -550,8 +559,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
     Route::get('/profile/following', [UserProfileController::class, 'favorites'])->name('profile.favorites');
     Route::delete("/profile/following/{id}", [UserProfileController::class, 'removeFavorite'])->name('profile.favorites.remove');
     Route::get('/profile/project-applications', [UserProfileController::class, 'profileProjectApplications'])->name('profile.project-applications');
+    Route::get('/profile/project-applications/{lead}', [UserProfileController::class, 'profileProjectApplicationShow'])->name('profile.project-applications.show')->where('lead', '[0-9]+');
 
-    Route::get('/profile/donations', [UserProfileController::class, 'donations'])->name('profile.donations');
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
     Route::get('/profile/job-applications', [UserProfileController::class, 'jobApplications'])->name('profile.job-applications');
@@ -918,6 +927,7 @@ Route::middleware(["auth", 'EnsureEmailIsVerified', 'role:organization', 'topics
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|organization_pending', 'topics.selected'])->group(function () {
     Route::get('dashboard', [DashboardController::class, "index"])->name('dashboard');
     Route::get('dashboard/project-applications', [App\Http\Controllers\FundraiseController::class, 'dashboardProjectApplications'])->name('dashboard.project-applications');
+    Route::put('dashboard/project-applications/{lead}', [App\Http\Controllers\FundraiseController::class, 'updateProjectApplication'])->name('dashboard.project-applications.update')->where('lead', '[0-9]+');
 
     // Organization Livestreams
     Route::prefix('livestreams')->name('organization.livestreams.')->group(function () {
@@ -1641,6 +1651,7 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|user', 't
 // route for donation
 Route::middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected'])->group(function () {
     Route::post('/donate', [DonationController::class, 'store'])->name('donations.store');
+    Route::post('/donate/non-cash', [DonationController::class, 'storeNonCash'])->name('donations.non-cash.store');
     Route::get('/donations/success', [DonationController::class, 'success'])->name('donations.success');
     Route::get('/donations/cancel', [DonationController::class, 'cancel'])->name('donations.cancel');
 });

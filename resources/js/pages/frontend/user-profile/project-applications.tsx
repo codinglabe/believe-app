@@ -2,7 +2,7 @@
 
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { usePage, Link } from "@inertiajs/react"
-import { FileText, User, Building2, Mail, Calendar } from "lucide-react"
+import { FileText, User, Building2, Mail, Calendar, ExternalLink, Clock } from "lucide-react"
 
 interface Lead {
   id: number
@@ -10,7 +10,9 @@ interface Lead {
   company: string
   email: string
   project_summary: string
+  wefunder_project_url: string | null
   created_at: string
+  is_own?: boolean
 }
 
 interface PageProps {
@@ -65,14 +67,23 @@ export default function ProfileProjectApplications() {
                   className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4 sm:p-5"
                 >
                   <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                    <div className="space-y-2 min-w-0">
+                    <div className="space-y-2 min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <User className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
-                        <span className="font-semibold text-gray-900 dark:text-white">{lead.name}</span>
+                        <Link
+                          href={route("user.profile.project-applications.show", { lead: lead.id })}
+                          className="font-semibold text-gray-900 dark:text-white hover:text-violet-600 dark:hover:text-violet-400 transition-colors"
+                        >
+                          {lead.company}
+                        </Link>
+                        {lead.is_own && (
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 dark:bg-violet-900/40 text-violet-700 dark:text-violet-300">
+                            Your application
+                          </span>
+                        )}
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
-                        <Building2 className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
-                        <span className="text-gray-700 dark:text-gray-300">{lead.company}</span>
+                        <User className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
+                        <span className="text-gray-700 dark:text-gray-300">{lead.name}</span>
                       </div>
                       <div className="flex items-center gap-2 flex-wrap">
                         <Mail className="w-4 h-4 text-gray-500 dark:text-gray-400 shrink-0" />
@@ -90,9 +101,25 @@ export default function ProfileProjectApplications() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400 shrink-0">
-                      <Calendar className="w-4 h-4" />
-                      {formatDate(lead.created_at)}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+                        <Calendar className="w-4 h-4" />
+                        {formatDate(lead.created_at)}
+                      </div>
+                      {lead.wefunder_project_url ? (
+                        <Link
+                          href={route("invest.redirect", { lead: lead.id })}
+                          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-600 text-white text-sm font-medium hover:bg-violet-700 transition-colors"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                          Invest
+                        </Link>
+                      ) : (
+                        <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 text-sm font-medium">
+                          <Clock className="w-4 h-4" />
+                          In Review
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>

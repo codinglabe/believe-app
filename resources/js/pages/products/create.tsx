@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { TextArea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check } from 'lucide-react';
+import { Save, Plus, Minus, Loader2, Upload, Package, DollarSign, ImageIcon, Tag, Settings2, Info, ExternalLink, ShoppingBag, Check, Gavel, TrendingUp, Clock } from 'lucide-react';
 import { showErrorToast, showSuccessToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -95,6 +95,24 @@ export default function Create({ categories, organizations = [], blueprints, pri
         printify_provider_id: '',
         printify_variants: [] as any[],
         printify_images: [] as { file: File; preview: string; name: string }[],
+
+        // Pricing model & bidding
+        pricing_model: 'fixed' as 'fixed' | 'auction' | 'blind_bid' | 'offer',
+        // Auction
+        starting_bid: '',
+        reserve_price: '',
+        buy_now_price: '',
+        bid_increment: '',
+        auction_start: '',
+        auction_end: '',
+        auto_extend: false,
+        // Blind bid
+        blind_bid_type: 'sealed' as 'sealed' | 'sealed_revisable' | 'vickrey',
+        min_bid: '',
+        bid_deadline: '',
+        winner_notification: 'email,in_app',
+        winner_payment_window: '24h',
+        offer_to_next_if_unpaid: true,
     });
 
      const [processing, setProcessing] = useState(false);
@@ -340,18 +358,49 @@ const handleCategoryChange = (categoryId: number) => {
                 return;
             }
         } else {
-            // Validate manual product required fields
-            if (!data.unit_price || parseFloat(data.unit_price) <= 0) {
-                setErrors({ unit_price: 'Please enter a valid unit price.' });
-                setProcessing(false);
-                showErrorToast('Please enter a valid unit price.');
-                return;
+            // Validate manual product required fields (fixed price) or bidding fields
+            const pricingModel = data.pricing_model || 'fixed';
+            if (pricingModel === 'fixed') {
+                if (!data.unit_price || parseFloat(data.unit_price) <= 0) {
+                    setErrors({ unit_price: 'Please enter a valid unit price.' });
+                    setProcessing(false);
+                    showErrorToast('Please enter a valid unit price.');
+                    return;
+                }
+                if (!data.shipping_charge || parseFloat(data.shipping_charge) < 0) {
+                    setErrors({ shipping_charge: 'Please enter a valid shipping charge.' });
+                    setProcessing(false);
+                    showErrorToast('Please enter a valid shipping charge.');
+                    return;
+                }
             }
-            if (!data.shipping_charge || parseFloat(data.shipping_charge) < 0) {
-                setErrors({ shipping_charge: 'Please enter a valid shipping charge.' });
-                setProcessing(false);
-                showErrorToast('Please enter a valid shipping charge.');
-                return;
+            if (pricingModel === 'auction') {
+                if (!data.starting_bid || parseFloat(data.starting_bid) < 0) {
+                    setErrors({ starting_bid: 'Please enter a valid starting bid.' });
+                    setProcessing(false);
+                    showErrorToast('Please enter a valid starting bid.');
+                    return;
+                }
+                if (!data.auction_start || !data.auction_end) {
+                    setErrors({ auction_end: 'Please set auction start and end dates.' });
+                    setProcessing(false);
+                    showErrorToast('Please set auction start and end dates.');
+                    return;
+                }
+            }
+            if (pricingModel === 'blind_bid') {
+                if (!data.min_bid || parseFloat(data.min_bid) < 0) {
+                    setErrors({ min_bid: 'Please enter a valid minimum bid.' });
+                    setProcessing(false);
+                    showErrorToast('Please enter a valid minimum bid.');
+                    return;
+                }
+                if (!data.bid_deadline) {
+                    setErrors({ bid_deadline: 'Please set bid deadline.' });
+                    setProcessing(false);
+                    showErrorToast('Please set bid deadline.');
+                    return;
+                }
             }
             if (!data.image) {
                 setErrors({ image: 'Please upload a product image.' });
@@ -387,10 +436,29 @@ const handleCategoryChange = (categoryId: number) => {
             formData.append('image', data.image);
         }
 
-        // Manual product: unit_price and shipping_charge are required
+        // Manual product: unit_price and shipping_charge (required for fixed price)
         if (!data.is_printify_product) {
+            formData.append('pricing_model', data.pricing_model || 'fixed');
             if (data.unit_price) formData.append('unit_price', data.unit_price);
             if (data.shipping_charge) formData.append('shipping_charge', data.shipping_charge);
+            if (data.pricing_model === 'auction') {
+                if (data.starting_bid) formData.append('starting_bid', data.starting_bid);
+                if (data.reserve_price) formData.append('reserve_price', data.reserve_price);
+                if (data.buy_now_price) formData.append('buy_now_price', data.buy_now_price);
+                if (data.bid_increment) formData.append('bid_increment', data.bid_increment);
+                if (data.auction_start) formData.append('auction_start', data.auction_start);
+                if (data.auction_end) formData.append('auction_end', data.auction_end);
+                formData.append('auto_extend', data.auto_extend ? '1' : '0');
+            }
+            if (data.pricing_model === 'blind_bid') {
+                formData.append('blind_bid_type', data.blind_bid_type || 'sealed');
+                if (data.min_bid) formData.append('min_bid', data.min_bid);
+                if (data.reserve_price) formData.append('reserve_price', data.reserve_price);
+                if (data.bid_deadline) formData.append('bid_deadline', data.bid_deadline);
+                if (data.winner_notification) formData.append('winner_notification', data.winner_notification);
+                if (data.winner_payment_window) formData.append('winner_payment_window', data.winner_payment_window);
+                formData.append('offer_to_next_if_unpaid', data.offer_to_next_if_unpaid ? '1' : '0');
+            }
         }
 
         // Printify-specific fields (only if Printify product)
@@ -1249,8 +1317,245 @@ const handleCategoryChange = (categoryId: number) => {
                                 </CardContent>
                             </Card>
 
+                            {/* Pricing Model - only for manual products */}
+                            {!data.is_printify_product && (
+                                <Card className="border-2 border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+                                    <CardHeader className="border-b border-gray-200 dark:border-gray-700 py-3">
+                                        <div className="flex items-center gap-2">
+                                            <Settings2 className="h-5 w-5 text-purple-500" />
+                                            <CardTitle className="text-lg font-bold text-gray-900 dark:text-gray-100">
+                                                Pricing Model
+                                            </CardTitle>
+                                        </div>
+                                        <CardDescription className="text-sm text-gray-600 dark:text-gray-400">
+                                            Choose how this product is priced
+                                        </CardDescription>
+                                    </CardHeader>
+                                    <CardContent className="pt-4 space-y-4">
+                                        <div className="flex flex-wrap gap-3">
+                                            {[
+                                                { value: 'fixed', label: 'Fixed Price', icon: DollarSign },
+                                                { value: 'auction', label: 'Auction / Bidding', icon: Gavel },
+                                                { value: 'blind_bid', label: 'Blind Bid (Sealed)', icon: TrendingUp },
+                                                { value: 'offer', label: 'Accept Offers', icon: Tag },
+                                            ].map(({ value, label, icon: Icon }) => (
+                                                <label
+                                                    key={value}
+                                                    className={`flex items-center gap-2 rounded-xl border-2 px-4 py-3 cursor-pointer transition-all ${
+                                                        data.pricing_model === value
+                                                            ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 dark:border-purple-400'
+                                                            : 'border-gray-200 dark:border-gray-600 hover:border-purple-300'
+                                                    }`}
+                                                >
+                                                    <input
+                                                        type="radio"
+                                                        name="pricing_model"
+                                                        value={value}
+                                                        checked={data.pricing_model === value}
+                                                        onChange={() => setData('pricing_model', value as 'fixed' | 'auction' | 'blind_bid' | 'offer')}
+                                                        className="sr-only"
+                                                    />
+                                                    <Icon className="h-4 w-4 shrink-0" />
+                                                    <span className="text-sm font-medium">{label}</span>
+                                                </label>
+                                            ))}
+                                        </div>
+
+                                        {/* Blind Bid Settings */}
+                                        {data.pricing_model === 'blind_bid' && (
+                                            <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/30 p-4 space-y-4">
+                                                <h4 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                    <TrendingUp className="h-4 w-4 text-purple-500" />
+                                                    Blind Bid Settings
+                                                </h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div>
+                                                        <Label className="text-sm font-medium">Bid Type</Label>
+                                                        <div className="flex flex-wrap gap-2 mt-1">
+                                                            {['sealed', 'sealed_revisable', 'vickrey'].map((t) => (
+                                                                <label key={t} className="flex items-center gap-1.5 text-sm">
+                                                                    <input
+                                                                        type="radio"
+                                                                        name="blind_bid_type"
+                                                                        value={t}
+                                                                        checked={data.blind_bid_type === t}
+                                                                        onChange={() => setData('blind_bid_type', t as 'sealed' | 'sealed_revisable' | 'vickrey')}
+                                                                        className="rounded border-gray-300 text-purple-500"
+                                                                    />
+                                                                    {t === 'sealed' ? 'Sealed' : t === 'sealed_revisable' ? 'Sealed w/ revisions' : 'Second-price'}
+                                                                </label>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Minimum Bid ($) *</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.min_bid}
+                                                            onChange={(e) => setData('min_bid', e.target.value)}
+                                                            placeholder="50"
+                                                            className="h-10"
+                                                        />
+                                                        {errors.min_bid && <p className="text-xs text-red-500">{errors.min_bid}</p>}
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Reserve Price (optional)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.reserve_price}
+                                                            onChange={(e) => setData('reserve_price', e.target.value)}
+                                                            placeholder="0"
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Bid Deadline *</Label>
+                                                        <Input
+                                                            type="datetime-local"
+                                                            value={data.bid_deadline}
+                                                            onChange={(e) => setData('bid_deadline', e.target.value)}
+                                                            className="h-10"
+                                                        />
+                                                        {errors.bid_deadline && <p className="text-xs text-red-500">{errors.bid_deadline}</p>}
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Winner Notification</Label>
+                                                        <div className="flex gap-4">
+                                                            <label className="flex items-center gap-2 text-sm">
+                                                                <input type="checkbox" checked={data.winner_notification?.includes('email')} onChange={(e) => setData('winner_notification', e.target.checked ? 'email,in_app' : 'in_app')} className="rounded" />
+                                                                Email
+                                                            </label>
+                                                            <label className="flex items-center gap-2 text-sm">
+                                                                <input type="checkbox" checked={data.winner_notification?.includes('in_app')} onChange={(e) => setData('winner_notification', e.target.checked ? 'email,in_app' : 'email')} className="rounded" />
+                                                                In-App
+                                                            </label>
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Winner Payment Window</Label>
+                                                        <select
+                                                            value={data.winner_payment_window}
+                                                            onChange={(e) => setData('winner_payment_window', e.target.value)}
+                                                            className="h-10 w-full rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 px-3"
+                                                        >
+                                                            <option value="24h">24 Hours</option>
+                                                            <option value="48h">48 Hours</option>
+                                                            <option value="72h">72 Hours</option>
+                                                        </select>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="offer_to_next_if_unpaid"
+                                                            checked={data.offer_to_next_if_unpaid}
+                                                            onChange={(e) => setData('offer_to_next_if_unpaid', e.target.checked)}
+                                                            className="rounded border-gray-300 text-purple-500"
+                                                        />
+                                                        <Label htmlFor="offer_to_next_if_unpaid" className="text-sm">If winner doesn&apos;t pay? Offer to next highest bid</Label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Auction Settings */}
+                                        {data.pricing_model === 'auction' && (
+                                            <div className="rounded-xl border-2 border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/30 p-4 space-y-4">
+                                                <h4 className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                                                    <Gavel className="h-4 w-4 text-purple-500" />
+                                                    Auction Settings
+                                                </h4>
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Starting Bid ($) *</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.starting_bid}
+                                                            onChange={(e) => setData('starting_bid', e.target.value)}
+                                                            placeholder="0"
+                                                            className="h-10"
+                                                        />
+                                                        {errors.starting_bid && <p className="text-xs text-red-500">{errors.starting_bid}</p>}
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Reserve Price (optional)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.reserve_price}
+                                                            onChange={(e) => setData('reserve_price', e.target.value)}
+                                                            placeholder="0"
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Buy Now Price (optional)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.buy_now_price}
+                                                            onChange={(e) => setData('buy_now_price', e.target.value)}
+                                                            placeholder="0"
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Bid Increment ($)</Label>
+                                                        <Input
+                                                            type="number"
+                                                            step="0.01"
+                                                            min="0"
+                                                            value={data.bid_increment}
+                                                            onChange={(e) => setData('bid_increment', e.target.value)}
+                                                            placeholder="5"
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Auction Start *</Label>
+                                                        <Input
+                                                            type="datetime-local"
+                                                            value={data.auction_start}
+                                                            onChange={(e) => setData('auction_start', e.target.value)}
+                                                            className="h-10"
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-2">
+                                                        <Label className="text-sm font-medium">Auction End *</Label>
+                                                        <Input
+                                                            type="datetime-local"
+                                                            value={data.auction_end}
+                                                            onChange={(e) => setData('auction_end', e.target.value)}
+                                                            className="h-10"
+                                                        />
+                                                        {errors.auction_end && <p className="text-xs text-red-500">{errors.auction_end}</p>}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <input
+                                                            type="checkbox"
+                                                            id="auto_extend"
+                                                            checked={data.auto_extend}
+                                                            onChange={(e) => setData('auto_extend', e.target.checked)}
+                                                            className="rounded border-gray-300 text-purple-500"
+                                                        />
+                                                        <Label htmlFor="auto_extend" className="text-sm">Auto-extend if bid in last 2 minutes</Label>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            )}
+
                             {/* Pricing & Inventory */}
-                            <Card className="border-2 border-gray-200 bg-white shadow-lg transition-all duration-300 hover:shadow-xl dark:border-gray-700 dark:bg-gray-900 dark:shadow-xl dark:hover:shadow-2xl">
+                            <Card className={`border-2 shadow-lg transition-all duration-300 dark:shadow-xl ${data.pricing_model === 'auction' || data.pricing_model === 'blind_bid' ? 'border-purple-200 dark:border-purple-800' : 'border-gray-200 dark:border-gray-700'} bg-white dark:bg-gray-900`}>
                                 <CardHeader className="border-b border-green-200 bg-gradient-to-r from-green-50 via-emerald-50 to-teal-50 py-2 dark:border-green-800 dark:from-green-950/40 dark:via-emerald-950/40 dark:to-teal-950/40">
                                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                                         <div className="rounded-xl bg-gradient-to-br from-green-500 to-emerald-600 p-2.5 shadow-md dark:from-green-400 dark:to-emerald-500">
@@ -1261,7 +1566,7 @@ const handleCategoryChange = (categoryId: number) => {
                                                 Pricing & Inventory
                                             </CardTitle>
                                             <CardDescription className="text-sm text-gray-600 sm:text-base dark:text-gray-400">
-                                                Set pricing, shipping, and stock information
+                                                {data.pricing_model === 'fixed' || !data.pricing_model ? 'Set pricing, shipping, and stock information' : 'Set quantity and optional buy-now price'}
                                             </CardDescription>
                                         </div>
                                     </div>
@@ -1287,7 +1592,7 @@ const handleCategoryChange = (categoryId: number) => {
                                         )}
                                     </div>
 
-                                    {!data.is_printify_product && (
+                                    {!data.is_printify_product && (data.pricing_model === 'fixed' || data.pricing_model === 'offer' || !data.pricing_model) && (
                                         <>
                                             <div className="space-y-2">
                                                 <Label htmlFor="unit_price" className="flex items-center gap-2">

@@ -130,6 +130,7 @@ class FundraiseController extends Controller
             'company' => $lead->company,
             'email' => $lead->email,
             'project_summary' => $lead->project_summary,
+            'wefunder_project_url' => $lead->wefunder_project_url,
             'created_at' => $lead->created_at->toIso8601String(),
         ]);
 
@@ -137,5 +138,27 @@ class FundraiseController extends Controller
             'projectApplicationsLeads' => $leads,
             'projectApplicationsTotal' => $leads->total(),
         ]);
+    }
+
+    /**
+     * Update project application (e.g. set Wefunder link when approved). Allowed if lead email matches user or user is admin.
+     */
+    public function updateProjectApplication(Request $request, FundraiseLead $lead)
+    {
+        $user = $request->user();
+        if ($lead->email !== $user->email && !$user->hasRole('admin')) {
+            abort(403, 'You can only update your own project application.');
+        }
+
+        $validated = $request->validate([
+            'wefunder_project_url' => ['nullable', 'string', 'url', 'max:500'],
+        ]);
+
+        $lead->update($validated);
+
+        if ($request->wantsJson() || $request->header('X-Inertia')) {
+            return back()->with('success', 'Wefunder link updated.');
+        }
+        return redirect()->route('dashboard.project-applications')->with('success', 'Wefunder link updated.');
     }
 }

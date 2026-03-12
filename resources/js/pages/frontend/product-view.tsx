@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
-import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock } from 'lucide-react';
 
 interface PrintifyVariant {
   id: number;
@@ -37,6 +37,15 @@ interface Product {
   printify_product_id?: string;
   printify_blueprint_id?: number;
   printify_provider_id?: number;
+  pricing_model?: string;
+}
+
+interface BiddingInfo {
+  current_bid: number | null;
+  bid_end_at: string | null;
+  min_bid: number;
+  buy_now_price: number | null;
+  bid_increment: number | null;
 }
 
 interface PrintifyProduct {
@@ -66,9 +75,10 @@ interface ProductViewProps {
   printifyProduct?: PrintifyProduct;
   variants: PrintifyVariant[];
   firstVariant?: PrintifyVariant;
-  relatedProducts: Product[];
+  relatedProducts?: Product[];
   isOrganizationUser?: boolean;
   message?: string;
+  biddingInfo?: BiddingInfo | null;
 }
 
 interface CartItem {
@@ -91,9 +101,10 @@ export default function ProductView({
   printifyProduct,
   variants,
   firstVariant,
-  relatedProducts,
+  relatedProducts = [],
   isOrganizationUser = false,
-  message
+  message,
+  biddingInfo = null,
 }: ProductViewProps) {
   const [selectedVariant, setSelectedVariant] = useState<PrintifyVariant | null>(firstVariant || null);
   const [quantity, setQuantity] = useState(1);
@@ -104,11 +115,56 @@ export default function ProductView({
   const [quantityError, setQuantityError] = useState<string>('');
   const [cartData, setCartData] = useState<CartData | null>(null);
   const [isCartLoading, setIsCartLoading] = useState(false);
+  const [bidAmount, setBidAmount] = useState('');
+  const [isBidSubmitting, setIsBidSubmitting] = useState(false);
+  const [bidEndCountdown, setBidEndCountdown] = useState<string>('');
 
   // Fetch cart data on component mount
   useEffect(() => {
     fetchCartData();
   }, []);
+
+  // Countdown for bid end
+  useEffect(() => {
+    if (!biddingInfo?.bid_end_at) return;
+    const end = new Date(biddingInfo.bid_end_at).getTime();
+    const tick = () => {
+      const now = Date.now();
+      if (now >= end) {
+        setBidEndCountdown('Ended');
+        return;
+      }
+      const d = Math.floor((end - now) / 1000);
+      const h = Math.floor(d / 3600);
+      const m = Math.floor((d % 3600) / 60);
+      const s = d % 60;
+      setBidEndCountdown(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [biddingInfo?.bid_end_at]);
+
+  const handleSubmitBid = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!biddingInfo || !bidAmount || parseFloat(bidAmount) < biddingInfo.min_bid) {
+      showErrorToast(`Minimum bid is $${biddingInfo?.min_bid?.toFixed(2) ?? '0.00'}`);
+      return;
+    }
+    setIsBidSubmitting(true);
+    router.post(route('product.bid', { product: product.id }), { bid_amount: parseFloat(bidAmount) }, {
+      preserveScroll: true,
+      onFinish: () => setIsBidSubmitting(false),
+      onSuccess: () => {
+        showSuccessToast('Your bid has been placed.');
+        setBidAmount('');
+        router.reload();
+      },
+      onError: (errors) => {
+        showErrorToast(errors?.bid ?? 'Failed to place bid.');
+      },
+    });
+  };
 
   const fetchCartData = async () => {
     try {
@@ -500,25 +556,93 @@ export default function ProductView({
                 </h1>
               </div>
 
-              {/* Price */}
-              <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800">
-                <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Price</p>
-                <div className="flex items-baseline gap-3">
-                  <span className="text-4xl font-bold text-blue-600 dark:text-blue-400">
-                    ${typeof currentPrice === 'number' ? currentPrice.toFixed(2) : '0.00'}
-                  </span>
-                  {product.quantity_available <= 5 && product.quantity_available > 0 && (
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
-                      Only {product.quantity_available} left!
-                    </span>
+              {/* Bidding UI (auction / blind bid) */}
+              {biddingInfo && !isOrganizationUser && (
+                <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl p-6 border-2 border-purple-200 dark:border-purple-800 space-y-4">
+                  <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-semibold">
+                    <Gavel className="h-5 w-5" />
+                    {product.pricing_model === 'blind_bid' ? 'Blind Bid Item' : 'Auction'}
+                  </div>
+                  <div className="flex flex-wrap items-baseline gap-4">
+                    <div>
+                      <p className="text-gray-600 dark:text-gray-400 text-sm">Current Bid</p>
+                      <span className="text-2xl font-bold text-purple-600 dark:text-purple-400">
+                        ${biddingInfo.current_bid != null ? biddingInfo.current_bid.toFixed(2) : (biddingInfo.min_bid ?? 0).toFixed(2)}
+                      </span>
+                      {biddingInfo.current_bid == null && <span className="text-sm text-gray-500 dark:text-gray-400 ml-1">(minimum)</span>}
+                    </div>
+                    {bidEndCountdown && (
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="h-4 w-4 text-gray-500" />
+                        <span className="text-lg font-mono font-semibold">{bidEndCountdown}</span>
+                        <span className="text-sm text-gray-500">{bidEndCountdown === 'Ended' ? '' : 'left'}</span>
+                      </div>
+                    )}
+                  </div>
+                  {bidEndCountdown !== 'Ended' && (
+                    <form onSubmit={handleSubmitBid} className="space-y-3">
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Enter your bid</label>
+                      <div className="flex flex-wrap gap-3">
+                        <div className="relative flex-1 min-w-[120px]">
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={biddingInfo.min_bid}
+                            value={bidAmount}
+                            onChange={(e) => setBidAmount(e.target.value)}
+                            placeholder={biddingInfo.min_bid.toFixed(2)}
+                            className="w-full pl-8 pr-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={isBidSubmitting || !bidAmount || parseFloat(bidAmount) < biddingInfo.min_bid}
+                          className="px-6 py-3 rounded-lg bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white font-semibold transition-colors"
+                        >
+                          {isBidSubmitting ? 'Submitting...' : product.pricing_model === 'blind_bid' ? 'Submit Blind Bid' : 'Place Bid'}
+                        </button>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {product.pricing_model === 'blind_bid' ? 'Bids are private. Winner notified after deadline.' : `Minimum bid $${biddingInfo.min_bid.toFixed(2)}`}
+                      </p>
+                    </form>
                   )}
-                  {product.quantity_available === 0 && (
-                    <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
-                      Out of Stock
-                    </span>
+                  {biddingInfo.buy_now_price != null && biddingInfo.buy_now_price > 0 && (
+                    <div className="pt-2 border-t border-purple-200 dark:border-purple-700">
+                      <button
+                        type="button"
+                        onClick={() => window.location.href = route('checkout.show')}
+                        className="text-sm font-medium text-purple-600 dark:text-purple-400 hover:underline"
+                      >
+                        Buy Now for ${biddingInfo.buy_now_price.toFixed(2)} →
+                      </button>
+                    </div>
                   )}
                 </div>
-              </div>
+              )}
+
+              {/* Price (fixed price only) */}
+              {!biddingInfo && (
+                <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800">
+                  <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Price</p>
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-4xl font-bold text-blue-600 dark:text-blue-400">
+                      ${typeof currentPrice === 'number' ? currentPrice.toFixed(2) : '0.00'}
+                    </span>
+                    {product.quantity_available <= 5 && product.quantity_available > 0 && (
+                      <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
+                        Only {product.quantity_available} left!
+                      </span>
+                    )}
+                    {product.quantity_available === 0 && (
+                      <span className="text-sm font-medium text-red-600 dark:text-red-400 ml-auto">
+                        Out of Stock
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* Cart Status Indicator */}
               {productInCart && cartItem && (
@@ -587,8 +711,8 @@ export default function ProductView({
                 </div>
               ))}
 
-              {/* Quantity Selector */}
-              {!isOrganizationUser && (
+              {/* Quantity Selector (fixed price only) */}
+              {!isOrganizationUser && !biddingInfo && (
                 <div>
                   <label className="text-sm font-semibold text-gray-900 dark:text-white mb-3 block">Quantity</label>
                   <div className="flex items-center gap-4">
@@ -648,9 +772,13 @@ export default function ProductView({
                 </div>
               )}
 
-              {/* CTA Buttons */}
+              {/* CTA Buttons (fixed price; for bidding we show bid form above) */}
                <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                {isOrganizationUser ? (
+                {biddingInfo ? (
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    Use the bid form above to place your bid.
+                  </div>
+                ) : isOrganizationUser ? (
                   <div className="w-full bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-4 text-center">
                     <p className="text-gray-600 dark:text-gray-400 font-medium">
                       Only supporters can purchase products

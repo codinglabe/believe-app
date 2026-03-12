@@ -60,6 +60,33 @@ class DonationController extends Controller
             ];
         });
 
+        // Year-to-date giving and top 3 organizations for logged-in users
+        $thisYearDonated = 0.0;
+        $givingGoal = 1000; // default goal for progress bar
+        $topOrganizations = [];
+        if ($user) {
+            $thisYearDonated = (float) Donation::where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->whereYear('donation_date', now()->year)
+                ->sum('amount');
+            $topOrganizations = Donation::where('user_id', $user->id)
+                ->whereIn('status', ['completed', 'active'])
+                ->selectRaw('organization_id, SUM(amount) as total')
+                ->groupBy('organization_id')
+                ->orderByDesc('total')
+                ->take(3)
+                ->with('organization:id,name')
+                ->get()
+                ->map(function ($row) {
+                    return [
+                        'name' => $row->organization?->name ?? 'Unknown',
+                        'total' => (float) $row->total,
+                    ];
+                })
+                ->values()
+                ->all();
+        }
+
         return Inertia::render('frontend/donate', [
             'seo' => SeoService::forPage('donate'),
             'organizations' => $organizations->values(),
@@ -69,7 +96,47 @@ class DonationController extends Controller
                 'email' => $user->email,
             ] : null,
             'searchQuery' => $request->input('search', ''),
+            'thisYearDonated' => $thisYearDonated,
+            'givingGoal' => $givingGoal,
+            'topOrganizations' => $topOrganizations,
         ]);
+    }
+
+    /**
+     * Store a non-cash (in-kind) donation request.
+     * Admin reviews and approves before it becomes official.
+     */
+    public function storeNonCash(Request $request)
+    {
+        $validated = $request->validate([
+            'non_cash_type' => 'required|in:goods,services,stocks_crypto,vehicle,other',
+            'item_name' => 'required|string|max:500',
+            'estimated_fair_market_value' => 'required|numeric|min:0',
+            'condition' => 'nullable|string|max:50',
+            'organization_id' => 'required|exists:organizations,id',
+            'upload_photos' => 'boolean',
+        ]);
+
+        $user = $request->user();
+        $organization = Organization::findOrFail($validated['organization_id']);
+
+        if ($organization->registration_status !== 'approved') {
+            return redirect()->back()->withErrors([
+                'organization_id' => 'The selected organization is not approved for donations.',
+            ]);
+        }
+
+        // TODO: Create NonCashDonationRequest model and store when ready.
+        // For now we acknowledge the request and redirect with success.
+        Log::info('Non-cash donation request received', [
+            'user_id' => $user->id,
+            'organization_id' => $organization->id,
+            'type' => $validated['non_cash_type'],
+            'item_name' => $validated['item_name'],
+            'estimated_value' => $validated['estimated_fair_market_value'],
+        ]);
+
+        return redirect()->back()->with('success', 'Your non-cash donation request has been submitted. We\'ll be in touch shortly.');
     }
 
     /**
