@@ -36,6 +36,7 @@ import {
   QrCode,
   Globe,
   Youtube,
+  Gavel,
 } from "lucide-react"
 import { Button } from "@/components/frontend/ui/button"
 import { Card, CardContent } from "@/components/frontend/ui/card"
@@ -122,6 +123,20 @@ const navigationItems = [
     icon: ShoppingBag,
     description: "Purchase history",
     color: "from-orange-500 to-amber-600",
+  },
+  {
+    name: "My Bids",
+    href: "/profile/bids",
+    icon: Gavel,
+    description: "Your bids on auction & blind-bid products",
+    color: "from-violet-500 to-purple-600",
+  },
+  {
+    name: "Winning Bids",
+    href: "/profile/bid-wins",
+    icon: Award,
+    description: "Pay for products you won",
+    color: "from-amber-500 to-yellow-600",
   },
   {
     name: "Course",

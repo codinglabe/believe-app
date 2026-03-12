@@ -172,6 +172,30 @@ class Product extends Model
         return $top ? (float) $top->bid_amount : null;
     }
 
+    public function winningBid(): BelongsTo
+    {
+        return $this->belongsTo(Bid::class, 'winning_bid_id');
+    }
+
+    public function winner(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'winner_user_id');
+    }
+
+    public function hasWinner(): bool
+    {
+        return !empty($this->winner_user_id) && !empty($this->winning_bid_id);
+    }
+
+    public function isBiddingClosed(): bool
+    {
+        if ($this->hasWinner()) {
+            return true;
+        }
+        $deadline = $this->isAuction() ? $this->auction_end : $this->bid_deadline;
+        return $deadline && $deadline->isPast();
+    }
+
     public function variants(): HasMany
     {
         return $this->hasMany(ProductVariant::class);

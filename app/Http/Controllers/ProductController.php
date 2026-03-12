@@ -13,6 +13,15 @@ use Illuminate\Support\Facades\Auth;
 use App\Models\Category;
 use App\Models\ProductVariant;
 use App\Services\PrintifyService;
+use Illuminate\Support\Facades\Notification;
+use App\Notifications\BidCancelledNotification;
+use App\Notifications\BidWonNotification;
+use App\Notifications\BidLostNotification;
+use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderShippingInfo;
+use Laravel\Cashier\Cashier;
+use Illuminate\Support\Str;
 
 class ProductController extends BaseController
 {
@@ -52,6 +61,7 @@ class ProductController extends BaseController
         }
 
         $products = $query->with(['organization', 'categories'])
+            ->withCount('bids')
             ->orderBy('id', 'desc')
             ->paginate($perPage, ['*'], 'page', $page);
 
@@ -209,25 +219,34 @@ class ProductController extends BaseController
         // Get first available variant
         $firstVariant = !empty($variantsWithImages) ? $variantsWithImages[0] : null;
 
-        // Bidding info for auction / blind bid
+        // Bidding info for auction / blind bid (only when bidding is still open; no winner yet)
         $biddingInfo = null;
+        $biddingClosed = false;
+        $winnerStatus = null;
+        $isCurrentUserWinner = false;
         if ($product->isBiddable()) {
-            $bidEnd = $product->isAuction() ? $product->auction_end : $product->bid_deadline;
-            $minBid = $product->isAuction()
-                ? ($product->getCurrentBidAmount() ?? (float) $product->starting_bid)
-                : (float) $product->min_bid;
-            if ($product->isAuction() && $product->bid_increment) {
-                $minBid = $product->getCurrentBidAmount() !== null
-                    ? (float) $product->getCurrentBidAmount() + (float) $product->bid_increment
-                    : (float) $product->starting_bid;
+            if ($product->hasWinner()) {
+                $biddingClosed = true;
+                $winnerStatus = $product->winner_status;
+                $isCurrentUserWinner = $user && (int) $product->winner_user_id === (int) $user->id;
+            } else {
+                $bidEnd = $product->isAuction() ? $product->auction_end : $product->bid_deadline;
+                $minBid = $product->isAuction()
+                    ? ($product->getCurrentBidAmount() ?? (float) $product->starting_bid)
+                    : (float) $product->min_bid;
+                if ($product->isAuction() && $product->bid_increment) {
+                    $minBid = $product->getCurrentBidAmount() !== null
+                        ? (float) $product->getCurrentBidAmount() + (float) $product->bid_increment
+                        : (float) $product->starting_bid;
+                }
+                $biddingInfo = [
+                    'current_bid' => $product->getCurrentBidAmount(),
+                    'bid_end_at' => $bidEnd?->toIso8601String(),
+                    'min_bid' => $minBid,
+                    'buy_now_price' => $product->buy_now_price ? (float) $product->buy_now_price : null,
+                    'bid_increment' => $product->bid_increment ? (float) $product->bid_increment : null,
+                ];
             }
-            $biddingInfo = [
-                'current_bid' => $product->getCurrentBidAmount(),
-                'bid_end_at' => $bidEnd?->toIso8601String(),
-                'min_bid' => $minBid,
-                'buy_now_price' => $product->buy_now_price ? (float) $product->buy_now_price : null,
-                'bid_increment' => $product->bid_increment ? (float) $product->bid_increment : null,
-            ];
         }
 
         return Inertia::render('frontend/product-view', [
@@ -236,6 +255,9 @@ class ProductController extends BaseController
             'variants' => $variantsWithImages,
             'firstVariant' => $firstVariant,
             'biddingInfo' => $biddingInfo,
+            'biddingClosed' => $biddingClosed,
+            'winnerStatus' => $winnerStatus,
+            'isCurrentUserWinner' => $isCurrentUserWinner,
             // 'relatedProducts' => Product::query()
             //     ->where('id', '!=', $product->id)
             //     ->where('status', 'active')
@@ -1334,6 +1356,10 @@ class ProductController extends BaseController
             return back()->withErrors(['bid' => 'This product does not accept bids.']);
         }
 
+        if ($product->hasWinner()) {
+            return back()->withErrors(['bid' => 'Bidding has closed. A winner has been selected.']);
+        }
+
         $deadline = $product->isAuction() ? $product->auction_end : $product->bid_deadline;
         if ($deadline && $deadline->isPast()) {
             return back()->withErrors(['bid' => 'Bidding has ended.']);
@@ -1378,6 +1404,263 @@ class ProductController extends BaseController
         ]);
 
         return back()->with('success', 'Your bid has been placed.');
+    }
+
+    /**
+     * Show bids for a given product (seller / admin view).
+     */
+    public function bidsIndex(Request $request, Product $product)
+    {
+        $user = $request->user();
+
+        // Only allow admins or the organization that owns the product
+        if (! $user || ($user->role !== 'admin' && $product->organization_id !== optional($user->organization)->id)) {
+            abort(403, 'You are not allowed to view bids for this product.');
+        }
+
+        $bids = $product->bids()
+            ->with(['user:id,name,city,state'])
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('created_at')
+            ->paginate(25)
+            ->through(function (Bid $bid) {
+                $city = $bid->user?->city;
+                $state = $bid->user?->state;
+
+                return [
+                    'id' => $bid->id,
+                    'bid_amount' => (float) $bid->bid_amount,
+                    'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
+                    'status' => $bid->status,
+                    'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
+                    'user' => [
+                        'id' => $bid->user?->id,
+                        'name' => $bid->user?->name,
+                        'city' => $city,
+                        'state' => $state,
+                        'location' => trim($city . ($city && $state ? ', ' : '') . ($state ?? '')) ?: null,
+                    ],
+                ];
+            });
+
+        return Inertia::render('products/bids', [
+            'product' => [
+                'id' => $product->id,
+                'name' => $product->name,
+                'pricing_model' => $product->pricing_model,
+                'has_winner' => $product->hasWinner(),
+                'can_close_bidding' => $product->isBiddable() && ! $product->hasWinner(),
+            ],
+            'bids' => $bids,
+        ]);
+    }
+
+    /**
+     * Cancel a bid (mark as cancelled, do not delete) and notify all bidders.
+     */
+    public function cancelBid(Request $request, Product $product, Bid $bid)
+    {
+        $user = $request->user();
+
+        // Only admins or the owning organization can cancel
+        if (! $user || ($user->role !== 'admin' && $product->organization_id !== optional($user->organization)->id)) {
+            abort(403, 'You are not allowed to cancel bids for this product.');
+        }
+
+        // Ensure the bid belongs to this product
+        if ($bid->product_id !== $product->id) {
+            abort(404);
+        }
+
+        if ($bid->status === 'cancelled') {
+            return back()->with('info', 'This bid is already cancelled.');
+        }
+
+        $bid->update(['status' => 'cancelled']);
+
+        // Notify all users who have ever bid on this product
+        $bidders = $product->bids()
+            ->with('user')
+            ->whereNotNull('user_id')
+            ->get()
+            ->pluck('user')
+            ->filter()
+            ->unique('id');
+
+        if ($bidders->isNotEmpty()) {
+            Notification::send($bidders, new BidCancelledNotification($product));
+        }
+
+        return back()->with('success', 'Bid has been cancelled and bidders have been notified.');
+    }
+
+    /**
+     * Close bidding and select winner (seller/admin). Winner and others are notified.
+     */
+    public function closeBidding(Request $request, Product $product)
+    {
+        $user = $request->user();
+        if (! $user || ($user->role !== 'admin' && $product->organization_id !== optional($user->organization)->id)) {
+            abort(403, 'You are not allowed to close bidding for this product.');
+        }
+        if (! $product->isBiddable()) {
+            return back()->withErrors(['bid' => 'This product does not accept bids.']);
+        }
+        if ($product->hasWinner()) {
+            return back()->with('info', 'Bidding is already closed and a winner was selected.');
+        }
+
+        $reserve = $product->reserve_price ? (float) $product->reserve_price : null;
+        $winningBid = $product->bids()
+            ->whereNot('status', 'cancelled')
+            ->whereIn('status', ['active', 'winning'])
+            ->when($reserve !== null, fn ($q) => $q->where('bid_amount', '>=', $reserve))
+            ->orderByDesc('bid_amount')
+            ->orderBy('submitted_at')
+            ->first();
+
+        if (! $winningBid) {
+            $product->bids()->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
+            return back()->with('info', 'No valid winning bid (none met reserve price if set). All bidders marked as lost.');
+        }
+
+        \DB::transaction(function () use ($product, $winningBid) {
+            $product->bids()->where('id', '!=', $winningBid->id)->whereIn('status', ['active', 'winning'])->update(['status' => 'lost']);
+            $winningBid->update(['status' => 'winning']);
+
+            $window = $product->winner_payment_window ?? '48h';
+            $hours = (int) preg_replace('/[^0-9]/', '', $window) ?: 48;
+            if (stripos($window, '24') !== false) {
+                $hours = 24;
+            } elseif (stripos($window, '72') !== false) {
+                $hours = 72;
+            }
+            $deadline = now()->addHours($hours);
+
+            $product->update([
+                'winner_user_id' => $winningBid->user_id,
+                'winning_bid_id' => $winningBid->id,
+                'winner_payment_deadline' => $deadline,
+                'winner_status' => 'pending_payment',
+            ]);
+
+            $winner = $winningBid->user;
+            if ($winner) {
+                Notification::send($winner, new BidWonNotification(
+                    $product,
+                    (float) $winningBid->bid_amount,
+                    $deadline->toFormattedDateString()
+                ));
+            }
+            $losers = $product->bids()->where('user_id', '!=', $winningBid->user_id)->whereNotNull('user_id')->get()->pluck('user')->filter()->unique('id');
+            if ($losers->isNotEmpty()) {
+                Notification::send($losers, new BidLostNotification($product));
+            }
+        });
+
+        return back()->with('success', 'Bidding closed. Winner has been notified to pay.');
+    }
+
+    /**
+     * Create Stripe Checkout session for winner to pay for their winning bid.
+     * Uses same Cashier checkoutCharge flow as donations, Believe Points, etc.
+     */
+    public function createWinningBidCheckout(Request $request, Product $product)
+    {
+        $user = $request->user();
+        if (! $user || $product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
+            abort(403, 'You are not the winner or payment is not pending.');
+        }
+        $winningBid = $product->winningBid;
+        if (! $winningBid) {
+            abort(404, 'Winning bid not found.');
+        }
+        $amountCents = (int) round((float) $winningBid->bid_amount * 100);
+        if ($amountCents < 50) {
+            $amountCents = 50;
+        }
+        $checkoutOptions = [
+            'success_url' => route('products.winning-bid.success', ['product' => $product->id]) . '?session_id={CHECKOUT_SESSION_ID}',
+            'cancel_url' => route('user.profile.bid-wins'),
+            'metadata' => [
+                'product_id' => (string) $product->id,
+                'winning_bid_id' => (string) $winningBid->id,
+                'user_id' => (string) $user->id,
+                'type' => 'winning_bid',
+            ],
+            'payment_method_types' => ['card'],
+        ];
+        $checkout = $user->checkoutCharge(
+            $amountCents,
+            'Winning bid: ' . $product->name,
+            1,
+            $checkoutOptions
+        );
+        return Inertia::location($checkout->url);
+    }
+
+    /**
+     * Success callback after winner pays via Stripe. Create order and mark winner as paid.
+     */
+    public function winningBidPaymentSuccess(Request $request, Product $product)
+    {
+        $sessionId = $request->get('session_id');
+        if (! $sessionId) {
+            return redirect()->route('user.profile.bid-wins')->with('error', 'Invalid session.');
+        }
+        $stripe = Cashier::stripe();
+        $session = $stripe->checkout->sessions->retrieve($sessionId);
+        if ($session->payment_status !== 'paid' || ($session->metadata->type ?? '') !== 'winning_bid' || (string) $session->metadata->product_id !== (string) $product->id) {
+            return redirect()->route('user.profile.bid-wins')->with('error', 'Payment could not be verified.');
+        }
+        $user = \App\Models\User::find($session->metadata->user_id ?? 0);
+        if (! $user || $product->winner_user_id != $user->id || $product->winner_status !== 'pending_payment') {
+            return redirect()->route('user.profile.bid-wins')->with('error', 'Invalid winner or status.');
+        }
+        $winningBid = $product->winningBid;
+        if (! $winningBid) {
+            return redirect()->route('user.profile.bid-wins')->with('error', 'Winning bid not found.');
+        }
+        \DB::beginTransaction();
+        try {
+            $amount = (float) $winningBid->bid_amount;
+            $ref = 'ORD-BID-' . $product->id . '-' . strtoupper(Str::random(6));
+            $order = Order::create([
+                'user_id' => $user->id,
+                'organization_id' => $product->organization_id,
+                'reference_number' => $ref,
+                'subtotal' => $amount,
+                'total_amount' => $amount,
+                'shipping_cost' => 0,
+                'tax_amount' => 0,
+                'platform_fee' => 0,
+                'donation_amount' => 0,
+                'status' => 'processing',
+                'payment_status' => 'paid',
+                'payment_method' => 'stripe',
+                'stripe_payment_intent_id' => $session->payment_intent ?? null,
+            ]);
+            OrderItem::create([
+                'order_id' => $order->id,
+                'product_id' => $product->id,
+                'organization_id' => $product->organization_id,
+                'quantity' => 1,
+                'unit_price' => $amount,
+                'subtotal' => $amount,
+                'primary_image' => $product->image,
+            ]);
+            $product->update([
+                'winner_status' => 'paid',
+                'quantity_ordered' => $product->quantity_ordered + 1,
+                'quantity_available' => max(0, $product->quantity_available - 1),
+            ]);
+            \DB::commit();
+            return redirect()->route('user.profile.orders')->with('success', 'Payment complete. Your order has been placed.');
+        } catch (\Exception $e) {
+            \DB::rollBack();
+            \Log::error('Winning bid payment success error: ' . $e->getMessage());
+            return redirect()->route('user.profile.bid-wins')->with('error', 'Failed to create order.');
+        }
     }
 
     /**

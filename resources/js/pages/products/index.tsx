@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { Plus, Edit, Trash2, Eye, FileText, Search, X } from 'lucide-react';
+import { Plus, Edit, Trash2, Eye, FileText, Search, X, Gavel, ExternalLink } from 'lucide-react';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
 import AppLayout from "@/layouts/app-layout"
 import type { BreadcrumbItem } from "@/types"
@@ -41,6 +41,8 @@ interface Product {
     status: string;
     description: string;
     type: string;
+    pricing_model?: string;
+    bids_count?: number;
     created_at: string;
     updated_at: string;
     organization: Organization;
@@ -250,6 +252,7 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                         )}
                                         <th className="px-4 py-3 font-medium min-w-32">Type</th>
                                         <th className="px-4 py-3 font-medium min-w-32">Status</th>
+                                        <th className="px-4 py-3 font-medium min-w-36 whitespace-nowrap">Bids</th>
                                         <th className="px-4 py-3 font-medium min-w-28 text-right">Actions</th>
                                     </tr>
                                 </thead>
@@ -315,6 +318,32 @@ export default function Index({ products, filters, allowedPerPage }: Props) {
                                                 </Badge>
                                             </td>
 
+                                            {/* Bids column */}
+                                            <td className="px-4 py-3 min-w-36 align-middle">
+                                                {(item.pricing_model === 'auction' || item.pricing_model === 'blind_bid') ? (
+                                                    <div className="inline-flex flex-col gap-1.5 rounded-lg border border-violet-200 dark:border-violet-800 bg-violet-50/50 dark:bg-violet-950/30 px-3 py-2 min-w-[7rem]">
+                                                        <div className="flex items-center gap-2">
+                                                            <Gavel className="h-4 w-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                                                            <span className="text-sm font-semibold text-violet-700 dark:text-violet-300">
+                                                                {(item.bids_count ?? 0)} bid{(item.bids_count ?? 0) === 1 ? '' : 's'}
+                                                            </span>
+                                                        </div>
+                                                        {(item.bids_count ?? 0) > 0 ? (
+                                                            <Link
+                                                                href={route('products.bids.index', { product: item.id })}
+                                                                className="inline-flex items-center gap-1 text-xs font-medium text-violet-600 dark:text-violet-400 hover:text-violet-800 dark:hover:text-violet-200 hover:underline"
+                                                            >
+                                                                View bids
+                                                                <ExternalLink className="h-3 w-3" />
+                                                            </Link>
+                                                        ) : (
+                                                            <span className="text-xs text-muted-foreground">No bids yet</span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-muted-foreground text-sm">—</span>
+                                                )}
+                                            </td>
 
                                             {/* <td className="px-4 py-3 min-w-32">
                                                 <div className="text-sm">

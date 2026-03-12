@@ -13,6 +13,8 @@ use App\Models\SupporterPosition;
 use App\Models\VolunteerTimesheet;
 use App\Models\JobApplication;
 use App\Models\FundraiseLead;
+use App\Models\Bid;
+use App\Models\Product;
 use App\Models\RewardPointLedger;
 use App\Models\MerchantHubOfferRedemption;
 use App\Models\User;
@@ -343,6 +345,67 @@ class UserProfileController extends Controller
                 'created_at' => $lead->created_at->toIso8601String(),
                 'is_own' => $isOwn,
             ],
+        ]);
+    }
+
+    /**
+     * List current user's bids (supporters see their own bids; status can be active, winning, cancelled, etc.).
+     */
+    public function bids(Request $request)
+    {
+        $user = $request->user();
+        $bids = Bid::query()
+            ->where('user_id', $user->id)
+            ->with(['product:id,name,pricing_model'])
+            ->orderByDesc('submitted_at')
+            ->orderByDesc('created_at')
+            ->paginate(15)
+            ->through(function (Bid $bid) {
+                return [
+                    'id' => $bid->id,
+                    'bid_amount' => (float) $bid->bid_amount,
+                    'bid_amount_formatted' => '$' . number_format((float) $bid->bid_amount, 2),
+                    'status' => $bid->status,
+                    'submitted_at' => optional($bid->submitted_at ?? $bid->created_at)->toIso8601String(),
+                    'product' => $bid->product ? [
+                        'id' => $bid->product->id,
+                        'name' => $bid->product->name,
+                        'pricing_model' => $bid->product->pricing_model,
+                    ] : null,
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/bids', [
+            'bids' => $bids,
+        ]);
+    }
+
+    /**
+     * Products the current user won (pending payment). Winner can pay from here.
+     */
+    public function bidWins(Request $request)
+    {
+        $user = $request->user();
+        $products = Product::query()
+            ->where('winner_user_id', $user->id)
+            ->where('winner_status', 'pending_payment')
+            ->with('winningBid')
+            ->orderByDesc('winner_payment_deadline')
+            ->get()
+            ->map(function (Product $p) {
+                $bid = $p->winningBid;
+                return [
+                    'id' => $p->id,
+                    'name' => $p->name,
+                    'image' => $p->image,
+                    'amount' => $bid ? (float) $bid->bid_amount : 0,
+                    'amount_formatted' => $bid ? '$' . number_format((float) $bid->bid_amount, 2) : '$0.00',
+                    'payment_deadline' => $p->winner_payment_deadline?->toIso8601String(),
+                ];
+            });
+
+        return Inertia::render('frontend/user-profile/bid-wins', [
+            'products' => $products,
         ]);
     }
 

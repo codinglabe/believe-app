@@ -299,7 +299,7 @@ export default function Marketplace({
                                                 className="overflow-hidden"
                                             >
                                                 <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
-                                                    <div className="overflow-y-auto h-full pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ maxHeight: '240px' }}>
+                                                    <div className="overflow-y-auto h-full pr-2" style={{ maxHeight: '240px' }}>
                                                         {organizations.map((organization: any) => (
                                                             <label key={organization.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                                                 <input
@@ -347,7 +347,7 @@ export default function Marketplace({
                                                 className="overflow-hidden"
                                             >
                                                 <CardContent className="space-y-3 pt-4" style={{ height: '240px', maxHeight: '240px' }}>
-                                                    <div className="overflow-y-auto h-full pr-2 [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]" style={{ maxHeight: '240px' }}>
+                                                    <div className="overflow-y-auto h-full pr-2" style={{ maxHeight: '240px' }}>
                                                         {categories.map((category: any) => (
                                                             <label key={category.id} className="flex items-center space-x-3 cursor-pointer group p-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors">
                                                                 <input

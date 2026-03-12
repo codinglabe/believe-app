@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import FrontendLayout from "@/layouts/frontend/frontend-layout";
 import axios from 'axios';
 import { showSuccessToast, showErrorToast } from '@/lib/toast';
-import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock } from 'lucide-react';
+import { Star, ShoppingCart, Heart, Share2, ChevronLeft, ChevronRight, Check, Gavel, Clock, Trophy, Ban } from 'lucide-react';
 
 interface PrintifyVariant {
   id: number;
@@ -79,6 +79,9 @@ interface ProductViewProps {
   isOrganizationUser?: boolean;
   message?: string;
   biddingInfo?: BiddingInfo | null;
+  biddingClosed?: boolean;
+  winnerStatus?: string | null;
+  isCurrentUserWinner?: boolean;
 }
 
 interface CartItem {
@@ -105,6 +108,9 @@ export default function ProductView({
   isOrganizationUser = false,
   message,
   biddingInfo = null,
+  biddingClosed = false,
+  winnerStatus = null,
+  isCurrentUserWinner = false,
 }: ProductViewProps) {
   const [selectedVariant, setSelectedVariant] = useState<PrintifyVariant | null>(firstVariant || null);
   const [quantity, setQuantity] = useState(1);
@@ -556,8 +562,40 @@ export default function ProductView({
                 </h1>
               </div>
 
-              {/* Bidding UI (auction / blind bid) */}
-              {biddingInfo && !isOrganizationUser && (
+              {/* Bidding closed – winner selected (no more bids allowed) */}
+              {biddingClosed && !isOrganizationUser && (
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20 rounded-xl p-6 border-2 border-amber-200 dark:border-amber-800 space-y-4">
+                  <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300 font-semibold">
+                    <Ban className="h-5 w-5" />
+                    Bidding closed
+                  </div>
+                  <p className="text-gray-700 dark:text-gray-300">
+                    A winner has been selected. No further bids can be placed.
+                  </p>
+                  {isCurrentUserWinner && winnerStatus === 'pending_payment' && (
+                    <div className="pt-3 border-t border-amber-200 dark:border-amber-700">
+                      <p className="text-green-700 dark:text-green-400 font-medium mb-2 flex items-center gap-2">
+                        <Trophy className="h-5 w-5" />
+                        You won this item! Complete your payment to receive it.
+                      </p>
+                      <Link
+                        href={route('user.profile.bid-wins')}
+                        className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-medium"
+                      >
+                        Pay now
+                      </Link>
+                    </div>
+                  )}
+                  {winnerStatus === 'paid' && (
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      This item has been sold.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Bidding UI (auction / blind bid) – only when bidding is still open */}
+              {biddingInfo && !biddingClosed && !isOrganizationUser && (
                 <div className="bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/20 dark:to-indigo-900/20 rounded-xl p-6 border-2 border-purple-200 dark:border-purple-800 space-y-4">
                   <div className="flex items-center gap-2 text-purple-700 dark:text-purple-300 font-semibold">
                     <Gavel className="h-5 w-5" />
@@ -623,7 +661,7 @@ export default function ProductView({
               )}
 
               {/* Price (fixed price only) */}
-              {!biddingInfo && (
+              {!biddingInfo && !biddingClosed && (
                 <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20 rounded-xl p-6 border border-blue-100 dark:border-blue-800">
                   <p className="text-gray-600 dark:text-gray-400 text-sm mb-2">Price</p>
                   <div className="flex items-baseline gap-3">
@@ -712,7 +750,7 @@ export default function ProductView({
               ))}
 
               {/* Quantity Selector (fixed price only) */}
-              {!isOrganizationUser && !biddingInfo && (
+              {!isOrganizationUser && !biddingInfo && !biddingClosed && (
                 <div>
                   <label className="text-sm font-semibold text-gray-900 dark:text-white mb-3 block">Quantity</label>
                   <div className="flex items-center gap-4">
@@ -772,9 +810,13 @@ export default function ProductView({
                 </div>
               )}
 
-              {/* CTA Buttons (fixed price; for bidding we show bid form above) */}
+              {/* CTA Buttons (fixed price; for bidding we show bid form above; when closed, no CTA) */}
                <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                {biddingInfo ? (
+                {biddingClosed ? (
+                  <div className="text-sm text-gray-500 dark:text-gray-400">
+                    Bidding has closed. No further actions available.
+                  </div>
+                ) : biddingInfo ? (
                   <div className="text-sm text-gray-500 dark:text-gray-400">
                     Use the bid form above to place your bid.
                   </div>

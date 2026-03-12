@@ -563,6 +563,8 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:user'])->name('user.')
 
     Route::get('/profile/orders', [UserProfileController::class, 'orders'])->name('profile.orders');
     Route::get('/profile/orders/{order}', [UserProfileController::class, 'orderDetails'])->name('profile.order-details');
+    Route::get('/profile/bids', [UserProfileController::class, 'bids'])->name('profile.bids');
+    Route::get('/profile/bid-wins', [UserProfileController::class, 'bidWins'])->name('profile.bid-wins');
     Route::get('/profile/job-applications', [UserProfileController::class, 'jobApplications'])->name('profile.job-applications');
     Route::get('/profile/job-applications/{id}', [UserProfileController::class, 'showJobApplication'])->name('profile.job-applications.show');
     Route::get('/profile/job-applications/{id}/timesheets', [UserProfileController::class, 'getJobApplicationTimesheets'])->name('profile.job-applications.timesheets');
@@ -1075,9 +1077,28 @@ Route::middleware(['auth', 'EnsureEmailIsVerified', 'role:organization|admin|org
         'destroy' => 'permission:product.delete'
     ]);
 
+    // Seller / admin: view and manage bids for a product
+    Route::get('/products/{product}/bids', [ProductController::class, 'bidsIndex'])
+        ->name('products.bids.index')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
+    Route::post('/products/{product}/bids/{bid}/cancel', [ProductController::class, 'cancelBid'])
+        ->name('products.bids.cancel')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+    Route::post('/products/{product}/close-bidding', [ProductController::class, 'closeBidding'])
+        ->name('products.bids.close')
+        ->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.update']);
+
     // Admin/Organization show route for managing their products (must come after public route)
     // This route will only be used when user is authenticated and has permission
     Route::get('/products/{id}/manage', [ProductController::class, 'show'])->name('products.show.manage')->middleware(['auth', 'EnsureEmailIsVerified', 'topics.selected', 'permission:product.read']);
+});
+
+// Winner pay flow (auth only; controller checks winner)
+Route::middleware(['auth', 'EnsureEmailIsVerified'])->group(function () {
+    Route::post('/products/{product}/pay-winning-bid', [ProductController::class, 'createWinningBidCheckout'])
+        ->name('products.winning-bid.checkout');
+    Route::get('/products/{product}/winning-bid-success', [ProductController::class, 'winningBidPaymentSuccess'])
+        ->name('products.winning-bid.success');
 });
 
 // Public route for products (plural) - must come AFTER resource routes to avoid conflict with /products/create
