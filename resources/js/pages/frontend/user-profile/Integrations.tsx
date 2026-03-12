@@ -1,10 +1,19 @@
 "use client"
 
+import { useState } from "react"
 import ProfileLayout from "@/components/frontend/layout/user-profile-layout"
 import { PageHead } from "@/components/frontend/PageHead"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/frontend/ui/avatar"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import { Youtube, Cloud, Link2Off } from "lucide-react"
 import { Link, router } from "@inertiajs/react"
 import { toast } from "react-hot-toast"
@@ -25,24 +34,44 @@ interface Props {
 
 export default function ProfileIntegrations({ youtube_channel_url, myChannel = null, dropboxLinked = false }: Props) {
   const isConnected = !!youtube_channel_url
+  const [youtubeDisconnectOpen, setYoutubeDisconnectOpen] = useState(false)
+  const [dropboxDisconnectOpen, setDropboxDisconnectOpen] = useState(false)
+  const [youtubeDisconnecting, setYoutubeDisconnecting] = useState(false)
+  const [dropboxDisconnecting, setDropboxDisconnecting] = useState(false)
 
   const handleConnect = () => {
     window.location.href = route("integrations.youtube.redirect")
   }
 
   const handleDisconnect = () => {
-    if (!confirm("Disconnect your YouTube channel? Your videos will no longer appear on Unity Videos.")) return
+    setYoutubeDisconnectOpen(true)
+  }
+
+  const confirmDisconnectYoutube = () => {
+    setYoutubeDisconnecting(true)
     router.put(route("integrations.youtube.update"), { youtube_channel_url: null }, {
       preserveScroll: true,
-      onSuccess: () => toast.success("YouTube channel disconnected."),
+      onSuccess: () => {
+        toast.success("YouTube channel disconnected.")
+        setYoutubeDisconnectOpen(false)
+      },
+      onFinish: () => setYoutubeDisconnecting(false),
     })
   }
 
   const handleDisconnectDropbox = () => {
-    if (!confirm("Disconnect Dropbox? New recordings will no longer be saved to your account. Existing files in Dropbox will not be removed.")) return
+    setDropboxDisconnectOpen(true)
+  }
+
+  const confirmDisconnectDropbox = () => {
+    setDropboxDisconnecting(true)
     router.post(route("integrations.dropbox.disconnect"), {}, {
       preserveScroll: true,
-      onSuccess: () => toast.success("Dropbox disconnected."),
+      onSuccess: () => {
+        toast.success("Dropbox disconnected.")
+        setDropboxDisconnectOpen(false)
+      },
+      onFinish: () => setDropboxDisconnecting(false),
     })
   }
 
@@ -188,6 +217,58 @@ export default function ProfileIntegrations({ youtube_channel_url, myChannel = n
         </Card>
         </div>
       </div>
+
+      {/* YouTube disconnect confirmation modal */}
+      <Dialog open={youtubeDisconnectOpen} onOpenChange={setYoutubeDisconnectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disconnect YouTube channel?</DialogTitle>
+            <DialogDescription>
+              Your videos will no longer appear on Unity Videos. You can reconnect your channel anytime.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setYoutubeDisconnectOpen(false)} disabled={youtubeDisconnecting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDisconnectYoutube}
+              disabled={youtubeDisconnecting}
+              className="gap-2"
+            >
+              <Link2Off className="h-4 w-4 shrink-0" />
+              {youtubeDisconnecting ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dropbox disconnect confirmation modal */}
+      <Dialog open={dropboxDisconnectOpen} onOpenChange={setDropboxDisconnectOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Disconnect Dropbox?</DialogTitle>
+            <DialogDescription>
+              New recordings will no longer be saved to your Dropbox. Your existing files in Dropbox will not be removed.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDropboxDisconnectOpen(false)} disabled={dropboxDisconnecting}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={confirmDisconnectDropbox}
+              disabled={dropboxDisconnecting}
+              className="gap-2"
+            >
+              <Link2Off className="h-4 w-4 shrink-0" />
+              {dropboxDisconnecting ? "Disconnecting…" : "Disconnect"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </ProfileLayout>
   )
 }
