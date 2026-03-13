@@ -51,22 +51,20 @@ class BoardMemberController extends Controller
         // $this->authorize('create', [BoardMember::class, $organization]);
 
         $cleanEIN = $organization->ein ? preg_replace('/\D/', '', $organization->ein) : '';
-        $hasIrsMembers = $cleanEIN && IrsBoardMember::where('ein', $cleanEIN)->active()->exists();
 
+        // Allow either: select from IRS list (irs_board_member_id) OR add custom (name + position required)
         $request->validate([
-            'name' => $hasIrsMembers ? 'nullable|string|max:255' : 'required|string|max:255',
+            'name' => 'required_without:irs_board_member_id|nullable|string|max:255',
             'email' => 'required|email|unique:users,email',
-            'position' => $hasIrsMembers ? 'nullable|string|max:255' : 'required|string|max:255',
+            'position' => 'required_without:irs_board_member_id|nullable|string|max:255',
             'role' => 'required|string|in:admin,leader',
-            'irs_board_member_id' => $hasIrsMembers
-                ? 'required|integer|exists:irs_board_members,id'
-                : 'nullable|sometimes|integer|exists:irs_board_members,id',
+            'irs_board_member_id' => 'nullable|integer|exists:irs_board_members,id',
         ]);
 
-        // When IRS member is required, resolve name and position from selected IRS record
+        // Resolve name and position: from selected IRS record when provided, else from request (custom add)
         $name = $request->name;
-        $position = $request->position;
-        if ($hasIrsMembers && $request->irs_board_member_id) {
+        $position = $request->position ?? '';
+        if ($request->filled('irs_board_member_id') && $cleanEIN) {
             $irsMember = IrsBoardMember::where('id', $request->irs_board_member_id)
                 ->where('ein', $cleanEIN)
                 ->active()

@@ -53,9 +53,13 @@ class SyncIrsBoardMembers extends Command
         Log::info("IRS sync: memory_limit before={$before} after={$after} (set " . ($memoryLimit ?: 'none') . ")");
         set_time_limit(0);
 
-        // Default to previous year: IRS bulk XML for current year is often incomplete; prior year is usually fully available.
-        $taxYear = $this->option('year') ?? (string) (now()->year - 1);
+        // Previous two years: e.g. in 2026 we sync 2025 and 2024. No substitution — we never store wrong-year data.
+        $previousYear = now()->year - 1;
+        $taxYear = $this->option('year') ?? (string) $previousYear;
         $ein = $this->option('ein');
+        if (!$this->option('year')) {
+            $this->info('Syncing previous two years: ' . $previousYear . ' and ' . (now()->year - 2) . ' (current year ' . now()->year . ').');
+        }
         $updateExpired = $this->option('update-expired');
 
         // Update expired terms if requested
@@ -128,21 +132,6 @@ class SyncIrsBoardMembers extends Command
     }
 
     /**
-     * Get years to try for download (requested first, then fallbacks).
-     */
-    private function getYearsToTry(int $year): array
-    {
-        $years = [$year];
-        if ($year - 1 >= 2019) {
-            $years[] = $year - 1;
-        }
-        if ($year - 2 >= 2019) {
-            $years[] = $year - 2;
-        }
-        return $years;
-    }
-
-    /**
      * Handle syncing for a single organization by EIN
      */
     private function handleSingleEin(string $ein, string $taxYear): int
@@ -192,28 +181,19 @@ class SyncIrsBoardMembers extends Command
             }
 
             if ($this->option('download') || empty($xmlFiles)) {
-                $yearsToTry = $this->getYearsToTry($yearToSync);
-                $downloaded = false;
-                foreach ($yearsToTry as $tryYear) {
-                    $tryYearStr = (string) $tryYear;
-                    if ($tryYearStr !== $yearStr) {
-                        $this->info("Trying fallback year {$tryYearStr} for this sync year...");
-                    } elseif (empty($xmlFiles)) {
-                        $this->info("No XML files for {$yearStr}. Downloading IRS data...");
-                    }
-                    $progress = fn (string $msg) => $this->line($msg);
-                    if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
-                        $this->info("IRS data ready for year {$tryYearStr}.");
-                        if ($tryYearStr !== $yearStr) {
-                            $yearStr = $tryYearStr;
-                        }
-                        $downloaded = true;
-                        break;
-                    }
+                if (empty($xmlFiles)) {
+                    $this->info("No XML files for {$yearStr}. Downloading IRS data (this year only)...");
                 }
+                $progress = fn (string $msg) => $this->line($msg);
+                $downloaded = $this->irsService->downloadIRSData($yearStr, $progress);
                 if (!$downloaded && empty($xmlFiles)) {
                     $this->warn("No data for year {$yearStr}; skipping.");
                     continue;
+                }
+                if ($downloaded) {
+                    $this->info("IRS data ready for year {$yearStr}.");
+                } elseif (!empty($xmlFiles)) {
+                    $this->info("Using existing XML files for year {$yearStr}.");
                 }
             }
 
@@ -307,33 +287,21 @@ class SyncIrsBoardMembers extends Command
             }
 
             if ($this->option('download') || empty($xmlFiles)) {
-                $yearsToTry = $this->getYearsToTry($yearToSync);
-                $downloaded = false;
-                foreach ($yearsToTry as $tryYear) {
-                    $tryYearStr = (string) $tryYear;
-                    if ($tryYearStr !== $yearStr) {
-                        $this->info("Trying fallback year {$tryYearStr}...");
-                    } elseif (empty($xmlFiles)) {
-                        $this->info("No XML files found. Downloading IRS data for year {$yearStr}...");
-                        $this->warn("This can take 30–90 minutes (each ZIP is 50–500+ MB). Do not interrupt.");
-                    } else {
-                        $this->info("Downloading IRS data for year {$yearStr}...");
-                    }
-                    $progress = fn (string $msg) => $this->line($msg);
-                    if ($this->irsService->downloadIRSData($tryYearStr, $progress)) {
-                        $this->info("IRS data downloaded and extracted successfully for year {$tryYearStr}.");
-                        if ($tryYearStr !== $yearStr) {
-                            $yearStr = $tryYearStr;
-                        }
-                        $downloaded = true;
-                        break;
-                    }
+                if (empty($xmlFiles)) {
+                    $this->info("No XML files found. Downloading IRS data for year {$yearStr}...");
+                    $this->warn("This can take 30–90 minutes (each ZIP is 50–500+ MB). Do not interrupt.");
+                } else {
+                    $this->info("Downloading IRS data for year {$yearStr}...");
                 }
+                $progress = fn (string $msg) => $this->line($msg);
+                $downloaded = $this->irsService->downloadIRSData($yearStr, $progress);
                 if (!$downloaded && empty($xmlFiles)) {
-                    $this->warn("No data for year {$yearStr}; skipping.");
+                    $this->warn("No data for year {$yearStr}; skipping. Run with --download again or check IRS availability.");
                     continue;
                 }
-                if (!$downloaded && !empty($xmlFiles)) {
+                if ($downloaded) {
+                    $this->info("IRS data downloaded and extracted successfully for year {$yearStr}.");
+                } elseif (!empty($xmlFiles)) {
                     $this->info("Download failed, but found existing XML files. Continuing...");
                 }
             } else {

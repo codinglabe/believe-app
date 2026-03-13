@@ -247,13 +247,15 @@ class IRSForm990Service
             Log::debug("IRS index CSV not used for {$taxYear}: " . $e->getMessage());
         }
 
-        // Fallback: known TEOS XML ZIP naming (XML only, no PDF)
+        // Fallback: known TEOS XML ZIP naming (XML only, no PDF). Include all years we might sync (2019 through previous year).
         $zipFileNames = [];
         for ($month = 1; $month <= 12; $month++) {
             $monthStr = str_pad($month, 2, '0', STR_PAD_LEFT);
             $zipFileNames[] = "{$taxYear}_TEOS_XML_{$monthStr}A.zip";
         }
-        if (in_array($taxYear, ['2025', '2024'])) {
+        $yearInt = (int) $taxYear;
+        $prevYear = (int) Carbon::now()->year - 1;
+        if ($yearInt >= 2019 && $yearInt <= $prevYear) {
             $zipFileNames[] = "{$taxYear}_TEOS_XML_11B.zip";
             $zipFileNames[] = "{$taxYear}_TEOS_XML_11C.zip";
             $zipFileNames[] = "{$taxYear}_TEOS_XML_11D.zip";
@@ -341,8 +343,10 @@ class IRSForm990Service
                 }
             }
 
-            // Also try alternative naming for older years (XML only; officers data only in XML)
-            if ($downloadedCount === 0 && in_array($taxYear, ['2020', '2019', '2021', '2022'])) {
+            // Try alternative naming when standard TEOS naming fails (any year from 2019 through previous year).
+            $yearInt = (int) $taxYear;
+            $prevYear = (int) Carbon::now()->year - 1;
+            if ($downloadedCount === 0 && $yearInt >= 2019 && $yearInt <= $prevYear) {
                 $alternativeFiles = [
                     "{$taxYear}_TEOS_XML_CT1.zip",
                     "download990xml_{$taxYear}_1.zip",

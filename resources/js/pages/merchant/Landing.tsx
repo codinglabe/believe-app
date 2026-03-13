@@ -86,6 +86,33 @@ export default function MerchantLanding() {
               </motion.div>
             </motion.div>
             </div>
+          {/* Home section bottom border */}
+          <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-[#FF1493]/50 to-transparent" />
+        </section>
+
+        {/* Merchant Hub Image Section - after home section bottom border */}
+        <section className="relative py-12 sm:py-16 md:py-20 lg:py-24 overflow-hidden">
+          <div className="container mx-auto px-4 sm:px-6 lg:px-8">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+              className="max-w-5xl mx-auto"
+            >
+              <motion.img
+                src="/merchant/merchant-hub-loop.png"
+                alt="Merchant Hub"
+                className="w-full h-auto rounded-2xl shadow-2xl object-contain"
+                animate={{ y: [0, -10, 0] }}
+                transition={{
+                  duration: 3.5,
+                  repeat: Infinity,
+                  ease: 'easeInOut',
+                }}
+              />
+            </motion.div>
+          </div>
         </section>
 
         {/* The One Rule - Centerpiece */}
