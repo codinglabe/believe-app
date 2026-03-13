@@ -28,8 +28,10 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
     title: '',
     short_description: '',
     description: '',
+    reference_price: '' as string | number,
+    discount_percentage: 5 as number,
+    discount_cap: '' as string | number,
     image: null as File | null,
-    points_required: 0,
     cash_required: '',
     currency: 'USD',
     inventory_qty: '',
@@ -37,6 +39,13 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
     ends_at: '',
     status: 'draft' as 'draft' | 'active' | 'paused' | 'expired',
   })
+
+  // Live calculator: BIU rules — $1 discount = 1,000 points
+  const price = Number(data.reference_price) || 0
+  const pct = Number(data.discount_percentage) || 0
+  const discountAmount = price > 0 && pct >= 1 && pct <= 10 ? Math.round(price * (pct / 100) * 100) / 100 : 0
+  const pointsRequired = Math.round(discountAmount * 1000)
+  const customerPays = Math.round((price - discountAmount) * 100) / 100
 
   const { props } = usePage<{ success?: string; error?: string }>()
 
@@ -179,25 +188,66 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                     )}
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {/* Points Required */}
-                    <div>
-                      <MerchantLabel htmlFor="points_required">Points Required *</MerchantLabel>
-                      <MerchantInput
-                        id="points_required"
-                        type="number"
-                        min="0"
-                        value={data.points_required}
-                        onChange={(e) => setData('points_required', parseInt(e.target.value) || 0)}
-                        className={`mt-1 ${errors.points_required ? 'border-red-500' : ''}`}
-                        required
-                      />
-                      {errors.points_required && (
-                        <p className="mt-1 text-sm text-red-400">{errors.points_required}</p>
-                      )}
+                  {/* BIU Discount Rules: 1–10% only; points auto-calculated */}
+                  <div className="rounded-xl border border-[#FF1493]/30 bg-gray-900/50 p-4 space-y-4">
+                    <p className="text-sm font-medium text-gray-300">Pricing &amp; Discount (1–10% only; points calculated automatically)</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <MerchantLabel htmlFor="reference_price">Retail / Product Price *</MerchantLabel>
+                        <MerchantInput
+                          id="reference_price"
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={data.reference_price === '' ? '' : data.reference_price}
+                          onChange={(e) => setData('reference_price', e.target.value ? Number(e.target.value) : '')}
+                          placeholder="e.g. 100"
+                          className={`mt-1 ${errors.reference_price ? 'border-red-500' : ''}`}
+                          required
+                        />
+                        {errors.reference_price && (
+                          <p className="mt-1 text-sm text-red-400">{errors.reference_price}</p>
+                        )}
+                      </div>
+                      <div>
+                        <MerchantLabel htmlFor="discount_percentage">Discount % * (1–10% only)</MerchantLabel>
+                        <Select
+                          value={String(data.discount_percentage)}
+                          onValueChange={(value) => setData('discount_percentage', Number(value))}
+                        >
+                          <SelectTrigger className={`mt-1 bg-gray-900/50 border-[#FF1493]/40 text-white ${errors.discount_percentage ? 'border-red-500' : ''}`}>
+                            <SelectValue placeholder="Select %" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+                              <SelectItem key={n} value={String(n)}>{n}%</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {errors.discount_percentage && (
+                          <p className="mt-1 text-sm text-red-400">{errors.discount_percentage}</p>
+                        )}
+                      </div>
                     </div>
+                    {/* Live calculator preview */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-gray-700">
+                      <div className="bg-gray-800/60 rounded-lg p-3">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide">Discount amount</p>
+                        <p className="text-lg font-bold text-[#FF1493]">${discountAmount.toFixed(2)}</p>
+                      </div>
+                      <div className="bg-gray-800/60 rounded-lg p-3">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide">Points required</p>
+                        <p className="text-lg font-bold text-white">{pointsRequired.toLocaleString()}</p>
+                      </div>
+                      <div className="bg-gray-800/60 rounded-lg p-3">
+                        <p className="text-xs text-gray-400 uppercase tracking-wide">Customer pays (with points)</p>
+                        <p className="text-lg font-bold text-green-400">${customerPays.toFixed(2)}</p>
+                      </div>
+                    </div>
+                  </div>
 
-                    {/* Cash Required */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Cash Required (optional) */}
                     <div>
                       <MerchantLabel htmlFor="cash_required">Cash Required (Optional)</MerchantLabel>
                       <MerchantInput
@@ -214,8 +264,6 @@ export default function CreateOffer({ categories }: CreateOfferProps) {
                         <p className="mt-1 text-sm text-red-400">{errors.cash_required}</p>
                       )}
                     </div>
-
-                    {/* Currency */}
                     <div>
                       <MerchantLabel htmlFor="currency">Currency</MerchantLabel>
                       <Select

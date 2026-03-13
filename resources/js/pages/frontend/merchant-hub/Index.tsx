@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Link, router } from '@inertiajs/react'
+import { Link, router, usePage } from '@inertiajs/react'
 import { PageHead } from '@/components/frontend/PageHead'
-import { Search, Store, Gift, Sparkles } from 'lucide-react'
+import { Search, Store, Gift, Sparkles, ShoppingBag } from 'lucide-react'
 import { motion } from 'framer-motion'
 import FrontendLayout from '@/layouts/frontend/frontend-layout'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/frontend/ui/card'
@@ -61,7 +61,15 @@ interface Props {
   }
 }
 
+// Normalize image URL so storage paths work locally (e.g. merchant-hub/offers/x.jpg -> /storage/...)
+function offerImageSrc(src: string | undefined): string {
+  if (!src || src === '/placeholder.jpg') return src || '/placeholder.jpg'
+  if (src.startsWith('http') || src.startsWith('//') || src.startsWith('/storage')) return src
+  return '/storage/' + src.replace(/^\//, '')
+}
+
 export default function MerchantHubIndex({ offers: initialOffers, categories: initialCategories = [], filters: initialFilters = {} }: Props) {
+  const { auth } = usePage().props as { auth?: { user?: unknown } }
   const [searchQuery, setSearchQuery] = useState(initialFilters.search || '')
   const [selectedCategorySlug, setSelectedCategorySlug] = useState<string | null>(initialFilters.category || null)
   const isInitialMount = useRef(true)
@@ -174,17 +182,6 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
     <FrontendLayout>
       <PageHead title="Merchant Hub" description="Browse offers from partner merchants. Redeem reward points and support businesses that give back." />
       <div className="min-h-screen bg-gradient-to-br from-background via-background to-muted/20">
-        {/* Header */}
-        <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-40">
-          <div className="container mx-auto px-4 py-4">
-            <div className="flex items-center gap-4">
-              <div className="flex-1">
-                <h1 className="text-xl font-bold">Merchant Hub</h1>
-              </div>
-            </div>
-          </div>
-        </div>
-
         {/* Hero Section */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -240,15 +237,30 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
                       placeholder="Search offers, merchants, or categories..."
                       value={searchQuery}
                       onChange={handleSearchChange}
-                      className="pl-12 pr-32 h-14 text-lg bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-0 shadow-xl text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
+                      className="pl-12 pr-44 h-14 text-lg bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-0 shadow-xl text-gray-900 dark:text-white placeholder:text-gray-500 dark:placeholder:text-gray-400"
                     />
-                    <Button
-                      type="submit"
-                      size="lg"
-                      className="absolute right-2 h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
-                    >
-                      Search
-                    </Button>
+                    <div className="absolute right-2 flex items-center gap-2">
+                      <Button
+                        type="submit"
+                        size="lg"
+                        className="h-10 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                      >
+                        Search
+                      </Button>
+                      {auth?.user && (
+                        <Link href={route('merchant-hub.my-purchases')}>
+                          <Button
+                            type="button"
+                            size="lg"
+                            variant="secondary"
+                            className="h-10 gap-2 bg-white/90 dark:bg-gray-800/90 text-gray-900 dark:text-white hover:bg-white dark:hover:bg-gray-800 border border-white/50"
+                          >
+                            <ShoppingBag className="h-4 w-4" />
+                            My Purchases
+                          </Button>
+                        </Link>
+                      )}
+                    </div>
                   </div>
                 </form>
               </motion.div>
@@ -339,7 +351,7 @@ export default function MerchantHubIndex({ offers: initialOffers, categories: in
                       <Card className="h-full hover:shadow-lg transition-all duration-300 cursor-pointer group">
                         <div className="relative h-48 w-full overflow-hidden rounded-t-lg bg-muted">
                           <img
-                            src={offer.image || '/placeholder.jpg'}
+                            src={offerImageSrc(offer.image)}
                             alt={offer.title}
                             className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-300"
                             onError={(e) => {

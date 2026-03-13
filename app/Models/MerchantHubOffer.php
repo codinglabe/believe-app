@@ -19,6 +19,7 @@ class MerchantHubOffer extends Model
         'slug',
         'short_description',
         'description',
+        'reference_price',
         'image_url',
         'points_required',
         'cash_required',
@@ -33,6 +34,7 @@ class MerchantHubOffer extends Model
     ];
 
     protected $casts = [
+        'reference_price' => 'decimal:2',
         'points_required' => 'integer',
         'cash_required' => 'decimal:2',
         'inventory_qty' => 'integer',
@@ -189,5 +191,58 @@ class MerchantHubOffer extends Model
         }
 
         return true;
+    }
+
+    /**
+     * BIU Unity Points: $1 discount = 1,000 points.
+     * discount_amount = reference_price * (discount_percentage/100)
+     * points_required = discount_amount * 1000
+     */
+    public function getDiscountAmount(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        $pct = (float) ($this->discount_percentage ?? 0);
+        if ($price <= 0 || $pct <= 0) {
+            return 0.0;
+        }
+        $amount = $price * ($pct / 100);
+        if ($this->discount_cap !== null && (float) $this->discount_cap > 0 && $amount > (float) $this->discount_cap) {
+            return (float) $this->discount_cap;
+        }
+        return round($amount, 2);
+    }
+
+    /**
+     * Customer price when using Unity Points (retail minus discount).
+     */
+    public function getCustomerPriceWithPoints(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        return round($price - $this->getDiscountAmount(), 2);
+    }
+
+    /**
+     * BIU Community Cash: 10% off for cash purchases.
+     */
+    public function getCommunityCashPrice(): float
+    {
+        $price = (float) ($this->reference_price ?? 0);
+        return round($price * 0.90, 2);
+    }
+
+    /**
+     * Calculate points required from reference_price and discount_percentage.
+     * Points are auto-calculated; merchants cannot edit.
+     */
+    public static function calculatePointsRequired(float $referencePrice, float $discountPercent, ?float $discountCap = null): int
+    {
+        if ($referencePrice <= 0 || $discountPercent <= 0) {
+            return 0;
+        }
+        $discountAmount = $referencePrice * ($discountPercent / 100);
+        if ($discountCap !== null && $discountCap > 0 && $discountAmount > $discountCap) {
+            $discountAmount = $discountCap;
+        }
+        return (int) round($discountAmount * 1000);
     }
 }
